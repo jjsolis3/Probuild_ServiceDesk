@@ -1,0 +1,79 @@
+@model Ticket
+@{
+    ViewData["Title"] = $"Edit Ticket #{Model.Id}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
+        <li class="breadcrumb-item active">Edit Ticket #@Model.Id</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-pencil"></i> Edit Ticket #@Model.Id</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="Edit">
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="CreatedDate" />
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Title" class="form-label"></label>
+                <input asp-for="Title" class="form-control" />
+                <span asp-validation-for="Title" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <textarea asp-for="Description" class="form-control" rows="5"></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="Category" class="form-label"></label>
+                    <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select"></select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Priority" class="form-label"></label>
+                    <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select"></select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Status" class="form-label"></label>
+                    <select asp-for="Status" asp-items="Html.GetEnumSelectList<TicketStatus>()" class="form-select"></select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="SubmittedById" class="form-label">Submitted By</label>
+                    <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees"></select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="AssignedToId" class="form-label">Assign To (IT Staff)</label>
+                    <select asp-for="AssignedToId" class="form-select" asp-items="@ViewBag.ITStaff">
+                        <option value="">-- Unassigned --</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="CompanyServiceId" class="form-label">Related Service</label>
+                    <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
+                        <option value="">-- None --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="ResolutionNotes" class="form-label"></label>
+                <textarea asp-for="ResolutionNotes" class="form-control" rows="3" placeholder="Add resolution details when resolving this ticket"></textarea>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

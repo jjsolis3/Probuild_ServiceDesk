@@ -1,0 +1,63 @@
+@{
+    ViewData["Title"] = "Reports";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-graph-up"></i> Reports</h1>
+</div>
+
+<div class="row g-4">
+    <!-- Ticket Reports -->
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-ticket-detailed display-3 text-primary mb-3"></i>
+                <h4 class="card-title">Ticket Reports</h4>
+                <p class="card-text text-muted">
+                    View ticket statistics including volume by status, category, priority, and assignee performance metrics.
+                </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 text-center pb-3">
+                <a asp-action="Tickets" class="btn btn-primary">
+                    <i class="bi bi-arrow-right-circle"></i> View Report
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Asset Reports -->
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-laptop display-3 text-success mb-3"></i>
+                <h4 class="card-title">Asset Reports</h4>
+                <p class="card-text text-muted">
+                    Review asset inventory summaries, total valuation, warranty expiration tracking, and distribution by department.
+                </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 text-center pb-3">
+                <a asp-action="Assets" class="btn btn-success">
+                    <i class="bi bi-arrow-right-circle"></i> View Report
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Reports -->
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-people display-3 text-info mb-3"></i>
+                <h4 class="card-title">User Reports</h4>
+                <p class="card-text text-muted">
+                    Analyze user activity including tickets submitted, resolution rates, and department-level ticket breakdowns.
+                </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 text-center pb-3">
+                <a asp-action="Users" class="btn btn-info text-white">
+                    <i class="bi bi-arrow-right-circle"></i> View Report
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

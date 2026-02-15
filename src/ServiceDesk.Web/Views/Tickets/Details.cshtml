@@ -1,0 +1,121 @@
+@model Ticket
+@{
+    ViewData["Title"] = $"Ticket #{Model.Id}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
+        <li class="breadcrumb-item active">Ticket #@Model.Id</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@Model.Title</h1>
+    <div>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+            <i class="bi bi-pencil"></i> Edit
+        </a>
+        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
+            <i class="bi bi-trash"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Description</div>
+            <div class="card-body">
+                <p>@Model.Description</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.ResolutionNotes))
+        {
+            <div class="card mt-3">
+                <div class="card-header bg-success text-white">Resolution Notes</div>
+                <div class="card-body">
+                    <p>@Model.ResolutionNotes</p>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Details</div>
+            <div class="card-body">
+                <dl>
+                    <dt>Status</dt>
+                    <dd><span class="badge badge-@Model.Status.ToString().ToLower()">@Model.Status</span></dd>
+
+                    <dt>Priority</dt>
+                    <dd><span class="badge badge-@Model.Priority.ToString().ToLower()">@Model.Priority</span></dd>
+
+                    <dt>Category</dt>
+                    <dd>@Model.Category</dd>
+
+                    <dt>Submitted By</dt>
+                    <dd>
+                        @if (Model.SubmittedBy != null)
+                        {
+                            <a asp-controller="Employees" asp-action="Details" asp-route-id="@Model.SubmittedById">
+                                @Model.SubmittedBy.FullName
+                            </a>
+                        }
+                    </dd>
+
+                    <dt>Assigned To</dt>
+                    <dd>
+                        @if (Model.AssignedTo != null)
+                        {
+                            <a asp-controller="Employees" asp-action="Details" asp-route-id="@Model.AssignedToId">
+                                @Model.AssignedTo.FullName
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Unassigned</span>
+                        }
+                    </dd>
+
+                    <dt>Related Service</dt>
+                    <dd>
+                        @if (Model.CompanyService != null)
+                        {
+                            <a asp-controller="Services" asp-action="Details" asp-route-id="@Model.CompanyServiceId">
+                                @Model.CompanyService.Name
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">None</span>
+                        }
+                    </dd>
+
+                    <dt>Created</dt>
+                    <dd>@Model.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</dd>
+
+                    @if (Model.UpdatedDate.HasValue)
+                    {
+                        <dt>Last Updated</dt>
+                        <dd>@Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</dd>
+                    }
+
+                    @if (Model.ResolvedDate.HasValue)
+                    {
+                        <dt>Resolved</dt>
+                        <dd>@Model.ResolvedDate.Value.ToString("MMM dd, yyyy h:mm tt")</dd>
+                    }
+
+                    @if (Model.ClosedDate.HasValue)
+                    {
+                        <dt>Closed</dt>
+                        <dd>@Model.ClosedDate.Value.ToString("MMM dd, yyyy h:mm tt")</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

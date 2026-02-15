@@ -1,0 +1,75 @@
+@model Ticket
+@{
+    ViewData["Title"] = "Create Ticket";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
+        <li class="breadcrumb-item active">New Ticket</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create New Ticket</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="Create">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Title" class="form-label"></label>
+                <input asp-for="Title" class="form-control" placeholder="Brief description of the issue" />
+                <span asp-validation-for="Title" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <textarea asp-for="Description" class="form-control" rows="5" placeholder="Provide detailed information about the issue"></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="Category" class="form-label"></label>
+                    <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select">
+                        <option value="">-- Select Category --</option>
+                    </select>
+                    <span asp-validation-for="Category" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Priority" class="form-label"></label>
+                    <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select"></select>
+                    <span asp-validation-for="Priority" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="SubmittedById" class="form-label">Submitted By</label>
+                    <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees">
+                        <option value="">-- Select Employee --</option>
+                    </select>
+                    <span asp-validation-for="SubmittedById" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="AssignedToId" class="form-label">Assign To (IT Staff)</label>
+                    <select asp-for="AssignedToId" class="form-select" asp-items="@ViewBag.ITStaff">
+                        <option value="">-- Unassigned --</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="CompanyServiceId" class="form-label">Related Service</label>
+                    <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
+                        <option value="">-- None --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Ticket</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

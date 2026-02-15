@@ -1,0 +1,125 @@
+@model Asset
+@{
+    ViewData["Title"] = $"Asset - {Model.AssetTag}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Assets</a></li>
+        <li class="breadcrumb-item active">@Model.AssetTag</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1><i class="bi bi-laptop"></i> @Model.Name</h1>
+    <div>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+            <i class="bi bi-pencil"></i> Edit
+        </a>
+        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
+            <i class="bi bi-trash"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">General Information</div>
+            <div class="card-body">
+                <dl>
+                    <dt>Asset Tag</dt>
+                    <dd>@Model.AssetTag</dd>
+
+                    <dt>Name</dt>
+                    <dd>@Model.Name</dd>
+
+                    <dt>Asset Type</dt>
+                    <dd>@Model.AssetType</dd>
+
+                    <dt>Status</dt>
+                    <dd><span class="badge badge-@Model.Status.ToString().ToLower()">@Model.Status</span></dd>
+
+                    <dt>Assigned To</dt>
+                    <dd>
+                        @if (Model.AssignedTo != null)
+                        {
+                            <a asp-controller="Employees" asp-action="Details" asp-route-id="@Model.AssignedToId">
+                                @Model.AssignedTo.FullName
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Unassigned</span>
+                        }
+                    </dd>
+
+                    <dt>Location</dt>
+                    <dd>@(Model.Location ?? "N/A")</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Hardware Details</div>
+            <div class="card-body">
+                <dl>
+                    <dt>Manufacturer</dt>
+                    <dd>@(Model.Manufacturer ?? "N/A")</dd>
+
+                    <dt>Model</dt>
+                    <dd>@(Model.Model ?? "N/A")</dd>
+
+                    <dt>Serial Number</dt>
+                    <dd>@(Model.SerialNumber ?? "N/A")</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">Purchase & Warranty</div>
+            <div class="card-body">
+                <dl>
+                    <dt>Purchase Date</dt>
+                    <dd>@(Model.PurchaseDate?.ToString("MMM dd, yyyy") ?? "N/A")</dd>
+
+                    <dt>Purchase Cost</dt>
+                    <dd>@(Model.PurchaseCost?.ToString("C") ?? "N/A")</dd>
+
+                    <dt>Warranty Expiry</dt>
+                    <dd>
+                        @if (Model.WarrantyExpiry.HasValue)
+                        {
+                            var isExpired = Model.WarrantyExpiry.Value < DateTime.Today;
+                            <span class="@(isExpired ? "text-danger" : "text-success")">
+                                @Model.WarrantyExpiry.Value.ToString("MMM dd, yyyy")
+                                @if (isExpired)
+                                {
+                                    <span class="badge bg-danger ms-1">Expired</span>
+                                }
+                            </span>
+                        }
+                        else
+                        {
+                            <span>N/A</span>
+                        }
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.Notes))
+    {
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">Notes</div>
+                <div class="card-body">
+                    <p>@Model.Notes</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,100 @@
+@model Asset
+@{
+    ViewData["Title"] = "Create Asset";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Assets</a></li>
+        <li class="breadcrumb-item active">New Asset</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create New Asset</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="Create">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="Name" class="form-label"></label>
+                    <input asp-for="Name" class="form-control" placeholder="Asset name" />
+                    <span asp-validation-for="Name" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="AssetTag" class="form-label"></label>
+                    <input asp-for="AssetTag" class="form-control" placeholder="e.g. ASSET-001" />
+                    <span asp-validation-for="AssetTag" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="AssetType" class="form-label"></label>
+                    <select asp-for="AssetType" asp-items="Html.GetEnumSelectList<AssetType>()" class="form-select">
+                        <option value="">-- Select Type --</option>
+                    </select>
+                    <span asp-validation-for="AssetType" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Status" class="form-label"></label>
+                    <select asp-for="Status" asp-items="Html.GetEnumSelectList<AssetStatus>()" class="form-select"></select>
+                    <span asp-validation-for="Status" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="AssignedToId" class="form-label">Assigned To</label>
+                    <select asp-for="AssignedToId" class="form-select" asp-items="@ViewBag.Employees">
+                        <option value="">-- Unassigned --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="Manufacturer" class="form-label"></label>
+                    <input asp-for="Manufacturer" class="form-control" placeholder="e.g. Dell, HP, Lenovo" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Model" class="form-label"></label>
+                    <input asp-for="Model" class="form-control" placeholder="e.g. Latitude 5520" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="SerialNumber" class="form-label"></label>
+                    <input asp-for="SerialNumber" class="form-control" placeholder="Serial number" />
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="PurchaseDate" class="form-label"></label>
+                    <input asp-for="PurchaseDate" class="form-control" type="date" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="PurchaseCost" class="form-label"></label>
+                    <input asp-for="PurchaseCost" class="form-control" type="number" step="0.01" placeholder="0.00" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="WarrantyExpiry" class="form-label"></label>
+                    <input asp-for="WarrantyExpiry" class="form-control" type="date" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Location" class="form-label"></label>
+                <input asp-for="Location" class="form-control" placeholder="e.g. Building A, Room 201" />
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Notes" class="form-label"></label>
+                <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Additional notes about this asset"></textarea>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Asset</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

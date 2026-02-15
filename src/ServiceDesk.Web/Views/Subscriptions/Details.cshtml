@@ -1,0 +1,179 @@
+@model Subscription
+@{
+    ViewData["Title"] = $"Subscription - {Model.Name}";
+
+    var badgeClass = Model.Status switch
+    {
+        SubscriptionStatus.Active => "bg-success",
+        SubscriptionStatus.Expiring => "bg-warning text-dark",
+        SubscriptionStatus.Expired => "bg-danger",
+        SubscriptionStatus.Cancelled => "bg-secondary",
+        SubscriptionStatus.PendingRenewal => "bg-info text-dark",
+        _ => "bg-secondary"
+    };
+
+    var usagePercent = (Model.LicenseCount.HasValue && Model.LicenseCount.Value > 0)
+        ? (int)Math.Round((double)(Model.LicensesUsed ?? 0) / Model.LicenseCount.Value * 100)
+        : 0;
+
+    var progressClass = usagePercent switch
+    {
+        >= 90 => "bg-danger",
+        >= 75 => "bg-warning",
+        _ => "bg-success"
+    };
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Subscriptions</a></li>
+        <li class="breadcrumb-item active">@Model.Name</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1><i class="bi bi-credit-card"></i> @Model.Name</h1>
+    <div>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+            <i class="bi bi-pencil"></i> Edit
+        </a>
+        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
+            <i class="bi bi-trash"></i> Delete
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Main Details -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Subscription Details
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Name</dt>
+                    <dd class="col-sm-8">@Model.Name</dd>
+
+                    <dt class="col-sm-4">Provider</dt>
+                    <dd class="col-sm-8">@Model.Provider</dd>
+
+                    <dt class="col-sm-4">Status</dt>
+                    <dd class="col-sm-8"><span class="badge @badgeClass">@Model.Status</span></dd>
+
+                    <dt class="col-sm-4">Description</dt>
+                    <dd class="col-sm-8">@(Model.Description ?? "N/A")</dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- License Usage -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-key"></i> License Usage
+            </div>
+            <div class="card-body">
+                @if (Model.LicenseCount.HasValue && Model.LicenseCount.Value > 0)
+                {
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="progress" style="height: 30px;">
+                                <div class="progress-bar @progressClass" role="progressbar"
+                                     style="width: @(usagePercent)%"
+                                     aria-valuenow="@usagePercent" aria-valuemin="0" aria-valuemax="100">
+                                    @(Model.LicensesUsed ?? 0) / @Model.LicenseCount licenses
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <dl class="row mb-0">
+                                <dt class="col-7">Total Licenses</dt>
+                                <dd class="col-5">@Model.LicenseCount</dd>
+                                <dt class="col-7">Licenses Used</dt>
+                                <dd class="col-5">@(Model.LicensesUsed ?? 0)</dd>
+                                <dt class="col-7">Available</dt>
+                                <dd class="col-5">@(Model.LicenseCount.Value - (Model.LicensesUsed ?? 0))</dd>
+                                <dt class="col-7">Usage</dt>
+                                <dd class="col-5">@(usagePercent)%</dd>
+                            </dl>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No license information available for this subscription.</p>
+                }
+            </div>
+        </div>
+
+        <!-- Notes -->
+        @if (!string.IsNullOrEmpty(Model.Notes))
+        {
+            <div class="card mt-3">
+                <div class="card-header">
+                    <i class="bi bi-journal-text"></i> Notes
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">@Model.Notes</p>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-currency-dollar"></i> Cost Information
+            </div>
+            <div class="card-body">
+                <dl>
+                    <dt>Monthly Cost</dt>
+                    <dd class="fs-4 text-primary">@Model.MonthlyCost.ToString("C")</dd>
+
+                    <dt>Annual Cost</dt>
+                    <dd>@(Model.AnnualCost.HasValue ? Model.AnnualCost.Value.ToString("C") : "N/A")</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-calendar"></i> Dates
+            </div>
+            <div class="card-body">
+                <dl>
+                    <dt>Start Date</dt>
+                    <dd>@Model.StartDate.ToString("MMM dd, yyyy")</dd>
+
+                    <dt>Renewal Date</dt>
+                    <dd>
+                        @if (Model.RenewalDate.HasValue)
+                        {
+                            @Model.RenewalDate.Value.ToString("MMM dd, yyyy")
+                            var daysUntilRenewal = (Model.RenewalDate.Value - DateTime.Today).Days;
+                            if (daysUntilRenewal >= 0 && daysUntilRenewal <= 30)
+                            {
+                                <br />
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-exclamation-triangle"></i> Renews in @daysUntilRenewal days
+                                </span>
+                            }
+                            else if (daysUntilRenewal < 0)
+                            {
+                                <br />
+                                <span class="badge bg-danger">
+                                    <i class="bi bi-x-circle"></i> Expired @Math.Abs(daysUntilRenewal) days ago
+                                </span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted">N/A</span>
+                        }
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

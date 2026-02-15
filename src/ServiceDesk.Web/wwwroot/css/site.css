@@ -1,0 +1,93 @@
+/* Probuild Service Desk Styles */
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+main {
+    flex: 1;
+}
+
+.footer {
+    margin-top: auto;
+}
+
+/* Dashboard Cards */
+.dashboard-card {
+    border-left: 4px solid;
+    transition: transform 0.2s;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-card.tickets { border-left-color: #0d6efd; }
+.dashboard-card.progress { border-left-color: #ffc107; }
+.dashboard-card.resolved { border-left-color: #198754; }
+.dashboard-card.assets { border-left-color: #6f42c1; }
+.dashboard-card.employees { border-left-color: #0dcaf0; }
+.dashboard-card.subscriptions { border-left-color: #fd7e14; }
+
+.card-icon {
+    font-size: 2rem;
+    opacity: 0.3;
+}
+
+/* Status Badges */
+.badge-open { background-color: #0d6efd; }
+.badge-inprogress { background-color: #ffc107; color: #000; }
+.badge-onhold { background-color: #6c757d; }
+.badge-resolved { background-color: #198754; }
+.badge-closed { background-color: #495057; }
+.badge-cancelled { background-color: #dc3545; }
+
+/* Priority Badges */
+.badge-low { background-color: #198754; }
+.badge-medium { background-color: #ffc107; color: #000; }
+.badge-high { background-color: #fd7e14; }
+.badge-critical { background-color: #dc3545; }
+
+/* Table Styles */
+.table th {
+    white-space: nowrap;
+}
+
+/* Filter Bar */
+.filter-bar {
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Report Cards */
+.report-stat {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.report-stat .stat-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+}
+
+.report-stat .stat-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Progress bars in reports */
+.progress-thin {
+    height: 8px;
+}
+
+/* Navbar active state */
+.nav-link.active {
+    font-weight: 600;
+}

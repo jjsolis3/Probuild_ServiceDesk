@@ -1,0 +1,100 @@
+@model Subscription
+@{
+    ViewData["Title"] = "Create Subscription";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Subscriptions</a></li>
+        <li class="breadcrumb-item active">New Subscription</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create New Subscription</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="Create">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="Subscription name" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Provider" class="form-label"></label>
+                <input asp-for="Provider" class="form-control" placeholder="Service provider" />
+                <span asp-validation-for="Provider" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <textarea asp-for="Description" class="form-control" rows="3" placeholder="Brief description of the subscription"></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="Status" class="form-label"></label>
+                    <select asp-for="Status" asp-items="Html.GetEnumSelectList<SubscriptionStatus>()" class="form-select"></select>
+                    <span asp-validation-for="Status" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="LicenseCount" class="form-label"></label>
+                    <input asp-for="LicenseCount" class="form-control" type="number" min="0" placeholder="Total licenses" />
+                    <span asp-validation-for="LicenseCount" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="LicensesUsed" class="form-label"></label>
+                    <input asp-for="LicensesUsed" class="form-control" type="number" min="0" placeholder="Licenses in use" />
+                    <span asp-validation-for="LicensesUsed" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="MonthlyCost" class="form-label"></label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input asp-for="MonthlyCost" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" />
+                    </div>
+                    <span asp-validation-for="MonthlyCost" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="AnnualCost" class="form-label"></label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input asp-for="AnnualCost" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" />
+                    </div>
+                    <span asp-validation-for="AnnualCost" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="StartDate" class="form-label"></label>
+                    <input asp-for="StartDate" class="form-control" type="date" />
+                    <span asp-validation-for="StartDate" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="RenewalDate" class="form-label"></label>
+                    <input asp-for="RenewalDate" class="form-control" type="date" />
+                    <span asp-validation-for="RenewalDate" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Notes" class="form-label"></label>
+                <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Additional notes or comments"></textarea>
+                <span asp-validation-for="Notes" class="text-danger"></span>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Subscription</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
