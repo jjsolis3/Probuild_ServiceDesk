@@ -1,0 +1,67 @@
+﻿@{
+    ViewBag.Title = "Apps";
+    ViewBag.pTitle = "Gallery";
+    ViewBag.xData = "apps";
+    ViewBag.ActiveItem = "gallery";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@section styles{
+
+    <link rel="stylesheet" href="~/assets/libs/magnific-popup/magnific-popup.css">
+}
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4">
+        <div class="card p-0">
+            <div class="card-header p-5 border-b border-black/10 dark:border-darkborder">
+                <h2 class="text-base font-semibold capitalize text-slate-800 dark:text-slate-100">New Photos</h2>
+            </div>
+            <div class="card-body p-5 max-w-7xl mx-auto grid gap-2 grid-cols-4 grid-rows-5 zoom-gallery">
+                <a class="block rounded-lg relative w-full h-72" href="~/assets/images/gallery/img-1.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-1.png">
+                </a>
+                <a class="block rounded-lg relative row-span-2" href="~/assets/images/gallery/img-2.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-2.png">
+                </a>
+                <a class="block rounded-lg relative col-span-2 row-span-2" href="~/assets/images/gallery/img-3.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-3.png">
+                </a>
+                <a class="block rounded-lg relative row-span-2" href="~/assets/images/gallery/img-4.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-4.png">
+                </a>
+                <a class="block rounded-lg relative" href="~/assets/images/gallery/img-5.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-5.png">
+                </a>
+                <a class="block rounded-lg relative h-72" href="~/assets/images/gallery/img-6.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-6.png">
+                </a>
+                <a class="block rounded-lg relative row-span-2" href="~/assets/images/gallery/img-7.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-7.png">
+                </a>
+                <a class="block rounded-lg relative col-span-2 row-span-2" href="~/assets/images/gallery/img-8.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-8.png">
+                </a>
+                <a class="block rounded-lg relative row-span-2" href="~/assets/images/gallery/img-9.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-9.png">
+                </a>
+                <a class="block rounded-lg relative" href="~/assets/images/gallery/img-10.png">
+                    <img class="absolute inset-0 w-full h-full object-cover object-center rounded-lg" src="~/assets/images/gallery/img-10.png">
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts{
+
+    <!-- jQuery 1.7.2+ or Zepto.js 1.0+ -->
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+
+    <!-- Magnific Popup core JS file -->
+    <script src="~/assets/libs/magnific-popup/jquery.magnific-popup.min.js"></script>
+
+    <!-- Magnific Popup custom JS file -->
+    <script src="~/assets/js/magnific-popp.js"></script>
+
+    <script src="~/assets/js/main.js"></script>
+}

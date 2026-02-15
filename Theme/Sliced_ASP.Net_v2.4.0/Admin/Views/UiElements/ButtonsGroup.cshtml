@@ -1,0 +1,77 @@
+﻿
+@{
+    ViewBag.Title = "Elements";
+    ViewBag.pTitle = "ButtonsGroup";
+    ViewBag.xData = "elements";
+    ViewBag.ActiveItem = "buttons-group";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Buttons Group</h2>
+            <div class="inline-flex">
+                <button type="button" class="btn text-white bg-primary ltr:rounded-r-none rtl:rounded-l-none ltr:border-r-0 rtl:border-l-0 bg-primary/[0.85] border-primary/[0.40]">Primary</button>
+                <button type="button" class="btn text-white border-primary rounded-none bg-primary hover:bg-primary/[0.85] hover:border-primary/[0.40] focus:bg-primary/[0.85] focus:border-primary/[0.40]">Primary</button>
+                <button type="button" class="btn text-white border-primary bg-primary ltr:rounded-l-none rtl:rounded-r-none ltr:border-l-0 rtl:border-r-0 hover:bg-primary/[0.85] hover:border-primary/[0.40] focus:bg-primary/[0.85] focus:border-primary/[0.40]">Primary</button>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Buttons Group Outlined</h2>
+            <div class="inline-flex">
+                <button type="button" class="ltr:border-r-0 rtl:border-l-0 btn text-primary border-primary ltr:rounded-r-none rtl:rounded-l-none hover:bg-primary hover:text-white">Primary</button>
+                <button type="button" class="rounded-none btn text-primary border-primary hover:bg-primary hover:text-white">Primary</button>
+                <button type="button" class="ltr:border-l-0 rtl:border-r-0 btn text-primary border-primary ltr:rounded-l-none rtl:rounded-r-none hover:bg-primary hover:text-white">Primary</button>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Buttons With Icons Group</h2>
+            <div class="inline-flex">
+                <button type="button" class="btn flex items-center gap-1.5 text-white bg-primary ltr:rounded-r-none rtl:rounded-l-none ltr:border-r-0 rtl:border-l-0 bg-primary/[0.85] border-primary/[0.40]">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+                <button type="button" class="btn flex items-center gap-1.5 text-white border-primary bg-primary rounded-none hover:bg-primary/[0.85] hover:border-primary/[0.40] focus:bg-primary/[0.85] focus:border-primary/[0.40]">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+                <button type="button" class="btn flex items-center gap-1.5 text-white border-primary bg-primary ltr:rounded-l-none rtl:rounded-r-none ltr:border-l-0 rtl:border-r-0 hover:bg-primary/[0.85] hover:border-primary/[0.40] focus:bg-primary/[0.85] focus:border-primary/[0.40]">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Buttons Outlined With Icons Group</h2>
+            <div class="inline-flex">
+                <button type="button" class="btn flex items-center gap-1.5 text-primary border-primary ltr:rounded-r-none rtl:rounded-l-none ltr:border-r-0 rtl:border-l-0 hover:bg-primary hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+                <button type="button" class="btn flex items-center gap-1.5 text-primary border-primary hover:bg-primary rounded-none hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+                <button type="button" class="btn flex items-center gap-1.5 text-primary border-primary ltr:rounded-l-none rtl:rounded-r-none ltr:border-l-0 rtl:border-r-0 hover:bg-primary hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-4 h-4 mx-auto">
+                        <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM7 13H9C9 14.6569 10.3431 16 12 16C13.6569 16 15 14.6569 15 13H17C17 15.7614 14.7614 18 12 18C9.23858 18 7 15.7614 7 13ZM8 11C7.17157 11 6.5 10.3284 6.5 9.5C6.5 8.67157 7.17157 8 8 8C8.82843 8 9.5 8.67157 9.5 9.5C9.5 10.3284 8.82843 11 8 11ZM16 11C15.1716 11 14.5 10.3284 14.5 9.5C14.5 8.67157 15.1716 8 16 8C16.8284 8 17.5 8.67157 17.5 9.5C17.5 10.3284 16.8284 11 16 11Z" fill="currentColor"></path>
+                    </svg>
+                    Primary
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@section scripts{
+    <script src="~/assets/js/main.js"></script>
+}

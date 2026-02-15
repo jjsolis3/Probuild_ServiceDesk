@@ -1,0 +1,59 @@
+﻿@{
+    var imageUrl = Url.Content("~/assets/images/bg-main.png");
+}
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr" x-data="{ direction: 'ltr' }" x-bind:dir="direction">
+
+<head>
+    @Html.Partial("~/Views/Shared/title_meta.cshtml")
+    @RenderSection("styles", false)
+    @Html.Partial("~/Views/Shared/head_css.cshtml")
+</head>
+
+<body x-data="main" class="relative overflow-x-hidden text-sm antialiased font-normal text-black font-cerebri dark:text-white vertical detached" :class="[ $store.app.sidebar ? 'toggle-sidebar' : '', $store.app.fullscreen ? 'full' : '',$store.app.mode]">
+
+    <!-- Start Layout -->
+    <div class="bg-[#f9fbfd] dark:bg-dark dark:text-darkmuted text-black">
+        <!-- Start detached bg -->
+        <div style="background-image: url('@imageUrl');" class="bg-black dark:bg-purple min-h-[220px] sm:min-h-[250px] bg-bottom fixed hidden w-full -z-50 detached-img"></div>
+
+        <!-- End detached bg -->
+        <!-- Start Menu Sidebar Olverlay -->
+        <div x-cloak class="fixed inset-0 bg-black/60 dark:bg-dark/90 z-[999] lg:hidden" :class="{'hidden' : !$store.app.sidebar}" @("@")click="$store.app.toggleSidebar()"></div>
+        <!-- End Menu Sidebar Olverlay -->
+        <!-- Start Main Content -->
+        <div class="flex mx-auto main-container">
+
+            @Html.Partial("~/Views/Shared/Sidebar.cshtml")
+
+            <!-- Start Content Area -->
+            <div class="flex-1 main-content">
+
+                @Html.Partial("~/Views/Shared/Topbar.cshtml")
+
+                <!-- Start Content -->
+                <div class="h-[calc(100vh-60px)]  relative overflow-y-auto overflow-x-hidden p-4 space-y-4 detached-content">
+                    @Html.Partial("~/Views/Shared/Page_Title.cshtml")
+
+                    @RenderBody()
+
+                    @RenderSection("externalhtml", false)
+
+                    @Html.Partial("~/Views/Shared/Footer.cshtml")
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <button type="button" class="fixed z-50 px-4 text-white border-gray-200 shadow-lg h-11 ltr:right-0 rtl:left-0 bg-purple ltr:rounded-l-md rtl:rounded-r-md top-1/3" @("@")click="direction = (direction === 'ltr') ? 'rtl' : 'ltr'"><span class="rtl:hidden">RTL</span> <span class="ltr:hidden">LTR</span></button>
+
+    @Html.Partial("~/Views/Shared/Vendor_Scripts.cshtml")
+
+    @RenderSection("scripts", required: false)
+</body>
+</html>

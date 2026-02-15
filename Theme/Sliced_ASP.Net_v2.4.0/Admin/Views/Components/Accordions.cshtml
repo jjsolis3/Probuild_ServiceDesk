@@ -1,0 +1,239 @@
+﻿
+@{
+    ViewBag.Title = "Components";
+    ViewBag.pTitle = "Accordions";
+    ViewBag.xData = "components";
+    ViewBag.ActiveItem = "accordions";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- Start All Card -->
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Basic Accordion</h2>
+            <div class="space-y-2" x-data="{ current: 1 }">
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 1}" x-on:click="current === 1 ? current = null : current = 1">
+                        Accordion Item #1
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 1}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 1" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 2}" x-on:click="current === 2 ? current = null : current = 2">
+                        Accordion Item #2
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 2}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 2" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 3}" x-on:click="current === 3 ? current = null : current = 3">
+                        Accordion Item #3
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 3}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 3" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Accordion Without Spacing</h2>
+            <div class="border divide-y rounded-sm border-black/10 dark:border-darkborder dark:divide-darkborder divide-black/10" x-data="{ current: 1 }">
+                <div class="">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 1}" x-on:click="current === 1 ? current = null : current = 1">
+                        Accordion Item #1
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 1}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 1" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 2}" x-on:click="current === 2 ? current = null : current = 2">
+                        Accordion Item #2
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 2}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 2" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="">
+                    <button type="button" class="flex items-center w-full p-4 text-muted" :class="{'!text-black dark:!text-white' : current === 3}" x-on:click="current === 3 ? current = null : current = 3">
+                        Accordion Item #3
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 3}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 3" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Accordion With Color</h2>
+            <div class="space-y-2" x-data="{ current: 1 }">
+                <div class="overflow-hidden border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted bg-black/5 dark:bg-white/5" :class="{'!text-primary !bg-primary/20' : current === 1}" x-on:click="current === 1 ? current = null : current = 1">
+                        Accordion Item #1
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 1}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 1" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="overflow-hidden border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted bg-black/5 dark:bg-white/5" :class="{'!text-primary !bg-primary/20' : current === 2}" x-on:click="current === 2 ? current = null : current = 2">
+                        Accordion Item #2
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 2}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 2" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="overflow-hidden border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="flex items-center w-full p-4 text-muted bg-black/5 dark:bg-white/5" :class="{'!text-primary !bg-primary/20' : current === 3}" x-on:click="current === 3 ? current = null : current = 3">
+                        Accordion Item #3
+                        <div class="ltr:ml-auto rtl:mr-auto" :class="{'rotate-180' : current === 3}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5">
+                                <path fill="currentColor" d="M11.9997 13.1714L16.9495 8.22168L18.3637 9.63589L11.9997 15.9999L5.63574 9.63589L7.04996 8.22168L11.9997 13.1714Z"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="current === 3" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Accordion Without Arrow</h2>
+            <div class="space-y-2" x-data="{ current: 1 }">
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="w-full p-4 text-start text-muted" :class="{'!text-black dark:!text-white' : current === 1}" x-on:click="current === 1 ? current = null : current = 1">
+                        Accordion Item #1
+                    </button>
+                    <div x-cloak x-show="current === 1" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="w-full p-4 text-start text-muted" :class="{'!text-black dark:!text-white' : current === 2}" x-on:click="current === 2 ? current = null : current = 2">
+                        Accordion Item #2
+                    </button>
+                    <div x-cloak x-show="current === 2" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border rounded-sm border-black/10 dark:border-darkborder">
+                    <button type="button" class="w-full p-4 text-start text-muted" :class="{'!text-black dark:!text-white' : current === 3}" x-on:click="current === 3 ? current = null : current = 3">
+                        Accordion Item #3
+                    </button>
+                    <div x-cloak x-show="current === 3" x-collapse>
+                        <div class="p-4 space-y-2 border-t text-muted border-black/10 dark:border-darkborder">
+                            <p>
+                                Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                                laboris nisi ut aliquip ex ea commodo consequat.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts{
+    <script src="~/assets/js/main.js"></script>
+}

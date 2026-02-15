@@ -1,0 +1,548 @@
+﻿
+@{
+    ViewBag.Title = "Table";
+    ViewBag.pTitle = "Basic Table";
+    ViewBag.xData = "table";
+    ViewBag.ActiveItem = "basic-table";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table Full Width</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Title</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-muted">
+                            <td>1</td>
+                            <td>Lindsay Walton</td>
+                            <td>Front-end Developer</td>
+                            <td>
+                                <span class="inline-block items-center rounded-sm text-xs justify-center px-1.5 py-0.5 bg-primary/20 text-primary">Member</spanc>
+                            </td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>2</td>
+                            <td>Courtney Henry</td>
+                            <td>Designer</td>
+                            <td>
+                                <span class="inline-block items-center rounded-sm text-xs justify-center px-1.5 py-0.5 bg-success/20 text-success">Admin</span>
+                            </td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>3</td>
+                            <td>Tom Cook</td>
+                            <td>Director of Product</td>
+                            <td>
+                                <span class="inline-block items-center rounded-sm text-xs justify-center px-1.5 py-0.5 bg-warning/20 text-warning">Member</spanc>
+                            </td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>4</td>
+                            <td>Whitney Francis</td>
+                            <td>Copywriter</td>
+                            <td>
+                                <span class="inline-block items-center rounded-sm text-xs justify-center px-1.5 py-0.5 bg-danger/20 text-danger">Admin</span>
+                            </td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>5</td>
+                            <td>Leonard Krasner</td>
+                            <td>Senior Designer</td>
+                            <td>
+                                <span class="inline-block items-center rounded-sm text-xs justify-center px-1.5 py-0.5 bg-info/20 text-info">Owner</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table Hover</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full table-hover">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Title</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-muted">
+                            <td>1</td>
+                            <td>Lindsay Walton</td>
+                            <td>Front-end Developer</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>2</td>
+                            <td>Courtney Henry</td>
+                            <td>Designer</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>3</td>
+                            <td>Tom Cook</td>
+                            <td>Director of Product</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>4</td>
+                            <td>Whitney Francis</td>
+                            <td>Copywriter</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>5</td>
+                            <td>Leonard Krasner</td>
+                            <td>Senior Designer</td>
+                            <td>Owner</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Captions With Icon</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>Project Name</th>
+                            <th>Assigned to</th>
+                            <th>Time Spend</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Coffee detail page</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-12.png" alt="">
+                                </div>
+                            </td>
+                            <td>3h 20min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-primary ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-primary">In Progress</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Drinking bottle graphics</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-13.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-14.png" alt="">
+                                </div>
+                            </td>
+                            <td>12h 21min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-success ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-success">Competed</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>App design and development</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-15.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-16.png" alt="">
+                                    <span class="flex items-center justify-center object-cover size-6 text-xs text-center rounded-full bg-light ring-2 ring-white dark:ring-darkborder dark:text-black">+3</span>
+                                </div>
+                            </td>
+                            <td>78h 05min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-warning ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-warning">Pending</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Poster illustation design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-17.png" alt="">
+                                </div>
+                            </td>
+                            <td>26h 58min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-info ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-info">Approved</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>App UI design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-18.png" alt="">
+                                </div>
+                            </td>
+                            <td>17h 22min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-danger ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-danger">Rejected</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table with checkbox</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>
+                                <input type="checkbox" class="form-checkbox outborder-primary">
+                            </th>
+                            <th>Project Name</th>
+                            <th>Assigned to</th>
+                            <th>Time Spend</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-checkbox outborder-primary" checked>
+                            </td>
+                            <td>Coffee detail page</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-12.png" alt="">
+                                </div>
+                            </td>
+                            <td>3h 20min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-primary ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-primary">In Progress</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-checkbox outborder-primary">
+                            </td>
+                            <td>Drinking bottle graphics</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-13.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-14.png" alt="">
+                                </div>
+                            </td>
+                            <td>12h 21min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-success ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-success">Competed</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-checkbox outborder-primary" checked>
+                            </td>
+                            <td>App design and development</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-15.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-16.png" alt="">
+                                    <span class="flex items-center justify-center object-cover size-6 text-xs text-center rounded-full bg-light ring-2 ring-white dark:ring-darkborder dark:text-black">+3</span>
+                                </div>
+                            </td>
+                            <td>78h 05min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-warning ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-warning">Pending</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-checkbox outborder-primary">
+                            </td>
+                            <td>Poster illustation design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-17.png" alt="">
+                                </div>
+                            </td>
+                            <td>26h 58min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-info ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-info">Approved</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-checkbox outborder-primary">
+                            </td>
+                            <td>App UI design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-18.png" alt="">
+                                </div>
+                            </td>
+                            <td>17h 22min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-danger ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-danger">Rejected</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table Action</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>Project Name</th>
+                            <th>Assigned to</th>
+                            <th>Time Spend</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Coffee detail page</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-12.png" alt="">
+                                </div>
+                            </td>
+                            <td>3h 20min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-primary ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-primary">In Progress</span>
+                            </td>
+                            <td>
+                                <button class="text-black dark:text-white/80">
+                                    <svg xmlns=" http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M5 18.89H6.41421L15.7279 9.57629L14.3137 8.16207L5 17.4758V18.89ZM21 20.89H3V16.6474L16.435 3.21233C16.8256 2.8218 17.4587 2.8218 17.8492 3.21233L20.6777 6.04075C21.0682 6.43128 21.0682 7.06444 20.6777 7.45497L9.24264 18.89H21V20.89ZM15.7279 6.74786L17.1421 8.16207L18.5563 6.74786L17.1421 5.33365L15.7279 6.74786Z"></path>
+                                    </svg>
+                                </button>
+                                <button class="text-danger ltr:ml-2 rtl:mr-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Drinking bottle graphics</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-13.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-14.png" alt="">
+                                </div>
+                            </td>
+                            <td>12h 21min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-success ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-success">Competed</span>
+                            </td>
+                            <td>
+                                <button class="text-black dark:text-white/80">
+                                    <svg xmlns=" http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M5 18.89H6.41421L15.7279 9.57629L14.3137 8.16207L5 17.4758V18.89ZM21 20.89H3V16.6474L16.435 3.21233C16.8256 2.8218 17.4587 2.8218 17.8492 3.21233L20.6777 6.04075C21.0682 6.43128 21.0682 7.06444 20.6777 7.45497L9.24264 18.89H21V20.89ZM15.7279 6.74786L17.1421 8.16207L18.5563 6.74786L17.1421 5.33365L15.7279 6.74786Z"></path>
+                                    </svg>
+                                </button>
+                                <button class="text-danger ms-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>App design and development</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-15.png" alt="">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-16.png" alt="">
+                                    <span class="flex items-center justify-center object-cover size-6 text-xs text-center rounded-full bg-light ring-2 ring-white dark:ring-darkborder dark:text-black">+3</span>
+                                </div>
+                            </td>
+                            <td>78h 05min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-warning ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-warning">Pending</span>
+                            </td>
+                            <td>
+                                <button class="text-black dark:text-white/80">
+                                    <svg xmlns=" http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M5 18.89H6.41421L15.7279 9.57629L14.3137 8.16207L5 17.4758V18.89ZM21 20.89H3V16.6474L16.435 3.21233C16.8256 2.8218 17.4587 2.8218 17.8492 3.21233L20.6777 6.04075C21.0682 6.43128 21.0682 7.06444 20.6777 7.45497L9.24264 18.89H21V20.89ZM15.7279 6.74786L17.1421 8.16207L18.5563 6.74786L17.1421 5.33365L15.7279 6.74786Z"></path>
+                                    </svg>
+                                </button>
+                                <button class="text-danger ms-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Poster illustration design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-17.png" alt="">
+                                </div>
+                            </td>
+                            <td>26h 58min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-info ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-info">Approved</span>
+                            </td>
+                            <td>
+                                <button class="text-black dark:text-white/80">
+                                    <svg xmlns=" http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M5 18.89H6.41421L15.7279 9.57629L14.3137 8.16207L5 17.4758V18.89ZM21 20.89H3V16.6474L16.435 3.21233C16.8256 2.8218 17.4587 2.8218 17.8492 3.21233L20.6777 6.04075C21.0682 6.43128 21.0682 7.06444 20.6777 7.45497L9.24264 18.89H21V20.89ZM15.7279 6.74786L17.1421 8.16207L18.5563 6.74786L17.1421 5.33365L15.7279 6.74786Z"></path>
+                                    </svg>
+                                </button>
+                                <button class="text-danger ms-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>App UI design</td>
+                            <td>
+                                <div class="flex items-center -space-x-1.5 rtl:space-x-reverse">
+                                    <img class="object-cover size-6 overflow-hidden rounded-full ring-2 ring-white dark:ring-darkborder" src="~/assets/images/avatar-18.png" alt="">
+                                </div>
+                            </td>
+                            <td>17h 22min</td>
+                            <td>
+                                <span class="size-1.5 rounded-full inline-block relative -top-px bg-danger ltr:mr-0.5 rtl:ml-0.5"></span>
+                                <span class="text-danger">Rejected</span>
+                            </td>
+                            <td>
+                                <button class="text-black dark:text-white/80">
+                                    <svg xmlns=" http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M5 18.89H6.41421L15.7279 9.57629L14.3137 8.16207L5 17.4758V18.89ZM21 20.89H3V16.6474L16.435 3.21233C16.8256 2.8218 17.4587 2.8218 17.8492 3.21233L20.6777 6.04075C21.0682 6.43128 21.0682 7.06444 20.6777 7.45497L9.24264 18.89H21V20.89ZM15.7279 6.74786L17.1421 8.16207L18.5563 6.74786L17.1421 5.33365L15.7279 6.74786Z"></path>
+                                    </svg>
+                                </button>
+                                <button class="text-danger ms-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="inline-block w-5 h-5">
+                                        <path fill="currentColor" d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table Striped</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full table-striped">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Title</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-muted">
+                            <td>1</td>
+                            <td>Lindsay Walton</td>
+                            <td>Front-end Developer</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>2</td>
+                            <td>Courtney Henry</td>
+                            <td>Designer</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>3</td>
+                            <td>Tom Cook</td>
+                            <td>Director of Product</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>4</td>
+                            <td>Whitney Francis</td>
+                            <td>Copywriter</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>5</td>
+                            <td>Leonard Krasner</td>
+                            <td>Senior Designer</td>
+                            <td>Owner</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Table Borderless</h2>
+            <div class="overflow-auto">
+                <table class="min-w-[640px] w-full table-borderless">
+                    <thead>
+                        <tr class="ltr:text-left rtl:text-right">
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Title</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-muted">
+                            <td>1</td>
+                            <td>Lindsay Walton</td>
+                            <td>Front-end Developer</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>2</td>
+                            <td>Courtney Henry</td>
+                            <td>Designer</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>3</td>
+                            <td>Tom Cook</td>
+                            <td>Director of Product</td>
+                            <td>Member</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>4</td>
+                            <td>Whitney Francis</td>
+                            <td>Copywriter</td>
+                            <td>Admin</td>
+                        </tr>
+                        <tr class="text-muted">
+                            <td>5</td>
+                            <td>Leonard Krasner</td>
+                            <td>Senior Designer</td>
+                            <td>Owner</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts{
+    <script src="~/assets/js/main.js"></script>
+}

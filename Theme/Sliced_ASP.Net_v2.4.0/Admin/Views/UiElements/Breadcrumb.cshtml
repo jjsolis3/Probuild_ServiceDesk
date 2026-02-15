@@ -1,0 +1,95 @@
+﻿
+@{
+    ViewBag.Title = "Elements";
+    ViewBag.pTitle = "Breadcrumb";
+    ViewBag.xData = "elements";
+    ViewBag.ActiveItem = "breadcrumb";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Breadcrumb</h2>
+            <ul class="flex flex-wrap items-center space-x-2 rtl:space-x-reverse">
+                <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                    <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Home</a>
+                    <svg x-ignore="" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 rtl:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </li>
+                <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                    <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Elements</a>
+                    <svg x-ignore="" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 rtl:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </li>
+                <li class="dark:text-white">Breadcrumb</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Breadcrumb Separators</h2>
+            <div class="space-y-4">
+                <ul class="flex flex-wrap items-center space-x-2 rtl:space-x-reverse">
+                    <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                        <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Home</a>
+                        <span class="text-xs font-light"> | </span>
+                    </li>
+                    <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                        <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Elements</a>
+                        <span class="text-xs font-light"> | </span>
+                    </li>
+                    <li class="dark:text-white">Breadcrumb</li>
+                </ul>
+                <ul class="flex flex-wrap items-center space-x-2 rtl:space-x-reverse">
+                    <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                        <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Home</a>
+                        <span class="text-xs font-light"> / </span>
+                    </li>
+                    <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                        <a class="transition-colors text-black/50 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">Elements</a>
+                        <span class="text-xs font-light"> / </span>
+                    </li>
+                    <li class="dark:text-white">Breadcrumb</li>
+                </ul>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Breadcrumb With Icon</h2>
+            <ul class="flex flex-wrap items-center space-x-2 rtl:space-x-reverse">
+                <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                    <a class="transition-colors text-black/40 hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-5 h-5">
+                            <path d="M19 21.0001H5C4.44772 21.0001 4 20.5524 4 20.0001V11.0001L1 11.0001L11.3273 1.61162C11.7087 1.26488 12.2913 1.26488 12.6727 1.61162L23 11.0001L20 11.0001V20.0001C20 20.5524 19.5523 21.0001 19 21.0001ZM6 19.0001H18V9.15757L12 3.70302L6 9.15757V19.0001ZM12 15.0001C10.6193 15.0001 9.5 13.8808 9.5 12.5001C9.5 11.1194 10.6193 10.0001 12 10.0001C13.3807 10.0001 14.5 11.1194 14.5 12.5001C14.5 13.8808 13.3807 15.0001 12 15.0001Z" fill="currentColor"></path>
+                        </svg>
+                    </a>
+                    <svg class="h-3.5 w-3.5 rtl:rotate-180" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20.5858 16L11.2929 25.2929C11.1054 25.4804 11 25.7348 11 26C11 26.2652 11.1054 26.5196 11.2929 26.7071C11.4804 26.8946 11.7348 27 12 27C12.2652 27 12.5196 26.8946 12.7071 26.7071L22.7071 16.7071C23.0976 16.3166 23.0976 15.6834 22.7071 15.2929L12.7071 5.29289C12.5196 5.10536 12.2652 5 12 5C11.7348 5 11.4804 5.10536 11.2929 5.29289C11.1054 5.48043 11 5.73478 11 6C11 6.26522 11.1054 6.51957 11.2929 6.70711L20.5858 16Z" fill="currentColor"></path>
+                    </svg>
+                </li>
+                <li class="flex items-center space-x-2 rtl:space-x-reverse">
+                    <a class="flex items-center space-x-1.5 rtl:space-x-reverse text-black/40 transition-colors hover:text-black dark:text-darkmuted dark:hover:text-white" href="javaScript:;">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-5 h-5">
+                            <path d="M13 9H21L11 24V15H4L13 0V9ZM11 11V7.22063L7.53238 13H13V17.3944L17.263 11H11Z" fill="currentColor"></path>
+                        </svg>
+                        <span>Elements</span>
+                    </a>
+                    <svg class="h-3.5 w-3.5 rtl:rotate-180" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20.5858 16L11.2929 25.2929C11.1054 25.4804 11 25.7348 11 26C11 26.2652 11.1054 26.5196 11.2929 26.7071C11.4804 26.8946 11.7348 27 12 27C12.2652 27 12.5196 26.8946 12.7071 26.7071L22.7071 16.7071C23.0976 16.3166 23.0976 15.6834 22.7071 15.2929L12.7071 5.29289C12.5196 5.10536 12.2652 5 12 5C11.7348 5 11.4804 5.10536 11.2929 5.29289C11.1054 5.48043 11 5.73478 11 6C11 6.26522 11.1054 6.51957 11.2929 6.70711L20.5858 16Z" fill="currentColor"></path>
+                    </svg>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span class="dark:text-white">Breadcrumb</span>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+@section scripts{
+
+    <script src="~/assets/js/main.js"></script>
+}

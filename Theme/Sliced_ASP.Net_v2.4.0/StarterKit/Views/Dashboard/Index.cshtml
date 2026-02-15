@@ -1,0 +1,27 @@
+﻿@{
+    ViewBag.Title = "Pages";
+    ViewBag.pTitle = "StarterPage";
+    ViewBag.xData = "pages";
+    ViewBag.ActiveItem = "start-page";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<!-- Start All Card -->
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Card Title</h2>
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <img src="~/assets/images/logo-dark.svg" class="h-12 mx-auto dark:hidden " alt="">
+                    <img src="~/assets/images/logo-light.svg" class="hidden h-12 mx-auto dark:block" alt="">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- End All Card -->
+@section scripts {
+    <script src="~/assets/js/main.js"></script>
+}

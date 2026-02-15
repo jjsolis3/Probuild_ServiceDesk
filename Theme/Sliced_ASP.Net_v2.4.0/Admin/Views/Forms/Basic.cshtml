@@ -1,0 +1,183 @@
+﻿
+@{
+    ViewBag.Title = "Forms";
+    ViewBag.pTitle = "Forms Input";
+    ViewBag.xData = "forms";
+    ViewBag.ActiveItem = "forms-basic";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<!-- Start All Card -->
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Basic Input Text</h2>
+            <form class="space-y-4">
+                <input type="text" class="form-input" placeholder="Username" required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Email Text</h2>
+            <form class="space-y-4">
+                <input type="email" class="form-input" placeholder="Email Type" required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Label Text</h2>
+            <form class="space-y-4">
+                <div class="space-y-2">
+                    <label>Type Username:</label>
+                    <input type="text" class="form-input" placeholder="Username" required>
+                </div>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Password Input</h2>
+            <form class="space-y-4">
+                <input type="password" class="form-input" placeholder="Type Password" required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Url Input</h2>
+            <form class="space-y-4">
+                <input type="url" class="form-input" placeholder="https://dummyurl.com" required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Search Input</h2>
+            <form class="space-y-4">
+                <input type="search" class="form-input" placeholder="Search..." required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Telephone Input</h2>
+            <form class="space-y-4">
+                <input type="tel" class="form-input" placeholder="0-(000)-111-1111" required>
+                <button type="submit" class="btn bg-primary border-primary text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Rounded Input</h2>
+            <form class="space-y-4">
+                <input type="text" class="rounded-full form-input" placeholder="Type Username" required>
+                <button type="submit" class="btn bg-primary border-primary rounded-full text-white transition-all duration-300 hover:bg-primary/[0.85] hover:border-primary/[0.85]">Submit</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Fields Size</h2>
+            <form class="space-y-4">
+                <div class="space-y-2">
+                    <label>Large Input</label>
+                    <input type="text" class="form-input h-14" placeholder="Username" required>
+                </div>
+                <div class="space-y-2">
+                    <label>Default Input</label>
+                    <input type="text" class="form-input" placeholder="Username" required>
+                </div>
+                <div class="space-y-2">
+                    <label>Small Input</label>
+                    <input type="text" class="h-10 form-input" placeholder="Username" required>
+                </div>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Fields Size</h2>
+            <form class="space-y-4">
+                <div class="items-center justify-between gap-4 space-y-2 sm:flex">
+                    <label class="w-24 shrink-0">Large Input</label>
+                    <input type="text" class="form-input h-14" placeholder="Username" required>
+                </div>
+                <div class="items-center justify-between gap-4 space-y-2 sm:flex">
+                    <label class="w-24 shrink-0">Default Input</label>
+                    <input type="text" class="form-input" placeholder="Username" required>
+                </div>
+                <div class="items-center justify-between gap-4 space-y-2 sm:flex">
+                    <label class="w-24 shrink-0">Small Input</label>
+                    <input type="text" class="h-10 form-input" placeholder="Username" required>
+                </div>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Select Menu</h2>
+            <form>
+                <select class="form-select">
+                    <option>Select Option</option>
+                    <option>One</option>
+                    <option>Two</option>
+                    <option>Three</option>
+                </select>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Select Menu</h2>
+            <form>
+                <select size="4" multiple="multiple" class="h-auto form-multiselect">
+                    <option>Select menu</option>
+                    <option>One</option>
+                    <option>Two</option>
+                    <option>Three</option>
+                    <option>Four</option>
+                    <option>Five</option>
+                    <option>Six</option>
+                </select>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Checkbox</h2>
+            <form class="space-y-4">
+                <label class="flex items-center cursor-pointer">
+                    <input type="checkbox" class="form-checkbox" checked="checked">
+                    <span>Checkbox</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="checkbox" class="form-checkbox" checked="checked">
+                    <span>Checkbox</span>
+                </label>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Radio</h2>
+            <form class="space-y-4">
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="radio-one" class="rounded-full form-radio" checked="checked">
+                    <span>One</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="radio-one" class="rounded-full form-radio">
+                    <span>Two</span>
+                </label>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Disabled Radio & Checkbox</h2>
+            <form class="space-y-4">
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="radio-one" disabled class="rounded-full form-radio" checked="checked">
+                    <span>One</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="checkbox" class="form-checkbox" disabled checked="checked">
+                    <span>Checkbox</span>
+                </label>
+            </form>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Disabled Input</h2>
+            <form class="space-y-4">
+                <input type="text" class="cursor-not-allowed form-input" placeholder="Username" required="" disabled>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section scripts{
+
+    <script src="~/assets/js/main.js"></script>
+}

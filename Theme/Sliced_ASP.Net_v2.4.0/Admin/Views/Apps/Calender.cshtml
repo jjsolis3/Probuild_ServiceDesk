@@ -1,0 +1,20 @@
+﻿
+@{
+    ViewBag.Title = "Pages";
+    ViewBag.pTitle = "Calender";
+    ViewBag.xData = "apps";
+    ViewBag.ActiveItem = "calender";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div id='calendar'></div>
+
+
+@section scripts{
+    <script src="~/assets/libs/@("@")fullcalendar/core/index.global.min.js"></script>
+    <script src="~/assets/libs/@("@")fullcalendar/daygrid/index.global.min.js"></script>
+
+    <script type="module" src="~/assets/js/pages/calender.js"></script>
+    <!-- Custom js -->
+    <script src="~/assets/js/main.js"></script>
+}

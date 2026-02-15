@@ -1,0 +1,53 @@
+﻿
+@{
+    ViewBag.Title = "Elements";
+    ViewBag.pTitle = "Tooltips";
+    ViewBag.xData = "elements";
+    ViewBag.ActiveItem = "tooltips";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+@section styles{
+    <link rel="stylesheet" href="~/assets/libs/tippy.js/tippy.css">
+    <link rel="stylesheet" href="~/assets/libs/tippy.js/border.css">
+}
+<div class="flex flex-col gap-4 min-h-[calc(100vh-212px)]">
+    <div class="grid grid-cols-1 gap-4">
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Tooltip Basic</h2>
+            <div class="flex flex-wrap gap-4">
+                <button type="button" data-tippy-content="Tooltip on top" data-tippy-arrow="true" data-tippy-placement="top" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on top</button>
+                <button type="button" data-tippy-content="Tooltip on right" data-tippy-arrow="true" data-tippy-placement="right" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on right</button>
+                <button type="button" data-tippy-content="Tooltip on bottom" data-tippy-arrow="true" data-tippy-placement="bottom" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on bottom</button>
+                <button type="button" data-tippy-content="Tooltip on left" data-tippy-arrow="true" data-tippy-placement="left" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on left</button>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Tooltip animation</h2>
+            <div class="flex flex-wrap gap-4">
+                <button type="button" data-tippy-content="Tooltip animation" data-tippy-arrow="true" data-tippy-animation="scale" class="text-black transition-all duration-300 border rounded-md tippy-tooltip btn border-light hover:bg-light hover:text-black dark:text-white dark:hover:text-black">Tooltip animation</button>
+                <button type="button" data-tippy-content="Tooltip animation" data-tippy-arrow="true" data-tippy-animation="shift-toward" class="text-black transition-all duration-300 border rounded-md tippy-tooltip btn border-light hover:bg-light hover:text-black dark:text-white dark:hover:text-black">Tooltip animation</button>
+                <button type="button" data-tippy-content="Tooltip animation" data-tippy-arrow="true" data-tippy-animation="perspective" class="text-black transition-all duration-300 border rounded-md tippy-tooltip btn border-light hover:bg-light hover:text-black dark:text-white dark:hover:text-black">Tooltip animation</button>
+                <button type="button" data-tippy-content="Tooltip animation" data-tippy-arrow="true" data-tippy-animation="shift-away" class="text-black transition-all duration-300 border rounded-md tippy-tooltip btn border-light hover:bg-light hover:text-black dark:text-white dark:hover:text-black">Tooltip animation</button>
+            </div>
+        </div>
+        <div class="card">
+            <h2 class="mb-4 text-base font-semibold capitalize text-slate-800 dark:text-slate-100">Tooltip On Click</h2>
+            <div class="flex flex-wrap gap-4">
+                <button type="button" data-tippy-content="Tooltip on top" data-tippy-arrow="true" data-tippy-placement="top" data-tippy-trigger="click" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on top</button>
+                <button type="button" data-tippy-content="Tooltip on right" data-tippy-arrow="true" data-tippy-placement="right" data-tippy-trigger="click" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on right</button>
+                <button type="button" data-tippy-content="Tooltip on bottom" data-tippy-arrow="true" data-tippy-placement="bottom" data-tippy-trigger="click" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on bottom</button>
+                <button type="button" data-tippy-content="Tooltip on left" data-tippy-arrow="true" data-tippy-placement="left" data-tippy-trigger="click" class="transition-all duration-300 border rounded-md tippy-tooltip btn text-primary border-primary hover:bg-primary hover:text-white">Tooltip on left</button>
+            </div>
+        </div>
+    </div>
+</div>
+@section scripts{
+    <script src="~/assets/libs/@("@")popperjs/core/umd/popper.min.js"></script>
+    <script src="~/assets/libs/tippy.js/tippy-bundle.umd.min.js"></script>
+
+    <script src="~/assets/js/pages/tooltips.init.js"></script>
+
+    <script src="~/assets/js/main.js"></script>
+}

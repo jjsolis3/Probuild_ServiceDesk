@@ -1,0 +1,241 @@
+/*
+Template Name: Sliced - Admin & Dashboard Template
+Author: SRBThemes
+Version: 3.0.0
+File: tailwind scss files
+*/
+
+
+@import "tailwindcss";
+@import "fonts/fonts.css";
+
+@import "./components/theme.css";
+@import "./components/heading.css";
+@import "./components/table.css";
+@import "./components/form.css";
+@import "./plugins/flatpicker.css";
+@import "./plugins/apexchart.css";
+
+@custom-variant dark (&:where([data-mode=dark], [data-mode=dark] *));
+
+@plugin "../../../plugins/layouts/layouts";
+@plugin "../../../plugins/layouts/sidebar";
+@plugin "../../../plugins/card";
+@plugin "../../../plugins/buttons";
+@plugin "../../../plugins/forms";
+
+.dropdown {
+    position: relative;
+    ul {
+    position: absolute;
+    z-index: 50;
+    margin-top: 0.125rem;
+    min-width: 170px;
+    border-radius: 0.25rem;
+    @apply bg-white dark:bg-darklight border border-gray-200 dark:border-darkborder;
+    padding: 0px;
+    li {
+      a,
+      button,
+      div {
+        display: flex;
+        align-items: center;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+        @apply hover:bg-black/5 hover:dark:bg-dark;
+      }
+    }
+  }
+}
+
+.fc-scrollgrid,
+.fc-theme-standard th,
+.fc-theme-standard td {
+  @apply dark:border-darkmuted;
+}
+
+/* Flatpickr */
+.flatpickr-time {
+  input,
+  .flatpickr-am-pm {
+    @apply dark:text-white hover:dark:bg-darkborder dark:border-t-darkborder;
+  }
+}
+
+.flatpickr-calendar.hasTime .flatpickr-time {
+  @apply border-t-gray-200 dark:border-t-darkborder;
+}
+
+.flatpickr-calendar.arrowTop {
+  &:after,
+  &:before {
+    @apply dark:border-b-darklight;
+  }
+}
+
+.flatpickr-current-month {
+  .flatpickr-monthDropdown-months {
+    .flatpickr-monthDropdown-month {
+      @apply dark:bg-darkborder;
+    }
+  }
+}
+
+/* button sidebar */
+
+.btn-white {
+  display: inline-block;
+  border-radius: 0.375rem;
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 255 255 / var(--tw-bg-opacity));
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  font-weight: 500;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+.btn-white:hover {
+  background-color: rgb(255 255 255 / 0.9);
+}
+
+/* scrollbar */
+
+::-webkit-scrollbar {
+  height: 0.375rem;
+  width: 0.375rem;
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 2.5px;
+  background-color: rgb(50 58 70 / 0.2);
+}
+
+/* 4. LAYOUT */
+
+.main-container .main-content {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+@media (min-width: 1024px) {
+  .main-container .main-content {
+    margin-inline-start: 240px;
+  }
+
+  .vertical.toggle-sidebar .main-container .main-content:where([dir="ltr"], [dir="ltr"] *) {
+    margin-left: 72px;
+  }
+
+  .vertical.toggle-sidebar .main-container .main-content:where([dir="rtl"], [dir="rtl"] *) {
+    margin-right: 72px;
+  }
+}
+
+.vertical.toggle-sidebar .sidebar:hover .help-box,
+.vertical.toggle-sidebar .sidebar,
+.detached .detached-img {
+  display: block;
+}
+
+.vertical .sidebar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .vertical .sidebar {
+    display: block;
+  }
+
+  .vertical.toggle-sidebar .sidebar {
+    width: 72px;
+  }
+}
+
+.vertical.toggle-sidebar .sidebar:hover {
+  width: 240px;
+}
+
+@media (min-width: 1024px) {
+  .vertical.toggle-sidebar .sidebar .sub-menu,
+  .vertical.toggle-sidebar .sidebar .nav-item a span,
+  .vertical.toggle-sidebar .sidebar .nav-item a .dropdown-icon,
+  .vertical.toggle-sidebar .sidebar h2,
+  .vertical.toggle-sidebar .sidebar .main-logo .logo,
+  .vertical.toggle-sidebar .sidebar:hover .main-logo .logo-icon,
+  .vertical.toggle-sidebar .sidebar .help-box {
+    display: none;
+  }
+}
+
+.vertical.toggle-sidebar.dark .sidebar:hover .main-logo .logo.dark-logo,
+.vertical.toggle-sidebar .sidebar:hover .main-logo .logo.light-logo {
+  display: none;
+}
+
+.vertical.toggle-sidebar.dark .sidebar:hover .main-logo .logo.light-logo {
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .vertical.toggle-sidebar .sidebar:hover .nav-item a span,
+  .vertical.toggle-sidebar .sidebar:hover h2,
+  .vertical.toggle-sidebar .sidebar:hover .sub-menu,
+  .vertical.toggle-sidebar .sidebar .main-logo .logo-icon,
+  .vertical.toggle-sidebar .sidebar:hover .main-logo .logo {
+    display: block;
+  }
+
+  .vertical.toggle-sidebar .sidebar .nav-item a {
+    justify-content: center;
+  }
+
+  .vertical.toggle-sidebar .sidebar:hover .nav-item a {
+    justify-content: start;
+  }
+
+  .vertical.toggle-sidebar .sidebar:hover .nav-item a .dropdown-icon {
+    display: flex;
+  }
+
+  .vertical.toggle-sidebar .sidebar ul {
+    row-gap: 1rem;
+  }
+
+  .vertical.toggle-sidebar .sidebar:hover ul {
+    gap: 0.25rem;
+  }
+}
+
+html[data-mode="dark"] {
+  .dt-paging.paging_full_numbers .pagination a {
+    background-color: #151515;
+    color: #fff;
+  }
+  .dt-container .dt-search input {
+    background-color: #151515;
+  }
+  .dt-container .dt-length select {
+    background-color: #151515;
+    color: #fff;
+  }
+  .dt-container .dt-buttons .dt-button {
+    background-color: #151515;
+    color: #fff;
+  }
+  
+  .vertical.toggle-sidebar .sidebar:hover .main-logo .logo.light-logo {
+    display: block;
+  }
+
+  .vertical.toggle-sidebar .sidebar:hover .main-logo .logo.dark-logo {
+    display: none;
+  }
+}
