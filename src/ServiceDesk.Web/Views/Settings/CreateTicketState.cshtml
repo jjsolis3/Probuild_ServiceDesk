@@ -1,0 +1,60 @@
+@model TicketState
+@{
+    ViewData["Title"] = "Create Ticket State";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="TicketStates">Ticket States</a></li>
+        <li class="breadcrumb-item active">New Ticket State</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create Ticket State</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="CreateTicketState" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="Enter state name" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="ColorHex" class="form-label"></label>
+                    <input asp-for="ColorHex" class="form-control form-control-color" type="color" />
+                    <span asp-validation-for="ColorHex" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="SortOrder" class="form-label"></label>
+                    <input asp-for="SortOrder" class="form-control" type="number" min="0" placeholder="0" />
+                    <span asp-validation-for="SortOrder" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input asp-for="IsSlaEnabled" class="form-check-input" type="checkbox" />
+                        <label asp-for="IsSlaEnabled" class="form-check-label"></label>
+                    </div>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input asp-for="IsDefault" class="form-check-input" type="checkbox" />
+                        <label asp-for="IsDefault" class="form-check-label"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Ticket State</button>
+                <a asp-action="TicketStates" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

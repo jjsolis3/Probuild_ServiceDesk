@@ -1,0 +1,173 @@
+@model Role
+@{
+    ViewData["Title"] = "Edit Role";
+
+    var existingPermissions = Model.Permissions?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        ?? Array.Empty<string>();
+
+    var allPermissions = new[]
+    {
+        new { Value = "ManageTickets", Label = "Manage Tickets", Description = "Create, edit, assign, and close all tickets", Group = "Tickets" },
+        new { Value = "ViewTickets", Label = "View Tickets", Description = "View all tickets in the system", Group = "Tickets" },
+        new { Value = "ViewOwnTickets", Label = "View Own Tickets", Description = "View only tickets submitted by or assigned to the user", Group = "Tickets" },
+        new { Value = "SubmitTickets", Label = "Submit Tickets", Description = "Create new tickets via portal or email", Group = "Tickets" },
+        new { Value = "ManageAssets", Label = "Manage Assets", Description = "Add, edit, and retire IT assets", Group = "Assets & Services" },
+        new { Value = "ManageServices", Label = "Manage Services", Description = "Configure company services catalog", Group = "Assets & Services" },
+        new { Value = "ManageSubscriptions", Label = "Manage Subscriptions", Description = "Manage software and service subscriptions", Group = "Assets & Services" },
+        new { Value = "ManageEmployees", Label = "Manage Employees", Description = "Add, edit, and deactivate employee records", Group = "People" },
+        new { Value = "ManageUsers", Label = "Manage Users", Description = "Manage portal user accounts and groups", Group = "People" },
+        new { Value = "ManageRoles", Label = "Manage Roles", Description = "Create and edit roles and permissions", Group = "Administration" },
+        new { Value = "ManageSettings", Label = "Manage Settings", Description = "Access and modify system settings", Group = "Administration" },
+        new { Value = "ViewReports", Label = "View Reports", Description = "Access analytics and reporting dashboards", Group = "Administration" }
+    };
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="Roles">Roles</a></li>
+        <li class="breadcrumb-item active">Edit Role</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-pencil-square"></i> Edit Role: @Model.Name</h1>
+
+<div class="row">
+    <div class="col-lg-8">
+        <form asp-action="EditRole" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="IsSystem" />
+            <input type="hidden" asp-for="CreatedDate" />
+            <input type="hidden" asp-for="Permissions" id="permissionsInput" />
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i> Role Details</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.IsSystem)
+                    {
+                        <div class="alert alert-warning mb-3">
+                            <i class="bi bi-lock-fill me-1"></i>
+                            This is a <strong>system role</strong>. You can modify its permissions, but the role cannot be deleted.
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label"></label>
+                        <input asp-for="Name" class="form-control" placeholder="e.g., IT Support Agent" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3" placeholder="Describe the purpose and scope of this role"></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i> Permissions</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Select the permissions this role should have. Users assigned to this role will inherit all selected permissions.</p>
+
+                    @foreach (var group in allPermissions.GroupBy(p => p.Group))
+                    {
+                        <h6 class="text-uppercase text-muted small fw-bold mt-3 mb-2 border-bottom pb-1">
+                            @group.Key
+                        </h6>
+
+                        @foreach (var perm in group)
+                        {
+                            var isChecked = existingPermissions.Contains(perm.Value);
+                            <div class="form-check mb-2">
+                                <input type="checkbox"
+                                       class="form-check-input permission-checkbox"
+                                       id="perm_@perm.Value"
+                                       value="@perm.Value"
+                                       checked="@isChecked" />
+                                <label class="form-check-label" for="perm_@perm.Value">
+                                    <strong>@perm.Label</strong>
+                                    <small class="d-block text-muted">@perm.Description</small>
+                                </label>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> Save Changes
+                </button>
+                <a asp-action="Roles" class="btn btn-outline-secondary ms-2">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Roles
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 bg-light mb-3">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-lightbulb me-1 text-warning"></i> Permission Guide
+                </h6>
+                <ul class="small text-muted mb-0">
+                    <li class="mb-2"><strong>Manage</strong> permissions grant full CRUD access to the respective module.</li>
+                    <li class="mb-2"><strong>View</strong> permissions grant read-only access.</li>
+                    <li class="mb-2">Portal users typically need <strong>Submit Tickets</strong> and <strong>View Own Tickets</strong>.</li>
+                    <li>IT staff typically need <strong>Manage Tickets</strong>, <strong>Manage Assets</strong>, and <strong>View Reports</strong>.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-people me-1 text-info"></i> Role Info
+                </h6>
+                <dl class="small text-muted mb-0">
+                    <dt>Created</dt>
+                    <dd>@Model.CreatedDate.ToString("MMM dd, yyyy")</dd>
+                    <dt>Users Assigned</dt>
+                    <dd>@Model.Users.Count user(s)</dd>
+                    <dt>System Role</dt>
+                    <dd>@(Model.IsSystem ? "Yes" : "No")</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const checkboxes = document.querySelectorAll('.permission-checkbox');
+            const hiddenInput = document.getElementById('permissionsInput');
+
+            function updatePermissions() {
+                const selected = [];
+                checkboxes.forEach(function (cb) {
+                    if (cb.checked) {
+                        selected.push(cb.value);
+                    }
+                });
+                hiddenInput.value = selected.join(',');
+            }
+
+            checkboxes.forEach(function (cb) {
+                cb.addEventListener('change', updatePermissions);
+            });
+
+            // Initialize on page load (preserves pre-checked state)
+            updatePermissions();
+        })();
+    </script>
+}

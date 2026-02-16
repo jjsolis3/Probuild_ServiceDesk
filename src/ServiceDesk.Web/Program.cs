@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,10 @@ builder.Services.AddControllersWithViews();
 // Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ServiceSphere")));
+
+// Register email services
+builder.Services.AddScoped<EmailNotificationService>();
+builder.Services.AddHostedService<EmailPollingService>();
 
 var app = builder.Build();
 

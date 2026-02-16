@@ -1,0 +1,136 @@
+@model EmailConfiguration
+@{
+    ViewData["Title"] = "Add Email Configuration";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="EmailIntegration">Email Integration</a></li>
+        <li class="breadcrumb-item active">New Configuration</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Add Email Configuration</h1>
+
+<form asp-action="CreateEmailConfig">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> Account Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label"></label>
+                        <input asp-for="Name" class="form-control" placeholder="e.g. Support Inbox" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="EmailAddress" class="form-label"></label>
+                        <input asp-for="EmailAddress" class="form-control" type="email" placeholder="support@company.com" />
+                        <span asp-validation-for="EmailAddress" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Username" class="form-label"></label>
+                        <input asp-for="Username" class="form-control" placeholder="Username or email address" />
+                        <span asp-validation-for="Username" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Password" class="form-label"></label>
+                        <input asp-for="Password" class="form-control" type="password" placeholder="App password or account password" />
+                        <span asp-validation-for="Password" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DefaultAssigneeId" class="form-label"></label>
+                        <select asp-for="DefaultAssigneeId" class="form-select">
+                            <option value="">-- No Default Assignee --</option>
+                            @if (ViewBag.Employees != null)
+                            {
+                                foreach (var employee in (IEnumerable<Employee>)ViewBag.Employees)
+                                {
+                                    <option value="@employee.Id">@employee.FullName</option>
+                                }
+                            }
+                        </select>
+                        <span asp-validation-for="DefaultAssigneeId" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-hdd-network"></i> Server Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label asp-for="ImapServer" class="form-label"></label>
+                            <input asp-for="ImapServer" class="form-control" placeholder="imap.gmail.com" />
+                            <span asp-validation-for="ImapServer" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="ImapPort" class="form-label"></label>
+                            <input asp-for="ImapPort" class="form-control" type="number" />
+                            <span asp-validation-for="ImapPort" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label asp-for="SmtpServer" class="form-label"></label>
+                            <input asp-for="SmtpServer" class="form-control" placeholder="smtp.gmail.com" />
+                            <span asp-validation-for="SmtpServer" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="SmtpPort" class="form-label"></label>
+                            <input asp-for="SmtpPort" class="form-control" type="number" />
+                            <span asp-validation-for="SmtpPort" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="PollIntervalMinutes" class="form-label"></label>
+                        <input asp-for="PollIntervalMinutes" class="form-control" type="number" min="1" />
+                        <span asp-validation-for="PollIntervalMinutes" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input asp-for="UseSsl" class="form-check-input" type="checkbox" />
+                            <label asp-for="UseSsl" class="form-check-label"></label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                            <label asp-for="IsActive" class="form-check-label"></label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input asp-for="CreateTicketsFromEmails" class="form-check-input" type="checkbox" />
+                            <label asp-for="CreateTicketsFromEmails" class="form-check-label"></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-2">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Configuration</button>
+        <a asp-action="EmailIntegration" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>

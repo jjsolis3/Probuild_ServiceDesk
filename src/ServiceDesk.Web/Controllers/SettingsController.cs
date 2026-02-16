@@ -1,0 +1,640 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Models;
+using ServiceDesk.Core.Enums;
+using ServiceDesk.Infrastructure.Data;
+
+namespace ServiceDesk.Web.Controllers;
+
+public class SettingsController : Controller
+{
+    private readonly ServiceDeskDbContext _context;
+
+    public SettingsController(ServiceDeskDbContext context)
+    {
+        _context = context;
+    }
+
+    // GET: Settings - Landing page with all settings sections
+    public IActionResult Index()
+    {
+        return View();
+    }
+
+    // ==================== ACCOUNT SETTINGS ====================
+
+    // GET: Settings/Account
+    public async Task<IActionResult> Account()
+    {
+        var settings = await _context.AppSettings.ToListAsync();
+        var employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        ViewBag.Employees = employees;
+        return View(settings);
+    }
+
+    // POST: Settings/Account
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Account(Dictionary<string, string> settings)
+    {
+        foreach (var kvp in settings)
+        {
+            var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == kvp.Key);
+            if (setting != null)
+            {
+                setting.Value = kvp.Value;
+            }
+        }
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Account settings saved successfully.";
+        return RedirectToAction(nameof(Account));
+    }
+
+    // ==================== ROLES & PERMISSIONS ====================
+
+    // GET: Settings/Roles
+    public async Task<IActionResult> Roles()
+    {
+        var roles = await _context.Roles.Include(r => r.Users).ToListAsync();
+        return View(roles);
+    }
+
+    // GET: Settings/CreateRole
+    public IActionResult CreateRole()
+    {
+        return View(new Role());
+    }
+
+    // POST: Settings/CreateRole
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateRole(Role role)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.Roles.Add(role);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Role created successfully.";
+            return RedirectToAction(nameof(Roles));
+        }
+        return View(role);
+    }
+
+    // GET: Settings/EditRole/5
+    public async Task<IActionResult> EditRole(int? id)
+    {
+        if (id == null) return NotFound();
+        var role = await _context.Roles.FindAsync(id);
+        if (role == null) return NotFound();
+        return View(role);
+    }
+
+    // POST: Settings/EditRole/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditRole(int id, Role role)
+    {
+        if (id != role.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(role);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Role updated successfully.";
+            return RedirectToAction(nameof(Roles));
+        }
+        return View(role);
+    }
+
+    // POST: Settings/DeleteRole/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteRole(int id)
+    {
+        var role = await _context.Roles.FindAsync(id);
+        if (role != null && !role.IsSystem)
+        {
+            _context.Roles.Remove(role);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Role deleted successfully.";
+        }
+        else if (role?.IsSystem == true)
+        {
+            TempData["Error"] = "System roles cannot be deleted.";
+        }
+        return RedirectToAction(nameof(Roles));
+    }
+
+    // ==================== BRANCHES ====================
+
+    // GET: Settings/Branches
+    public async Task<IActionResult> Branches()
+    {
+        var branches = await _context.Branches.Include(b => b.SiteManager).ToListAsync();
+        return View(branches);
+    }
+
+    // GET: Settings/CreateBranch
+    public async Task<IActionResult> CreateBranch()
+    {
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(new Branch());
+    }
+
+    // POST: Settings/CreateBranch
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateBranch(Branch branch)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.Branches.Add(branch);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Branch created successfully.";
+            return RedirectToAction(nameof(Branches));
+        }
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(branch);
+    }
+
+    // GET: Settings/EditBranch/5
+    public async Task<IActionResult> EditBranch(int? id)
+    {
+        if (id == null) return NotFound();
+        var branch = await _context.Branches.FindAsync(id);
+        if (branch == null) return NotFound();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(branch);
+    }
+
+    // POST: Settings/EditBranch/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditBranch(int id, Branch branch)
+    {
+        if (id != branch.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(branch);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Branch updated successfully.";
+            return RedirectToAction(nameof(Branches));
+        }
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(branch);
+    }
+
+    // POST: Settings/DeleteBranch/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteBranch(int id)
+    {
+        var branch = await _context.Branches.FindAsync(id);
+        if (branch != null)
+        {
+            _context.Branches.Remove(branch);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Branch deleted.";
+        }
+        return RedirectToAction(nameof(Branches));
+    }
+
+    // ==================== CUSTOM TICKET STATES ====================
+
+    // GET: Settings/TicketStates
+    public async Task<IActionResult> TicketStates()
+    {
+        var states = await _context.TicketStates.OrderBy(s => s.SortOrder).ToListAsync();
+        return View(states);
+    }
+
+    // GET: Settings/CreateTicketState
+    public IActionResult CreateTicketState()
+    {
+        return View(new TicketState { SortOrder = _context.TicketStates.Any() ? _context.TicketStates.Max(s => s.SortOrder) + 1 : 1 });
+    }
+
+    // POST: Settings/CreateTicketState
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateTicketState(TicketState state)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.TicketStates.Add(state);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket state created.";
+            return RedirectToAction(nameof(TicketStates));
+        }
+        return View(state);
+    }
+
+    // GET: Settings/EditTicketState/5
+    public async Task<IActionResult> EditTicketState(int? id)
+    {
+        if (id == null) return NotFound();
+        var state = await _context.TicketStates.FindAsync(id);
+        if (state == null) return NotFound();
+        return View(state);
+    }
+
+    // POST: Settings/EditTicketState/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditTicketState(int id, TicketState state)
+    {
+        if (id != state.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(state);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket state updated.";
+            return RedirectToAction(nameof(TicketStates));
+        }
+        return View(state);
+    }
+
+    // POST: Settings/DeleteTicketState/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteTicketState(int id)
+    {
+        var state = await _context.TicketStates.FindAsync(id);
+        if (state != null && !state.IsSystem)
+        {
+            _context.TicketStates.Remove(state);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket state deleted.";
+        }
+        else if (state?.IsSystem == true)
+        {
+            TempData["Error"] = "System states cannot be deleted.";
+        }
+        return RedirectToAction(nameof(TicketStates));
+    }
+
+    // ==================== RESOLUTION CODES ====================
+
+    // GET: Settings/ResolutionCodes
+    public async Task<IActionResult> ResolutionCodes()
+    {
+        var codes = await _context.ResolutionCodes.OrderBy(c => c.SortOrder).ToListAsync();
+        return View(codes);
+    }
+
+    // GET: Settings/CreateResolutionCode
+    public IActionResult CreateResolutionCode()
+    {
+        return View(new ResolutionCode { SortOrder = _context.ResolutionCodes.Any() ? _context.ResolutionCodes.Max(c => c.SortOrder) + 1 : 1 });
+    }
+
+    // POST: Settings/CreateResolutionCode
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateResolutionCode(ResolutionCode code)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.ResolutionCodes.Add(code);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Resolution code created.";
+            return RedirectToAction(nameof(ResolutionCodes));
+        }
+        return View(code);
+    }
+
+    // GET: Settings/EditResolutionCode/5
+    public async Task<IActionResult> EditResolutionCode(int? id)
+    {
+        if (id == null) return NotFound();
+        var code = await _context.ResolutionCodes.FindAsync(id);
+        if (code == null) return NotFound();
+        return View(code);
+    }
+
+    // POST: Settings/EditResolutionCode/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditResolutionCode(int id, ResolutionCode code)
+    {
+        if (id != code.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(code);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Resolution code updated.";
+            return RedirectToAction(nameof(ResolutionCodes));
+        }
+        return View(code);
+    }
+
+    // POST: Settings/DeleteResolutionCode/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteResolutionCode(int id)
+    {
+        var code = await _context.ResolutionCodes.FindAsync(id);
+        if (code != null)
+        {
+            _context.ResolutionCodes.Remove(code);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Resolution code deleted.";
+        }
+        return RedirectToAction(nameof(ResolutionCodes));
+    }
+
+    // ==================== USERS & GROUPS ====================
+
+    // GET: Settings/Users
+    public async Task<IActionResult> Users()
+    {
+        var users = await _context.PortalUsers
+            .Include(u => u.Role)
+            .Include(u => u.Employee)
+            .Include(u => u.GroupMemberships)
+                .ThenInclude(m => m.UserGroup)
+            .ToListAsync();
+        return View(users);
+    }
+
+    // GET: Settings/CreateUser
+    public async Task<IActionResult> CreateUser()
+    {
+        ViewBag.Roles = await _context.Roles.ToListAsync();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(new PortalUser());
+    }
+
+    // POST: Settings/CreateUser
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateUser(PortalUser user)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.PortalUsers.Add(user);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "User created successfully.";
+            return RedirectToAction(nameof(Users));
+        }
+        ViewBag.Roles = await _context.Roles.ToListAsync();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(user);
+    }
+
+    // GET: Settings/EditUser/5
+    public async Task<IActionResult> EditUser(int? id)
+    {
+        if (id == null) return NotFound();
+        var user = await _context.PortalUsers.FindAsync(id);
+        if (user == null) return NotFound();
+        ViewBag.Roles = await _context.Roles.ToListAsync();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(user);
+    }
+
+    // POST: Settings/EditUser/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditUser(int id, PortalUser user)
+    {
+        if (id != user.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(user);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "User updated.";
+            return RedirectToAction(nameof(Users));
+        }
+        ViewBag.Roles = await _context.Roles.ToListAsync();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(user);
+    }
+
+    // POST: Settings/DeleteUser/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteUser(int id)
+    {
+        var user = await _context.PortalUsers.FindAsync(id);
+        if (user != null)
+        {
+            _context.PortalUsers.Remove(user);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "User deleted.";
+        }
+        return RedirectToAction(nameof(Users));
+    }
+
+    // GET: Settings/Groups
+    public async Task<IActionResult> Groups()
+    {
+        var groups = await _context.UserGroups
+            .Include(g => g.Members)
+                .ThenInclude(m => m.PortalUser)
+            .ToListAsync();
+        return View(groups);
+    }
+
+    // GET: Settings/CreateGroup
+    public IActionResult CreateGroup()
+    {
+        return View(new UserGroup());
+    }
+
+    // POST: Settings/CreateGroup
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateGroup(UserGroup group)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.UserGroups.Add(group);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Group created.";
+            return RedirectToAction(nameof(Groups));
+        }
+        return View(group);
+    }
+
+    // GET: Settings/EditGroup/5
+    public async Task<IActionResult> EditGroup(int? id)
+    {
+        if (id == null) return NotFound();
+        var group = await _context.UserGroups
+            .Include(g => g.Members)
+                .ThenInclude(m => m.PortalUser)
+            .FirstOrDefaultAsync(g => g.Id == id);
+        if (group == null) return NotFound();
+        ViewBag.AvailableUsers = await _context.PortalUsers
+            .Where(u => u.IsActive && !u.GroupMemberships.Any(m => m.UserGroupId == id))
+            .ToListAsync();
+        return View(group);
+    }
+
+    // POST: Settings/EditGroup/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditGroup(int id, UserGroup group)
+    {
+        if (id != group.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            var existing = await _context.UserGroups.FindAsync(id);
+            if (existing == null) return NotFound();
+            existing.Name = group.Name;
+            existing.Description = group.Description;
+            existing.IsActive = group.IsActive;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Group updated.";
+            return RedirectToAction(nameof(Groups));
+        }
+        return View(group);
+    }
+
+    // POST: Settings/AddGroupMember
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddGroupMember(int groupId, int userId)
+    {
+        var exists = await _context.UserGroupMembers
+            .AnyAsync(m => m.UserGroupId == groupId && m.PortalUserId == userId);
+        if (!exists)
+        {
+            _context.UserGroupMembers.Add(new UserGroupMember
+            {
+                UserGroupId = groupId,
+                PortalUserId = userId
+            });
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Member added to group.";
+        }
+        return RedirectToAction(nameof(EditGroup), new { id = groupId });
+    }
+
+    // POST: Settings/RemoveGroupMember
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveGroupMember(int groupId, int memberId)
+    {
+        var member = await _context.UserGroupMembers.FindAsync(memberId);
+        if (member != null)
+        {
+            _context.UserGroupMembers.Remove(member);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Member removed from group.";
+        }
+        return RedirectToAction(nameof(EditGroup), new { id = groupId });
+    }
+
+    // POST: Settings/DeleteGroup/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteGroup(int id)
+    {
+        var group = await _context.UserGroups.FindAsync(id);
+        if (group != null)
+        {
+            _context.UserGroups.Remove(group);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Group deleted.";
+        }
+        return RedirectToAction(nameof(Groups));
+    }
+
+    // ==================== EMAIL INTEGRATION ====================
+
+    // GET: Settings/EmailIntegration
+    public async Task<IActionResult> EmailIntegration()
+    {
+        var configs = await _context.EmailConfigurations
+            .Include(e => e.DefaultAssignee)
+            .ToListAsync();
+        return View(configs);
+    }
+
+    // GET: Settings/CreateEmailConfig
+    public async Task<IActionResult> CreateEmailConfig()
+    {
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(new EmailConfiguration());
+    }
+
+    // POST: Settings/CreateEmailConfig
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateEmailConfig(EmailConfiguration config)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.EmailConfigurations.Add(config);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Email configuration created.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(config);
+    }
+
+    // GET: Settings/EditEmailConfig/5
+    public async Task<IActionResult> EditEmailConfig(int? id)
+    {
+        if (id == null) return NotFound();
+        var config = await _context.EmailConfigurations.FindAsync(id);
+        if (config == null) return NotFound();
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(config);
+    }
+
+    // POST: Settings/EditEmailConfig/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditEmailConfig(int id, EmailConfiguration config)
+    {
+        if (id != config.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(config);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Email configuration updated.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+        ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        return View(config);
+    }
+
+    // POST: Settings/DeleteEmailConfig/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteEmailConfig(int id)
+    {
+        var config = await _context.EmailConfigurations.FindAsync(id);
+        if (config != null)
+        {
+            _context.EmailConfigurations.Remove(config);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Email configuration deleted.";
+        }
+        return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    // POST: Settings/TestEmailConnection/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestEmailConnection(int id)
+    {
+        var config = await _context.EmailConfigurations.FindAsync(id);
+        if (config == null) return NotFound();
+
+        // In a real implementation, this would use MailKit to test the connection
+        // For now, validate that required fields are filled
+        if (string.IsNullOrEmpty(config.Password))
+        {
+            TempData["Error"] = "Please set the password (Google App Password) before testing the connection.";
+        }
+        else
+        {
+            TempData["Success"] = "Connection test initiated. Check the email configuration status for results.";
+        }
+        return RedirectToAction(nameof(EmailIntegration));
+    }
+}

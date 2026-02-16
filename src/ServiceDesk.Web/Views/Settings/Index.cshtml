@@ -1,0 +1,168 @@
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-gear"></i> Settings</h1>
+        <p class="text-muted mb-0">Configure and manage your ServiceDesk platform settings.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+
+    <!-- Account Settings -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                        <i class="bi bi-building display-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Account Settings</h5>
+                        <p class="card-text text-muted small">Manage company info, timezone, default assignee, and ticket prefix</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Account" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roles & Permissions -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
+                        <i class="bi bi-shield-lock display-6" style="color: #6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Roles &amp; Permissions</h5>
+                        <p class="card-text text-muted small">Define roles and assign permissions for IT staff</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Roles" class="btn btn-sm" style="background-color: #6f42c1; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Branches & Sites -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(25, 135, 84, 0.1);">
+                        <i class="bi bi-geo-alt display-6 text-success"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Branches &amp; Sites</h5>
+                        <p class="card-text text-muted small">Manage office locations and site managers</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Branches" class="btn btn-sm btn-success">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Ticket States -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(253, 126, 20, 0.1);">
+                        <i class="bi bi-diagram-3 display-6" style="color: #fd7e14;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Custom Ticket States</h5>
+                        <p class="card-text text-muted small">Configure ticket workflow states and colors</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="TicketStates" class="btn btn-sm" style="background-color: #fd7e14; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resolution Codes -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(32, 201, 151, 0.1);">
+                        <i class="bi bi-check2-square display-6" style="color: #20c997;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Resolution Codes</h5>
+                        <p class="card-text text-muted small">Define standard resolution codes for closing tickets</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="ResolutionCodes" class="btn btn-sm" style="background-color: #20c997; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users & Groups -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-people display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Users &amp; Groups</h5>
+                        <p class="card-text text-muted small">Manage portal users and team groups</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Users" class="btn btn-sm btn-info text-white">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Integration -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(220, 53, 69, 0.1);">
+                        <i class="bi bi-envelope display-6 text-danger"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Integration</h5>
+                        <p class="card-text text-muted small">Configure email-to-ticket and notifications</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailIntegration" class="btn btn-sm btn-danger">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>

@@ -1,0 +1,160 @@
+@model IEnumerable<TicketState>
+@{
+    ViewData["Title"] = "Ticket States";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">Ticket States</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-diagram-3" style="color: #fd7e14;"></i> Custom Ticket States</h1>
+        <p class="text-muted mb-0">Configure the workflow states that tickets can transition through.</p>
+    </div>
+    <a asp-action="CreateTicketState" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> Add State
+    </a>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i> @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<!-- Ticket State Workflow Visual -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-arrow-right-circle me-2"></i> Workflow Pipeline</h5>
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            @{ var orderedStates = Model.OrderBy(s => s.SortOrder).ToList(); }
+            @for (int i = 0; i < orderedStates.Count; i++)
+            {
+                var state = orderedStates[i];
+                <div class="d-flex align-items-center">
+                    <span class="badge px-3 py-2"
+                          style="background-color: @state.ColorHex; color: #fff; font-size: 0.85rem;
+                                 @(!state.IsActive ? "opacity: 0.5;" : "")">
+                        @state.Name
+                    </span>
+                </div>
+                @if (i < orderedStates.Count - 1)
+                {
+                    <i class="bi bi-chevron-right text-muted"></i>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Ticket States List -->
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+            @foreach (var state in Model.OrderBy(s => s.SortOrder))
+            {
+                <div class="list-group-item d-flex align-items-center py-3 @(!state.IsActive ? "bg-light opacity-75" : "")">
+                    <!-- Color Swatch -->
+                    <div class="me-3" style="min-width: 40px;">
+                        <span class="d-inline-block rounded-circle border"
+                              style="width: 36px; height: 36px; background-color: @state.ColorHex;"
+                              title="@state.ColorHex">
+                        </span>
+                    </div>
+
+                    <!-- State Name & Details -->
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <h6 class="mb-0 fw-semibold">@state.Name</h6>
+
+                            @if (state.IsSlaEnabled)
+                            {
+                                <span class="badge bg-info text-white">
+                                    <i class="bi bi-clock me-1"></i>SLA
+                                </span>
+                            }
+
+                            @if (state.IsDefault)
+                            {
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle me-1"></i>Default
+                                </span>
+                            }
+
+                            @if (state.IsSystem)
+                            {
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-lock-fill me-1"></i>System
+                                </span>
+                            }
+
+                            @if (!state.IsActive)
+                            {
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-pause-circle me-1"></i>Inactive
+                                </span>
+                            }
+                        </div>
+                        <small class="text-muted">
+                            Color: <code>@state.ColorHex</code>
+                        </small>
+                    </div>
+
+                    <!-- Sort Order -->
+                    <div class="me-4 text-center" style="min-width: 80px;">
+                        <small class="text-muted d-block">Sort Order</small>
+                        <span class="badge bg-light text-dark border fs-6">@state.SortOrder</span>
+                    </div>
+
+                    <!-- Active Toggle (visual only) -->
+                    <div class="me-4" style="min-width: 60px;">
+                        <div class="form-check form-switch mb-0">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   checked="@state.IsActive"
+                                   disabled
+                                   title="@(state.IsActive ? "Active" : "Inactive")" />
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div style="min-width: 90px;">
+                        <a asp-action="EditTicketState" asp-route-id="@state.Id" class="btn btn-sm btn-outline-primary" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        @if (!state.IsSystem)
+                        {
+                            <a asp-action="DeleteTicketState" asp-route-id="@state.Id" class="btn btn-sm btn-outline-danger" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-diagram-3 display-1"></i>
+        <p class="mt-3">No ticket states configured. Click "Add State" to create your first workflow state.</p>
+    </div>
+}

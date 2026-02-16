@@ -1,0 +1,89 @@
+@model IEnumerable<UserGroup>
+@{
+    ViewData["Title"] = "User Groups";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1><i class="bi bi-people-fill"></i> User Groups</h1>
+    <a asp-action="CreateGroup" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Add Group
+    </a>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-people-fill display-1"></i>
+        <p class="mt-3">No user groups have been created yet.</p>
+        <a asp-action="CreateGroup" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Create Your First Group
+        </a>
+    </div>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        @foreach (var group in Model)
+        {
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">@group.Name</h5>
+                        <div>
+                            @if (group.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                            <span class="badge bg-info ms-1">
+                                <i class="bi bi-people"></i> @group.Members.Count
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrEmpty(group.Description))
+                        {
+                            <p class="card-text text-muted">@group.Description</p>
+                        }
+
+                        @if (group.Members.Any())
+                        {
+                            <h6 class="mt-3 mb-2"><i class="bi bi-person"></i> Members</h6>
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var member in group.Members)
+                                {
+                                    <li class="mb-1">
+                                        <i class="bi bi-dot"></i>
+                                        @if (member.PortalUser != null)
+                                        {
+                                            @member.PortalUser.FullName
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Unknown User</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted small mb-0"><i class="bi bi-info-circle"></i> No members assigned</p>
+                        }
+                    </div>
+                    <div class="card-footer d-flex justify-content-end gap-2">
+                        <a asp-action="EditGroup" asp-route-id="@group.Id" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                        <a asp-action="DeleteGroup" asp-route-id="@group.Id" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i> Delete
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

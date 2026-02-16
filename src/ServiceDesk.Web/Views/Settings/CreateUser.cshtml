@@ -1,0 +1,83 @@
+@model PortalUser
+@{
+    ViewData["Title"] = "Create User";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Users">Users</a></li>
+        <li class="breadcrumb-item active">New User</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create New User</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="CreateUser" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="FirstName" class="form-label"></label>
+                    <input asp-for="FirstName" class="form-control" placeholder="Enter first name" />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="LastName" class="form-label"></label>
+                    <input asp-for="LastName" class="form-control" placeholder="Enter last name" />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" type="email" placeholder="user@company.com" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="RoleId" class="form-label"></label>
+                    <select asp-for="RoleId" class="form-select">
+                        <option value="">-- Select Role --</option>
+                        @if (ViewBag.Roles != null)
+                        {
+                            foreach (var role in (IEnumerable<Role>)ViewBag.Roles)
+                            {
+                                <option value="@role.Id">@role.Name</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="RoleId" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="EmployeeId" class="form-label"></label>
+                    <select asp-for="EmployeeId" class="form-select">
+                        <option value="">Not Linked</option>
+                        @if (ViewBag.Employees != null)
+                        {
+                            foreach (var employee in (IEnumerable<Employee>)ViewBag.Employees)
+                            {
+                                <option value="@employee.Id">@employee.FullName</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="EmployeeId" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check">
+                    <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                    <label asp-for="IsActive" class="form-check-label"></label>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create User</button>
+                <a asp-action="Users" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

@@ -10,11 +10,23 @@ public class ServiceDeskDbContext : DbContext
     {
     }
 
+    // Core entities
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
+
+    // Settings entities
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<TicketState> TicketStates => Set<TicketState>();
+    public DbSet<ResolutionCode> ResolutionCodes => Set<ResolutionCode>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<PortalUser> PortalUsers => Set<PortalUser>();
+    public DbSet<UserGroup> UserGroups => Set<UserGroup>();
+    public DbSet<UserGroupMember> UserGroupMembers => Set<UserGroupMember>();
+    public DbSet<EmailConfiguration> EmailConfigurations => Set<EmailConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,5 +69,62 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<Employee>()
             .HasIndex(e => e.Email)
             .IsUnique();
+
+        // Branch -> SiteManager relationship
+        modelBuilder.Entity<Branch>()
+            .HasOne(b => b.SiteManager)
+            .WithMany()
+            .HasForeignKey(b => b.SiteManagerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // PortalUser -> Employee relationship
+        modelBuilder.Entity<PortalUser>()
+            .HasOne(p => p.Employee)
+            .WithMany()
+            .HasForeignKey(p => p.EmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // PortalUser -> Role relationship
+        modelBuilder.Entity<PortalUser>()
+            .HasOne(p => p.Role)
+            .WithMany(r => r.Users)
+            .HasForeignKey(p => p.RoleId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Unique constraint on PortalUser Email
+        modelBuilder.Entity<PortalUser>()
+            .HasIndex(p => p.Email)
+            .IsUnique();
+
+        // UserGroupMember -> UserGroup relationship
+        modelBuilder.Entity<UserGroupMember>()
+            .HasOne(m => m.UserGroup)
+            .WithMany(g => g.Members)
+            .HasForeignKey(m => m.UserGroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // UserGroupMember -> PortalUser relationship
+        modelBuilder.Entity<UserGroupMember>()
+            .HasOne(m => m.PortalUser)
+            .WithMany(p => p.GroupMemberships)
+            .HasForeignKey(m => m.PortalUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Unique constraint on UserGroupMember (no duplicate memberships)
+        modelBuilder.Entity<UserGroupMember>()
+            .HasIndex(m => new { m.UserGroupId, m.PortalUserId })
+            .IsUnique();
+
+        // Unique constraint on AppSetting Key
+        modelBuilder.Entity<AppSetting>()
+            .HasIndex(s => s.Key)
+            .IsUnique();
+
+        // EmailConfiguration -> DefaultAssignee relationship
+        modelBuilder.Entity<EmailConfiguration>()
+            .HasOne(e => e.DefaultAssignee)
+            .WithMany()
+            .HasForeignKey(e => e.DefaultAssigneeId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

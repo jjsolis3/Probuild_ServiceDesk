@@ -1,0 +1,52 @@
+@model ResolutionCode
+@{
+    ViewData["Title"] = "Create Resolution Code";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="ResolutionCodes">Resolution Codes</a></li>
+        <li class="breadcrumb-item active">New Resolution Code</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create Resolution Code</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="CreateResolutionCode" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="Enter resolution code name" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <textarea asp-for="Description" class="form-control" rows="4" placeholder="Describe the resolution code"></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="SortOrder" class="form-label"></label>
+                    <input asp-for="SortOrder" class="form-control" type="number" min="0" placeholder="0" />
+                    <span asp-validation-for="SortOrder" class="text-danger"></span>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                        <label asp-for="IsActive" class="form-check-label"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Resolution Code</button>
+                <a asp-action="ResolutionCodes" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

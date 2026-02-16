@@ -1,0 +1,77 @@
+@model ServiceDesk.Core.Models.Branch
+@{
+    ViewData["Title"] = "Create Branch";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Branches">Branches & Sites</a></li>
+        <li class="breadcrumb-item active">New Branch</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Create Branch</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="CreateBranch" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="Enter branch name" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Address" class="form-label"></label>
+                <input asp-for="Address" class="form-control" placeholder="Enter street address" />
+                <span asp-validation-for="Address" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-5">
+                    <label asp-for="City" class="form-label"></label>
+                    <input asp-for="City" class="form-control" placeholder="Enter city" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="State" class="form-label"></label>
+                    <input asp-for="State" class="form-control" placeholder="Enter state" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="ZipCode" class="form-label"></label>
+                    <input asp-for="ZipCode" class="form-control" placeholder="Zip code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Phone" class="form-label"></label>
+                <input asp-for="Phone" class="form-control" placeholder="Enter phone number" />
+                <span asp-validation-for="Phone" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="SiteManagerId" class="form-label"></label>
+                <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees, "Id", "FullName"))">
+                    <option value="">-- Select Site Manager --</option>
+                </select>
+                <span asp-validation-for="SiteManagerId" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check">
+                    <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                    <label asp-for="IsActive" class="form-check-label"></label>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Branch</button>
+                <a asp-action="Branches" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
