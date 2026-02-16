@@ -17,6 +17,10 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
+    // Ticket threading
+    public DbSet<TicketNote> TicketNotes => Set<TicketNote>();
+    public DbSet<TicketEmail> TicketEmails => Set<TicketEmail>();
+
     // Settings entities
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Branch> Branches => Set<Branch>();
@@ -52,6 +56,29 @@ public class ServiceDeskDbContext : DbContext
             .WithMany(s => s.RelatedTickets)
             .HasForeignKey(t => t.CompanyServiceId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // TicketNote -> Ticket relationship
+        modelBuilder.Entity<TicketNote>()
+            .HasOne(n => n.Ticket)
+            .WithMany(t => t.Notes)
+            .HasForeignKey(n => n.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // TicketEmail -> Ticket relationship
+        modelBuilder.Entity<TicketEmail>()
+            .HasOne(e => e.Ticket)
+            .WithMany(t => t.Emails)
+            .HasForeignKey(e => e.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Unique index on TicketEmail.GmailMessageId (anti-duplicate)
+        modelBuilder.Entity<TicketEmail>()
+            .HasIndex(e => e.GmailMessageId)
+            .IsUnique();
+
+        // Index on TicketEmail.MessageId for threading lookups
+        modelBuilder.Entity<TicketEmail>()
+            .HasIndex(e => e.MessageId);
 
         // Asset -> AssignedTo relationship
         modelBuilder.Entity<Asset>()

@@ -5,6 +5,7 @@
 
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
         <li class="breadcrumb-item"><a asp-action="EmailIntegration">Email Integration</a></li>
         <li class="breadcrumb-item active">New Configuration</li>
     </ol>
@@ -12,11 +13,11 @@
 
 <h1><i class="bi bi-plus-lg"></i> Add Email Configuration</h1>
 
-<form asp-action="CreateEmailConfig">
+<form asp-action="CreateEmailConfig" method="post">
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
     <div class="row">
-        <!-- Left Column -->
+        <!-- Left Column: Account Details -->
         <div class="col-md-6">
             <div class="card mb-4">
                 <div class="card-header">
@@ -33,18 +34,6 @@
                         <label asp-for="EmailAddress" class="form-label"></label>
                         <input asp-for="EmailAddress" class="form-control" type="email" placeholder="support@company.com" />
                         <span asp-validation-for="EmailAddress" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Username" class="form-label"></label>
-                        <input asp-for="Username" class="form-control" placeholder="Username or email address" />
-                        <span asp-validation-for="Username" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Password" class="form-label"></label>
-                        <input asp-for="Password" class="form-control" type="password" placeholder="App password or account password" />
-                        <span asp-validation-for="Password" class="text-danger"></span>
                     </div>
 
                     <div class="mb-3">
@@ -65,67 +54,96 @@
             </div>
         </div>
 
-        <!-- Right Column -->
+        <!-- Right Column: Gmail API Configuration -->
         <div class="col-md-6">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-hdd-network"></i> Server Settings</h5>
+                    <h5 class="mb-0"><i class="bi bi-google"></i> Gmail API Configuration</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-8">
-                            <label asp-for="ImapServer" class="form-label"></label>
-                            <input asp-for="ImapServer" class="form-control" placeholder="imap.gmail.com" />
-                            <span asp-validation-for="ImapServer" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-4">
-                            <label asp-for="ImapPort" class="form-label"></label>
-                            <input asp-for="ImapPort" class="form-control" type="number" />
-                            <span asp-validation-for="ImapPort" class="text-danger"></span>
-                        </div>
+                    <div class="mb-3">
+                        <label asp-for="GmailClientId" class="form-label"></label>
+                        <input asp-for="GmailClientId" class="form-control" placeholder="your-client-id.apps.googleusercontent.com" />
+                        <span asp-validation-for="GmailClientId" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="GmailClientSecret" class="form-label"></label>
+                        <input asp-for="GmailClientSecret" class="form-control" type="password" placeholder="Client secret from Google Cloud Console" />
+                        <span asp-validation-for="GmailClientSecret" class="text-danger"></span>
                     </div>
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-8">
                             <label asp-for="SmtpServer" class="form-label"></label>
-                            <input asp-for="SmtpServer" class="form-control" placeholder="smtp.gmail.com" />
+                            <input asp-for="SmtpServer" class="form-control" placeholder="smtp.gmail.com" value="smtp.gmail.com" />
                             <span asp-validation-for="SmtpServer" class="text-danger"></span>
                         </div>
                         <div class="col-md-4">
                             <label asp-for="SmtpPort" class="form-label"></label>
-                            <input asp-for="SmtpPort" class="form-control" type="number" />
+                            <input asp-for="SmtpPort" class="form-control" type="number" value="587" />
                             <span asp-validation-for="SmtpPort" class="text-danger"></span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <!-- Behavior Card (full width below both columns) -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-sliders"></i> Behavior</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
                     <div class="mb-3">
-                        <label asp-for="PollIntervalMinutes" class="form-label"></label>
-                        <input asp-for="PollIntervalMinutes" class="form-control" type="number" min="1" />
-                        <span asp-validation-for="PollIntervalMinutes" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input asp-for="UseSsl" class="form-check-input" type="checkbox" />
-                            <label asp-for="UseSsl" class="form-check-label"></label>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <div class="form-check">
+                        <div class="form-check form-switch">
                             <input asp-for="IsActive" class="form-check-input" type="checkbox" />
                             <label asp-for="IsActive" class="form-check-label"></label>
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <div class="form-check">
-                            <input asp-for="CreateTicketsFromEmails" class="form-check-input" type="checkbox" />
+                        <div class="form-check form-switch">
+                            <input asp-for="UseSsl" class="form-check-input" type="checkbox" checked />
+                            <label asp-for="UseSsl" class="form-check-label"></label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input asp-for="CreateTicketsFromEmails" class="form-check-input" type="checkbox" checked />
                             <label asp-for="CreateTicketsFromEmails" class="form-check-label"></label>
                         </div>
                     </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input asp-for="AutoReplyOnNewTicket" class="form-check-input" type="checkbox" checked />
+                            <label asp-for="AutoReplyOnNewTicket" class="form-check-label"></label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label asp-for="PollIntervalMinutes" class="form-label"></label>
+                        <input asp-for="PollIntervalMinutes" class="form-control" type="number" min="1" value="5" />
+                        <div class="form-text">How often to check for new emails (in minutes).</div>
+                        <span asp-validation-for="PollIntervalMinutes" class="text-danger"></span>
+                    </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Help Text Card -->
+    <div class="alert alert-warning d-flex align-items-start mb-4" role="alert">
+        <i class="bi bi-lightbulb-fill me-2 mt-1"></i>
+        <div>
+            <strong>Next Step:</strong> After creating this configuration, you'll need to authorize it with Google.
+            Click the <strong>"Authorize with Google"</strong> button on the Email Integration page to complete the OAuth setup.
         </div>
     </div>
 

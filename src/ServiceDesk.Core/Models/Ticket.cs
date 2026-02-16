@@ -63,4 +63,8 @@ public class Ticket
 
     [Display(Name = "Related Service")]
     public CompanyService? CompanyService { get; set; }
+
+    // Threading navigation
+    public ICollection<TicketNote> Notes { get; set; } = new List<TicketNote>();
+    public ICollection<TicketEmail> Emails { get; set; } = new List<TicketEmail>();
 }

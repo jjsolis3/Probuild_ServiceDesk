@@ -3,16 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
 public class SettingsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly GmailApiService _gmailApiService;
 
-    public SettingsController(ServiceDeskDbContext context)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService)
     {
         _context = context;
+        _gmailApiService = gmailApiService;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -568,7 +571,7 @@ public class SettingsController : Controller
         {
             _context.EmailConfigurations.Add(config);
             await _context.SaveChangesAsync();
-            TempData["Success"] = "Email configuration created.";
+            TempData["Success"] = "Email configuration created. You can now authorize Gmail access.";
             return RedirectToAction(nameof(EmailIntegration));
         }
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
@@ -593,7 +596,25 @@ public class SettingsController : Controller
         if (id != config.Id) return NotFound();
         if (ModelState.IsValid)
         {
-            _context.Update(config);
+            var existing = await _context.EmailConfigurations.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            // Update editable fields only - preserve OAuth tokens and authorization state
+            existing.Name = config.Name;
+            existing.EmailAddress = config.EmailAddress;
+            existing.GmailClientId = config.GmailClientId;
+            existing.GmailClientSecret = config.GmailClientSecret;
+            existing.SmtpServer = config.SmtpServer;
+            existing.SmtpPort = config.SmtpPort;
+            existing.UseSsl = config.UseSsl;
+            existing.PollIntervalMinutes = config.PollIntervalMinutes;
+            existing.CreateTicketsFromEmails = config.CreateTicketsFromEmails;
+            existing.AutoReplyOnNewTicket = config.AutoReplyOnNewTicket;
+            existing.DefaultAssigneeId = config.DefaultAssigneeId;
+            existing.IsActive = config.IsActive;
+
+            // Preserve: GmailRefreshToken, GmailAccessToken, GmailTokenExpiry, GmailHistoryId, IsAuthorized
+
             await _context.SaveChangesAsync();
             TempData["Success"] = "Email configuration updated.";
             return RedirectToAction(nameof(EmailIntegration));
@@ -617,6 +638,90 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(EmailIntegration));
     }
 
+    // GET: Settings/GmailAuthorize/5
+    public async Task<IActionResult> GmailAuthorize(int id)
+    {
+        var config = await _context.EmailConfigurations.FindAsync(id);
+        if (config == null) return NotFound();
+
+        if (string.IsNullOrEmpty(config.GmailClientId) || string.IsNullOrEmpty(config.GmailClientSecret))
+        {
+            TempData["Error"] = "Please set the Gmail Client ID and Client Secret before authorizing.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+
+        var redirectUri = $"{Request.Scheme}://{Request.Host}/Settings/GmailCallback";
+        var scopes = Uri.EscapeDataString("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify");
+
+        var authUrl = $"https://accounts.google.com/o/oauth2/v2/auth" +
+                      $"?client_id={Uri.EscapeDataString(config.GmailClientId)}" +
+                      $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+                      $"&response_type=code" +
+                      $"&scope={scopes}" +
+                      $"&access_type=offline" +
+                      $"&prompt=consent" +
+                      $"&state={config.Id}";
+
+        return Redirect(authUrl);
+    }
+
+    // GET: Settings/GmailCallback
+    public async Task<IActionResult> GmailCallback(string code, string state)
+    {
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+        {
+            TempData["Error"] = "Gmail authorization failed: missing authorization code or state.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+
+        if (!int.TryParse(state, out var configId))
+        {
+            TempData["Error"] = "Gmail authorization failed: invalid state parameter.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+
+        var config = await _context.EmailConfigurations.FindAsync(configId);
+        if (config == null)
+        {
+            TempData["Error"] = "Gmail authorization failed: email configuration not found.";
+            return RedirectToAction(nameof(EmailIntegration));
+        }
+
+        var redirectUri = $"{Request.Scheme}://{Request.Host}/Settings/GmailCallback";
+        var (success, error) = await _gmailApiService.ExchangeAuthorizationCode(config, code, redirectUri);
+
+        if (success)
+        {
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Gmail authorization successful for {config.EmailAddress}.";
+        }
+        else
+        {
+            TempData["Error"] = $"Gmail authorization failed: {error}";
+        }
+
+        return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    // POST: Settings/RevokeGmailAuth/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevokeGmailAuth(int id)
+    {
+        var config = await _context.EmailConfigurations.FindAsync(id);
+        if (config == null) return NotFound();
+
+        config.GmailRefreshToken = null;
+        config.GmailAccessToken = null;
+        config.GmailTokenExpiry = null;
+        config.GmailHistoryId = null;
+        config.IsAuthorized = false;
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Gmail authorization revoked for {config.EmailAddress}.";
+        return RedirectToAction(nameof(EmailIntegration));
+    }
+
     // POST: Settings/TestEmailConnection/5
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -625,15 +730,13 @@ public class SettingsController : Controller
         var config = await _context.EmailConfigurations.FindAsync(id);
         if (config == null) return NotFound();
 
-        // In a real implementation, this would use MailKit to test the connection
-        // For now, validate that required fields are filled
-        if (string.IsNullOrEmpty(config.Password))
+        if (!config.IsAuthorized || string.IsNullOrEmpty(config.GmailRefreshToken))
         {
-            TempData["Error"] = "Please set the password (Google App Password) before testing the connection.";
+            TempData["Error"] = "Please authorize Gmail access before testing the connection.";
         }
         else
         {
-            TempData["Success"] = "Connection test initiated. Check the email configuration status for results.";
+            TempData["Success"] = "Connection test initiated. The configuration is authorized and ready to poll.";
         }
         return RedirectToAction(nameof(EmailIntegration));
     }

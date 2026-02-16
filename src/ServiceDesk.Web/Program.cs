@@ -11,9 +11,12 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ServiceSphere")));
 
-// Register email services
+// Register Gmail API service (singleton BackgroundService for polling + sending)
+builder.Services.AddSingleton<GmailApiService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GmailApiService>());
+
+// Register notification service (scoped, uses GmailApiService for sending)
 builder.Services.AddScoped<EmailNotificationService>();
-builder.Services.AddHostedService<EmailPollingService>();
 
 var app = builder.Build();
 
