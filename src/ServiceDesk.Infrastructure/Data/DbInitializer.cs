@@ -7,10 +7,19 @@ public static class DbInitializer
 {
     public static void Seed(ServiceDeskDbContext context)
     {
-        context.Database.EnsureCreated();
-
-        if (context.Employees.Any())
-            return; // Already seeded
+        // For SQL Server: tables are created via the SQL script (ServiceSphere_CreateTables.sql).
+        // Only seed if the tables exist but are empty.
+        try
+        {
+            if (context.Employees.Any())
+                return; // Already seeded
+        }
+        catch
+        {
+            // Tables may not exist yet - skip seeding.
+            // Run the Database/ServiceSphere_CreateTables.sql script on SQL Server first.
+            return;
+        }
 
         // Seed Employees
         var employees = new Employee[]

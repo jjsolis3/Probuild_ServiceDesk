@@ -6,10 +6,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container
 builder.Services.AddControllersWithViews();
 
-// Configure Entity Framework with SQLite
+// Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? "Data Source=ServiceDesk.db"));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("ServiceSphere")));
 
 var app = builder.Build();
 
