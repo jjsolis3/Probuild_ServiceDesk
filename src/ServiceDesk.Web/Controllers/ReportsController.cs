@@ -123,4 +123,63 @@ public class ReportsController : Controller
 
         return View(model);
     }
+
+    // API: Get tickets filtered by status for report KPI modals
+    [HttpGet]
+    public async Task<IActionResult> TicketsByStatus(string status)
+    {
+        var query = _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .AsQueryable();
+
+        query = status switch
+        {
+            "Open" => query.Where(t => t.Status == TicketStatus.Open),
+            "InProgress" => query.Where(t => t.Status == TicketStatus.InProgress),
+            "Resolved" => query.Where(t => t.Status == TicketStatus.Resolved),
+            "Closed" => query.Where(t => t.Status == TicketStatus.Closed),
+            _ => query
+        };
+
+        var data = await query
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName, AssignedTo = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .ToListAsync();
+
+        return Json(data);
+    }
+
+    // API: Get tickets by category for report table modals
+    [HttpGet]
+    public async Task<IActionResult> TicketsByCategory(string category)
+    {
+        var tickets = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .ToListAsync();
+
+        var filtered = tickets
+            .Where(t => t.Category.ToString() == category)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .ToList();
+
+        return Json(filtered);
+    }
+
+    // API: Get tickets by priority for report table modals
+    [HttpGet]
+    public async Task<IActionResult> TicketsByPriority(string priority)
+    {
+        var tickets = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .ToListAsync();
+
+        var filtered = tickets
+            .Where(t => t.Priority.ToString() == priority)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .ToList();
+
+        return Json(filtered);
+    }
 }

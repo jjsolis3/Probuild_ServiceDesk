@@ -13,7 +13,7 @@
 <!-- Summary Cards -->
 <div class="row g-3 mb-4">
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card tickets h-100">
+        <div class="card dashboard-card tickets h-100 kpi-clickable" data-kpi-type="open" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">Open Tickets</div>
@@ -24,7 +24,7 @@
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card progress h-100">
+        <div class="card dashboard-card progress h-100 kpi-clickable" data-kpi-type="inprogress" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">In Progress</div>
@@ -35,7 +35,7 @@
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card resolved h-100">
+        <div class="card dashboard-card resolved h-100 kpi-clickable" data-kpi-type="resolved" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">Resolved (Month)</div>
@@ -46,7 +46,7 @@
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card assets h-100">
+        <div class="card dashboard-card assets h-100 kpi-clickable" data-kpi-type="assets" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">Assets</div>
@@ -58,7 +58,7 @@
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card employees h-100">
+        <div class="card dashboard-card employees h-100 kpi-clickable" data-kpi-type="employees" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">Employees</div>
@@ -69,7 +69,7 @@
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
-        <div class="card dashboard-card subscriptions h-100">
+        <div class="card dashboard-card subscriptions h-100 kpi-clickable" data-kpi-type="subscriptions" role="button">
             <div class="card-body d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small text-uppercase">Subscriptions</div>
@@ -167,3 +167,214 @@
         </div>
     </div>
 </div>
+
+<!-- KPI Detail Modal -->
+<div class="modal fade" id="kpiDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="kpiModalTitle">...</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="kpiModalBody">
+                <div class="text-center py-4" id="kpiModalLoading">
+                    <div class="spinner-border text-primary"></div><p class="mt-2">Loading...</p>
+                </div>
+                <div class="table-responsive" id="kpiModalTable" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <a id="kpiModalLink" href="#" class="btn btn-primary"><i class="bi bi-box-arrow-up-right"></i> View Full Details</a>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const kpiModal = new bootstrap.Modal(document.getElementById('kpiDetailModal'));
+    const modalTitle = document.getElementById('kpiModalTitle');
+    const modalBody = document.getElementById('kpiModalBody');
+    const modalLoading = document.getElementById('kpiModalLoading');
+    const modalTable = document.getElementById('kpiModalTable');
+    const modalLink = document.getElementById('kpiModalLink');
+
+    const kpiConfig = {
+        open: {
+            title: 'Open Tickets',
+            link: '/Tickets',
+            category: 'tickets'
+        },
+        inprogress: {
+            title: 'In Progress Tickets',
+            link: '/Tickets',
+            category: 'tickets'
+        },
+        resolved: {
+            title: 'Resolved Tickets (This Month)',
+            link: '/Tickets',
+            category: 'tickets'
+        },
+        assets: {
+            title: 'Assets',
+            link: '/Assets',
+            category: 'assets'
+        },
+        employees: {
+            title: 'Active Employees',
+            link: '/Employees',
+            category: 'employees'
+        },
+        subscriptions: {
+            title: 'Subscriptions',
+            link: '/Subscriptions',
+            category: 'subscriptions'
+        }
+    };
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    function buildTicketTable(data) {
+        var html = '<table class="table table-sm table-hover mb-0">';
+        html += '<thead class="table-light"><tr>';
+        html += '<th>ID</th><th>Title</th><th>Priority</th><th>Status</th><th>Submitted By</th><th>Assigned To</th><th>Date</th>';
+        html += '</tr></thead><tbody>';
+        if (data.length === 0) {
+            html += '<tr><td colspan="7" class="text-center text-muted py-3">No tickets found</td></tr>';
+        } else {
+            data.forEach(function (item) {
+                html += '<tr>';
+                html += '<td>' + escapeHtml(String(item.id)) + '</td>';
+                html += '<td>' + escapeHtml(item.title) + '</td>';
+                html += '<td><span class="badge badge-' + escapeHtml((item.priority || '').toLowerCase()) + '">' + escapeHtml(item.priority) + '</span></td>';
+                html += '<td><span class="badge badge-' + escapeHtml((item.status || '').toLowerCase()) + '">' + escapeHtml(item.status) + '</span></td>';
+                html += '<td>' + escapeHtml(item.submittedBy) + '</td>';
+                html += '<td>' + escapeHtml(item.assignedTo || 'Unassigned') + '</td>';
+                html += '<td>' + escapeHtml(item.date) + '</td>';
+                html += '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function buildAssetTable(data) {
+        var html = '<table class="table table-sm table-hover mb-0">';
+        html += '<thead class="table-light"><tr>';
+        html += '<th>Name</th><th>Asset Tag</th><th>Type</th><th>Status</th><th>Assigned To</th>';
+        html += '</tr></thead><tbody>';
+        if (data.length === 0) {
+            html += '<tr><td colspan="5" class="text-center text-muted py-3">No assets found</td></tr>';
+        } else {
+            data.forEach(function (item) {
+                html += '<tr>';
+                html += '<td>' + escapeHtml(item.name) + '</td>';
+                html += '<td>' + escapeHtml(item.assetTag) + '</td>';
+                html += '<td>' + escapeHtml(item.type) + '</td>';
+                html += '<td><span class="badge badge-' + escapeHtml((item.status || '').toLowerCase()) + '">' + escapeHtml(item.status) + '</span></td>';
+                html += '<td>' + escapeHtml(item.assignedTo || 'Unassigned') + '</td>';
+                html += '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function buildEmployeeTable(data) {
+        var html = '<table class="table table-sm table-hover mb-0">';
+        html += '<thead class="table-light"><tr>';
+        html += '<th>Name</th><th>Email</th><th>Department</th><th>Job Title</th>';
+        html += '</tr></thead><tbody>';
+        if (data.length === 0) {
+            html += '<tr><td colspan="4" class="text-center text-muted py-3">No employees found</td></tr>';
+        } else {
+            data.forEach(function (item) {
+                html += '<tr>';
+                html += '<td>' + escapeHtml(item.name) + '</td>';
+                html += '<td>' + escapeHtml(item.email) + '</td>';
+                html += '<td>' + escapeHtml(item.department) + '</td>';
+                html += '<td>' + escapeHtml(item.jobTitle) + '</td>';
+                html += '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function buildSubscriptionTable(data) {
+        var html = '<table class="table table-sm table-hover mb-0">';
+        html += '<thead class="table-light"><tr>';
+        html += '<th>Name</th><th>Provider</th><th>Monthly Cost</th><th>Status</th><th>Renewal Date</th>';
+        html += '</tr></thead><tbody>';
+        if (data.length === 0) {
+            html += '<tr><td colspan="5" class="text-center text-muted py-3">No subscriptions found</td></tr>';
+        } else {
+            data.forEach(function (item) {
+                html += '<tr>';
+                html += '<td>' + escapeHtml(item.name) + '</td>';
+                html += '<td>' + escapeHtml(item.provider) + '</td>';
+                html += '<td>' + escapeHtml(item.monthlyCost) + '</td>';
+                html += '<td><span class="badge badge-' + escapeHtml((item.status || '').toLowerCase()) + '">' + escapeHtml(item.status) + '</span></td>';
+                html += '<td>' + escapeHtml(item.renewalDate) + '</td>';
+                html += '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function buildTable(category, data) {
+        switch (category) {
+            case 'tickets': return buildTicketTable(data);
+            case 'assets': return buildAssetTable(data);
+            case 'employees': return buildEmployeeTable(data);
+            case 'subscriptions': return buildSubscriptionTable(data);
+            default: return '<p class="text-muted text-center py-3">Unknown data type</p>';
+        }
+    }
+
+    document.querySelectorAll('.kpi-clickable').forEach(function (card) {
+        card.addEventListener('click', function () {
+            var kpiType = this.getAttribute('data-kpi-type');
+            var config = kpiConfig[kpiType];
+            if (!config) return;
+
+            // Set modal title and link
+            modalTitle.textContent = config.title;
+            modalLink.setAttribute('href', config.link);
+
+            // Show loading, hide table
+            modalLoading.style.display = '';
+            modalTable.style.display = 'none';
+            modalTable.innerHTML = '';
+
+            // Show modal
+            kpiModal.show();
+
+            // Fetch data via AJAX
+            fetch('/Home/KpiDetail?type=' + encodeURIComponent(kpiType))
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(function (data) {
+                    modalLoading.style.display = 'none';
+                    modalTable.innerHTML = buildTable(config.category, data);
+                    modalTable.style.display = '';
+                })
+                .catch(function (error) {
+                    modalLoading.style.display = 'none';
+                    modalTable.innerHTML = '<div class="text-center text-danger py-4"><i class="bi bi-exclamation-circle fs-3"></i><p class="mt-2">Failed to load data. Please try again.</p></div>';
+                    modalTable.style.display = '';
+                });
+        });
+    });
+});
+</script>
+}

@@ -536,14 +536,20 @@ body[data-bs-theme="dark"] {
     box-shadow: var(--ss-card-shadow);
 }
 
+.filter-bar .form-select {
+    min-width: 180px;
+    padding-right: 2.25rem;
+}
+
 [data-bs-theme="dark"] .filter-bar {
     background-color: #1e1e2d;
 }
 
 /* ----- Report Cards ----- */
 .report-stat {
-    text-align: center;
-    padding: 1.5rem;
+    font-size: 2rem;
+    font-weight: 700;
+    padding: 0;
 }
 
 .report-stat .stat-value {
@@ -568,9 +574,34 @@ body[data-bs-theme="dark"] {
     height: 8px;
 }
 
+/* ----- Clickable KPI Cards ----- */
+.kpi-clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kpi-clickable:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+.kpi-clickable:active {
+    transform: translateY(-1px);
+}
+
+/* ----- Clickable Report Rows ----- */
+.row-clickable {
+    cursor: pointer;
+}
+
+.row-clickable:hover {
+    background-color: rgba(var(--ss-primary-rgb), 0.06) !important;
+}
+
 /* ----- DataTables Overrides (Bootstrap 5 integration) ----- */
 .dataTables_wrapper .dataTables_length select {
-    min-width: 70px;
+    min-width: 80px;
+    padding-right: 2.25rem;
 }
 
 .dataTables_wrapper .dataTables_filter input {
