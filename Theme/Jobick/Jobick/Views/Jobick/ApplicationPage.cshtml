@@ -1,0 +1,2824 @@
+﻿@{
+    Layout = "~/Views/Shared/_LayoutJobick.cshtml";
+    ViewData["Title"] = "Applications";
+}
+<div class="content-body">
+	<!-- row -->
+	<div class="container-fluid">
+		<div class="d-sm-flex d-block justify-content-between align-items-center mb-4">
+			<div class="card-action coin-tabs mt-3 mt-sm-0">
+				<ul class="nav nav-tabs bg-card style-1" role="tablist">
+					<li class="nav-item">
+						<a class="nav-link active" data-bs-toggle="tab" href="#AllStatus">All Status</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link " data-bs-toggle="tab" href="#Pending">Pending</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link " data-bs-toggle="tab" href="#On-Hold">On-Hold</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" data-bs-toggle="tab" href="#Candidate">Candidate</a>
+					</li>
+				</ul>
+			</div>
+			<div class="d-flex mt-sm-0 mt-3">
+				<select class="default-select dashboard-select">
+					<option data-display="Newest">Newest</option>
+
+					<option value="2">oldest</option>
+				</select>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-xl-12">
+				<div class="tab-content">
+					<div class="tab-pane fade show active" id="AllStatus">
+						<div class="table-responsive">
+							<table class="table display mb-4 dataTablesCard order-table card-table application" id="application-tbl1">
+								<thead>
+									<tr>
+										<th>
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="checkAll4">
+												<label class="form-check-label" for="checkAll4">
+												</label>
+											</div>
+										</th>
+										<th>Order ID</th>
+										<th>Date Applied</th>
+										<th>Company</th>
+										<th>Type</th>
+										<th>Position</th>
+										<th>Contact</th>
+										<th>Status</th>
+										<th></th>
+									</tr>
+								</thead>
+
+								<tbody>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox">
+												<label class="form-check-label" for="customCheckBox">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox83">
+												<label class="form-check-label" for="customCheckBox83">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox14">
+												<label class="form-check-label" for="customCheckBox14">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox12">
+												<label class="form-check-label" for="customCheckBox12">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox2">
+												<label class="form-check-label" for="customCheckBox2">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox832">
+												<label class="form-check-label" for="customCheckBox832">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox142">
+												<label class="form-check-label" for="customCheckBox142">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox122">
+												<label class="form-check-label" for="customCheckBox122">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox21">
+												<label class="form-check-label" for="customCheckBox21">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox8321">
+												<label class="form-check-label" for="customCheckBox8321">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1421">
+												<label class="form-check-label" for="customCheckBox1421">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1221">
+												<label class="form-check-label" for="customCheckBox1221">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+					<div class="tab-pane fade" id="Pending">
+						<div class="table-responsive">
+							<table class="table display mb-4 dataTablesCard order-table card-table application" id="application-tbl2">
+								<thead>
+									<tr>
+										<th>
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="checkAll">
+												<label class="form-check-label" for="checkAll">
+												</label>
+											</div>
+										</th>
+										<th>Order ID</th>
+										<th>Date Applied</th>
+										<th>Company</th>
+										<th>Type</th>
+										<th>Position</th>
+										<th>Contact</th>
+										<th>Status</th>
+										<th></th>
+									</tr>
+								</thead>
+
+								<tbody>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox3">
+												<label class="form-check-label" for="customCheckBox3">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox833">
+												<label class="form-check-label" for="customCheckBox833">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox143">
+												<label class="form-check-label" for="customCheckBox143">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox123">
+												<label class="form-check-label" for="customCheckBox123">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox23">
+												<label class="form-check-label" for="customCheckBox23">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox8323">
+												<label class="form-check-label" for="customCheckBox8323">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1423">
+												<label class="form-check-label" for="customCheckBox1423">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1223">
+												<label class="form-check-label" for="customCheckBox1223">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox213">
+												<label class="form-check-label" for="customCheckBox213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox83213">
+												<label class="form-check-label" for="customCheckBox83213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox14213">
+												<label class="form-check-label" for="customCheckBox14213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox12213">
+												<label class="form-check-label" for="customCheckBox12213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-dark light badge-rounded">Pending</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+
+						</div>
+					</div>
+					<div class="tab-pane" id="On-Hold">
+						<div class="table-responsive">
+							<table class="table display mb-4 dataTablesCard order-table card-table application" id="application-tbl3">
+								<thead>
+									<tr>
+										<th>
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="checkAll2">
+												<label class="form-check-label" for="checkAll2">
+												</label>
+											</div>
+										</th>
+										<th>Order ID</th>
+										<th>Date Applied</th>
+										<th>Company</th>
+										<th>Type</th>
+										<th>Position</th>
+										<th>Contact</th>
+										<th>Status</th>
+										<th></th>
+									</tr>
+								</thead>
+
+								<tbody>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox3">
+												<label class="form-check-label" for="customCheckBox3">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox833">
+												<label class="form-check-label" for="customCheckBox833">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox143">
+												<label class="form-check-label" for="customCheckBox143">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox123">
+												<label class="form-check-label" for="customCheckBox123">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox23">
+												<label class="form-check-label" for="customCheckBox23">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox8323">
+												<label class="form-check-label" for="customCheckBox8323">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1423">
+												<label class="form-check-label" for="customCheckBox1423">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1223">
+												<label class="form-check-label" for="customCheckBox1223">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox213">
+												<label class="form-check-label" for="customCheckBox213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox83213">
+												<label class="form-check-label" for="customCheckBox83213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox14213">
+												<label class="form-check-label" for="customCheckBox14213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox12213">
+												<label class="form-check-label" for="customCheckBox12213">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-secondary light badge-rounded">ON HOLD</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+					<div class="tab-pane" id="Candidate">
+						<div class="table-responsive">
+							<table class="table display mb-4 dataTablesCard order-table card-table application" id="application-tbl4">
+								<thead>
+									<tr>
+										<th>
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="checkAll4">
+												<label class="form-check-label" for="checkAll4">
+												</label>
+											</div>
+										</th>
+										<th>Order ID</th>
+										<th>Date Applied</th>
+										<th>Company</th>
+										<th>Type</th>
+										<th>Position</th>
+										<th>Contact</th>
+										<th>Status</th>
+										<th></th>
+									</tr>
+								</thead>
+
+								<tbody>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox4">
+												<label class="form-check-label" for="customCheckBox4">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox834">
+												<label class="form-check-label" for="customCheckBox834">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox144">
+												<label class="form-check-label" for="customCheckBox144">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox124">
+												<label class="form-check-label" for="customCheckBox124">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox24">
+												<label class="form-check-label" for="customCheckBox24">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox8324">
+												<label class="form-check-label" for="customCheckBox8324">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1424">
+												<label class="form-check-label" for="customCheckBox1424">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox1224">
+												<label class="form-check-label" for="customCheckBox1224">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox214">
+												<label class="form-check-label" for="customCheckBox214">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#2769ee" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>FULLTIME</td>
+										<td>UI Designer</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox83214">
+												<label class="form-check-label" for="customCheckBox83214">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#ac30c4" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kelon Team</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox14214">
+												<label class="form-check-label" for="customCheckBox14214">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center ">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#3a1a87" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Kripton Inc.</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td class="tbl-bx">
+											<div class="form-check ms-2">
+												<input class="form-check-input" type="checkbox" value="" id="customCheckBox12214">
+												<label class="form-check-label" for="customCheckBox12214">
+												</label>
+											</div>
+										</td>
+										<td>#000123456</td>
+										<td class="wspace-no">Nov 21th 2020 09:21 AM</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center">
+												<div class="icon-img-bx sm me-2">
+													<svg xmlns="http://www.w3.org/2000/svg" width="53" height="53" viewBox="0 0 53 53">
+														<g transform="translate(0.243)">
+															<rect width="53" height="53" rx="12" transform="translate(-0.243)" fill="#c5c5c5" />
+															<g transform="translate(-0.243)">
+																<rect data-name="placeholder" width="53" height="53" rx="12" fill="#48c290" />
+																<ellipse data-name="Ellipse 12" cx="13.243" cy="13.43" rx="13.243" ry="13.43" transform="translate(11.152 14.922)" fill="#fff" />
+																<ellipse data-name="Ellipse 11" cx="8.016" cy="8.207" rx="8.016" ry="8.207" transform="translate(27.183 11.191)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+															</g>
+														</g>
+													</svg>
+												</div>
+												<h6 class="mb-0 font-w400">Bubbles Studios</h6>
+											</div>
+										</td>
+										<td>PART TIME</td>
+										<td>UI Reseracher</td>
+										<td class="wspace-no">
+											<div class="d-flex align-items-center text-secondary">
+												<i class="fas fa-phone-alt me-2"></i>
+												012 3123412 441
+											</div>
+										</td>
+
+										<td><span class="badge badge-danger light badge-rounded">Candidate</span></td>
+										<td>
+											<div class="dropdown text-end">
+												<div class="btn-link" data-bs-toggle="dropdown">
+													<a href="javascript:void(0);">
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M11.0005 12C11.0005 12.5523 11.4482 13 12.0005 13C12.5528 13 13.0005 12.5523 13.0005 12C13.0005 11.4477 12.5528 11 12.0005 11C11.4482 11 11.0005 11.4477 11.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M18.0005 12C18.0005 12.5523 18.4482 13 19.0005 13C19.5528 13 20.0005 12.5523 20.0005 12C20.0005 11.4477 19.5528 11 19.0005 11C18.4482 11 18.0005 11.4477 18.0005 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+															<path d="M4.00049 12C4.00049 12.5523 4.4482 13 5.00049 13C5.55277 13 6.00049 12.5523 6.00049 12C6.00049 11.4477 5.55277 11 5.00049 11C4.4482 11 4.00049 11.4477 4.00049 12Z" stroke="var(--text-gray)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														</svg>
+													</a>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-check-circle me-1 text-success"></i>Accept order</a>
+													<a class="dropdown-item text-black" href="javascript:void(0);"><i class="far fa-times-circle me-1 text-danger"></i>Reject order</a>
+												</div>
+											</div>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+@section Jobick_style
+    {
+    <link href="~/Jobick/vendor/bootstrap-datepicker-master/css/bootstrap-datepicker.min.css" rel="stylesheet">
+    <link href="~/Jobick/vendor/datatables/css/jquery.dataTables.min.css" rel="stylesheet">
+}
+
+@section Jobick_script
+    {
+	<!-- Required vendors -->
+	<script src="~/Jobick/vendor/global/global.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-datepicker-master/js/bootstrap-datepicker.min.js"></script>
+
+	<!-- Dashboard 1 -->
+	<!-- Datatable -->
+	<script src="~/Jobick/vendor/datatables/js/jquery.dataTables.min.js"></script>
+	<script src="~/Jobick/js/plugins-init/datatables.init.js"></script>
+
+	<script src="~/Jobick/js/custom.min.js"></script>
+	<script src="~/Jobick/js/dlabnav-init.js"></script>
+	
+	
+}

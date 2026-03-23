@@ -1,0 +1,48 @@
+.bootstrap-select{
+    margin-bottom: 0;
+	&.solid{
+		.btn{
+			border: 0!important;
+		}
+	}
+   .btn {
+		border: 1px solid var(--border) !important;
+		background-color: transparent !important;
+		font-weight:400;
+		color: $body-color !important;
+       &:active,
+       &:focus,
+       &:hover {
+			outline: none !important;
+			outline-offset: 0;
+       }
+   }
+    .dropdown-menu{
+		border-color: $border !important;
+		box-shadow:$shadow;
+		
+		.dropdown-item{
+			padding: var(--dz-list-space-y) var(--dz-list-space-x);
+			font-size: var(--dz-list-size);
+		}
+	}
+	&.dashboard-select{
+		width: auto!important;
+		.dropdown-toggle{
+			background-color: var(--rgba-primary-1)!important;
+			color: var(--primary)!important;
+			border: 0 !important;
+			&:after {
+				margin-#{$dlab-pos-left}: .5rem;
+			}
+		}
+	}
+}
+.input-group > .bootstrap-select:not(:first-child) .dropdown-toggle{
+    border-bottom-#{$dlab-pos-left}-radius: 0;
+    border-bottom-#{$dlab-pos-left}-radius: 0;
+}
+.input-group > .bootstrap-select:not(:last-child) .dropdown-toggle{
+    border-bottom-#{$dlab-pos-right}-radius: 0;
+    border-bottom-#{$dlab-pos-right}-radius: 0;
+}
