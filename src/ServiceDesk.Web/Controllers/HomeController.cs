@@ -102,11 +102,12 @@ public class HomeController : Controller
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName, e.Email, e.Department, e.JobTitle })
                 .ToListAsync(),
 
-            "subscriptions" => await _context.Subscriptions
+            "subscriptions" => (await _context.Subscriptions
                 .Where(s => s.Status == SubscriptionStatus.Active)
                 .OrderBy(s => s.Name)
-                .Select(s => new { s.Id, s.Name, s.Provider, Cost = s.MonthlyCost.ToString("C"), Status = s.Status.ToString(), Renewal = s.RenewalDate.ToString("MMM dd, yyyy") })
-                .ToListAsync(),
+                .ToListAsync())
+                .Select(s => new { s.Id, s.Name, s.Provider, Cost = s.MonthlyCost.ToString("C"), Status = s.Status.ToString(), Renewal = s.RenewalDate.HasValue ? s.RenewalDate.Value.ToString("MMM dd, yyyy") : "N/A" })
+                .ToList(),
 
             _ => null
         };
