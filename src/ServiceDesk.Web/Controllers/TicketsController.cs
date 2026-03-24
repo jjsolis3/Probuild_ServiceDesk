@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +9,7 @@ using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class TicketsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -54,6 +57,9 @@ public class TicketsController : Controller
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
+            .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
+            .Include(t => t.Attachments)
+            .Include(t => t.History.OrderBy(h => h.ChangedDate))
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (ticket == null) return NotFound();
@@ -91,6 +97,8 @@ public class TicketsController : Controller
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
+            .Include(t => t.Attachments)
+            .Include(t => t.History.OrderBy(h => h.ChangedDate))
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
@@ -106,12 +114,35 @@ public class TicketsController : Controller
 
         if (ModelState.IsValid)
         {
-            ticket.UpdatedDate = DateTime.UtcNow;
+            // Load the current ticket to detect changes for history
+            var existing = await _context.Tickets.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+            var changedBy = User.Identity?.Name ?? "Unknown";
 
+            ticket.UpdatedDate = DateTime.UtcNow;
             if (ticket.Status == TicketStatus.Resolved && ticket.ResolvedDate == null)
                 ticket.ResolvedDate = DateTime.UtcNow;
             if (ticket.Status == TicketStatus.Closed && ticket.ClosedDate == null)
                 ticket.ClosedDate = DateTime.UtcNow;
+
+            // Record field-level audit history
+            if (existing != null)
+            {
+                var histories = new List<TicketHistory>();
+                if (existing.Status != ticket.Status)
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Status", OldValue = existing.Status.ToString(), NewValue = ticket.Status.ToString() });
+                if (existing.Priority != ticket.Priority)
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Priority", OldValue = existing.Priority.ToString(), NewValue = ticket.Priority.ToString() });
+                if (existing.AssignedToId != ticket.AssignedToId)
+                {
+                    var oldAgent = existing.AssignedToId.HasValue ? (await _context.Employees.FindAsync(existing.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
+                    var newAgent = ticket.AssignedToId.HasValue ? (await _context.Employees.FindAsync(ticket.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Assigned To", OldValue = oldAgent, NewValue = newAgent });
+                }
+                if (existing.Category != ticket.Category)
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Category", OldValue = existing.Category.ToString(), NewValue = ticket.Category.ToString() });
+                if (histories.Any())
+                    _context.TicketHistory.AddRange(histories);
+            }
 
             _context.Update(ticket);
             await _context.SaveChangesAsync();
@@ -170,10 +201,11 @@ public class TicketsController : Controller
         var note = new TicketNote
         {
             TicketId = id,
-            AuthorName = "Agent",
+            AuthorName = User.Identity?.Name ?? "Agent",
+            AuthorEmail = User.FindFirstValue(System.Security.Claims.ClaimTypes.Email),
             Content = content,
             CreatedDate = DateTime.UtcNow,
-            Source = "Portal",
+            Source = "Agent",
             IsInternal = isInternal
         };
 
@@ -190,6 +222,50 @@ public class TicketsController : Controller
             createdDate = note.CreatedDate.ToString("MMM dd, yyyy h:mm tt"),
             isInternal = note.IsInternal,
             source = note.Source
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+        if (file == null || file.Length == 0) return BadRequest(new { error = "No file provided." });
+        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { error = "File size exceeds 10 MB limit." });
+
+        var uploadDir = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "uploads", "tickets", id.ToString());
+        Directory.CreateDirectory(uploadDir);
+
+        var ext = Path.GetExtension(file.FileName);
+        var storedName = $"{Guid.NewGuid():N}{ext}";
+        var fullPath = Path.Combine(uploadDir, storedName);
+
+        await using (var stream = new FileStream(fullPath, FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        var attachment = new TicketAttachment
+        {
+            TicketId = id,
+            FileName = file.FileName,
+            StoredFileName = storedName,
+            ContentType = file.ContentType,
+            FileSize = file.Length,
+            UploadedBy = User.Identity?.Name ?? "Unknown",
+            UploadedDate = DateTime.UtcNow
+        };
+        _context.TicketAttachments.Add(attachment);
+        ticket.UpdatedDate = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Json(new
+        {
+            success = true,
+            id = attachment.Id,
+            fileName = attachment.FileName,
+            fileSize = attachment.FileSizeDisplay,
+            downloadUrl = $"/uploads/tickets/{id}/{storedName}"
         });
     }
 

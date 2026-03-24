@@ -61,6 +61,7 @@
                 <th>Submitted By</th>
                 <th>Assigned To</th>
                 <th>Created</th>
+                <th>Due Date</th>
                 <th class="no-sort no-export">Actions</th>
             </tr>
         </thead>
@@ -71,6 +72,12 @@
                     <td>@ticket.Id</td>
                     <td>
                         <a asp-action="Details" asp-route-id="@ticket.Id">@ticket.Title</a>
+                        @if (ticket.IsOverdue)
+                        {
+                            <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
+                                <i class="bi bi-exclamation-circle me-1"></i>Overdue
+                            </span>
+                        }
                     </td>
                     <td>@ticket.Category</td>
                     <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
@@ -130,6 +137,18 @@
                         </div>
                     </td>
                     <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
+                    <td>
+                        @if (ticket.DueDate.HasValue)
+                        {
+                            <span class="@(ticket.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
+                                @ticket.DueDate.Value.ToString("MMM dd, yyyy")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
                     <td>
                         <a asp-action="Edit" asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>

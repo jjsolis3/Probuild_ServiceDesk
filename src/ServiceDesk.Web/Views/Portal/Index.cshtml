@@ -1,0 +1,117 @@
+@model PortalDashboardViewModel
+@{
+    ViewData["Title"] = "My Support Tickets";
+    Layout = "_PortalLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0">My Support Tickets</h2>
+        <p class="text-muted small mb-0">Hello, @Model.CurrentUser.FirstName — track and manage your IT requests</p>
+    </div>
+    <a asp-action="SubmitTicket" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i> New Ticket
+    </a>
+</div>
+
+<!-- Quick Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-4">
+        <div class="card text-center border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-primary">@Model.OpenCount</div>
+                <div class="text-muted small">Open</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card text-center border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-warning">@Model.InProgressCount</div>
+                <div class="text-muted small">In Progress</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card text-center border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-success">@Model.ResolvedCount</div>
+                <div class="text-muted small">Resolved</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ticket List -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+        <h6 class="mb-0 fw-semibold"><i class="fas fa-list me-2 text-muted"></i>All My Tickets</h6>
+        <span class="badge bg-secondary">@Model.MyTickets.Count total</span>
+    </div>
+    <div class="card-body p-0">
+        @if (!Model.MyTickets.Any())
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-inbox fa-3x mb-3 d-block opacity-25"></i>
+                <p class="mb-1">You haven't submitted any tickets yet.</p>
+                <a asp-action="SubmitTicket" class="btn btn-primary mt-2">
+                    <i class="fas fa-plus me-1"></i> Submit Your First Ticket
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var ticket in Model.MyTickets)
+                {
+                    var statusClass = ticket.Status.ToString().ToLower() switch
+                    {
+                        "open" => "badge-open",
+                        "inprogress" => "badge-inprogress",
+                        "resolved" => "badge-resolved",
+                        "closed" => "badge-closed",
+                        "onhold" => "badge-onhold",
+                        _ => "bg-secondary"
+                    };
+                    var lastActivity = ticket.Notes.Any()
+                        ? ticket.Notes.Max(n => n.CreatedDate)
+                        : ticket.CreatedDate;
+                    <a asp-action="TicketDetail" asp-route-id="@ticket.Id"
+                       class="list-group-item list-group-item-action px-4 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1 me-3">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="text-muted small">#@ticket.Id</span>
+                                    <span class="badge @statusClass">@ticket.Status</span>
+                                    @if (ticket.IsOverdue)
+                                    {
+                                        <span class="badge bg-danger">OVERDUE</span>
+                                    }
+                                </div>
+                                <div class="fw-semibold mb-1">@ticket.Title</div>
+                                <div class="text-muted small">
+                                    <i class="fas fa-tag me-1"></i>@ticket.Category
+                                    &nbsp;·&nbsp;
+                                    <i class="fas fa-flag me-1"></i>@ticket.Priority
+                                    @if (ticket.AssignedTo != null)
+                                    {
+                                        <span>&nbsp;·&nbsp;<i class="fas fa-user-tie me-1"></i>Assigned to IT Team</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="text-end flex-shrink-0">
+                                <div class="text-muted small">@lastActivity.ToString("MMM dd")</div>
+                                @if (ticket.Notes.Any(n => !n.IsInternal))
+                                {
+                                    <span class="badge bg-light text-dark border mt-1">
+                                        <i class="fas fa-comment me-1"></i>@ticket.Notes.Count(n => !n.IsInternal)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>

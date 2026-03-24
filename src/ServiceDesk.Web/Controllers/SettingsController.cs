@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
@@ -7,6 +8,7 @@ using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin")]
 public class SettingsController : Controller
 {
     private readonly ServiceDeskDbContext _context;

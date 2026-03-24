@@ -11,6 +11,7 @@
     <input type="hidden" asp-for="ResolvedDate" />
     <input type="hidden" asp-for="ClosedDate" />
     <input type="hidden" asp-for="UpdatedDate" />
+    <input type="hidden" asp-for="DueDate" id="dueDateHidden" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
 
     <!-- ===== TOP HEADER BAR ===== -->
@@ -137,6 +138,15 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#tab-attachments" type="button" role="tab">
+                    <i class="bi bi-paperclip me-1"></i> Attachments
+                    @if (Model.Attachments.Any())
+                    {
+                        <span class="badge bg-secondary ms-1">@Model.Attachments.Count</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#tab-audit" type="button" role="tab">
                     <i class="bi bi-clock-history me-1"></i> Audit
                 </button>
@@ -195,9 +205,10 @@
                                         </label>
                                     </div>
                                     <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAttach" disabled>
+                                        <label class="btn btn-sm btn-outline-secondary mb-0" id="btnAttach" title="Attach file (max 10 MB)">
                                             <i class="bi bi-paperclip"></i> Attach
-                                        </button>
+                                            <input type="file" id="attachFileInput" style="display:none;" />
+                                        </label>
                                         <button type="button" class="btn btn-sm btn-primary" id="btnPostComment">
                                             Post
                                         </button>
@@ -228,6 +239,17 @@
                                 <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
                                     <option value="">— None —</option>
                                 </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                <input type="datetime-local" id="dueDatePicker"
+                                       class="form-control @(Model.IsOverdue ? "border-danger" : "")"
+                                       value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
+                                       onchange="document.getElementById('dueDateHidden').value = this.value;" />
+                                @if (Model.IsOverdue)
+                                {
+                                    <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Overdue since @Model.DueDate!.Value.ToString("MMM dd, yyyy")</div>
+                                }
                             </div>
                             @if (Model.ResolvedDate.HasValue)
                             {
@@ -299,6 +321,57 @@
                 </div>
             </div>
 
+            <!-- ===== ATTACHMENTS TAB ===== -->
+            <div class="tab-pane fade" id="tab-attachments" role="tabpanel">
+                <div class="mt-2">
+                    <!-- Upload area -->
+                    <div class="border rounded p-3 bg-light mb-3 text-center attachment-drop-zone" id="attachDropZone">
+                        <i class="bi bi-cloud-upload fs-3 text-muted d-block mb-1"></i>
+                        <p class="mb-1 text-muted small">Drag &amp; drop files here, or</p>
+                        <label class="btn btn-sm btn-outline-primary mb-0">
+                            <i class="bi bi-folder2-open me-1"></i> Browse Files
+                            <input type="file" id="attachTabFileInput" style="display:none;" multiple />
+                        </label>
+                        <p class="text-muted small mt-1 mb-0">Maximum file size: 10 MB</p>
+                    </div>
+
+                    <!-- Upload progress -->
+                    <div id="attachUploadProgress" style="display:none;" class="mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="spinner-border spinner-border-sm text-primary"></div>
+                            <span class="small text-muted">Uploading...</span>
+                        </div>
+                    </div>
+
+                    <!-- Existing attachments list -->
+                    <div id="attachmentsList">
+                        @if (!Model.Attachments.Any())
+                        {
+                            <div class="text-muted text-center py-3" id="noAttachmentsMsg">
+                                <i class="bi bi-paperclip fs-3 d-block mb-2"></i>
+                                No attachments yet.
+                            </div>
+                        }
+                        else
+                        {
+                            foreach (var att in Model.Attachments.OrderByDescending(a => a.UploadedDate))
+                            {
+                                <div class="attachment-item d-flex align-items-center gap-3 p-2 border rounded mb-2" data-att-id="@att.Id">
+                                    <i class="bi bi-file-earmark fs-4 text-muted flex-shrink-0"></i>
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="fw-semibold text-truncate">@att.FileName</div>
+                                        <div class="text-muted small">@att.FileSizeDisplay &mdash; uploaded @att.UploadedDate.ToString("MMM dd, yyyy") by @att.UploadedBy</div>
+                                    </div>
+                                    <a href="/uploads/tickets/@Model.Id/@att.StoredFileName" download="@att.FileName" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
             <!-- ===== AUDIT TAB ===== -->
             <div class="tab-pane fade" id="tab-audit" role="tabpanel">
                 <div class="audit-timeline mt-2">
@@ -318,22 +391,59 @@
                         </div>
                     </div>
 
-                    <!-- Notes as audit entries -->
-                    @foreach (var note in Model.Notes.OrderBy(n => n.CreatedDate))
+                    <!-- Field changes + notes merged and sorted by date -->
+                    @{
+                        // Build a unified timeline: notes + field changes
+                        var auditNotes = Model.Notes
+                            .Select(n => new { Time = n.CreatedDate, Kind = "note", Note = n, History = (TicketHistory?)null })
+                            .ToList();
+                        var auditHistory = Model.History
+                            .Select(h => new { Time = h.ChangedDate, Kind = "change", Note = (TicketNote?)null, History = h })
+                            .ToList();
+                        var auditEntries = auditNotes
+                            .Cast<dynamic>()
+                            .Concat(auditHistory.Cast<dynamic>())
+                            .OrderBy(e => (DateTime)e.Time)
+                            .ToList();
+                    }
+                    @foreach (var entry in auditEntries)
                     {
-                        <div class="audit-entry d-flex gap-3">
-                            <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
-                                <div class="audit-dot @(note.Source == "Email" ? "bg-info" : note.IsInternal ? "bg-warning" : "bg-success") rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
-                                <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
-                            </div>
-                            <div class="pb-3">
-                                <div class="fw-semibold small @(note.IsInternal ? "text-warning" : "text-success")">
-                                    @(note.IsInternal ? "Internal Note" : "Comment") — @note.Source
+                        if (entry.Kind == "note")
+                        {
+                            var note = (TicketNote)entry.Note;
+                            <div class="audit-entry d-flex gap-3">
+                                <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                    <div class="audit-dot @(note.Source == "Email" ? "bg-info" : note.IsInternal ? "bg-warning" : "bg-success") rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                                    <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
                                 </div>
-                                <div class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt") by @note.AuthorName</div>
-                                <div class="small text-truncate" style="max-width:500px;">@note.Content</div>
+                                <div class="pb-3">
+                                    <div class="fw-semibold small @(note.IsInternal ? "text-warning" : "text-success")">
+                                        @(note.IsInternal ? "Internal Note" : "Comment") — @note.Source
+                                    </div>
+                                    <div class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt") by @note.AuthorName</div>
+                                    <div class="small text-truncate" style="max-width:500px;">@note.Content</div>
+                                </div>
                             </div>
-                        </div>
+                        }
+                        else
+                        {
+                            var hist = (TicketHistory)entry.History;
+                            <div class="audit-entry d-flex gap-3">
+                                <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                    <div class="audit-dot bg-primary rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                                    <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
+                                </div>
+                                <div class="pb-3">
+                                    <div class="fw-semibold small text-primary">Field Changed: @hist.FieldName</div>
+                                    <div class="text-muted small">@hist.ChangedDate.ToString("MMM dd, yyyy h:mm tt") by @hist.ChangedBy</div>
+                                    <div class="small">
+                                        <span class="text-muted">@(hist.OldValue ?? "—")</span>
+                                        <i class="bi bi-arrow-right mx-1 text-muted"></i>
+                                        <span class="fw-semibold">@(hist.NewValue ?? "—")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     }
 
                     <!-- Resolved event -->
@@ -483,6 +593,92 @@
         const d = document.createElement('div');
         d.appendChild(document.createTextNode(str || ''));
         return d.innerHTML;
+    }
+
+    // --- Attach button in comment area (triggers the tab-based file input) ---
+    document.getElementById('attachFileInput')?.addEventListener('change', function () {
+        if (this.files && this.files.length > 0) uploadFile(this.files[0]);
+    });
+
+    // --- Attachments tab file input ---
+    document.getElementById('attachTabFileInput')?.addEventListener('change', function () {
+        Array.from(this.files).forEach(f => uploadFile(f));
+        this.value = '';
+    });
+
+    // --- Drag & drop on the drop zone ---
+    const dropZone = document.getElementById('attachDropZone');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('border-primary');
+            Array.from(e.dataTransfer.files).forEach(f => uploadFile(f));
+        });
+    }
+
+    function uploadFile(file) {
+        if (file.size > 10 * 1024 * 1024) {
+            showAttachToast('File "' + file.name + '" exceeds the 10 MB limit.', true);
+            return;
+        }
+        const progress = document.getElementById('attachUploadProgress');
+        if (progress) progress.style.display = '';
+
+        const fd = new FormData();
+        fd.append('id', ticketId);
+        fd.append('file', file);
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/UploadAttachment', { method: 'POST', body: fd })
+            .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(e.error || 'Upload failed.')); return r.json(); })
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('noAttachmentsMsg')?.remove();
+                    appendAttachment(data, ticketId);
+                    showAttachToast('"' + data.fileName + '" uploaded successfully.');
+                }
+            })
+            .catch(err => showAttachToast(err || 'Upload failed.', true))
+            .finally(() => { if (progress) progress.style.display = 'none'; });
+    }
+
+    function appendAttachment(data, tid) {
+        const list = document.getElementById('attachmentsList');
+        if (!list) return;
+        const div = document.createElement('div');
+        div.className = 'attachment-item d-flex align-items-center gap-3 p-2 border rounded mb-2';
+        div.setAttribute('data-att-id', data.id);
+        div.innerHTML = `
+            <i class="bi bi-file-earmark fs-4 text-muted flex-shrink-0"></i>
+            <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold text-truncate">${escHtml(data.fileName)}</div>
+                <div class="text-muted small">${escHtml(data.fileSize)} &mdash; just now</div>
+            </div>
+            <a href="${escHtml(data.downloadUrl)}" download="${escHtml(data.fileName)}" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+                <i class="bi bi-download"></i>
+            </a>`;
+        list.prepend(div);
+        // Update attachment tab badge
+        const tabBtn = document.getElementById('attachments-tab');
+        if (tabBtn) {
+            let badge = tabBtn.querySelector('.badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'badge bg-secondary ms-1';
+                tabBtn.appendChild(badge);
+            }
+            badge.textContent = (list.querySelectorAll('.attachment-item').length).toString();
+        }
+    }
+
+    function showAttachToast(msg, isError) {
+        const el = document.getElementById('commentToast');
+        el.classList.toggle('text-bg-success', !isError);
+        el.classList.toggle('text-bg-danger', !!isError);
+        toastMsg.textContent = msg;
+        toast.show();
     }
 })();
 </script>

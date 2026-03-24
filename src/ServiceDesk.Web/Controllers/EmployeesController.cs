@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
@@ -5,6 +6,7 @@ using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class EmployeesController : Controller
 {
     private readonly ServiceDeskDbContext _context;

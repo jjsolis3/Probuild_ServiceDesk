@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,7 @@ using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class AssetsController : Controller
 {
     private readonly ServiceDeskDbContext _context;

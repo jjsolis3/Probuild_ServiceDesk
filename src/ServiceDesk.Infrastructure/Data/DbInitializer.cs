@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
+using ServiceDesk.Core.Services;
 
 namespace ServiceDesk.Infrastructure.Data;
 
@@ -66,6 +67,56 @@ public static class DbInitializer
                     CREATE INDEX IX_AssignmentRules_Active_Sort
                         ON dbo.AssignmentRules (IsActive, SortOrder);
                 END");
+
+            // 4. Add DueDate to Tickets (SLA upgrade)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'DueDate'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD DueDate DATETIME2 NULL;
+                END");
+
+            // 5. Create TicketAttachments table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketAttachments')
+                BEGIN
+                    CREATE TABLE dbo.TicketAttachments (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId        INT             NOT NULL
+                            CONSTRAINT FK_TicketAttachments_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        FileName        NVARCHAR(255)   NOT NULL,
+                        StoredFileName  NVARCHAR(255)   NOT NULL,
+                        ContentType     NVARCHAR(100)   NOT NULL DEFAULT '',
+                        FileSize        BIGINT          NOT NULL DEFAULT 0,
+                        UploadedBy      NVARCHAR(200)   NOT NULL DEFAULT '',
+                        UploadedDate    DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+                END");
+
+            // 6. Create TicketHistory table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketHistory')
+                BEGIN
+                    CREATE TABLE dbo.TicketHistory (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId    INT             NOT NULL
+                            CONSTRAINT FK_TicketHistory_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        ChangedBy   NVARCHAR(200)   NOT NULL,
+                        FieldName   NVARCHAR(100)   NOT NULL,
+                        OldValue    NVARCHAR(500)   NULL,
+                        NewValue    NVARCHAR(500)   NULL,
+                        ChangedDate DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_TicketHistory_Ticket_Date
+                        ON dbo.TicketHistory (TicketId, ChangedDate);
+                END");
         }
         catch (Exception ex)
         {
@@ -82,7 +133,11 @@ public static class DbInitializer
         try
         {
             if (context.Employees.Any())
-                return; // Already seeded
+            {
+                // Ensure system roles and admin user exist even on subsequent runs
+                SeedRolesAndAdminUser(context);
+                return;
+            }
         }
         catch
         {
@@ -144,6 +199,9 @@ public static class DbInitializer
         context.Subscriptions.AddRange(subscriptions);
         context.SaveChanges();
 
+        // Seed Roles + Admin Users
+        SeedRolesAndAdminUser(context);
+
         // Seed Tickets
         var tickets = new Ticket[]
         {
@@ -157,6 +215,90 @@ public static class DbInitializer
             new() { Title = "Software installation request - Visual Studio", Description = "Need Visual Studio 2024 Enterprise installed for development work.", Category = TicketCategory.ServiceRequest, Status = TicketStatus.Open, Priority = TicketPriority.Low, CreatedDate = DateTime.UtcNow.AddDays(-1), SubmittedById = 4, AssignedToId = 2 },
         };
         context.Tickets.AddRange(tickets);
+        context.SaveChanges();
+    }
+
+    private static void SeedRolesAndAdminUser(ServiceDeskDbContext context)
+    {
+        // Seed system roles if not present
+        var roleNames = new[]
+        {
+            ("Admin",    "Full system access — manage tickets, assets, settings, users.",
+                         "ManageTickets,ManageAssets,ManageEmployees,ManageSubscriptions,ManageServices,ViewReports,ManageSettings,ManageUsers", true),
+            ("IT Agent", "IT staff — manage tickets, assets, employees, subscriptions, services, view reports.",
+                         "ManageTickets,ManageAssets,ManageEmployees,ManageSubscriptions,ManageServices,ViewReports", true),
+            ("End User", "Non-IT employee — portal access only (submit and view own tickets).",
+                         "Portal", true),
+        };
+
+        foreach (var (name, desc, perms, isSystem) in roleNames)
+        {
+            if (!context.Roles.Any(r => r.Name == name))
+            {
+                context.Roles.Add(new Role
+                {
+                    Name = name,
+                    Description = desc,
+                    Permissions = perms,
+                    IsSystem = isSystem,
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+        }
+        context.SaveChanges();
+
+        // Seed admin portal user
+        if (!context.PortalUsers.Any(u => u.Email == "admin@servicedeskpro.com"))
+        {
+            var adminRole = context.Roles.First(r => r.Name == "Admin");
+            context.PortalUsers.Add(new PortalUser
+            {
+                Email = "admin@servicedeskpro.com",
+                FirstName = "System",
+                LastName = "Admin",
+                PasswordHash = PasswordService.HashPassword("Admin123!"),
+                IsActive = true,
+                CreatedDate = DateTime.UtcNow,
+                RoleId = adminRole.Id
+            });
+        }
+
+        // Seed IT Agent portal user linked to John Smith (Id=1 from seed)
+        if (!context.PortalUsers.Any(u => u.Email == "john.smith@probuild.com"))
+        {
+            var agentRole = context.Roles.First(r => r.Name == "IT Agent");
+            var emp = context.Employees.FirstOrDefault(e => e.Email == "john.smith@probuild.com");
+            context.PortalUsers.Add(new PortalUser
+            {
+                Email = "john.smith@probuild.com",
+                FirstName = "John",
+                LastName = "Smith",
+                PasswordHash = PasswordService.HashPassword("Agent123!"),
+                IsActive = true,
+                CreatedDate = DateTime.UtcNow,
+                RoleId = agentRole.Id,
+                EmployeeId = emp?.Id
+            });
+        }
+
+        // Seed End User portal user linked to Emily Wilson (non-IT)
+        if (!context.PortalUsers.Any(u => u.Email == "emily.wilson@probuild.com"))
+        {
+            var userRole = context.Roles.First(r => r.Name == "End User");
+            var emp = context.Employees.FirstOrDefault(e => e.Email == "emily.wilson@probuild.com");
+            context.PortalUsers.Add(new PortalUser
+            {
+                Email = "emily.wilson@probuild.com",
+                FirstName = "Emily",
+                LastName = "Wilson",
+                PasswordHash = PasswordService.HashPassword("User123!"),
+                IsActive = true,
+                CreatedDate = DateTime.UtcNow,
+                RoleId = userRole.Id,
+                EmployeeId = emp?.Id
+            });
+        }
+
         context.SaveChanges();
     }
 }

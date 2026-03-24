@@ -17,9 +17,11 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
-    // Ticket threading
+    // Ticket threading & attachments & audit
     public DbSet<TicketNote> TicketNotes => Set<TicketNote>();
     public DbSet<TicketEmail> TicketEmails => Set<TicketEmail>();
+    public DbSet<TicketAttachment> TicketAttachments => Set<TicketAttachment>();
+    public DbSet<TicketHistory> TicketHistory => Set<TicketHistory>();
 
     // Settings entities
     public DbSet<Role> Roles => Set<Role>();
@@ -82,6 +84,24 @@ public class ServiceDeskDbContext : DbContext
         // Index on TicketEmail.MessageId for threading lookups
         modelBuilder.Entity<TicketEmail>()
             .HasIndex(e => e.MessageId);
+
+        // TicketAttachment -> Ticket
+        modelBuilder.Entity<TicketAttachment>()
+            .HasOne(a => a.Ticket)
+            .WithMany(t => t.Attachments)
+            .HasForeignKey(a => a.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // TicketHistory -> Ticket
+        modelBuilder.Entity<TicketHistory>()
+            .HasOne(h => h.Ticket)
+            .WithMany(t => t.History)
+            .HasForeignKey(h => h.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Index on TicketHistory for fast per-ticket lookups
+        modelBuilder.Entity<TicketHistory>()
+            .HasIndex(h => new { h.TicketId, h.ChangedDate });
 
         // Asset -> AssignedTo relationship
         modelBuilder.Entity<Asset>()

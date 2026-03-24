@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
@@ -10,6 +11,32 @@ builder.Services.AddControllersWithViews();
 // Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ServiceSphere")));
+
+// Cookie-based authentication using the existing PortalUsers table
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Account/Login";
+        options.LogoutPath = "/Account/Logout";
+        options.AccessDeniedPath = "/Account/AccessDenied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Cookie.Name = "ServiceSphere.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    // IT staff (admin dashboard)
+    options.AddPolicy("ITStaff", policy =>
+        policy.RequireRole("Admin", "IT Agent"));
+
+    // Any authenticated user (portal + IT staff)
+    options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 // Register Gmail API service (singleton BackgroundService for polling + sending)
 builder.Services.AddSingleton<GmailApiService>();
@@ -41,6 +68,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();   // Must be before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllerRoute(

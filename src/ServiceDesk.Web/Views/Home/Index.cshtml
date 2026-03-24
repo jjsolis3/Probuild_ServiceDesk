@@ -82,6 +82,86 @@
     </div>
 </div>
 
+<!-- Charts Row -->
+<div class="row g-3 mb-4">
+    <!-- 7-Day Ticket Volume Bar Chart -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart me-1"></i> Ticket Volume (Last 7 Days)
+            </div>
+            <div class="card-body">
+                <div id="chartTicketVolume"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Status Donut + Priority Bar -->
+    <div class="col-lg-3">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-pie-chart me-1"></i> Status Distribution
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <div id="chartStatusDonut" style="width:100%;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-exclamation-diamond me-1"></i> Open by Priority
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <div id="chartPriorityBar" style="width:100%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Warranty Expiry Alerts (shown only when there are assets expiring within 90 days) -->
+@if (Model.ExpiringWarranties.Any())
+{
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark fw-semibold">
+            <i class="bi bi-shield-exclamation me-1"></i> Warranty Expiry Alerts
+            <span class="badge bg-dark ms-2">@Model.ExpiringWarranties.Count</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Asset</th>
+                        <th>Tag</th>
+                        <th>Assigned To</th>
+                        <th>Warranty Expires</th>
+                        <th>Days Left</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in Model.ExpiringWarranties)
+                    {
+                        var daysLeft = (int)(asset.WarrantyExpiry!.Value.Date - DateTime.UtcNow.Date).TotalDays;
+                        var rowClass = daysLeft <= 14 ? "table-danger" : daysLeft <= 30 ? "table-warning" : "";
+                        <tr class="@rowClass">
+                            <td>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id">@asset.Name</a>
+                            </td>
+                            <td>@asset.AssetTag</td>
+                            <td>@(asset.AssignedTo?.FullName ?? "Unassigned")</td>
+                            <td>@asset.WarrantyExpiry.Value.ToString("MMM dd, yyyy")</td>
+                            <td>
+                                <span class="badge @(daysLeft <= 14 ? "bg-danger" : daysLeft <= 30 ? "bg-warning text-dark" : "bg-secondary")">
+                                    @daysLeft days
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 <div class="row g-3">
     <!-- Critical Tickets -->
     <div class="col-lg-6">
@@ -190,7 +270,55 @@
     </div>
 </div>
 
+@section Styles {
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.css" />
+}
+
 @section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.min.js"></script>
+<script>
+(function () {
+    // ---- Ticket Volume Bar Chart ----
+    var volumeOptions = {
+        series: [{ name: 'Tickets', data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeCounts)) }],
+        chart: { type: 'bar', height: 200, toolbar: { show: false }, sparkline: { enabled: false } },
+        plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+        dataLabels: { enabled: false },
+        xaxis: { categories: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeDates)), labels: { style: { fontSize: '11px' } } },
+        yaxis: { min: 0, tickAmount: 3, labels: { style: { fontSize: '11px' } } },
+        colors: ['#2f4cdd'],
+        grid: { borderColor: '#f1f1f1' },
+        tooltip: { y: { formatter: val => val + ' tickets' } }
+    };
+    new ApexCharts(document.getElementById('chartTicketVolume'), volumeOptions).render();
+
+    // ---- Status Donut Chart ----
+    var statusOptions = {
+        series: [@Model.StatusOpen, @Model.StatusInProgress, @Model.StatusOnHold, @Model.StatusResolved, @Model.StatusClosed],
+        chart: { type: 'donut', height: 220 },
+        labels: ['Open', 'In Progress', 'On Hold', 'Resolved', 'Closed'],
+        colors: ['#3d85c8', '#f6a821', '#6c757d', '#28a745', '#343a40'],
+        legend: { position: 'bottom', fontSize: '11px' },
+        dataLabels: { enabled: false },
+        plotOptions: { pie: { donut: { size: '65%' } } },
+        tooltip: { y: { formatter: val => val + ' tickets' } }
+    };
+    new ApexCharts(document.getElementById('chartStatusDonut'), statusOptions).render();
+
+    // ---- Priority Horizontal Bar Chart ----
+    var priorityOptions = {
+        series: [{ name: 'Open', data: [@Model.PriorityLow, @Model.PriorityMedium, @Model.PriorityHigh, @Model.PriorityCritical] }],
+        chart: { type: 'bar', height: 220, toolbar: { show: false } },
+        plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '60%' } },
+        dataLabels: { enabled: false },
+        xaxis: { categories: ['Low', 'Medium', 'High', 'Critical'], labels: { style: { fontSize: '11px' } } },
+        colors: ['#28a745', '#f6a821', '#fd7e14', '#dc3545'],
+        grid: { borderColor: '#f1f1f1' },
+        tooltip: { y: { formatter: val => val + ' open' } }
+    };
+    new ApexCharts(document.getElementById('chartPriorityBar'), priorityOptions).render();
+})();
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const kpiModal = new bootstrap.Modal(document.getElementById('kpiDetailModal'));

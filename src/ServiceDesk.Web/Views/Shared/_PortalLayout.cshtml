@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - ServiceSphere Support</title>
+    <link rel="shortcut icon" type="image/png" href="~/images/logo-sm.png" />
+    <link rel="stylesheet" href="~/jobick/css/style.css" />
+    <link rel="stylesheet" href="~/css/servicesphere.css" />
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body class="bg-light">
+
+<!-- Portal Nav -->
+<nav class="navbar navbar-expand-lg bg-white shadow-sm border-bottom sticky-top">
+    <div class="container">
+        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/Portal">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 54 54">
+                <circle cx="27" cy="27" r="27" fill="#2f4cdd"/>
+                <text x="27" y="33" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="18" font-weight="bold">SS</text>
+            </svg>
+            ServiceSphere
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#portalNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="portalNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "MyTickets" ? "active fw-semibold" : "")"
+                       href="/Portal">
+                        <i class="fas fa-ticket-alt me-1"></i>My Tickets
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "Submit" ? "active fw-semibold" : "")"
+                       href="/Portal/SubmitTicket">
+                        <i class="fas fa-plus-circle me-1"></i>Submit New Ticket
+                    </a>
+                </li>
+            </ul>
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item me-3">
+                    <span class="text-muted small">
+                        <i class="fas fa-user-circle me-1"></i>@User.Identity?.Name
+                    </span>
+                </li>
+                <li class="nav-item">
+                    <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-sign-out-alt me-1"></i>Sign Out
+                        </button>
+                    </form>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container py-4">
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>@TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>@TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @RenderBody()
+</div>
+
+<footer class="border-top bg-white py-3 mt-5">
+    <div class="container text-center text-muted small">
+        ServiceSphere &copy; @DateTime.Now.Year &mdash; Powered by ProbuildIQ
+    </div>
+</footer>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

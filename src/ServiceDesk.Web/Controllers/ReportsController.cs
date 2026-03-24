@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
@@ -6,6 +7,7 @@ using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class ReportsController : Controller
 {
     private readonly ServiceDeskDbContext _context;

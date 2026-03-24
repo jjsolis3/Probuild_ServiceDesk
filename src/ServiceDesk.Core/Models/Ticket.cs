@@ -72,7 +72,17 @@ public class Ticket
     [Display(Name = "Related Service")]
     public CompanyService? CompanyService { get; set; }
 
+    [Display(Name = "Due Date")]
+    public DateTime? DueDate { get; set; }
+
     // Threading navigation
     public ICollection<TicketNote> Notes { get; set; } = new List<TicketNote>();
     public ICollection<TicketEmail> Emails { get; set; } = new List<TicketEmail>();
+    public ICollection<TicketAttachment> Attachments { get; set; } = new List<TicketAttachment>();
+    public ICollection<TicketHistory> History { get; set; } = new List<TicketHistory>();
+
+    public bool IsOverdue => DueDate.HasValue && DueDate.Value < DateTime.UtcNow
+                             && Status != TicketStatus.Resolved
+                             && Status != TicketStatus.Closed
+                             && Status != TicketStatus.Cancelled;
 }
