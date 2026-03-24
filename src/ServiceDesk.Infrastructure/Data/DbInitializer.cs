@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 
@@ -5,6 +6,75 @@ namespace ServiceDesk.Infrastructure.Data;
 
 public static class DbInitializer
 {
+    /// <summary>
+    /// Applies any pending schema changes that aren't covered by EF migrations.
+    /// Each ALTER TABLE / CREATE TABLE is guarded by an existence check so it
+    /// is safe to run on every startup.
+    /// </summary>
+    public static void ApplySchemaUpgrades(ServiceDeskDbContext context)
+    {
+        try
+        {
+            // 1. Add BranchId to Employees (routing upgrade)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'BranchId'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Employees
+                        ADD BranchId INT NULL
+                        CONSTRAINT FK_Employees_Branches
+                        REFERENCES dbo.Branches(Id)
+                        ON DELETE SET NULL;
+                END");
+
+            // 2. Add BranchId to Tickets (routing upgrade)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'BranchId'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets
+                        ADD BranchId INT NULL
+                        CONSTRAINT FK_Tickets_Branches
+                        REFERENCES dbo.Branches(Id)
+                        ON DELETE SET NULL;
+                END");
+
+            // 3. Create AssignmentRules table (routing upgrade)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssignmentRules')
+                BEGIN
+                    CREATE TABLE dbo.AssignmentRules (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name        NVARCHAR(200)   NOT NULL,
+                        Category    INT             NULL,
+                        BranchId    INT             NULL
+                            CONSTRAINT FK_AssignmentRules_Branches
+                            REFERENCES dbo.Branches(Id)
+                            ON DELETE SET NULL,
+                        AssigneeId  INT             NOT NULL
+                            CONSTRAINT FK_AssignmentRules_Employees
+                            REFERENCES dbo.Employees(Id),
+                        SortOrder   INT             NOT NULL DEFAULT 100,
+                        IsActive    BIT             NOT NULL DEFAULT 1,
+                        CreatedDate DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_AssignmentRules_Active_Sort
+                        ON dbo.AssignmentRules (IsActive, SortOrder);
+                END");
+        }
+        catch (Exception ex)
+        {
+            // Log and continue — the app can still start even if upgrades fail
+            // (tables may not exist yet on a fresh install)
+            Console.WriteLine($"[DbInitializer] Schema upgrade warning: {ex.Message}");
+        }
+    }
+
     public static void Seed(ServiceDeskDbContext context)
     {
         // For SQL Server: tables are created via the SQL script (ServiceSphere_CreateTables.sql).

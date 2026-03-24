@@ -23,10 +23,11 @@ builder.Services.AddScoped<AssignmentResolverService>();
 
 var app = builder.Build();
 
-// Seed the database
+// Apply incremental schema upgrades then seed reference data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+    DbInitializer.ApplySchemaUpgrades(context);
     DbInitializer.Seed(context);
 }
 
