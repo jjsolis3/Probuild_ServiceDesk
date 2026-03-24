@@ -117,6 +117,31 @@ public static class DbInitializer
                     CREATE INDEX IX_TicketHistory_Ticket_Date
                         ON dbo.TicketHistory (TicketId, ChangedDate);
                 END");
+
+            // 7. Create KbArticles table (Knowledge Base)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'KbArticles')
+                BEGIN
+                    CREATE TABLE dbo.KbArticles (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Title           NVARCHAR(300)   NOT NULL,
+                        Problem         NVARCHAR(4000)  NOT NULL,
+                        Solution        NVARCHAR(MAX)   NOT NULL,
+                        Category        INT             NOT NULL DEFAULT 0,
+                        SourceTicketId  INT             NULL
+                            CONSTRAINT FK_KbArticles_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE SET NULL,
+                        IsPublished     BIT             NOT NULL DEFAULT 1,
+                        CreatedBy       NVARCHAR(200)   NOT NULL DEFAULT '',
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        LastUpdated     DATETIME2       NULL,
+                        ViewCount       INT             NOT NULL DEFAULT 0
+                    );
+
+                    CREATE INDEX IX_KbArticles_Published_Category
+                        ON dbo.KbArticles (IsPublished, Category);
+                END");
         }
         catch (Exception ex)
         {

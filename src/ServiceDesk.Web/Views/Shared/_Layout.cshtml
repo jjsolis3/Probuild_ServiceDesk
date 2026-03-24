@@ -180,6 +180,14 @@
                         </a>
                     </li>
 
+                    <!-- KNOWLEDGE BASE -->
+                    <li class="@NavClass("Kb")">
+                        <a asp-controller="Kb" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-book-open"></i>
+                            <span class="nav-text">Knowledge Base</span>
+                        </a>
+                    </li>
+
                     <!-- ANALYTICS -->
                     <li class="menu-title"><span>Analytics</span></li>
                     <li class="@NavClass("Reports") @(currentController == "Reports" ? "mm-active" : "")">

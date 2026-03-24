@@ -29,26 +29,43 @@
                 <li class="nav-item">
                     <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "MyTickets" ? "active fw-semibold" : "")"
                        href="/Portal">
-                        <i class="fas fa-ticket-alt me-1"></i>My Tickets
+                        <i class="bi bi-ticket-detailed me-1"></i>My Tickets
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "Submit" ? "active fw-semibold" : "")"
                        href="/Portal/SubmitTicket">
-                        <i class="fas fa-plus-circle me-1"></i>Submit New Ticket
+                        <i class="bi bi-plus-circle me-1"></i>Submit Ticket
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "KB" ? "active fw-semibold" : "")"
+                       asp-controller="Portal" asp-action="KnowledgeBase">
+                        <i class="bi bi-book-half me-1"></i>Knowledge Base
                     </a>
                 </li>
             </ul>
-            <ul class="navbar-nav ms-auto align-items-center">
-                <li class="nav-item me-3">
+            <ul class="navbar-nav ms-auto align-items-center gap-2">
+                @if (User.IsInRole("Admin") || User.IsInRole("IT Agent"))
+                {
+                    <li class="nav-item">
+                        <a class="btn btn-sm btn-outline-primary" asp-controller="Home" asp-action="Index" title="Return to IT Dashboard">
+                            <i class="bi bi-speedometer2 me-1"></i>IT Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <span class="badge bg-warning text-dark">IT Staff</span>
+                    </li>
+                }
+                <li class="nav-item">
                     <span class="text-muted small">
-                        <i class="fas fa-user-circle me-1"></i>@User.Identity?.Name
+                        <i class="bi bi-person-circle me-1"></i>@User.Identity?.Name
                     </span>
                 </li>
                 <li class="nav-item">
                     <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
                         <button type="submit" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-sign-out-alt me-1"></i>Sign Out
+                            <i class="bi bi-box-arrow-right me-1"></i>Sign Out
                         </button>
                     </form>
                 </li>

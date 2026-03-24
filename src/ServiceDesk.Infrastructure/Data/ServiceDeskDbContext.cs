@@ -23,6 +23,9 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<TicketAttachment> TicketAttachments => Set<TicketAttachment>();
     public DbSet<TicketHistory> TicketHistory => Set<TicketHistory>();
 
+    // Knowledge base
+    public DbSet<KbArticle> KbArticles => Set<KbArticle>();
+
     // Settings entities
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Branch> Branches => Set<Branch>();
@@ -208,5 +211,16 @@ public class ServiceDeskDbContext : DbContext
         // Index for fast rule lookup
         modelBuilder.Entity<AssignmentRule>()
             .HasIndex(r => new { r.IsActive, r.SortOrder });
+
+        // KbArticle -> SourceTicket relationship (optional)
+        modelBuilder.Entity<KbArticle>()
+            .HasOne(k => k.SourceTicket)
+            .WithMany()
+            .HasForeignKey(k => k.SourceTicketId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index for KB search by category + published status
+        modelBuilder.Entity<KbArticle>()
+            .HasIndex(k => new { k.IsPublished, k.Category });
     }
 }

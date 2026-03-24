@@ -29,10 +29,6 @@ public class PortalController : Controller
         var portalUser = await GetCurrentPortalUserAsync();
         if (portalUser == null) return RedirectToAction("Login", "Account");
 
-        // If IT staff somehow ends up here, redirect to dashboard
-        if (User.IsInRole("Admin") || User.IsInRole("IT Agent"))
-            return RedirectToAction("Index", "Home");
-
         if (portalUser.EmployeeId == null)
         {
             TempData["Error"] = "Your portal account is not linked to an employee record. Please contact IT.";
@@ -228,6 +224,35 @@ public class PortalController : Controller
 
         TempData["Success"] = "Your reply has been added.";
         return RedirectToAction("TicketDetail", new { id = ticketId });
+    }
+
+    // GET: /Portal/KnowledgeBase
+    public async Task<IActionResult> KnowledgeBase(string? q, int? category)
+    {
+        var query = _context.KbArticles
+            .Where(a => a.IsPublished)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var search = q.Trim().ToLower();
+            query = query.Where(a =>
+                a.Title.ToLower().Contains(search) ||
+                a.Problem.ToLower().Contains(search) ||
+                a.Solution.ToLower().Contains(search));
+        }
+
+        if (category.HasValue)
+            query = query.Where(a => (int)a.Category == category.Value);
+
+        var articles = await query
+            .OrderByDescending(a => a.CreatedDate)
+            .ToListAsync();
+
+        ViewBag.SearchQuery = q;
+        ViewBag.SelectedCategory = category;
+        ViewData["ActivePage"] = "KB";
+        return View(articles);
     }
 
     // -------------------------------------------------------
