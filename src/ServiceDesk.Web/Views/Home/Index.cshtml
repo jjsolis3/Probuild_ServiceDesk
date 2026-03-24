@@ -271,53 +271,70 @@
 </div>
 
 @section Styles {
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />
 }
 
 @section Scripts {
-<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
     // ---- Ticket Volume Bar Chart ----
-    var volumeOptions = {
-        series: [{ name: 'Tickets', data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeCounts)) }],
-        chart: { type: 'bar', height: 200, toolbar: { show: false }, sparkline: { enabled: false } },
-        plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
-        dataLabels: { enabled: false },
-        xaxis: { categories: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeDates)), labels: { style: { fontSize: '11px' } } },
-        yaxis: { min: 0, tickAmount: 3, labels: { style: { fontSize: '11px' } } },
-        colors: ['#2f4cdd'],
-        grid: { borderColor: '#f1f1f1' },
-        tooltip: { y: { formatter: val => val + ' tickets' } }
-    };
-    new ApexCharts(document.getElementById('chartTicketVolume'), volumeOptions).render();
+    var volEl = document.getElementById('chartTicketVolume');
+    if (volEl) {
+        new ApexCharts(volEl, {
+            series: [{ name: 'Tickets', data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeCounts)) }],
+            chart: { type: 'bar', height: 200, toolbar: { show: false } },
+            plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+            dataLabels: { enabled: false },
+            xaxis: { categories: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeDates)), labels: { style: { fontSize: '11px' } } },
+            yaxis: { min: 0, tickAmount: 3, labels: { style: { fontSize: '11px' } } },
+            colors: ['#2f4cdd'],
+            grid: { borderColor: '#f1f1f1' },
+            tooltip: { y: { formatter: function(val) { return val + ' tickets'; } } }
+        }).render();
+    }
 
     // ---- Status Donut Chart ----
-    var statusOptions = {
-        series: [@Model.StatusOpen, @Model.StatusInProgress, @Model.StatusOnHold, @Model.StatusResolved, @Model.StatusClosed],
-        chart: { type: 'donut', height: 220 },
-        labels: ['Open', 'In Progress', 'On Hold', 'Resolved', 'Closed'],
-        colors: ['#3d85c8', '#f6a821', '#6c757d', '#28a745', '#343a40'],
-        legend: { position: 'bottom', fontSize: '11px' },
-        dataLabels: { enabled: false },
-        plotOptions: { pie: { donut: { size: '65%' } } },
-        tooltip: { y: { formatter: val => val + ' tickets' } }
-    };
-    new ApexCharts(document.getElementById('chartStatusDonut'), statusOptions).render();
+    var donutEl = document.getElementById('chartStatusDonut');
+    if (donutEl) {
+        var statusSeries = [@Model.StatusOpen, @Model.StatusInProgress, @Model.StatusOnHold, @Model.StatusResolved, @Model.StatusClosed];
+        // ApexCharts donut requires at least one non-zero value
+        var hasData = statusSeries.some(function(v) { return v > 0; });
+        if (hasData) {
+            new ApexCharts(donutEl, {
+                series: statusSeries,
+                chart: { type: 'donut', height: 220 },
+                labels: ['Open', 'In Progress', 'On Hold', 'Resolved', 'Closed'],
+                colors: ['#3d85c8', '#f6a821', '#6c757d', '#28a745', '#343a40'],
+                legend: { position: 'bottom', fontSize: '11px' },
+                dataLabels: { enabled: false },
+                plotOptions: { pie: { donut: { size: '65%' } } },
+                tooltip: { y: { formatter: function(val) { return val + ' tickets'; } } }
+            }).render();
+        } else {
+            donutEl.innerHTML = '<p class="text-muted text-center py-4 small">No ticket data yet.</p>';
+        }
+    }
 
     // ---- Priority Horizontal Bar Chart ----
-    var priorityOptions = {
-        series: [{ name: 'Open', data: [@Model.PriorityLow, @Model.PriorityMedium, @Model.PriorityHigh, @Model.PriorityCritical] }],
-        chart: { type: 'bar', height: 220, toolbar: { show: false } },
-        plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '60%' } },
-        dataLabels: { enabled: false },
-        xaxis: { categories: ['Low', 'Medium', 'High', 'Critical'], labels: { style: { fontSize: '11px' } } },
-        colors: ['#28a745', '#f6a821', '#fd7e14', '#dc3545'],
-        grid: { borderColor: '#f1f1f1' },
-        tooltip: { y: { formatter: val => val + ' open' } }
-    };
-    new ApexCharts(document.getElementById('chartPriorityBar'), priorityOptions).render();
-})();
+    var prioEl = document.getElementById('chartPriorityBar');
+    if (prioEl) {
+        new ApexCharts(prioEl, {
+            series: [{
+                name: 'Open',
+                data: [@Model.PriorityLow, @Model.PriorityMedium, @Model.PriorityHigh, @Model.PriorityCritical]
+            }],
+            chart: { type: 'bar', height: 220, toolbar: { show: false } },
+            plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '60%', distributed: true } },
+            dataLabels: { enabled: false },
+            xaxis: { categories: ['Low', 'Medium', 'High', 'Critical'], labels: { style: { fontSize: '11px' } } },
+            colors: ['#28a745', '#f6a821', '#fd7e14', '#dc3545'],
+            legend: { show: false },
+            grid: { borderColor: '#f1f1f1' },
+            tooltip: { y: { formatter: function(val) { return val + ' open'; } } }
+        }).render();
+    }
+});
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {

@@ -228,42 +228,53 @@
 </div>
 
 @section Styles {
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />
 }
 
 @section Scripts {
-<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.2/dist/apexcharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
     // Monthly Trend Line
-    var monthlyLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByMonth.Keys.ToList()));
-    var monthlyCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByMonth.Values.ToList()));
-    new ApexCharts(document.getElementById('chartMonthlyTrend'), {
-        series: [{ name: 'Tickets', data: monthlyCounts }],
-        chart: { type: 'area', height: 220, toolbar: { show: false } },
-        dataLabels: { enabled: false },
-        stroke: { curve: 'smooth', width: 2 },
-        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.0 } },
-        xaxis: { categories: monthlyLabels, labels: { rotate: -35, style: { fontSize: '10px' } } },
-        yaxis: { min: 0, labels: { style: { fontSize: '11px' } } },
-        colors: ['#2f4cdd'],
-        grid: { borderColor: '#f1f1f1' },
-        tooltip: { y: { formatter: val => val + ' tickets' } }
-    }).render();
+    var trendEl = document.getElementById('chartMonthlyTrend');
+    if (trendEl) {
+        var monthlyLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByMonth.Keys.ToList()));
+        var monthlyCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByMonth.Values.ToList()));
+        new ApexCharts(trendEl, {
+            series: [{ name: 'Tickets', data: monthlyCounts }],
+            chart: { type: 'area', height: 220, toolbar: { show: false } },
+            dataLabels: { enabled: false },
+            stroke: { curve: 'smooth', width: 2 },
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.0 } },
+            xaxis: { categories: monthlyLabels, labels: { rotate: -35, style: { fontSize: '10px' } } },
+            yaxis: { min: 0, labels: { style: { fontSize: '11px' } } },
+            colors: ['#2f4cdd'],
+            grid: { borderColor: '#f1f1f1' },
+            tooltip: { y: { formatter: function(val) { return val + ' tickets'; } } }
+        }).render();
+    }
 
     // Category Donut
-    var catLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
-    var catCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
-    new ApexCharts(document.getElementById('chartCategoryDonut'), {
-        series: catCounts,
-        chart: { type: 'donut', height: 250 },
-        labels: catLabels,
-        legend: { position: 'bottom', fontSize: '11px' },
-        dataLabels: { enabled: false },
-        plotOptions: { pie: { donut: { size: '60%' } } },
-        tooltip: { y: { formatter: val => val + ' tickets' } }
-    }).render();
-})();
+    var donutEl = document.getElementById('chartCategoryDonut');
+    if (donutEl) {
+        var catLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
+        var catCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
+        var hasData = catCounts.some(function(v) { return v > 0; });
+        if (hasData) {
+            new ApexCharts(donutEl, {
+                series: catCounts,
+                chart: { type: 'donut', height: 250 },
+                labels: catLabels,
+                legend: { position: 'bottom', fontSize: '11px' },
+                dataLabels: { enabled: false },
+                plotOptions: { pie: { donut: { size: '60%' } } },
+                tooltip: { y: { formatter: function(val) { return val + ' tickets'; } } }
+            }).render();
+        } else {
+            donutEl.innerHTML = '<p class="text-muted text-center py-4 small">No ticket data yet.</p>';
+        }
+    }
+});
 </script>
 <style>
     .kpi-clickable {
