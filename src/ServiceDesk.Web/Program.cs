@@ -18,6 +18,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GmailApiService>()
 // Register notification service (scoped, uses GmailApiService for sending)
 builder.Services.AddScoped<EmailNotificationService>();
 
+// Register assignment resolver (scoped — needs DbContext)
+builder.Services.AddScoped<AssignmentResolverService>();
+
 var app = builder.Build();
 
 // Seed the database

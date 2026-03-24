@@ -740,4 +740,100 @@ public class SettingsController : Controller
         }
         return RedirectToAction(nameof(EmailIntegration));
     }
+
+    // ==================== ASSIGNMENT RULES ====================
+
+    // GET: Settings/AssignmentRules
+    public async Task<IActionResult> AssignmentRules()
+    {
+        var rules = await _context.AssignmentRules
+            .Include(r => r.Branch)
+            .Include(r => r.Assignee)
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
+        return View(rules);
+    }
+
+    // GET: Settings/CreateAssignmentRule
+    public async Task<IActionResult> CreateAssignmentRule()
+    {
+        await LoadAssignmentRuleViewBag();
+        return View(new AssignmentRule { SortOrder = 100, IsActive = true });
+    }
+
+    // POST: Settings/CreateAssignmentRule
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateAssignmentRule(AssignmentRule rule)
+    {
+        if (ModelState.IsValid)
+        {
+            rule.CreatedDate = DateTime.UtcNow;
+            _context.AssignmentRules.Add(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Assignment rule '{rule.Name}' created.";
+            return RedirectToAction(nameof(AssignmentRules));
+        }
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // GET: Settings/EditAssignmentRule/5
+    public async Task<IActionResult> EditAssignmentRule(int id)
+    {
+        var rule = await _context.AssignmentRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // POST: Settings/EditAssignmentRule/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditAssignmentRule(int id, AssignmentRule rule)
+    {
+        if (id != rule.Id) return BadRequest();
+
+        if (ModelState.IsValid)
+        {
+            _context.Update(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Assignment rule '{rule.Name}' updated.";
+            return RedirectToAction(nameof(AssignmentRules));
+        }
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // POST: Settings/DeleteAssignmentRule/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAssignmentRule(int id)
+    {
+        var rule = await _context.AssignmentRules.FindAsync(id);
+        if (rule == null) return NotFound();
+
+        _context.AssignmentRules.Remove(rule);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Assignment rule '{rule.Name}' deleted.";
+        return RedirectToAction(nameof(AssignmentRules));
+    }
+
+    private async Task LoadAssignmentRuleViewBag()
+    {
+        ViewBag.Branches = await _context.Branches
+            .Where(b => b.IsActive)
+            .OrderBy(b => b.Name)
+            .ToListAsync();
+
+        ViewBag.Employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+            .ToListAsync();
+
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new { Value = (int)c, Text = c.ToString() })
+            .ToList();
+    }
 }

@@ -38,4 +38,6 @@ public class Branch
     // Navigation
     [Display(Name = "Site Manager")]
     public Employee? SiteManager { get; set; }
+
+    public ICollection<Employee> Employees { get; set; } = new List<Employee>();
 }

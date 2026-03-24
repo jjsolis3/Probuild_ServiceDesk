@@ -1,0 +1,99 @@
+@model ServiceDesk.Core.Models.AssignmentRule
+@{
+    ViewData["Title"] = "Edit Assignment Rule";
+    var branches  = ViewBag.Branches  as IEnumerable<ServiceDesk.Core.Models.Branch>   ?? Enumerable.Empty<ServiceDesk.Core.Models.Branch>();
+    var employees = ViewBag.Employees as IEnumerable<ServiceDesk.Core.Models.Employee> ?? Enumerable.Empty<ServiceDesk.Core.Models.Employee>();
+    var categories = ViewBag.Categories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-4">
+            <a asp-action="AssignmentRules" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <h4 class="mb-0">Edit Assignment Rule</h4>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="EditAssignmentRule" asp-route-id="@Model.Id" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" asp-for="Id" />
+                    <input type="hidden" asp-for="CreatedDate" />
+
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label fw-semibold"></label>
+                        <input asp-for="Name" class="form-control" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+
+                    <hr class="my-3" />
+                    <h6 class="text-muted fw-semibold mb-3">Match Conditions <span class="fw-normal">(leave blank to match any)</span></h6>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label asp-for="Category" class="form-label fw-semibold"></label>
+                            <select asp-for="Category" class="form-select">
+                                <option value="">— Any Category —</option>
+                                @foreach (var cat in categories)
+                                {
+                                    <option value="@cat.Value" selected="@(Model.Category.HasValue && (int)Model.Category.Value == (int)cat.Value ? "selected" : null)">@cat.Text</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label asp-for="BranchId" class="form-label fw-semibold"></label>
+                            <select asp-for="BranchId" class="form-select">
+                                <option value="">— Any Branch —</option>
+                                @foreach (var b in branches)
+                                {
+                                    <option value="@b.Id" selected="@(Model.BranchId == b.Id ? "selected" : null)">@b.Name@(b.City != null ? $" – {b.City}" : "")</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+                    <h6 class="text-muted fw-semibold mb-3">Assignment Action</h6>
+
+                    <div class="mb-3">
+                        <label asp-for="AssigneeId" class="form-label fw-semibold"></label>
+                        <select asp-for="AssigneeId" class="form-select">
+                            <option value="">— Select Agent —</option>
+                            @foreach (var emp in employees)
+                            {
+                                <option value="@emp.Id" selected="@(Model.AssigneeId == emp.Id ? "selected" : null)">@emp.FullName (@emp.Department)</option>
+                            }
+                        </select>
+                        <span asp-validation-for="AssigneeId" class="text-danger small"></span>
+                    </div>
+
+                    <hr class="my-3" />
+                    <h6 class="text-muted fw-semibold mb-3">Rule Settings</h6>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-sm-4">
+                            <label asp-for="SortOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="SortOrder" type="number" class="form-control" min="1" max="9999" />
+                            <div class="form-text">Lower = checked first.</div>
+                        </div>
+                        <div class="col-sm-4 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                                <label asp-for="IsActive" class="form-check-label fw-semibold">Active</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i> Save Changes
+                        </button>
+                        <a asp-action="AssignmentRules" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

@@ -42,7 +42,11 @@ public class Employee
     [Display(Name = "Full Name")]
     public string FullName => $"{FirstName} {LastName}";
 
+    [Display(Name = "Branch / Location")]
+    public int? BranchId { get; set; }
+
     // Navigation properties
+    public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();
     public ICollection<Ticket> AssignedTickets { get; set; } = new List<Ticket>();
     public ICollection<Asset> AssignedAssets { get; set; } = new List<Asset>();

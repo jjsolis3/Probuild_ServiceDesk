@@ -54,7 +54,15 @@ public class Ticket
     [Display(Name = "Related Service")]
     public int? CompanyServiceId { get; set; }
 
+    /// <summary>
+    /// Auto-populated from the submitting employee's branch when the ticket is created.
+    /// </summary>
+    [Display(Name = "Branch / Location")]
+    public int? BranchId { get; set; }
+
     // Navigation properties
+    public Branch? Branch { get; set; }
+
     [Display(Name = "Submitted By")]
     public Employee? SubmittedBy { get; set; }
 

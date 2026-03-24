@@ -32,6 +32,9 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<UserGroupMember> UserGroupMembers => Set<UserGroupMember>();
     public DbSet<EmailConfiguration> EmailConfigurations => Set<EmailConfiguration>();
 
+    // Routing & assignment
+    public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -153,5 +156,37 @@ public class ServiceDeskDbContext : DbContext
             .WithMany()
             .HasForeignKey(e => e.DefaultAssigneeId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Employee -> Branch relationship
+        modelBuilder.Entity<Employee>()
+            .HasOne(e => e.Branch)
+            .WithMany(b => b.Employees)
+            .HasForeignKey(e => e.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Ticket -> Branch relationship (location snapshot)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.Branch)
+            .WithMany()
+            .HasForeignKey(t => t.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssignmentRule -> Branch (optional)
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.Branch)
+            .WithMany()
+            .HasForeignKey(r => r.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssignmentRule -> Assignee
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.Assignee)
+            .WithMany()
+            .HasForeignKey(r => r.AssigneeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Index for fast rule lookup
+        modelBuilder.Entity<AssignmentRule>()
+            .HasIndex(r => new { r.IsActive, r.SortOrder });
     }
 }

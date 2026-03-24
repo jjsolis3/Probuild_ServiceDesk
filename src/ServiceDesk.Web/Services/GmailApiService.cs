@@ -267,6 +267,7 @@ public class GmailApiService : BackgroundService
         {
             // ---- CREATE NEW TICKET ----
             var submitter = await context.Employees
+                .Include(e => e.Branch)
                 .FirstOrDefaultAsync(e => e.Email == fromEmail, stoppingToken);
 
             // Clean subject (remove Re:, Fwd:, etc.)
@@ -274,16 +275,31 @@ public class GmailApiService : BackgroundService
             if (cleanSubject.Length > 200)
                 cleanSubject = cleanSubject[..200];
 
+            // Detect category from email content
+            var detectedCategory = AssignmentResolverService.DetectCategory(cleanSubject, body);
+
+            // Resolve assignee via rules (category + submitter branch), fallback to config default
+            int? submitterBranchId = submitter?.BranchId;
+            var resolver = _serviceProvider.CreateScope().ServiceProvider
+                .GetRequiredService<AssignmentResolverService>();
+            var resolvedAssigneeId = await resolver.ResolveAsync(
+                detectedCategory, submitterBranchId, config.DefaultAssigneeId);
+
+            _logger.LogInformation(
+                "Inbound email: category detected={Category}, branch={BranchId}, resolved assignee={AssigneeId}",
+                detectedCategory, submitterBranchId, resolvedAssigneeId);
+
             var ticket = new Ticket
             {
                 Title = string.IsNullOrWhiteSpace(cleanSubject) ? "Email Ticket (No Subject)" : cleanSubject,
                 Description = body.Length > 2000 ? body[..2000] : body,
-                Category = TicketCategory.ServiceRequest,
+                Category = detectedCategory,
                 Status = TicketStatus.Open,
                 Priority = TicketPriority.Medium,
                 CreatedDate = DateTime.UtcNow,
                 SubmittedById = submitter?.Id ?? config.DefaultAssigneeId ?? 1,
-                AssignedToId = config.DefaultAssigneeId,
+                BranchId = submitterBranchId,
+                AssignedToId = resolvedAssigneeId,
             };
 
             context.Tickets.Add(ticket);
