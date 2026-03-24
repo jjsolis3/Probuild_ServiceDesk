@@ -37,31 +37,31 @@ $(document).ready(function () {
 
             // Export Buttons
             dom: '<"row align-items-center mb-3"' +
-                     '<"col-sm-12 col-md-4"l>' +
-                     '<"col-sm-12 col-md-4 text-center"B>' +
+                     '<"col-sm-6 col-md-3"l>' +
+                     '<"col-sm-6 col-md-5 text-center"B>' +
                      '<"col-sm-12 col-md-4"f>' +
                  '>' +
-                 'rtip',
+                 'rt' +
+                 '<"row align-items-center mt-2"' +
+                     '<"col-sm-12 col-md-5"i>' +
+                     '<"col-sm-12 col-md-7"p>' +
+                 '>',
             buttons: [
                 {
                     extend: 'excelHtml5',
-                    text: '<i class="bi bi-file-earmark-spreadsheet"></i> Excel',
+                    text: '<i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel',
                     className: 'btn btn-sm btn-outline-success',
                     title: exportTitle,
-                    exportOptions: {
-                        columns: ':not(.no-export)'
-                    }
+                    exportOptions: { columns: ':not(.no-export)' }
                 },
                 {
                     extend: 'pdfHtml5',
-                    text: '<i class="bi bi-file-earmark-pdf"></i> PDF',
+                    text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',
                     className: 'btn btn-sm btn-outline-danger',
                     title: exportTitle,
                     orientation: 'landscape',
                     pageSize: 'LETTER',
-                    exportOptions: {
-                        columns: ':not(.no-export)'
-                    }
+                    exportOptions: { columns: ':not(.no-export)' }
                 }
             ],
 
@@ -86,6 +86,21 @@ $(document).ready(function () {
                     next: '<i class="bi bi-chevron-right"></i>',
                     last: '<i class="bi bi-chevron-double-right"></i>'
                 }
+            },
+
+            // After init: destroy any bootstrap-select that grabbed the length <select>
+            // and re-apply clean styling so the number is always visible
+            initComplete: function () {
+                var wrapper = this.api().table().container();
+                var $lengthSelect = $(wrapper).find('.dataTables_length select');
+                // If bootstrap-select converted it, destroy and restore native select
+                if ($lengthSelect.data('selectpicker')) {
+                    $lengthSelect.selectpicker('destroy');
+                }
+                // Ensure the select has correct Bootstrap classes for visibility
+                $lengthSelect
+                    .addClass('form-select form-select-sm')
+                    .css({ width: 'auto', display: 'inline-block', color: '#374151' });
             }
         });
     });
