@@ -1,0 +1,62 @@
+@model CannedResponse
+@{
+    ViewData["Title"] = "Edit Canned Response";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="CannedResponses">Canned Responses</a></li>
+        <li class="breadcrumb-item active">Edit @Model.Title</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-pencil"></i> Edit Canned Response</h1>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="EditCannedResponse" asp-route-id="@Model.Id" method="post">
+                    <input type="hidden" asp-for="Id" />
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <div class="mb-3">
+                        <label asp-for="Title" class="form-label fw-semibold"></label>
+                        <input asp-for="Title" class="form-control" />
+                        <span asp-validation-for="Title" class="text-danger small"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label asp-for="Category" class="form-label fw-semibold"></label>
+                            <input asp-for="Category" class="form-control" placeholder="e.g. General, Account, Resolution" />
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="SortOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="SortOrder" class="form-control" type="number" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Content" class="form-label fw-semibold"></label>
+                        <textarea asp-for="Content" class="form-control" rows="8"></textarea>
+                        <span asp-validation-for="Content" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                            <label asp-for="IsActive" class="form-check-label">Active (visible to agents)</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i> Save Changes
+                    </button>
+                    <a asp-action="CannedResponses" class="btn btn-outline-secondary ms-2">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

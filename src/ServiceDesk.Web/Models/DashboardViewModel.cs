@@ -35,4 +35,7 @@ public class DashboardViewModel
 
     // Warranty expiry alerts
     public List<Asset> ExpiringWarranties { get; set; } = new();
+
+    // SLA
+    public int SlaBreachCount { get; set; }
 }

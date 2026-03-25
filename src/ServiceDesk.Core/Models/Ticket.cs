@@ -8,11 +8,11 @@ public class Ticket
     public int Id { get; set; }
 
     [Required]
-    [StringLength(200)]
+    [StringLength(200, MinimumLength = 3)]
     public string Title { get; set; } = string.Empty;
 
     [Required]
-    [StringLength(2000)]
+    [StringLength(2000, MinimumLength = 10)]
     public string Description { get; set; } = string.Empty;
 
     [Required]

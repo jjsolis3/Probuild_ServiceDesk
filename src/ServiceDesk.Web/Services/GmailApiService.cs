@@ -1,3 +1,4 @@
+using Ganss.Xss;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -762,8 +763,10 @@ public class GmailApiService : BackgroundService
         var htmlBody = ExtractPartBody(message.Payload, "text/html");
         if (!string.IsNullOrWhiteSpace(htmlBody))
         {
-            // Strip HTML tags for storage
-            return Regex.Replace(htmlBody, "<[^>]+>", " ").Trim();
+            // Sanitize HTML to remove scripts/XSS, then strip remaining tags for plain-text storage
+            var sanitizer = new HtmlSanitizer();
+            var sanitized = sanitizer.Sanitize(htmlBody);
+            return Regex.Replace(sanitized, "<[^>]+>", " ").Trim();
         }
 
         return "(No content)";

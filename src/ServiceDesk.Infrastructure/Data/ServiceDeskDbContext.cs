@@ -40,6 +40,9 @@ public class ServiceDeskDbContext : DbContext
     // Routing & assignment
     public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
 
+    // Agent productivity
+    public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

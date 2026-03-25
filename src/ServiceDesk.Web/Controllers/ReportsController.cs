@@ -26,6 +26,7 @@ public class ReportsController : Controller
     {
         var tickets = await _context.Tickets
             .Include(t => t.AssignedTo)
+            .Take(5000)
             .ToListAsync();
 
         var model = new TicketReportViewModel

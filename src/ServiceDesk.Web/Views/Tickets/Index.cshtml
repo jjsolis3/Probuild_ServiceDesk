@@ -49,10 +49,43 @@
     </form>
 </div>
 
+@Html.AntiForgeryToken()
+
+<!-- Bulk Action Bar (shown when rows selected) -->
+<div id="bulkActionBar" class="alert alert-secondary d-none mb-3 py-2">
+    <form id="bulkActionForm" asp-controller="Tickets" asp-action="BulkUpdate" method="post" class="d-flex align-items-center gap-3 flex-wrap">
+        @Html.AntiForgeryToken()
+        <span id="bulkSelectionCount" class="fw-semibold text-nowrap">0 selected</span>
+        <select name="bulkAction" id="bulkActionSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="">— Choose Action —</option>
+            <option value="status">Change Status</option>
+            <option value="assign">Reassign</option>
+        </select>
+        <div id="bulkStatusGroup" class="d-none">
+            <select name="bulkStatus" class="form-select form-select-sm" style="width:auto;">
+                @foreach (var s in Enum.GetValues<TicketStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div id="bulkAssigneeGroup" class="d-none">
+            <select name="bulkAssigneeId" id="bulkAssigneeSelect" class="form-select form-select-sm" style="width:auto;">
+                <option value="">— Unassigned —</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary" id="btnBulkApply">Apply</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnBulkClear">Clear</button>
+    </form>
+</div>
+
 <div class="table-responsive">
     <table class="table table-striped table-hover ss-datatable" data-export-title="Tickets Report">
         <thead class="table-dark">
             <tr>
+                <th class="no-sort no-export" style="width:36px;">
+                    <input type="checkbox" id="chkSelectAll" class="form-check-input" title="Select all">
+                </th>
                 <th>ID</th>
                 <th>Title</th>
                 <th>Category</th>
@@ -69,6 +102,9 @@
             @foreach (var ticket in Model)
             {
                 <tr>
+                    <td>
+                        <input type="checkbox" class="form-check-input ticket-chk" name="selectedIds" value="@ticket.Id">
+                    </td>
                     <td>@ticket.Id</td>
                     <td>
                         <a asp-action="Details" asp-route-id="@ticket.Id">@ticket.Title</a>
@@ -273,6 +309,72 @@
         // Prevent dropdown from closing when typing in search
         input.addEventListener('click', function (e) { e.stopPropagation(); });
     });
+
+    // --- Bulk Actions ---
+    (function () {
+        const bar = document.getElementById('bulkActionBar');
+        const countLabel = document.getElementById('bulkSelectionCount');
+        const chkAll = document.getElementById('chkSelectAll');
+        const actionSelect = document.getElementById('bulkActionSelect');
+        const statusGroup = document.getElementById('bulkStatusGroup');
+        const assigneeGroup = document.getElementById('bulkAssigneeGroup');
+        const form = document.getElementById('bulkActionForm');
+
+        // Populate bulk assignee dropdown from itStaff data
+        const bulkAssigneeSelect = document.getElementById('bulkAssigneeSelect');
+        if (bulkAssigneeSelect && itStaff) {
+            itStaff.forEach(function (emp) {
+                const opt = document.createElement('option');
+                opt.value = emp.id;
+                opt.textContent = emp.name;
+                bulkAssigneeSelect.appendChild(opt);
+            });
+        }
+
+        function getChecked() { return document.querySelectorAll('.ticket-chk:checked'); }
+
+        function updateBar() {
+            const checked = getChecked();
+            bar.classList.toggle('d-none', checked.length === 0);
+            countLabel.textContent = checked.length + ' selected';
+        }
+
+        chkAll?.addEventListener('change', function () {
+            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = this.checked);
+            updateBar();
+        });
+
+        document.querySelectorAll('.ticket-chk').forEach(c => c.addEventListener('change', function () {
+            const all = document.querySelectorAll('.ticket-chk');
+            if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
+            updateBar();
+        }));
+
+        actionSelect?.addEventListener('change', function () {
+            statusGroup.classList.toggle('d-none', this.value !== 'status');
+            assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
+        });
+
+        document.getElementById('btnBulkClear')?.addEventListener('click', function () {
+            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = false);
+            if (chkAll) chkAll.checked = false;
+            bar.classList.add('d-none');
+        });
+
+        form?.addEventListener('submit', function (e) {
+            const checked = getChecked();
+            if (checked.length === 0) { e.preventDefault(); return; }
+            if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
+            // Append selected IDs as hidden inputs
+            checked.forEach(c => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'selectedIds';
+                inp.value = c.value;
+                form.appendChild(inp);
+            });
+        });
+    })();
 
     // --- Assignee option click ---
     document.addEventListener('click', function (e) {

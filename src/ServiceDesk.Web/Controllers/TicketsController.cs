@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
+using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Controllers;
@@ -80,6 +81,8 @@ public class TicketsController : Controller
         if (ModelState.IsValid)
         {
             ticket.CreatedDate = DateTime.UtcNow;
+            // Auto-set SLA due date based on priority
+            ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
             _context.Add(ticket);
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
@@ -123,6 +126,10 @@ public class TicketsController : Controller
                 ticket.ResolvedDate = DateTime.UtcNow;
             if (ticket.Status == TicketStatus.Closed && ticket.ClosedDate == null)
                 ticket.ClosedDate = DateTime.UtcNow;
+
+            // Recalculate DueDate if priority changed and no DueDate set yet
+            if (ticket.DueDate == null)
+                ticket.DueDate = SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
 
             // Record field-level audit history
             if (existing != null)
@@ -267,6 +274,73 @@ public class TicketsController : Controller
             fileSize = attachment.FileSizeDisplay,
             downloadUrl = $"/uploads/tickets/{id}/{storedName}"
         });
+    }
+
+    // POST: Tickets/BulkUpdate — assign or change status on multiple tickets at once
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkUpdate(int[] selectedIds, string bulkAction, int? bulkAssigneeId, string? bulkStatus)
+    {
+        if (selectedIds == null || selectedIds.Length == 0)
+        {
+            TempData["Error"] = "No tickets selected.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var tickets = await _context.Tickets
+            .Where(t => selectedIds.Contains(t.Id))
+            .ToListAsync();
+
+        var changedBy = User.Identity?.Name ?? "Agent";
+        var histories = new List<TicketHistory>();
+
+        foreach (var ticket in tickets)
+        {
+            if (bulkAction == "assign" && bulkAssigneeId.HasValue)
+            {
+                histories.Add(new TicketHistory
+                {
+                    TicketId = ticket.Id, ChangedBy = changedBy, FieldName = "Assigned To",
+                    OldValue = ticket.AssignedToId?.ToString() ?? "Unassigned",
+                    NewValue = bulkAssigneeId.ToString()!
+                });
+                ticket.AssignedToId = bulkAssigneeId;
+                ticket.UpdatedDate = DateTime.UtcNow;
+            }
+            else if (bulkAction == "status" && !string.IsNullOrEmpty(bulkStatus)
+                     && Enum.TryParse<TicketStatus>(bulkStatus, out var newStatus))
+            {
+                histories.Add(new TicketHistory
+                {
+                    TicketId = ticket.Id, ChangedBy = changedBy, FieldName = "Status",
+                    OldValue = ticket.Status.ToString(), NewValue = newStatus.ToString()
+                });
+                ticket.Status = newStatus;
+                ticket.UpdatedDate = DateTime.UtcNow;
+                if (newStatus == TicketStatus.Resolved && ticket.ResolvedDate == null)
+                    ticket.ResolvedDate = DateTime.UtcNow;
+                if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
+                    ticket.ClosedDate = DateTime.UtcNow;
+            }
+        }
+
+        if (histories.Any()) _context.TicketHistory.AddRange(histories);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"{tickets.Count} ticket(s) updated.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // GET: Tickets/CannedResponses — returns active templates as JSON for the reply box
+    [HttpGet]
+    public async Task<IActionResult> CannedResponses()
+    {
+        var responses = await _context.CannedResponses
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Title)
+            .Select(r => new { r.Id, r.Title, r.Content, r.Category })
+            .ToListAsync();
+        return Json(responses);
     }
 
     public async Task<IActionResult> Delete(int? id)

@@ -846,4 +846,72 @@ public class SettingsController : Controller
             .Select(c => new { Value = (int)c, Text = c.ToString() })
             .ToList();
     }
+
+    // ── Canned Responses ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CannedResponses()
+    {
+        var responses = await _context.CannedResponses
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Title)
+            .ToListAsync();
+        return View(responses);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public IActionResult CreateCannedResponse() => View(new CannedResponse());
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateCannedResponse(CannedResponse response)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.CannedResponses.Add(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response created.";
+            return RedirectToAction(nameof(CannedResponses));
+        }
+        return View(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditCannedResponse(int id)
+    {
+        var response = await _context.CannedResponses.FindAsync(id);
+        if (response == null) return NotFound();
+        return View(response);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditCannedResponse(int id, CannedResponse response)
+    {
+        if (id != response.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response updated.";
+            return RedirectToAction(nameof(CannedResponses));
+        }
+        return View(response);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteCannedResponse(int id)
+    {
+        var response = await _context.CannedResponses.FindAsync(id);
+        if (response != null)
+        {
+            _context.CannedResponses.Remove(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response deleted.";
+        }
+        return RedirectToAction(nameof(CannedResponses));
+    }
 }

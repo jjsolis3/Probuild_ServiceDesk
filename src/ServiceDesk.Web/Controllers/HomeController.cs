@@ -35,6 +35,13 @@ public class HomeController : Controller
             .Where(s => s.Status == SubscriptionStatus.Active)
             .SumAsync(s => s.MonthlyCost);
 
+        var slaBreachCount = await _context.Tickets
+            .CountAsync(t => t.DueDate.HasValue
+                && t.DueDate.Value < DateTime.UtcNow
+                && t.Status != TicketStatus.Resolved
+                && t.Status != TicketStatus.Closed
+                && t.Status != TicketStatus.Cancelled);
+
         var criticalTickets = await _context.Tickets
             .Where(t => t.Priority == TicketPriority.Critical && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
             .Include(t => t.SubmittedBy)
@@ -106,7 +113,8 @@ public class HomeController : Controller
             PriorityMedium = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Medium)?.Count ?? 0,
             PriorityHigh = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.High)?.Count ?? 0,
             PriorityCritical = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Critical)?.Count ?? 0,
-            ExpiringWarranties = expiringWarranties
+            ExpiringWarranties = expiringWarranties,
+            SlaBreachCount = slaBreachCount
         };
 
         return View(model);

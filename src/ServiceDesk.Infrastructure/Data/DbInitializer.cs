@@ -174,7 +174,50 @@ public static class DbInitializer
                             PasswordResetTokenExpiry DATETIME2 NULL;
                 END");
 
-            // 10. Seed additional Company Branding AppSettings keys if not present
+            // 10. Create CannedResponses table (agent reply templates)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CannedResponses')
+                BEGIN
+                    CREATE TABLE dbo.CannedResponses (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Title       NVARCHAR(200)   NOT NULL,
+                        Content     NVARCHAR(4000)  NOT NULL,
+                        Category    NVARCHAR(100)   NULL,
+                        SortOrder   INT             NOT NULL DEFAULT 0,
+                        IsActive    BIT             NOT NULL DEFAULT 1
+                    );
+
+                    INSERT INTO dbo.CannedResponses (Title, Content, Category, SortOrder) VALUES
+                    (N'Ticket Received',
+                     N'Thank you for contacting IT Support. We have received your request and it is being reviewed by our team. We will update you shortly.',
+                     N'General', 10),
+                    (N'Requesting More Information',
+                     N'To better assist you, could you please provide the following information:' + CHAR(13)+CHAR(10) +
+                     N'- A description of the issue including any error messages' + CHAR(13)+CHAR(10) +
+                     N'- The device name or asset tag affected' + CHAR(13)+CHAR(10) +
+                     N'- When the issue first started' + CHAR(13)+CHAR(10) +
+                     N'Thank you for your assistance.',
+                     N'General', 20),
+                    (N'Password Reset Instructions',
+                     N'To reset your password please follow these steps:' + CHAR(13)+CHAR(10) +
+                     N'1. Go to the login page and click Forgot Password' + CHAR(13)+CHAR(10) +
+                     N'2. Enter your company email address' + CHAR(13)+CHAR(10) +
+                     N'3. Check your email for the reset link (check spam if not received)' + CHAR(13)+CHAR(10) +
+                     N'4. Follow the link to set a new password' + CHAR(13)+CHAR(10) +
+                     N'Contact us if you need further assistance.',
+                     N'Account', 30),
+                    (N'Issue Resolved - Please Confirm',
+                     N'We believe the issue described in this ticket has been resolved. Could you please confirm that everything is working correctly on your end? If the issue persists, please reply and we will continue to assist you.',
+                     N'Resolution', 40),
+                    (N'Remote Session Request',
+                     N'To resolve this issue efficiently, I would like to connect to your device remotely. Please let me know a convenient time or if you are available now we can proceed immediately.',
+                     N'Support', 50),
+                    (N'Ticket Closed - No Response',
+                     N'We have not received a response to our previous message. We will be closing this ticket as resolved. Please do not hesitate to open a new ticket if you continue to experience issues.',
+                     N'Resolution', 60);
+                END");
+
+            // 11. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
