@@ -1,21 +1,28 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
 public class AccountController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly EmailNotificationService _emailService;
+    private readonly IConfiguration _configuration;
 
-    public AccountController(ServiceDeskDbContext context)
+    public AccountController(ServiceDeskDbContext context, EmailNotificationService emailService, IConfiguration configuration)
     {
         _context = context;
+        _emailService = emailService;
+        _configuration = configuration;
     }
 
     // GET: /Account/Login
@@ -110,5 +117,90 @@ public class AccountController : Controller
         if (User.IsInRole("End User"))
             return RedirectToAction("Index", "Portal");
         return RedirectToAction("Index", "Home");
+    }
+
+    // GET: /Account/ForgotPassword
+    [HttpGet]
+    public IActionResult ForgotPassword() => View(new ForgotPasswordViewModel());
+
+    // POST: /Account/ForgotPassword
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+    {
+        if (!ModelState.IsValid) return View(model);
+
+        // Always show success to prevent user enumeration
+        var user = await _context.PortalUsers
+            .FirstOrDefaultAsync(u => u.Email == model.Email && u.IsActive);
+
+        if (user != null)
+        {
+            // Generate a secure token (URL-safe base64)
+            var tokenBytes = RandomNumberGenerator.GetBytes(32);
+            var token = Convert.ToBase64String(tokenBytes)
+                .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+            user.PasswordResetToken = token;
+            user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
+            await _context.SaveChangesAsync();
+
+            var baseUrl = _configuration["App:BaseUrl"]?.TrimEnd('/') ?? string.Empty;
+            var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
+
+            // Fire and forget — don't expose email errors to the user
+            _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
+        }
+
+        TempData["Success"] = "If that email is registered, a reset link has been sent. Check your inbox.";
+        return RedirectToAction(nameof(Login));
+    }
+
+    // GET: /Account/ResetPassword
+    [HttpGet]
+    public async Task<IActionResult> ResetPassword(string? token, string? email)
+    {
+        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(email))
+            return RedirectToAction(nameof(Login));
+
+        var user = await _context.PortalUsers
+            .FirstOrDefaultAsync(u => u.Email == email
+                && u.PasswordResetToken == token
+                && u.PasswordResetTokenExpiry > DateTime.UtcNow);
+
+        if (user == null)
+        {
+            TempData["Error"] = "This password reset link is invalid or has expired.";
+            return RedirectToAction(nameof(ForgotPassword));
+        }
+
+        return View(new ResetPasswordViewModel { Token = token, Email = email });
+    }
+
+    // POST: /Account/ResetPassword
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
+    {
+        if (!ModelState.IsValid) return View(model);
+
+        var user = await _context.PortalUsers
+            .FirstOrDefaultAsync(u => u.Email == model.Email
+                && u.PasswordResetToken == model.Token
+                && u.PasswordResetTokenExpiry > DateTime.UtcNow);
+
+        if (user == null)
+        {
+            TempData["Error"] = "This password reset link is invalid or has expired.";
+            return RedirectToAction(nameof(ForgotPassword));
+        }
+
+        user.PasswordHash = PasswordService.HashPassword(model.Password);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiry = null;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Your password has been reset. You can now sign in with your new password.";
+        return RedirectToAction(nameof(Login));
     }
 }

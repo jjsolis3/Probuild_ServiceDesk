@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Filters;
 using ServiceDesk.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllersWithViews();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
+
+builder.Services.AddScoped<BrandingFilter>();
+builder.Services.AddControllersWithViews(options =>
+    options.Filters.AddService<BrandingFilter>());
 
 // Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
@@ -23,7 +29,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.SlidingExpiration = true;
         options.Cookie.Name = "ServiceSphere.Auth";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     });
 
 builder.Services.AddAuthorization(options =>

@@ -161,6 +161,36 @@ public static class DbInitializer
                     CREATE INDEX IX_KbArticles_Published_Category
                         ON dbo.KbArticles (IsPublished, Category);
                 END");
+
+            // 9. Add PasswordResetToken columns to PortalUsers (Forgot Password support)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PasswordResetToken'
+                )
+                BEGIN
+                    ALTER TABLE dbo.PortalUsers
+                        ADD PasswordResetToken NVARCHAR(200) NULL,
+                            PasswordResetTokenExpiry DATETIME2 NULL;
+                END");
+
+            // 10. Seed additional Company Branding AppSettings keys if not present
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CompanyLogoUrl', '', 'Branding', 'URL to your company logo (shown in the portal). Can be an external URL or a path like /images/company-logo.png');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyPhone')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CompanyPhone', '', 'Branding', 'Company phone number displayed in portal footer');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyWebsite')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CompanyWebsite', '', 'Branding', 'Company website URL displayed in portal footer');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyAddress')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CompanyAddress', '', 'Branding', 'Company mailing address displayed in portal footer');");
         }
         catch (Exception ex)
         {

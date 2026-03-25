@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
@@ -162,5 +163,16 @@ public class HomeController : Controller
 
         if (data == null) return NotFound();
         return Json(data);
+    }
+
+    // Error handler — called by UseExceptionHandler in production
+    [AllowAnonymous]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult Error()
+    {
+        var feature = HttpContext.Features.Get<IExceptionHandlerPathFeature>();
+        ViewBag.RequestId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        ViewBag.ErrorPath = feature?.Path;
+        return View();
     }
 }

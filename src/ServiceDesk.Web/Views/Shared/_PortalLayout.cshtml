@@ -1,9 +1,15 @@
+@{
+    var companyName    = ViewBag.CompanyName    as string ?? "Your Company";
+    var companyLogoUrl = ViewBag.CompanyLogoUrl as string ?? string.Empty;
+    var companyPhone   = ViewBag.CompanyPhone   as string ?? string.Empty;
+    var companyWebsite = ViewBag.CompanyWebsite as string ?? string.Empty;
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - ServiceSphere Support</title>
+    <title>@ViewData["Title"] - @companyName Support</title>
     <link rel="shortcut icon" type="image/png" href="~/images/logo-sm.png" />
     <link rel="stylesheet" href="~/jobick/css/style.css" />
     <link rel="stylesheet" href="~/css/servicesphere.css" />
@@ -15,11 +21,15 @@
 <nav class="navbar navbar-expand-lg bg-white shadow-sm border-bottom sticky-top">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/Portal">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 54 54">
-                <circle cx="27" cy="27" r="27" fill="#2f4cdd"/>
-                <text x="27" y="33" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="18" font-weight="bold">SS</text>
-            </svg>
-            ServiceSphere
+            @if (!string.IsNullOrEmpty(companyLogoUrl))
+            {
+                <img src="@companyLogoUrl" alt="@companyName" style="height:32px;object-fit:contain;" />
+            }
+            else
+            {
+                <img src="~/images/logo-sm.png" alt="@companyName" style="height:32px;object-fit:contain;" />
+            }
+            @companyName
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#portalNav">
             <span class="navbar-toggler-icon"></span>
@@ -94,7 +104,19 @@
 
 <footer class="border-top bg-white py-3 mt-5">
     <div class="container text-center text-muted small">
-        ServiceSphere &copy; @DateTime.Now.Year &mdash; Powered by ProbuildIQ
+        @companyName IT Support &copy; @DateTime.Now.Year
+        @if (!string.IsNullOrEmpty(companyPhone))
+        {
+            <span class="mx-2">&mdash;</span>
+            <i class="bi bi-telephone me-1"></i>@companyPhone
+        }
+        @if (!string.IsNullOrEmpty(companyWebsite))
+        {
+            <span class="mx-2">&mdash;</span>
+            <a href="@companyWebsite" target="_blank" rel="noopener" class="text-muted">@companyWebsite</a>
+        }
+        <span class="mx-2">&mdash;</span>
+        <span class="opacity-50">Powered by ServiceSphere</span>
     </div>
 </footer>
 

@@ -271,6 +271,50 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends a password reset link to the user's email address.
+    /// </summary>
+    public async Task SendPasswordResetEmail(string recipientEmail, string recipientName, string resetUrl)
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+        {
+            _logger.LogWarning("No active email configuration — cannot send password reset to {Email}", recipientEmail);
+            return;
+        }
+
+        var subject = "Reset Your ServiceSphere Password";
+        var htmlBody = BuildHtmlEmail($@"
+            <h3>Password Reset Request</h3>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
+            <p>We received a request to reset the password for your ServiceSphere account.</p>
+            <p style='margin: 24px 0;'>
+                <a href='{resetUrl}'
+                   style='background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px;
+                          text-decoration: none; font-weight: 600; display: inline-block;'>
+                    Reset My Password
+                </a>
+            </p>
+            <p style='color: #6b7280; font-size: 13px;'>
+                This link expires in <strong>1 hour</strong>. If you did not request a password reset,
+                you can safely ignore this email — your password will not change.
+            </p>
+            <p style='color: #6b7280; font-size: 12px;'>
+                If the button above doesn't work, copy and paste this URL into your browser:<br/>
+                <a href='{resetUrl}' style='color: #4f46e5;'>{resetUrl}</a>
+            </p>");
+
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
+            _logger.LogInformation("Sent password reset email to {Email}", recipientEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send password reset email to {Email}", recipientEmail);
+        }
+    }
+
+    /// <summary>
     /// Builds a branded HTML email template.
     /// </summary>
     private static string BuildHtmlEmail(string innerContent)

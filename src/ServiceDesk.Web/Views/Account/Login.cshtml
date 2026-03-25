@@ -8,10 +8,7 @@
     <div class="card-body p-4 p-sm-5">
         <!-- Branding -->
         <div class="text-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 54 54" class="mb-3">
-                <circle cx="27" cy="27" r="27" fill="#2f4cdd"/>
-                <text x="27" y="33" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="20" font-weight="bold">SS</text>
-            </svg>
+            <img src="~/images/logo.png" alt="ServiceSphere" class="mb-3" style="max-height:56px;object-fit:contain;" />
             <h4 class="fw-bold mb-0">ServiceSphere</h4>
             <p class="text-muted small">IT Service Desk Portal</p>
         </div>
@@ -43,6 +40,7 @@
             <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <label asp-for="Password" class="form-label fw-semibold mb-0">Password</label>
+                    <a asp-action="ForgotPassword" class="text-muted small">Forgot password?</a>
                 </div>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0">
