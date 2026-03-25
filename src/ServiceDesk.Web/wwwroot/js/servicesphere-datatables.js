@@ -2,7 +2,64 @@
  * ServiceSphere DataTables - Global Initialization
  * Automatically initializes DataTables on tables with class "ss-datatable"
  * Provides: Pagination, Search, Column Sorting, PDF/Excel Export
+ *
+ * window.load timing note:
+ *   Jobick's custom.min.js fires handleSelectPicker() on $(window).on('load'),
+ *   which wraps .dataTables_wrapper select with bootstrap-select.
+ *   Since our script loads after Jobick, our window.load handler fires after
+ *   Jobick's — letting us destroy that wrapper and restore a clean native select.
+ *   We also use window.load to initialize liveSearch on form selects.
  */
+
+$(window).on('load', function () {
+
+    // --- Fix DataTables length select ---
+    // Jobick's handleSelectPicker wraps .dataTables_wrapper select with
+    // bootstrap-select. Destroy it and restore a proper native select.
+    $('.dataTables_wrapper .dataTables_length select').each(function () {
+        var $sel = $(this);
+        if ($.fn.selectpicker && $sel.data('selectpicker')) {
+            $sel.selectpicker('destroy');
+        }
+        // Remove any leftover display:none the selectpicker may have set
+        $sel.show()
+            .css({
+                display: 'inline-block',
+                visibility: 'visible',
+                opacity: '1',
+                color: '#374151',
+                width: 'auto'
+            });
+    });
+
+    // --- Searchable form selects (live-search) ---
+    // Auto-apply bootstrap-select with liveSearch to any .form-select
+    // that has more than 7 options, except filter-bar and DataTables selects.
+    $('select.form-select').each(function () {
+        var $sel = $(this);
+        // Skip filter bar selects (they use onchange submit — keep native)
+        if ($sel.closest('.filter-bar').length > 0) return;
+        // Skip DataTables wrappers (handled above)
+        if ($sel.closest('.dataTables_wrapper').length > 0) return;
+        // Skip if already initialized
+        if ($sel.data('selectpicker')) return;
+        // Only enhance selects with enough options to benefit from search
+        if ($sel.find('option').length <= 7) return;
+
+        $sel.selectpicker({
+            liveSearch: true,
+            liveSearchPlaceholder: 'Type to search...',
+            size: 8,
+            width: '100%',
+            style: '',          // remove default btn-light class
+            styleBase: 'btn'    // just .btn, we style via .ss-form-select
+        });
+
+        // Tag the wrapper so our CSS (.ss-form-select) applies
+        $sel.closest('.bootstrap-select').addClass('ss-form-select');
+    });
+});
+
 $(document).ready(function () {
 
     // ---- Full DataTable (pagination, search, sort, export) ----
@@ -88,19 +145,13 @@ $(document).ready(function () {
                 }
             },
 
-            // After init: destroy any bootstrap-select that grabbed the length <select>
-            // and re-apply clean styling so the number is always visible
+            // initComplete: basic class application at init time.
+            // The actual bootstrap-select cleanup happens in the window.load
+            // handler above (which fires after Jobick's handleSelectPicker).
             initComplete: function () {
                 var wrapper = this.api().table().container();
                 var $lengthSelect = $(wrapper).find('.dataTables_length select');
-                // If bootstrap-select converted it, destroy and restore native select
-                if ($lengthSelect.data('selectpicker')) {
-                    $lengthSelect.selectpicker('destroy');
-                }
-                // Ensure the select has correct Bootstrap classes for visibility
-                $lengthSelect
-                    .addClass('form-select form-select-sm')
-                    .css({ width: 'auto', display: 'inline-block', color: '#374151' });
+                $lengthSelect.css({ width: 'auto', color: '#374151' });
             }
         });
     });

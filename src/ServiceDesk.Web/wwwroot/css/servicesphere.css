@@ -88,10 +88,10 @@
    ===================================================================== */
 
 /* --- Length ("Show N entries") select --- */
-/* Jobick makes native <select> text invisible expecting bootstrap-select
-   to replace it. DataTables creates its length select dynamically after
-   bootstrap-select has already run, so it's never replaced. Fix: force
-   the select to be visible and match the design system. */
+/* Jobick's window.load handler wraps .dataTables_wrapper select with
+   bootstrap-select. Our window.load JS (servicesphere-datatables.js)
+   runs after Jobick's and destroys it, then applies .form-select class.
+   These rules ensure the restored native select looks correct. */
 .dataTables_wrapper .dataTables_length select {
     display: inline-block !important;
     visibility: visible !important;
@@ -100,16 +100,24 @@
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
     border-radius: 0.375rem !important;
-    padding: 0.3rem 2rem 0.3rem 0.65rem !important;
     font-size: 0.875rem !important;
     line-height: 1.5 !important;
     min-width: 70px;
     width: auto !important;
-    /* Restore native OS arrow that Jobick hides */
-    -webkit-appearance: auto !important;
-    -moz-appearance: auto !important;
-    appearance: auto !important;
-    background-image: none !important;
+    padding: 0.25rem 2rem 0.25rem 0.5rem !important;
+    /* Bootstrap form-select arrow via background-image, no native arrow */
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.5rem center !important;
+    background-size: 14px 10px !important;
+}
+
+/* Hide the bootstrap-select wrapper if Jobick's handler fires before ours */
+.dataTables_wrapper .dataTables_length .bootstrap-select {
+    display: none !important;
 }
 
 .dataTables_wrapper .dataTables_length {
@@ -153,14 +161,14 @@
     align-items: center;
     gap: 0.35rem;
     font-size: 0.8125rem;
-    /* Prevent them from stretching full width in the col */
     width: auto !important;
     flex: 0 0 auto;
 }
 
 /* --- Pagination --- */
-/* Jobick applies border-radius:100% to .page-link, making prev/next
-   arrows appear as unfilled circles. Override specifically for DataTables. */
+/* Fix: override CSS variable and all corner radii individually to prevent
+   Jobick/DataTables circle styling. Also remove the fixed height/width
+   square-box constraint which amplifies the rounding effect. */
 .dataTables_wrapper .dataTables_paginate {
     padding-top: 0.5rem;
 }
@@ -170,46 +178,62 @@
     flex-wrap: wrap;
     gap: 4px;
     margin-bottom: 0;
+    /* Override Jobick's --bs-border-radius (0.75rem) used by first/last items */
+    --bs-pagination-border-radius: 0.375rem;
+    --bs-pagination-active-bg: var(--ss-primary);
+    --bs-pagination-active-border-color: var(--ss-primary);
+    --bs-pagination-color: #374151;
+    --bs-pagination-hover-color: var(--ss-primary);
 }
 
-.dataTables_wrapper .dataTables_paginate .page-item .page-link {
-    border-radius: 8px !important;    /* Override Jobick's 100% (circle) */
-    min-width: 36px;
-    height: 36px;
-    padding: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+/* Target every possible pagination anchor selector DataTables might generate */
+.dataTables_wrapper .dataTables_paginate .pagination .page-item > .page-link,
+.dataTables_wrapper .dataTables_paginate .pagination .paginate_button > a,
+.dataTables_wrapper .dataTables_paginate .pagination > li > a {
+    border-radius: 0.375rem !important;
+    border-top-left-radius: 0.375rem !important;
+    border-top-right-radius: 0.375rem !important;
+    border-bottom-left-radius: 0.375rem !important;
+    border-bottom-right-radius: 0.375rem !important;
+    /* Natural sizing — no forced square box (squares + border-radius = circles) */
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    padding: 0.375rem 0.65rem !important;
+    display: inline-block !important;
+    line-height: 1.5 !important;
     border: 1px solid #dee2e6 !important;
     color: #374151 !important;
     background-color: #ffffff !important;
     font-size: 0.875rem;
-    line-height: 1;
     box-shadow: none !important;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.dataTables_wrapper .dataTables_paginate .page-item.active .page-link {
+.dataTables_wrapper .dataTables_paginate .pagination .page-item.active > .page-link,
+.dataTables_wrapper .dataTables_paginate .pagination .paginate_button.current > a {
     background-color: var(--ss-primary) !important;
     border-color: var(--ss-primary) !important;
     color: #ffffff !important;
     font-weight: 600;
 }
 
-.dataTables_wrapper .dataTables_paginate .page-item.disabled .page-link {
+.dataTables_wrapper .dataTables_paginate .pagination .page-item.disabled > .page-link,
+.dataTables_wrapper .dataTables_paginate .pagination .paginate_button.disabled > a {
     color: #9ca3af !important;
     background-color: #f9fafb !important;
     border-color: #e5e7eb !important;
     cursor: not-allowed;
+    pointer-events: none;
 }
 
-.dataTables_wrapper .dataTables_paginate .page-item .page-link:hover:not(.disabled) {
+.dataTables_wrapper .dataTables_paginate .pagination .page-item:not(.disabled):not(.active) > .page-link:hover {
     background-color: rgba(var(--ss-primary-rgb), 0.08) !important;
     border-color: var(--ss-primary) !important;
     color: var(--ss-primary) !important;
 }
 
-/* DataTables sort icons - use neutral color */
+/* DataTables sort icons */
 table.dataTable thead .sorting::before,
 table.dataTable thead .sorting::after,
 table.dataTable thead .sorting_asc::before,
@@ -226,36 +250,103 @@ table.dataTable thead .sorting_desc::after {
 }
 
 /* --- Filter Bar selects (Status/Category/Priority dropdowns) --- */
-/* Ensure filter bar <select> elements show correctly with Jobick theme */
+/* Bootstrap's .form-select provides a single SVG chevron via background-image
+   and hides the native arrow with appearance:none. We only override colors.
+   Do NOT set appearance:auto here — that would show a second native arrow. */
 .filter-bar select.form-select {
     color: #374151 !important;
     background-color: #ffffff !important;
     border-color: #d1d5db !important;
-    -webkit-appearance: auto !important;
-    -moz-appearance: auto !important;
-    appearance: auto !important;
 }
 
-/* If bootstrap-select already transformed them, fix the button appearance */
+.filter-bar select.form-select:focus {
+    border-color: var(--ss-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--ss-primary-rgb), 0.25) !important;
+}
+
+/* Style bootstrap-select generated buttons in the filter bar
+   (if filter selects are ever wrapped by bootstrap-select) */
 .filter-bar .bootstrap-select > .btn {
     border: 1px solid #d1d5db !important;
     background-color: #ffffff !important;
     color: #374151 !important;
     border-radius: 0.375rem !important;
-    font-size: 0.875rem;
-    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem !important;
+    padding: 0.375rem 0.75rem !important;
+    box-shadow: none !important;
+    min-width: 130px;
+    text-align: left;
+    /* Prevent Jobick primary (red) bleeding through */
+    background-image: none !important;
 }
 
-.filter-bar .bootstrap-select > .btn:focus {
-    outline: none !important;
-    box-shadow: 0 0 0 0.2rem rgba(var(--ss-primary-rgb), 0.25) !important;
+.filter-bar .bootstrap-select > .btn::after {
+    /* Keep bootstrap-select's caret but remove double-caret */
+    margin-left: 0.5rem;
+}
+
+.filter-bar .bootstrap-select > .btn:hover,
+.filter-bar .bootstrap-select > .btn:active,
+.filter-bar .bootstrap-select.show > .btn {
+    background-color: #f9fafb !important;
     border-color: var(--ss-primary) !important;
+    color: #374151 !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--ss-primary-rgb), 0.2) !important;
 }
 
 .filter-bar .bootstrap-select .dropdown-item.active,
 .filter-bar .bootstrap-select .dropdown-item:active {
     background-color: var(--ss-primary) !important;
     color: #fff !important;
+}
+
+/* --- Form selects enhanced with bootstrap-select liveSearch (ss-form-select) --- */
+/* Applied by our JS window.load initializer to selects with many options */
+.ss-form-select > .btn {
+    border: 1px solid #dee2e6 !important;
+    background-color: #ffffff !important;
+    color: #374151 !important;
+    border-radius: var(--bs-border-radius) !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+    padding: 0.375rem 2.25rem 0.375rem 0.75rem !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.75rem center !important;
+    background-size: 16px 12px !important;
+}
+
+.ss-form-select > .btn::after {
+    display: none !important; /* Hide bootstrap-select caret — we use background-image */
+}
+
+.ss-form-select > .btn:hover,
+.ss-form-select > .btn:focus,
+.ss-form-select.show > .btn {
+    border-color: var(--ss-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--ss-primary-rgb), 0.25) !important;
+    background-color: #ffffff !important;
+    color: #374151 !important;
+}
+
+.ss-form-select .dropdown-item.active,
+.ss-form-select .dropdown-item:active {
+    background-color: var(--ss-primary) !important;
+    color: #fff !important;
+}
+
+/* Live-search input inside bootstrap-select dropdown */
+.ss-form-select .bs-searchbox input.form-control {
+    font-size: 0.875rem !important;
+    border-color: #d1d5db !important;
+}
+
+.ss-form-select .bs-searchbox input.form-control:focus {
+    border-color: var(--ss-primary) !important;
+    box-shadow: 0 0 0 0.15rem rgba(var(--ss-primary-rgb), 0.2) !important;
 }
 
 /* ----- Filter Bar ----- */
