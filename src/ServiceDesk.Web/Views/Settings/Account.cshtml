@@ -21,18 +21,18 @@
     </div>
 </div>
 
-@if (TempData["SuccessMessage"] != null)
+@if (TempData["Success"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <i class="bi bi-check-circle me-2"></i> @TempData["SuccessMessage"]
+        <i class="bi bi-check-circle me-2"></i> @TempData["Success"]
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }
 
-@if (TempData["ErrorMessage"] != null)
+@if (TempData["Error"] != null)
 {
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["ErrorMessage"]
+        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }
@@ -51,38 +51,36 @@
                     <div class="card-body">
                         @foreach (var setting in group)
                         {
-                            <input type="hidden" name="keys" value="@setting.Key" />
                             <div class="mb-3">
-                                <label class="form-label fw-semibold">
+                                <label class="form-label fw-semibold" for="setting_@setting.Key">
                                     @FormatKey(setting.Key)
                                 </label>
 
                                 @if (booleanKeys.Contains(setting.Key))
                                 {
-                                    <!-- Toggle / Checkbox -->
+                                    <!-- Hidden "false" ensures unchecked checkbox still submits a value -->
+                                    <input type="hidden" name="@setting.Key" value="false" />
                                     <div class="form-check form-switch">
                                         <input type="checkbox"
                                                class="form-check-input"
-                                               name="values"
+                                               name="@setting.Key"
                                                value="true"
                                                id="setting_@setting.Key"
-                                               checked="@(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)" />
+                                               @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "checked" : "") />
                                         <label class="form-check-label" for="setting_@setting.Key">
                                             @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "Enabled" : "Disabled")
                                         </label>
                                     </div>
-                                    <!-- Hidden field to ensure unchecked sends "false" -->
-                                    <input type="hidden" name="boolKeys" value="@setting.Key" />
                                 }
                                 else if (dropdownKeys.Contains(setting.Key) && employees != null)
                                 {
                                     <!-- Dropdown for DefaultAssigneeId -->
-                                    <select name="values" class="form-select" id="setting_@setting.Key">
+                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key">
                                         <option value="">-- No Default Assignee --</option>
                                         @foreach (var emp in employees)
                                         {
                                             <option value="@emp.Id"
-                                                    selected="@(setting.Value == emp.Id.ToString())">
+                                                    @(setting.Value == emp.Id.ToString() ? "selected" : "")>
                                                 @emp.FullName (@emp.Department)
                                             </option>
                                         }
@@ -93,7 +91,7 @@
                                     <!-- Standard text input -->
                                     <input type="text"
                                            class="form-control"
-                                           name="values"
+                                           name="@setting.Key"
                                            value="@setting.Value"
                                            id="setting_@setting.Key" />
                                 }

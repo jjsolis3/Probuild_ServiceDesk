@@ -118,7 +118,26 @@ public static class DbInitializer
                         ON dbo.TicketHistory (TicketId, ChangedDate);
                 END");
 
-            // 7. Create KbArticles table (Knowledge Base)
+            // 7. Add SmtpUsername / SmtpPassword to EmailConfigurations (SMTP App Password support)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.EmailConfigurations') AND name = 'SmtpUsername'
+                )
+                BEGIN
+                    ALTER TABLE dbo.EmailConfigurations ADD SmtpUsername NVARCHAR(200) NULL;
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.EmailConfigurations') AND name = 'SmtpPassword'
+                )
+                BEGIN
+                    ALTER TABLE dbo.EmailConfigurations ADD SmtpPassword NVARCHAR(500) NULL;
+                END");
+
+            // 8. Create KbArticles table (Knowledge Base)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'KbArticles')
                 BEGIN

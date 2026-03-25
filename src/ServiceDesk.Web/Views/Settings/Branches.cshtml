@@ -53,9 +53,13 @@
                         <a asp-action="EditBranch" asp-route-id="@branch.Id" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>
                         </a>
-                        <a asp-action="DeleteBranch" asp-route-id="@branch.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
+                        <form asp-action="DeleteBranch" asp-route-id="@branch.Id" method="post" class="d-inline"
+                              onsubmit="return confirm('Delete branch \'@branch.Name\'? This cannot be undone.')">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
             }

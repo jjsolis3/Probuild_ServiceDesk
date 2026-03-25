@@ -35,16 +35,14 @@
         }
 
         <!-- How it works callout -->
-        <div class="card mb-4 border-start border-primary border-4">
-            <div class="card-body py-3">
-                <h6 class="fw-bold mb-2"><i class="fas fa-info-circle text-primary me-2"></i>How Assignment Rules Work</h6>
-                <ol class="mb-0 small">
-                    <li class="mb-1">When an email arrives, the system scans the subject &amp; body for keywords to detect the <strong>category</strong> (Hardware, Software, Network, Security, etc.).</li>
-                    <li class="mb-1">The submitter's <strong>branch/location</strong> is looked up from their Employee record.</li>
-                    <li class="mb-1">Rules are tested in <strong>priority order</strong>. The first active rule whose Category and Branch match the ticket wins.</li>
-                    <li class="mb-1">Leave Category or Branch blank in a rule to match <em>any</em> value — useful for catch-all rules.</li>
-                    <li>If no rule matches, the ticket is assigned to the <strong>Default Assignee</strong> set on the email configuration.</li>
-                </ol>
+        <div class="alert alert-info d-flex align-items-start py-2 mb-3" role="alert">
+            <i class="fas fa-info-circle me-2 mt-1 flex-shrink-0"></i>
+            <div class="small">
+                <strong>How it works:</strong>
+                Rules are tested in <strong>priority order</strong> — first match wins.
+                Category is detected from email keywords; Branch is pulled from the submitter's Employee record.
+                Leave either blank to match <em>any</em> value.
+                If no rule matches, the ticket goes to the <strong>Default Assignee</strong> on the email configuration.
             </div>
         </div>
 

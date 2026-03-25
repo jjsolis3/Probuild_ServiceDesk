@@ -38,16 +38,21 @@ public class SettingsController : Controller
     }
 
     // POST: Settings/Account
+    // Form sends each setting as name="[SettingKey]" so we read directly from IFormCollection.
+    // Boolean toggles use a hidden name="[Key]" value="false" + checkbox value="true" pattern.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Account(Dictionary<string, string> settings)
+    public async Task<IActionResult> Account(IFormCollection form)
     {
-        foreach (var kvp in settings)
+        var settings = await _context.AppSettings.ToListAsync();
+        foreach (var setting in settings)
         {
-            var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == kvp.Key);
-            if (setting != null)
+            if (form.ContainsKey(setting.Key))
             {
-                setting.Value = kvp.Value;
+                // For booleans the form may send ["false","true"] when checked —
+                // take "true" if present, otherwise "false".
+                var values = form[setting.Key];
+                setting.Value = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
             }
         }
         await _context.SaveChangesAsync();
@@ -609,6 +614,9 @@ public class SettingsController : Controller
             existing.SmtpServer = config.SmtpServer;
             existing.SmtpPort = config.SmtpPort;
             existing.UseSsl = config.UseSsl;
+            existing.SmtpUsername = config.SmtpUsername;
+            if (!string.IsNullOrWhiteSpace(config.SmtpPassword))
+                existing.SmtpPassword = config.SmtpPassword;
             existing.PollIntervalMinutes = config.PollIntervalMinutes;
             existing.CreateTicketsFromEmails = config.CreateTicketsFromEmails;
             existing.AutoReplyOnNewTicket = config.AutoReplyOnNewTicket;
