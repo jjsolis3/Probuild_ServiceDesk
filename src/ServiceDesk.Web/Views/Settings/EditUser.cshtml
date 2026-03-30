@@ -46,7 +46,7 @@
                         {
                             foreach (var role in (IEnumerable<Role>)ViewBag.Roles)
                             {
-                                <option value="@role.Id" selected="@(Model.RoleId == role.Id)">@role.Name</option>
+                                <option value="@role.Id">@role.Name</option>
                             }
                         }
                     </select>
@@ -60,7 +60,7 @@
                         {
                             foreach (var employee in (IEnumerable<Employee>)ViewBag.Employees)
                             {
-                                <option value="@employee.Id" selected="@(Model.EmployeeId == employee.Id)">@employee.FullName</option>
+                                <option value="@employee.Id">@employee.FullName</option>
                             }
                         }
                     </select>

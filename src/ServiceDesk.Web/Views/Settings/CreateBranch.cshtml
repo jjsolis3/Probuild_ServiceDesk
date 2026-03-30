@@ -55,7 +55,7 @@
 
             <div class="mb-3">
                 <label asp-for="SiteManagerId" class="form-label"></label>
-                <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees, "Id", "FullName"))">
+                <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees ?? Enumerable.Empty<object>(), "Id", "FullName"))">
                     <option value="">-- Select Site Manager --</option>
                 </select>
                 <span asp-validation-for="SiteManagerId" class="text-danger"></span>

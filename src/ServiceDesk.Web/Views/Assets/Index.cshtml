@@ -19,7 +19,8 @@
                 <option value="">All Types</option>
                 @foreach (var t in Enum.GetValues<AssetType>())
                 {
-                    <option value="@t" selected="@(ViewBag.CurrentType != null && (AssetType)ViewBag.CurrentType == t)">@t</option>
+                    @{ var assetTypeSel = ViewBag.CurrentType != null && (AssetType)ViewBag.CurrentType == t; }
+                    <option value="@t" selected="@(assetTypeSel ? "selected" : null)">@t</option>
                 }
             </select>
         </div>
@@ -29,7 +30,8 @@
                 <option value="">All Statuses</option>
                 @foreach (var s in Enum.GetValues<AssetStatus>())
                 {
-                    <option value="@s" selected="@(ViewBag.CurrentStatus != null && (AssetStatus)ViewBag.CurrentStatus == s)">@s</option>
+                    @{ var assetStatusSel = ViewBag.CurrentStatus != null && (AssetStatus)ViewBag.CurrentStatus == s; }
+                    <option value="@s" selected="@(assetStatusSel ? "selected" : null)">@s</option>
                 }
             </select>
         </div>
