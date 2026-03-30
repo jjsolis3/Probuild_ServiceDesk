@@ -19,6 +19,10 @@ public class Ticket
     [Display(Name = "Category")]
     public TicketCategory Category { get; set; }
 
+    [Display(Name = "Sub-Category")]
+    public int? SubCategoryId { get; set; }
+    public TicketSubCategory? SubCategory { get; set; }
+
     [Required]
     [Display(Name = "Status")]
     public TicketStatus Status { get; set; } = TicketStatus.Open;

@@ -43,6 +43,9 @@ public class ServiceDeskDbContext : DbContext
     // Agent productivity
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
 
+    // Ticket categorisation
+    public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -225,5 +228,16 @@ public class ServiceDeskDbContext : DbContext
         // Index for KB search by category + published status
         modelBuilder.Entity<KbArticle>()
             .HasIndex(k => new { k.IsPublished, k.Category });
+
+        // Ticket -> SubCategory (optional)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.SubCategory)
+            .WithMany()
+            .HasForeignKey(t => t.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index on SubCategory for fast lookup by parent category
+        modelBuilder.Entity<TicketSubCategory>()
+            .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });
     }
 }

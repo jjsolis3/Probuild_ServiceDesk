@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
 
@@ -913,5 +914,83 @@ public class SettingsController : Controller
             TempData["Success"] = "Canned response deleted.";
         }
         return RedirectToAction(nameof(CannedResponses));
+    }
+
+    // ==================== CATEGORIES & SUB-CATEGORIES ====================
+
+    public async Task<IActionResult> Categories()
+    {
+        var subCategories = await _context.TicketSubCategories
+            .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
+            .ToListAsync();
+        return View(subCategories);
+    }
+
+    public IActionResult CreateSubCategory(TicketCategory? category)
+    {
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        var model = new TicketSubCategory { Category = category ?? TicketCategory.Other };
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateSubCategory(TicketSubCategory model)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.TicketSubCategories.Add(model);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category created.";
+            return RedirectToAction(nameof(Categories));
+        }
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(model);
+    }
+
+    public async Task<IActionResult> EditSubCategory(int id)
+    {
+        var subCat = await _context.TicketSubCategories.FindAsync(id);
+        if (subCat == null) return NotFound();
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(subCat);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditSubCategory(int id, TicketSubCategory model)
+    {
+        if (id != model.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.TicketSubCategories.Update(model);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category updated.";
+            return RedirectToAction(nameof(Categories));
+        }
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteSubCategory(int id)
+    {
+        var subCat = await _context.TicketSubCategories.FindAsync(id);
+        if (subCat != null)
+        {
+            _context.TicketSubCategories.Remove(subCat);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category deleted.";
+        }
+        return RedirectToAction(nameof(Categories));
     }
 }

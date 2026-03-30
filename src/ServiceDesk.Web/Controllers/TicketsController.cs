@@ -99,6 +99,7 @@ public class TicketsController : Controller
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
+            .Include(t => t.SubCategory)
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
@@ -329,6 +330,18 @@ public class TicketsController : Controller
 
         TempData["Success"] = $"{tickets.Count} ticket(s) updated.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
+    [HttpGet]
+    public async Task<IActionResult> SubCategories(TicketCategory category)
+    {
+        var items = await _context.TicketSubCategories
+            .Where(s => s.Category == category && s.IsActive)
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name })
+            .ToListAsync();
+        return Json(items);
     }
 
     // GET: Tickets/CannedResponses — returns active templates as JSON for the reply box

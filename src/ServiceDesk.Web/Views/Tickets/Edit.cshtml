@@ -55,7 +55,23 @@
             <!-- Category -->
             <div class="ticket-header-field">
                 <label class="ticket-header-label">Category</label>
-                <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select form-select-sm ticket-header-select"></select>
+                <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
+            </div>
+
+            <!-- Sub-Category -->
+            <div class="ticket-header-field" id="subCategoryField">
+                <label class="ticket-header-label">Sub-Category</label>
+                <select name="SubCategoryId" id="subCategorySelect" class="form-select form-select-sm ticket-header-select">
+                    <option value="">— None —</option>
+                </select>
+            </div>
+
+            <!-- Submitted By -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Submitted By</label>
+                <select asp-for="SubmittedById" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.Employees">
+                    <option value="">— Select —</option>
+                </select>
             </div>
 
             <!-- Actions right side -->
@@ -78,15 +94,16 @@
 
         <!-- Ticket Subject & Meta -->
         <div class="mb-4 pb-3 border-bottom">
-            <!-- Avatar + Requester row -->
-            <div class="d-flex align-items-center gap-2 mb-2">
+            <!-- Requester row (shown from selected SubmittedById; editable via header bar dropdown) -->
+            <div class="d-flex align-items-center gap-2 mb-2" id="requesterDisplay">
                 <div class="ticket-avatar rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
-                     style="width:40px;height:40px;font-size:1rem;flex-shrink:0;">
+                     style="width:40px;height:40px;font-size:1rem;flex-shrink:0;" id="requesterInitials">
                     @(Model.SubmittedBy?.FirstName?.Substring(0,1).ToUpper() ?? "?")@(Model.SubmittedBy?.LastName?.Substring(0,1).ToUpper() ?? "")
                 </div>
                 <div>
-                    <div class="fw-semibold">@(Model.SubmittedBy?.FullName ?? "Unknown")</div>
-                    <div class="text-muted small">@(Model.SubmittedBy?.JobTitle ?? "")</div>
+                    <div class="fw-semibold" id="requesterName">@(Model.SubmittedBy?.FullName ?? "Unknown")</div>
+                    <div class="text-muted small" id="requesterTitle">@(Model.SubmittedBy?.JobTitle ?? "")</div>
+                    <div class="text-muted small"><i class="bi bi-pencil-square me-1"></i><span class="fst-italic">Change via "Submitted By" above</span></div>
                 </div>
             </div>
 
@@ -539,6 +556,38 @@
     const priorityColors = { low: 'low', medium: 'medium', high: 'high', critical: 'critical' };
     applySelectColor(statusSelect, statusColors);
     applySelectColor(prioritySelect, priorityColors);
+
+    // --- Sub-category AJAX loader ---
+    (function () {
+        const catSel = document.getElementById('categorySelect');
+        const subSel = document.getElementById('subCategorySelect');
+        if (!catSel || !subSel) return;
+
+        const currentSubId = @(Model.SubCategoryId.HasValue ? Model.SubCategoryId.Value.ToString() : "null");
+
+        function loadSubCategories(category, selectId) {
+            subSel.innerHTML = '<option value="">— None —</option>';
+            if (!category) return;
+            fetch(`/Tickets/SubCategories?category=${encodeURIComponent(category)}`)
+                .then(r => r.json())
+                .then(items => {
+                    items.forEach(function (item) {
+                        const opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = item.name;
+                        if (selectId && item.id === selectId) opt.selected = true;
+                        subSel.appendChild(opt);
+                    });
+                });
+        }
+
+        // Load on page init for current category
+        loadSubCategories(catSel.value, currentSubId);
+
+        catSel.addEventListener('change', function () {
+            loadSubCategories(this.value, null);
+        });
+    })();
 
     // --- Internal toggle label ---
     const internalToggle = document.getElementById('internalToggle');

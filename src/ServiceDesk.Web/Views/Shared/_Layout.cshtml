@@ -202,21 +202,11 @@
                     {
                         <li class="menu-title"><span>Administration</span></li>
                         <li class="@NavClass("Settings")">
-                            <a class="has-arrow" href="javascript:void(0);" aria-expanded="@(currentController == "Settings" ? "true" : "false")">
+                            <a asp-controller="Settings" asp-action="Index">
                                 <i class="fas fa-sliders-h"></i>
                                 <span class="nav-text">Settings</span>
                             </a>
-                            <ul aria-expanded="@(currentController == "Settings" ? "true" : "false")">
-                                <li class="@NavClass("Settings","Index")"><a asp-controller="Settings" asp-action="Index">Overview</a></li>
-                                <li class="@NavClass("Settings","Account")"><a asp-controller="Settings" asp-action="Account">Account</a></li>
-                                <li class="@NavClass("Settings","Roles")"><a asp-controller="Settings" asp-action="Roles">Roles &amp; Permissions</a></li>
-                                <li class="@NavClass("Settings","Branches")"><a asp-controller="Settings" asp-action="Branches">Branches &amp; Sites</a></li>
-                                <li class="@NavClass("Settings","TicketStates")"><a asp-controller="Settings" asp-action="TicketStates">Ticket States</a></li>
-                                <li class="@NavClass("Settings","ResolutionCodes")"><a asp-controller="Settings" asp-action="ResolutionCodes">Resolution Codes</a></li>
-                                <li class="@NavClass("Settings","Users")"><a asp-controller="Settings" asp-action="Users">Users &amp; Groups</a></li>
-                                <li class="@NavClass("Settings","EmailIntegration")"><a asp-controller="Settings" asp-action="EmailIntegration">Email Integration</a></li>
-                                <li class="@NavClass("Settings","AssignmentRules")"><a asp-controller="Settings" asp-action="AssignmentRules">Assignment Rules</a></li>
-                            </ul>
+                        </li>
                         </li>
                     }
 

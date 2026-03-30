@@ -217,6 +217,59 @@ public static class DbInitializer
                      N'Resolution', 60);
                 END");
 
+            // 12. Create TicketSubCategories table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketSubCategories')
+                BEGIN
+                    CREATE TABLE dbo.TicketSubCategories (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Category    INT             NOT NULL,
+                        Name        NVARCHAR(100)   NOT NULL,
+                        SortOrder   INT             NOT NULL DEFAULT 0,
+                        IsActive    BIT             NOT NULL DEFAULT 1
+                    );
+
+                    -- Seed default sub-categories
+                    INSERT INTO dbo.TicketSubCategories (Category, Name, SortOrder) VALUES
+                    (0, N'New Software Request', 10),   -- ServiceRequest
+                    (0, N'Hardware Procurement', 20),
+                    (0, N'Access / Permissions', 30),
+                    (0, N'New User Onboarding', 40),
+                    (1, N'Laptop / Desktop', 10),       -- HardwareIssue
+                    (1, N'Printer / Scanner', 20),
+                    (1, N'Monitor / Display', 30),
+                    (1, N'Peripheral Devices', 40),
+                    (2, N'Application Error', 10),      -- SoftwareIssue
+                    (2, N'OS / Windows Issue', 20),
+                    (2, N'Microsoft 365', 30),
+                    (2, N'Antivirus / Security Tool', 40),
+                    (3, N'Performance Issue', 10),      -- EmployeeIssue
+                    (3, N'Login / Authentication', 20),
+                    (3, N'Email Problem', 30),
+                    (4, N'No Internet / Slow Connection', 10), -- NetworkIssue
+                    (4, N'VPN / Remote Access', 20),
+                    (4, N'Wi-Fi Issue', 30),
+                    (4, N'Network Drive / Share', 40),
+                    (5, N'Suspicious Email / Phishing', 10),   -- SecurityIncident
+                    (5, N'Unauthorised Access', 20),
+                    (5, N'Data Breach', 30),
+                    (6, N'Other / General Inquiry', 10);        -- Other
+                END");
+
+            // 13. Add SubCategoryId to Tickets table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'SubCategoryId'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets
+                        ADD SubCategoryId INT NULL
+                        CONSTRAINT FK_Tickets_SubCategories
+                        REFERENCES dbo.TicketSubCategories(Id)
+                        ON DELETE SET NULL;
+                END");
+
             // 11. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')
