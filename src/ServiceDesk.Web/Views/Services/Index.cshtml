@@ -19,7 +19,7 @@
                 <option value="">All Statuses</option>
                 @foreach (var s in Enum.GetValues<ServiceStatus>())
                 {
-                    @{ var svcSel = ViewBag.CurrentStatus != null && (ServiceStatus)ViewBag.CurrentStatus == s; }
+                    var svcSel = ViewBag.CurrentStatus != null && (ServiceStatus)ViewBag.CurrentStatus == s;
                     <option value="@s" selected="@(svcSel ? "selected" : null)">@s</option>
                 }
             </select>

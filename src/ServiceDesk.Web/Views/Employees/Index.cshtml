@@ -21,7 +21,7 @@
                 {
                     foreach (var dept in (List<string>)ViewBag.Departments)
                     {
-                        @{ var deptSel = ViewBag.CurrentDepartment != null && (string)ViewBag.CurrentDepartment == dept; }
+                        var deptSel = ViewBag.CurrentDepartment != null && (string)ViewBag.CurrentDepartment == dept;
                         <option value="@dept" selected="@(deptSel ? "selected" : null)">@dept</option>
                     }
                 }
