@@ -14,24 +14,24 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="Create">
+        <form asp-action="Create" data-loading-btn="btnCreateTicket">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <div class="mb-3">
-                <label asp-for="Title" class="form-label"></label>
+                <label asp-for="Title" class="form-label"><span class="text-danger ms-1">*</span></label>
                 <input asp-for="Title" class="form-control" placeholder="Brief description of the issue" />
                 <span asp-validation-for="Title" class="text-danger"></span>
             </div>
 
             <div class="mb-3">
-                <label asp-for="Description" class="form-label"></label>
+                <label asp-for="Description" class="form-label"><span class="text-danger ms-1">*</span></label>
                 <textarea asp-for="Description" class="form-control" rows="5" placeholder="Provide detailed information about the issue"></textarea>
                 <span asp-validation-for="Description" class="text-danger"></span>
             </div>
 
             <div class="row g-3 mb-3">
                 <div class="col-md-3">
-                    <label asp-for="Category" class="form-label"></label>
+                    <label asp-for="Category" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select" id="createCategorySelect">
                         <option value="">-- Select Category --</option>
                     </select>
@@ -44,12 +44,12 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label asp-for="Priority" class="form-label"></label>
+                    <label asp-for="Priority" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select"></select>
                     <span asp-validation-for="Priority" class="text-danger"></span>
                 </div>
                 <div class="col-md-3">
-                    <label asp-for="SubmittedById" class="form-label">Submitted By</label>
+                    <label asp-for="SubmittedById" class="form-label"><span class="text-danger ms-1">*</span>Submitted By</label>
                     <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees">
                         <option value="">-- Select Employee --</option>
                     </select>
@@ -73,7 +73,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Ticket</button>
+                <button type="submit" id="btnCreateTicket" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Ticket</button>
                 <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>

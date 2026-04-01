@@ -14,17 +14,17 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="Create">
+        <form asp-action="Create" data-loading-btn="btnSubmit">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label asp-for="FirstName" class="form-label"></label>
+                    <label asp-for="FirstName" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="FirstName" class="form-control" placeholder="Enter first name" />
                     <span asp-validation-for="FirstName" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="LastName" class="form-label"></label>
+                    <label asp-for="LastName" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="LastName" class="form-control" placeholder="Enter last name" />
                     <span asp-validation-for="LastName" class="text-danger"></span>
                 </div>
@@ -32,7 +32,7 @@
 
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label asp-for="Email" class="form-label"></label>
+                    <label asp-for="Email" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="Email" class="form-control" type="email" placeholder="employee@company.com" />
                     <span asp-validation-for="Email" class="text-danger"></span>
                 </div>
@@ -45,12 +45,12 @@
 
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label asp-for="Department" class="form-label"></label>
+                    <label asp-for="Department" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="Department" class="form-control" placeholder="Enter department" />
                     <span asp-validation-for="Department" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="JobTitle" class="form-label"></label>
+                    <label asp-for="JobTitle" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="JobTitle" class="form-control" placeholder="Enter job title" />
                     <span asp-validation-for="JobTitle" class="text-danger"></span>
                 </div>
@@ -71,7 +71,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Employee</button>
+                <button type="submit" class="btn btn-primary" id="btnSubmit"><i class="bi bi-check-lg"></i> Create Employee</button>
                 <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>

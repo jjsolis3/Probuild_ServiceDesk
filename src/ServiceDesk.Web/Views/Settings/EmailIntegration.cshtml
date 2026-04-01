@@ -176,7 +176,7 @@ else
                                     </button>
                                 </form>
                                 <form asp-action="DeleteEmailConfig" asp-route-id="@config.Id" method="post" class="d-inline"
-                                      onsubmit="return confirm('Delete email configuration \'@config.Name\'? This cannot be undone.')">
+                                      data-confirm-title="Delete Config" data-confirm-message="Delete this email configuration? This cannot be undone.">
                                     @Html.AntiForgeryToken()
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
                                         <i class="bi bi-trash"></i> Delete

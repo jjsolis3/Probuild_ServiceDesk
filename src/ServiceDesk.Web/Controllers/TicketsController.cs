@@ -58,6 +58,8 @@ public class TicketsController : Controller
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
+            .Include(t => t.SubCategory)
+            .Include(t => t.Branch)
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))

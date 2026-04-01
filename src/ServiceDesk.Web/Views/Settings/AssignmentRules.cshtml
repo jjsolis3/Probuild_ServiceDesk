@@ -138,7 +138,7 @@
                                                 </a>
                                                 <form asp-action="DeleteAssignmentRule" asp-route-id="@rule.Id"
                                                       method="post" class="d-inline"
-                                                      onsubmit="return confirm('Delete rule \'@rule.Name\'?')">
+                                                      data-confirm-title="Delete Rule" data-confirm-message="Delete this assignment rule? This cannot be undone.">
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                                         <i class="fas fa-trash"></i>

@@ -77,7 +77,7 @@
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                             <form asp-action="DeleteSubCategory" asp-route-id="@sub.Id" method="post" class="d-inline"
-                                                  onsubmit="return confirm('Delete sub-category \'@sub.Name\'?');">
+                                                  data-confirm-title="Delete Sub-Category" data-confirm-message="Delete this sub-category? This cannot be undone.">
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit" class="btn btn-sm btn-outline-danger py-0">
                                                     <i class="bi bi-trash"></i>
