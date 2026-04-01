@@ -5,7 +5,7 @@
 }
 
 <!-- SolarWinds-style ticket edit page -->
-<form asp-action="Edit" id="ticketEditForm">
+<form asp-action="Edit" id="ticketEditForm" data-loading-btn="btnSaveTicket">
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="CreatedDate" />
     <input type="hidden" asp-for="ResolvedDate" />
@@ -76,7 +76,7 @@
 
             <!-- Actions right side -->
             <div class="ms-auto d-flex gap-2">
-                <button type="submit" class="btn btn-sm btn-primary">
+                <button type="submit" id="btnSaveTicket" class="btn btn-sm btn-primary">
                     <i class="bi bi-check-lg"></i> Save Changes
                 </button>
                 <a asp-action="Details" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-secondary">

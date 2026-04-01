@@ -17,7 +17,7 @@
     <div class="col-lg-8">
         <div class="card">
             <div class="card-body">
-                <form asp-action="EditCannedResponse" asp-route-id="@Model.Id" method="post">
+                <form asp-action="EditCannedResponse" asp-route-id="@Model.Id" method="post" data-loading-btn="btnSave">
                     <input type="hidden" asp-for="Id" />
                     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -51,7 +51,7 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" id="btnSave" class="btn btn-primary">
                         <i class="bi bi-check-lg me-1"></i> Save Changes
                     </button>
                     <a asp-action="CannedResponses" class="btn btn-outline-secondary ms-2">Cancel</a>

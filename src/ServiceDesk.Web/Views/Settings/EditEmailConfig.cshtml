@@ -41,7 +41,7 @@ else
     </div>
 }
 
-<form asp-action="EditEmailConfig" method="post">
+<form asp-action="EditEmailConfig" method="post" data-loading-btn="btnSave">
     <input type="hidden" asp-for="Id" />
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -187,7 +187,7 @@ else
     </div>
 
     <div class="mt-2">
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+        <button type="submit" id="btnSave" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
         <a asp-action="EmailIntegration" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
