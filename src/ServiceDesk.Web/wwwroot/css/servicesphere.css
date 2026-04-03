@@ -39,7 +39,7 @@
 }
 
 .dashboard-card.tickets      { border-left-color: #2f4cdd; }
-.dashboard-card.progress     { border-left-color: #f59e0b; }
+.dashboard-card.inprogress   { border-left-color: #f59e0b; }
 .dashboard-card.resolved     { border-left-color: #10b981; }
 .dashboard-card.assets       { border-left-color: #8b5cf6; }
 .dashboard-card.employees    { border-left-color: #06b6d4; }
