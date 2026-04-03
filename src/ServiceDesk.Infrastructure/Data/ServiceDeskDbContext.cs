@@ -229,6 +229,19 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<KbArticle>()
             .HasIndex(k => new { k.IsPublished, k.Category });
 
+        // Decimal precision — prevents silent truncation on SQL Server
+        modelBuilder.Entity<Asset>()
+            .Property(a => a.PurchaseCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Subscription>()
+            .Property(s => s.AnnualCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Subscription>()
+            .Property(s => s.MonthlyCost)
+            .HasPrecision(18, 2);
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)
