@@ -17,9 +17,14 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
-    // Ticket threading
+    // Ticket threading & attachments & audit
     public DbSet<TicketNote> TicketNotes => Set<TicketNote>();
     public DbSet<TicketEmail> TicketEmails => Set<TicketEmail>();
+    public DbSet<TicketAttachment> TicketAttachments => Set<TicketAttachment>();
+    public DbSet<TicketHistory> TicketHistory => Set<TicketHistory>();
+
+    // Knowledge base
+    public DbSet<KbArticle> KbArticles => Set<KbArticle>();
 
     // Settings entities
     public DbSet<Role> Roles => Set<Role>();
@@ -31,6 +36,15 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<UserGroup> UserGroups => Set<UserGroup>();
     public DbSet<UserGroupMember> UserGroupMembers => Set<UserGroupMember>();
     public DbSet<EmailConfiguration> EmailConfigurations => Set<EmailConfiguration>();
+
+    // Routing & assignment
+    public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
+
+    // Agent productivity
+    public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
+
+    // Ticket categorisation
+    public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -79,6 +93,24 @@ public class ServiceDeskDbContext : DbContext
         // Index on TicketEmail.MessageId for threading lookups
         modelBuilder.Entity<TicketEmail>()
             .HasIndex(e => e.MessageId);
+
+        // TicketAttachment -> Ticket
+        modelBuilder.Entity<TicketAttachment>()
+            .HasOne(a => a.Ticket)
+            .WithMany(t => t.Attachments)
+            .HasForeignKey(a => a.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // TicketHistory -> Ticket
+        modelBuilder.Entity<TicketHistory>()
+            .HasOne(h => h.Ticket)
+            .WithMany(t => t.History)
+            .HasForeignKey(h => h.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Index on TicketHistory for fast per-ticket lookups
+        modelBuilder.Entity<TicketHistory>()
+            .HasIndex(h => new { h.TicketId, h.ChangedDate });
 
         // Asset -> AssignedTo relationship
         modelBuilder.Entity<Asset>()
@@ -153,5 +185,59 @@ public class ServiceDeskDbContext : DbContext
             .WithMany()
             .HasForeignKey(e => e.DefaultAssigneeId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Employee -> Branch relationship
+        modelBuilder.Entity<Employee>()
+            .HasOne(e => e.Branch)
+            .WithMany(b => b.Employees)
+            .HasForeignKey(e => e.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Ticket -> Branch relationship (location snapshot)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.Branch)
+            .WithMany()
+            .HasForeignKey(t => t.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssignmentRule -> Branch (optional)
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.Branch)
+            .WithMany()
+            .HasForeignKey(r => r.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssignmentRule -> Assignee
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.Assignee)
+            .WithMany()
+            .HasForeignKey(r => r.AssigneeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Index for fast rule lookup
+        modelBuilder.Entity<AssignmentRule>()
+            .HasIndex(r => new { r.IsActive, r.SortOrder });
+
+        // KbArticle -> SourceTicket relationship (optional)
+        modelBuilder.Entity<KbArticle>()
+            .HasOne(k => k.SourceTicket)
+            .WithMany()
+            .HasForeignKey(k => k.SourceTicketId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index for KB search by category + published status
+        modelBuilder.Entity<KbArticle>()
+            .HasIndex(k => new { k.IsPublished, k.Category });
+
+        // Ticket -> SubCategory (optional)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.SubCategory)
+            .WithMany()
+            .HasForeignKey(t => t.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index on SubCategory for fast lookup by parent category
+        modelBuilder.Entity<TicketSubCategory>()
+            .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });
     }
 }

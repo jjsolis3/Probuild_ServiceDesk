@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
@@ -6,6 +7,7 @@ using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class ReportsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -24,6 +26,7 @@ public class ReportsController : Controller
     {
         var tickets = await _context.Tickets
             .Include(t => t.AssignedTo)
+            .Take(5000)
             .ToListAsync();
 
         var model = new TicketReportViewModel

@@ -14,7 +14,7 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="EditUser" method="post">
+        <form asp-action="EditUser" method="post" data-loading-btn="btnSave">
             <input type="hidden" asp-for="Id" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -46,7 +46,7 @@
                         {
                             foreach (var role in (IEnumerable<Role>)ViewBag.Roles)
                             {
-                                <option value="@role.Id" selected="@(Model.RoleId == role.Id)">@role.Name</option>
+                                <option value="@role.Id">@role.Name</option>
                             }
                         }
                     </select>
@@ -60,7 +60,7 @@
                         {
                             foreach (var employee in (IEnumerable<Employee>)ViewBag.Employees)
                             {
-                                <option value="@employee.Id" selected="@(Model.EmployeeId == employee.Id)">@employee.FullName</option>
+                                <option value="@employee.Id">@employee.FullName</option>
                             }
                         }
                     </select>
@@ -76,7 +76,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+                <button type="submit" id="btnSave" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
                 <a asp-action="Users" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>

@@ -1,0 +1,123 @@
+.dropdown-toggle:focus {
+    box-shadow: none!important;
+  }
+
+  .dropdown-outline{
+      border: .1rem solid var(--primary);
+  }
+
+.dropdown-menu{
+	font-size: inherit;
+	border: 0;
+	z-index: 3;
+	overflow:hidden;
+	border-radius:$radius;
+	box-shadow: 0 0 3.125rem 0 rgba(82, 63, 105, 0.15);
+	margin-top:0;
+	padding: 0.5rem 0rem;
+	background-color: var(--card);
+	@at-root [data-theme-version="dark"] & {
+		box-shadow: 0rem 2rem 2.5rem 0rem rgba(0, 0, 0, 0.4);
+	}
+	.dropdown-item{
+		font-size: var(--dz-list-size);
+		color:var(--text);
+		padding: var(--dz-list-space-y) var(--dz-list-space-x);
+		text-align: #{$dlab-pos-left};
+
+		&:hover,
+		&:focus,
+		&:active,
+		&.active{
+			color: var(--text-gray);
+			background-color: var(--light);
+		}
+		&.active, 
+		&:active{
+			color: var(--primary);
+			background:var(--rgba-primary-1);
+		}
+	}
+	&.show{
+		#{$dlab-pos-right}: 0;
+		#{$dlab-pos-left}: auto;
+	}
+}
+
+////////////////////
+// Custom Dropdown
+///////////////////
+.dropdown-toggle-split {
+    padding: 0 0.625rem;
+    opacity: 0.85;
+	&:after{
+		margin-#{$dlab-pos-left}:0 !important;
+	}
+	&:active,
+	&:focus,
+	&:hover{
+		opacity:1;
+	}
+}
+
+.dropright .dropdown-toggle::after {
+	content:none;
+}
+.custom-dropdown{
+    display: inline-block;
+    margin-bottom: 1rem;
+
+    .dropdown-menu{
+        border: 0rem;
+        min-width: 10rem;
+    }
+}
+.card-action{
+    .custom-dropdown{
+        margin: 0rem;
+        background: var(--rgba-primary-1);
+        &.show,&:focus,&:hover{
+            background: var(--primary);
+            color: $white;
+        }
+
+        i{
+            display: inline-block;
+            padding-top: 0.5625rem;
+        }
+    }
+}
+
+.dropdown{
+	.dropdown-dots{
+		position: relative;
+		height: 0.3125rem;
+		width: 0.3125rem;
+		background: rgba($dark, 0.4);
+		border-radius: 0.3125rem;
+		display: block;	
+		&:after,
+		&:before{
+			content: "";
+			height: 0.3125rem;
+			width: 0.3125rem;
+			background: rgba($dark, 0.4);
+			position: absolute;
+			border-radius: 0.3125rem;
+		}
+		&:after{
+			#{$dlab-pos-right}: -0.5rem;
+		}
+		&:before{
+			#{$dlab-pos-left}: -0.5rem;			
+		}
+		
+		&.text-white{
+			background: rgba($white, 0.7);
+			&:after,
+			&:before{
+				background: rgba($white, 0.7);				
+			}
+		}
+	}
+}

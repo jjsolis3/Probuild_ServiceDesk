@@ -1,12 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin")]
 public class SettingsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -36,16 +39,21 @@ public class SettingsController : Controller
     }
 
     // POST: Settings/Account
+    // Form sends each setting as name="[SettingKey]" so we read directly from IFormCollection.
+    // Boolean toggles use a hidden name="[Key]" value="false" + checkbox value="true" pattern.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Account(Dictionary<string, string> settings)
+    public async Task<IActionResult> Account(IFormCollection form)
     {
-        foreach (var kvp in settings)
+        var settings = await _context.AppSettings.ToListAsync();
+        foreach (var setting in settings)
         {
-            var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == kvp.Key);
-            if (setting != null)
+            if (form.ContainsKey(setting.Key))
             {
-                setting.Value = kvp.Value;
+                // For booleans the form may send ["false","true"] when checked —
+                // take "true" if present, otherwise "false".
+                var values = form[setting.Key];
+                setting.Value = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
             }
         }
         await _context.SaveChangesAsync();
@@ -607,6 +615,9 @@ public class SettingsController : Controller
             existing.SmtpServer = config.SmtpServer;
             existing.SmtpPort = config.SmtpPort;
             existing.UseSsl = config.UseSsl;
+            existing.SmtpUsername = config.SmtpUsername;
+            if (!string.IsNullOrWhiteSpace(config.SmtpPassword))
+                existing.SmtpPassword = config.SmtpPassword;
             existing.PollIntervalMinutes = config.PollIntervalMinutes;
             existing.CreateTicketsFromEmails = config.CreateTicketsFromEmails;
             existing.AutoReplyOnNewTicket = config.AutoReplyOnNewTicket;
@@ -739,5 +750,247 @@ public class SettingsController : Controller
             TempData["Success"] = "Connection test initiated. The configuration is authorized and ready to poll.";
         }
         return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    // ==================== ASSIGNMENT RULES ====================
+
+    // GET: Settings/AssignmentRules
+    public async Task<IActionResult> AssignmentRules()
+    {
+        var rules = await _context.AssignmentRules
+            .Include(r => r.Branch)
+            .Include(r => r.Assignee)
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
+        return View(rules);
+    }
+
+    // GET: Settings/CreateAssignmentRule
+    public async Task<IActionResult> CreateAssignmentRule()
+    {
+        await LoadAssignmentRuleViewBag();
+        return View(new AssignmentRule { SortOrder = 100, IsActive = true });
+    }
+
+    // POST: Settings/CreateAssignmentRule
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateAssignmentRule(AssignmentRule rule)
+    {
+        if (ModelState.IsValid)
+        {
+            rule.CreatedDate = DateTime.UtcNow;
+            _context.AssignmentRules.Add(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Assignment rule '{rule.Name}' created.";
+            return RedirectToAction(nameof(AssignmentRules));
+        }
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // GET: Settings/EditAssignmentRule/5
+    public async Task<IActionResult> EditAssignmentRule(int id)
+    {
+        var rule = await _context.AssignmentRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // POST: Settings/EditAssignmentRule/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditAssignmentRule(int id, AssignmentRule rule)
+    {
+        if (id != rule.Id) return BadRequest();
+
+        if (ModelState.IsValid)
+        {
+            _context.Update(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Assignment rule '{rule.Name}' updated.";
+            return RedirectToAction(nameof(AssignmentRules));
+        }
+        await LoadAssignmentRuleViewBag();
+        return View(rule);
+    }
+
+    // POST: Settings/DeleteAssignmentRule/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAssignmentRule(int id)
+    {
+        var rule = await _context.AssignmentRules.FindAsync(id);
+        if (rule == null) return NotFound();
+
+        _context.AssignmentRules.Remove(rule);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Assignment rule '{rule.Name}' deleted.";
+        return RedirectToAction(nameof(AssignmentRules));
+    }
+
+    private async Task LoadAssignmentRuleViewBag()
+    {
+        ViewBag.Branches = await _context.Branches
+            .Where(b => b.IsActive)
+            .OrderBy(b => b.Name)
+            .ToListAsync();
+
+        ViewBag.Employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+            .ToListAsync();
+
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new { Value = (int)c, Text = c.ToString() })
+            .ToList();
+    }
+
+    // ── Canned Responses ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CannedResponses()
+    {
+        var responses = await _context.CannedResponses
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Title)
+            .ToListAsync();
+        return View(responses);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public IActionResult CreateCannedResponse() => View(new CannedResponse());
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateCannedResponse(CannedResponse response)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.CannedResponses.Add(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response created.";
+            return RedirectToAction(nameof(CannedResponses));
+        }
+        return View(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditCannedResponse(int id)
+    {
+        var response = await _context.CannedResponses.FindAsync(id);
+        if (response == null) return NotFound();
+        return View(response);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditCannedResponse(int id, CannedResponse response)
+    {
+        if (id != response.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.Update(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response updated.";
+            return RedirectToAction(nameof(CannedResponses));
+        }
+        return View(response);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteCannedResponse(int id)
+    {
+        var response = await _context.CannedResponses.FindAsync(id);
+        if (response != null)
+        {
+            _context.CannedResponses.Remove(response);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Canned response deleted.";
+        }
+        return RedirectToAction(nameof(CannedResponses));
+    }
+
+    // ==================== CATEGORIES & SUB-CATEGORIES ====================
+
+    public async Task<IActionResult> Categories()
+    {
+        var subCategories = await _context.TicketSubCategories
+            .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
+            .ToListAsync();
+        return View(subCategories);
+    }
+
+    public IActionResult CreateSubCategory(TicketCategory? category)
+    {
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        var model = new TicketSubCategory { Category = category ?? TicketCategory.Other };
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateSubCategory(TicketSubCategory model)
+    {
+        if (ModelState.IsValid)
+        {
+            _context.TicketSubCategories.Add(model);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category created.";
+            return RedirectToAction(nameof(Categories));
+        }
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(model);
+    }
+
+    public async Task<IActionResult> EditSubCategory(int id)
+    {
+        var subCat = await _context.TicketSubCategories.FindAsync(id);
+        if (subCat == null) return NotFound();
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(subCat);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditSubCategory(int id, TicketSubCategory model)
+    {
+        if (id != model.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            _context.TicketSubCategories.Update(model);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category updated.";
+            return RedirectToAction(nameof(Categories));
+        }
+        ViewBag.Categories = Enum.GetValues<TicketCategory>()
+            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
+            .ToList();
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteSubCategory(int id)
+    {
+        var subCat = await _context.TicketSubCategories.FindAsync(id);
+        if (subCat != null)
+        {
+            _context.TicketSubCategories.Remove(subCat);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Sub-category deleted.";
+        }
+        return RedirectToAction(nameof(Categories));
     }
 }

@@ -1,0 +1,158 @@
+﻿@{
+    Layout = "~/Views/Shared/_LayoutJobick.cshtml";
+	ViewData["Title"] = "New Job";
+}
+<div class="content-body">
+	<!-- row -->
+	<div class="container-fluid">
+		<div class="d-flex align-items-center mb-4">
+			<h3 class="mb-0 me-auto">New Job</h3>
+			<div>
+				<a href="javascript:void(0);" class="icon-btn me-3"> <i class="fas fa-envelope"></i></a>
+				<a href="javascript:void(0);" class="icon-btn me-3"><i class="fas fa-phone-alt"></i></a>
+				<a href="javascript:void(0);" class="icon-btn"><i class="fas fa-info"></i></a>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-xl-12">
+				<div class="card">
+					<div class="card-body">
+						<div class="row">
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Company Name<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="Name" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Position<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="Name" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Job Category<span class="text-danger scale5 ms-2">*</span></label>
+								<select class="nice-select default-select wide form-control">
+									<option selected>Choose...</option>
+									<option>QA Analyst</option>
+									<option>IT Manager</option>
+									<option>Systems Analyst</option>
+								</select>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Job Type<span class="text-danger scale5 ms-2">*</span></label>
+								<select class="nice-select default-select wide form-control">
+									<option selected>Choose...</option>
+									<option>Part-Time</option>
+									<option>Full-Time</option>
+									<option>Freelancer</option>
+								</select>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">No. of Vancancy<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="Name" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Select Experience<span class="text-danger scale5 ms-2">*</span></label>
+								<select class="nice-select default-select wide form-control">
+									<option selected>1 yr</option>
+									<option>2 Yr</option>
+									<option>3 Yr</option>
+									<option>4 Yr</option>
+								</select>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Posted Date<span class="text-danger scale3 ms-2">*</span></label>
+								<div class="input-hasicon">
+									<input name="datepicker" class="form-control bt-datepicker">
+									<div class="icon"><i class="far fa-calendar"></i></div>
+								</div>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Last Date To Apply<span class="text-danger scale3 ms-2">*</span></label>
+								<div class="input-hasicon">
+									<input name="datepicker" class="form-control bt-datepicker">
+									<div class="icon"><i class="far fa-calendar"></i></div>
+								</div>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Close Date<span class="text-danger scale3 ms-2">*</span></label>
+								<div class="input-hasicon">
+									<input name="datepicker" class="form-control bt-datepicker">
+									<div class="icon"><i class="far fa-calendar"></i></div>
+								</div>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Select Gender:<span class="text-danger scale5 ms-2">*</span></label>
+								<select class="nice-select default-select wide form-control">
+									<option selected>Choose...</option>
+									<option>Male</option>
+									<option>Female</option>
+								</select>
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Salary Form<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="$" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Salary To<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="$" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Enter City:<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="City" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Enter State:<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="State" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Enter Counter:<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="State" aria-label="name">
+							</div>
+							<div class="col-xl-6  col-md-6 mb-4">
+								<label class="form-label">Enter Education Level:<span class="text-danger scale5 ms-2">*</span></label>
+								<input type="text" class="form-control" placeholder="Education Level" aria-label="name">
+							</div>
+							<div class="col-xl-12 mb-4">
+								<label class="form-label">Description:<span class="text-danger scale5 ms-2">*</span></label>
+								<textarea class="form-control" rows="5" aria-label="With textarea"></textarea>
+							</div>
+						</div>
+						<div>
+							<label class="form-label me-3">Status:</label>
+							<div class="form-check form-check-inline">
+								<input class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio1" value="option1">
+								<label class="form-check-label" for="inlineRadio1">Active</label>
+							</div>
+							<div class="form-check form-check-inline">
+								<input class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio2" value="option2">
+								<label class="form-check-label" for="inlineRadio2">In Active</label>
+							</div>
+						</div>
+					</div>
+					<div class="card-footer text-end">
+						<div>
+							<a href="javascript:void(0);" class="btn btn-danger light me-3">Close</a>
+							<a href="javascript:void(0);" class="btn btn-primary">Submit</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+@section Jobick_style
+    {
+    <link href="~/Jobick/vendor/bootstrap-datepicker-master/css/bootstrap-datepicker.min.css" rel="stylesheet">
+}
+
+@section Jobick_script
+    {
+	<!-- Required vendors -->
+	<script src="~/Jobick/vendor/global/global.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-datepicker-master/js/bootstrap-datepicker.min.js"></script>
+
+	<script src="~/Jobick/js/custom.min.js"></script>
+	<script src="~/Jobick/js/dlabnav-init.js"></script>
+	
+	
+}

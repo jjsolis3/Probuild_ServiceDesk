@@ -56,6 +56,18 @@
                     <dt>Category</dt>
                     <dd>@Model.Category</dd>
 
+                    @if (Model.SubCategory != null)
+                    {
+                        <dt>Sub-Category</dt>
+                        <dd>@Model.SubCategory.Name</dd>
+                    }
+
+                    @if (Model.Branch != null)
+                    {
+                        <dt>Branch / Location</dt>
+                        <dd><i class="bi bi-geo-alt me-1 text-muted"></i>@Model.Branch.Name</dd>
+                    }
+
                     <dt>Submitted By</dt>
                     <dd>
                         @if (Model.SubmittedBy != null)

@@ -42,9 +42,13 @@
                         <a asp-action="EditResolutionCode" asp-route-id="@code.Id" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>
                         </a>
-                        <a asp-action="DeleteResolutionCode" asp-route-id="@code.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
+                        <form asp-action="DeleteResolutionCode" asp-route-id="@code.Id" method="post" class="d-inline"
+                              data-confirm-title="Delete Code" data-confirm-message="Delete this resolution code? This cannot be undone.">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
             }

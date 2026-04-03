@@ -49,10 +49,43 @@
     </form>
 </div>
 
+@Html.AntiForgeryToken()
+
+<!-- Bulk Action Bar (shown when rows selected) -->
+<div id="bulkActionBar" class="alert alert-secondary d-none mb-3 py-2">
+    <form id="bulkActionForm" asp-controller="Tickets" asp-action="BulkUpdate" method="post" class="d-flex align-items-center gap-3 flex-wrap">
+        @Html.AntiForgeryToken()
+        <span id="bulkSelectionCount" class="fw-semibold text-nowrap">0 selected</span>
+        <select name="bulkAction" id="bulkActionSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="">— Choose Action —</option>
+            <option value="status">Change Status</option>
+            <option value="assign">Reassign</option>
+        </select>
+        <div id="bulkStatusGroup" class="d-none">
+            <select name="bulkStatus" class="form-select form-select-sm" style="width:auto;">
+                @foreach (var s in Enum.GetValues<TicketStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div id="bulkAssigneeGroup" class="d-none">
+            <select name="bulkAssigneeId" id="bulkAssigneeSelect" class="form-select form-select-sm" style="width:auto;">
+                <option value="">— Unassigned —</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary" id="btnBulkApply">Apply</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnBulkClear">Clear</button>
+    </form>
+</div>
+
 <div class="table-responsive">
     <table class="table table-striped table-hover ss-datatable" data-export-title="Tickets Report">
         <thead class="table-dark">
             <tr>
+                <th class="no-sort no-export" style="width:36px;">
+                    <input type="checkbox" id="chkSelectAll" class="form-check-input" title="Select all">
+                </th>
                 <th>ID</th>
                 <th>Title</th>
                 <th>Category</th>
@@ -61,6 +94,7 @@
                 <th>Submitted By</th>
                 <th>Assigned To</th>
                 <th>Created</th>
+                <th>Due Date</th>
                 <th class="no-sort no-export">Actions</th>
             </tr>
         </thead>
@@ -68,16 +102,89 @@
             @foreach (var ticket in Model)
             {
                 <tr>
+                    <td>
+                        <input type="checkbox" class="form-check-input ticket-chk" name="selectedIds" value="@ticket.Id">
+                    </td>
                     <td>@ticket.Id</td>
                     <td>
                         <a asp-action="Details" asp-route-id="@ticket.Id">@ticket.Title</a>
+                        @if (ticket.IsOverdue)
+                        {
+                            <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
+                                <i class="bi bi-exclamation-circle me-1"></i>Overdue
+                            </span>
+                        }
                     </td>
                     <td>@ticket.Category</td>
                     <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                    <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
+                    <td>
+                        <!-- Inline-editable Status -->
+                        <div class="dropdown inline-edit-dropdown">
+                            <span class="badge badge-@ticket.Status.ToString().ToLower() inline-edit-badge"
+                                  data-ticket-id="@ticket.Id"
+                                  data-field="status"
+                                  data-current="@ticket.Status"
+                                  title="Click to change status"
+                                  role="button"
+                                  data-bs-toggle="dropdown"
+                                  aria-expanded="false">
+                                @ticket.Status <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>
+                            </span>
+                            <ul class="dropdown-menu dropdown-menu-sm shadow-sm status-dropdown" data-ticket-id="@ticket.Id">
+                                @foreach (var s in Enum.GetValues<TicketStatus>())
+                                {
+                                    <li>
+                                        <a class="dropdown-item status-option @(ticket.Status == s ? "active" : "")"
+                                           data-value="@s" href="#">
+                                            <span class="badge badge-@s.ToString().ToLower() me-2">@s</span>
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </td>
                     <td>@ticket.SubmittedBy?.FullName</td>
-                    <td>@(ticket.AssignedTo?.FullName ?? "Unassigned")</td>
+                    <td>
+                        <!-- Inline-editable AssignedTo -->
+                        <div class="dropdown inline-edit-dropdown">
+                            <span class="inline-edit-assignee text-nowrap"
+                                  data-ticket-id="@ticket.Id"
+                                  data-field="assignee"
+                                  data-current="@(ticket.AssignedToId?.ToString() ?? "0")"
+                                  title="Click to change assignee"
+                                  role="button"
+                                  data-bs-toggle="dropdown"
+                                  aria-expanded="false">
+                                @if (ticket.AssignedTo != null)
+                                {
+                                    <span>@ticket.AssignedTo.FullName <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i></span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>
+                                }
+                            </span>
+                            <div class="dropdown-menu p-2 shadow-sm assignee-dropdown" style="min-width:220px;" data-ticket-id="@ticket.Id">
+                                <input type="text" class="form-control form-control-sm mb-2 assignee-search" placeholder="Search agent..." autocomplete="off" />
+                                <ul class="list-unstyled mb-0 assignee-list" style="max-height:200px;overflow-y:auto;">
+                                    <li><a class="dropdown-item assignee-option @(ticket.AssignedToId == null ? "active" : "")" data-value="0" href="#">— Unassigned —</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </td>
                     <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
+                    <td>
+                        @if (ticket.DueDate.HasValue)
+                        {
+                            <span class="@(ticket.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
+                                @ticket.DueDate.Value.ToString("MMM dd, yyyy")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
                     <td>
                         <a asp-action="Edit" asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>
@@ -96,6 +203,206 @@
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3">No tickets found matching the current filters.</p>
+        <p class="mt-3 mb-3">No tickets found matching the current filters.</p>
+        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> New Ticket</a>
+        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
+}
+
+<!-- Toast notification -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+    <div id="quickEditToast" class="toast align-items-center text-bg-success border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body"><i class="bi bi-check-circle me-2"></i><span id="quickEditToastMsg">Updated successfully.</span></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const itStaff = @Html.Raw(ViewBag.ITStaffJson ?? "[]");
+    const toast = new bootstrap.Toast(document.getElementById('quickEditToast'), { delay: 2500 });
+    const toastMsg = document.getElementById('quickEditToastMsg');
+
+    function showToast(msg, isError) {
+        const el = document.getElementById('quickEditToast');
+        el.classList.toggle('text-bg-success', !isError);
+        el.classList.toggle('text-bg-danger', !!isError);
+        toastMsg.textContent = msg;
+        toast.show();
+    }
+
+    function sendQuickUpdate(ticketId, field, value, onSuccess) {
+        const fd = new FormData();
+        fd.append('id', ticketId);
+        fd.append('field', field);
+        fd.append('value', value);
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/QuickUpdate', { method: 'POST', body: fd })
+            .then(r => {
+                if (!r.ok) throw new Error('Server error');
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast('Updated successfully.');
+                    if (onSuccess) onSuccess(data);
+                }
+            })
+            .catch(() => showToast('Update failed. Please try again.', true));
+    }
+
+    // --- Status inline edit ---
+    document.querySelectorAll('.status-option').forEach(function (opt) {
+        opt.addEventListener('click', function (e) {
+            e.preventDefault();
+            const li = this.closest('.assignee-list, .dropdown-menu');
+            const dropdown = this.closest('.assignee-dropdown, .status-dropdown');
+            const ticketId = dropdown.getAttribute('data-ticket-id');
+            const newStatus = this.getAttribute('data-value');
+            const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
+
+            sendQuickUpdate(ticketId, 'status', newStatus, function (data) {
+                // Update badge appearance
+                const statusLower = data.status.toLowerCase();
+                badge.className = `badge badge-${statusLower} inline-edit-badge`;
+                badge.setAttribute('data-current', data.status);
+                badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
+
+                // Update active state in dropdown
+                dropdown.querySelectorAll('.status-option').forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+            });
+        });
+    });
+
+    // --- Assignee inline edit: populate list ---
+    document.querySelectorAll('.assignee-dropdown').forEach(function (dd) {
+        const ticketId = dd.getAttribute('data-ticket-id');
+        const list = dd.querySelector('.assignee-list');
+        const currentVal = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`)?.getAttribute('data-current') || '0';
+
+        itStaff.forEach(function (emp) {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item assignee-option' + (String(emp.id) === currentVal ? ' active' : '');
+            a.setAttribute('data-value', emp.id);
+            a.href = '#';
+            a.textContent = emp.name;
+            li.appendChild(a);
+            list.appendChild(li);
+        });
+    });
+
+    // --- Assignee search filter ---
+    document.querySelectorAll('.assignee-search').forEach(function (input) {
+        input.addEventListener('input', function () {
+            const q = this.value.toLowerCase();
+            const list = this.closest('.assignee-dropdown').querySelector('.assignee-list');
+            list.querySelectorAll('.assignee-option').forEach(function (a) {
+                const txt = a.textContent.toLowerCase();
+                a.parentElement.style.display = txt.includes(q) ? '' : 'none';
+            });
+        });
+        // Prevent dropdown from closing when typing in search
+        input.addEventListener('click', function (e) { e.stopPropagation(); });
+    });
+
+    // --- Bulk Actions ---
+    (function () {
+        const bar = document.getElementById('bulkActionBar');
+        const countLabel = document.getElementById('bulkSelectionCount');
+        const chkAll = document.getElementById('chkSelectAll');
+        const actionSelect = document.getElementById('bulkActionSelect');
+        const statusGroup = document.getElementById('bulkStatusGroup');
+        const assigneeGroup = document.getElementById('bulkAssigneeGroup');
+        const form = document.getElementById('bulkActionForm');
+
+        // Populate bulk assignee dropdown from itStaff data
+        const bulkAssigneeSelect = document.getElementById('bulkAssigneeSelect');
+        if (bulkAssigneeSelect && itStaff) {
+            itStaff.forEach(function (emp) {
+                const opt = document.createElement('option');
+                opt.value = emp.id;
+                opt.textContent = emp.name;
+                bulkAssigneeSelect.appendChild(opt);
+            });
+        }
+
+        function getChecked() { return document.querySelectorAll('.ticket-chk:checked'); }
+
+        function updateBar() {
+            const checked = getChecked();
+            bar.classList.toggle('d-none', checked.length === 0);
+            countLabel.textContent = checked.length + ' selected';
+        }
+
+        chkAll?.addEventListener('change', function () {
+            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = this.checked);
+            updateBar();
+        });
+
+        document.querySelectorAll('.ticket-chk').forEach(c => c.addEventListener('change', function () {
+            const all = document.querySelectorAll('.ticket-chk');
+            if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
+            updateBar();
+        }));
+
+        actionSelect?.addEventListener('change', function () {
+            statusGroup.classList.toggle('d-none', this.value !== 'status');
+            assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
+        });
+
+        document.getElementById('btnBulkClear')?.addEventListener('click', function () {
+            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = false);
+            if (chkAll) chkAll.checked = false;
+            bar.classList.add('d-none');
+        });
+
+        form?.addEventListener('submit', function (e) {
+            const checked = getChecked();
+            if (checked.length === 0) { e.preventDefault(); return; }
+            if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
+            // Append selected IDs as hidden inputs
+            checked.forEach(c => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'selectedIds';
+                inp.value = c.value;
+                form.appendChild(inp);
+            });
+        });
+    })();
+
+    // --- Assignee option click ---
+    document.addEventListener('click', function (e) {
+        const opt = e.target.closest('.assignee-option');
+        if (!opt) return;
+        e.preventDefault();
+        const dd = opt.closest('.assignee-dropdown');
+        const ticketId = dd.getAttribute('data-ticket-id');
+        const newVal = opt.getAttribute('data-value');
+        const span = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`);
+
+        sendQuickUpdate(ticketId, 'assignee', newVal, function (data) {
+            const name = data.assigneeName;
+            if (name) {
+                span.innerHTML = `${name} <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i>`;
+            } else {
+                span.innerHTML = `<span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>`;
+            }
+            span.setAttribute('data-current', newVal);
+            dd.querySelectorAll('.assignee-option').forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            // Close dropdown
+            const bsDropdown = bootstrap.Dropdown.getInstance(span);
+            if (bsDropdown) bsDropdown.hide();
+        });
+    });
+})();
+</script>
 }

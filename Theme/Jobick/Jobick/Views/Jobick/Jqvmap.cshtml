@@ -1,0 +1,68 @@
+﻿@{
+    Layout = "~/Views/Shared/_LayoutJobick.cshtml";
+    ViewData["Title"] = "Jqvmap";
+}
+<div class="content-body">
+    <div class="container-fluid">
+
+        <div class="row page-titles">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="javascript:void(0)">Map</a></li>
+                <li class="breadcrumb-item active"><a href="javascript:void(0)">Jqvmap</a></li>
+            </ol>
+        </div>
+        <!-- row -->
+        <!-- Vectormap -->
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">World Map</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="world-map"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">USA</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="usa" style="height: 450px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Jobick_style
+    {
+    <!-- Vectormap -->
+    <link href="~/Jobick/vendor/jqvmap/css/jqvmap.min.css" rel="stylesheet">
+    <!-- Custom Stylesheet -->
+    <link href="~/Jobick/vendor/bootstrap-datepicker-master/css/bootstrap-datepicker.min.css" rel="stylesheet">
+}
+
+@section Jobick_script
+    {
+    <!-- Required vendors -->
+    <script src="~/Jobick/vendor/global/global.min.js"></script>
+
+    <!-- Vectormap -->
+    <script src="~/Jobick/vendor/jqvmap/js/jquery.vmap.min.js"></script>
+    <script src="~/Jobick/vendor/jqvmap/js/jquery.vmap.world.js"></script>
+    <script src="~/Jobick/vendor/jqvmap/js/jquery.vmap.usa.js"></script>
+    <script src="~/Jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+    <script src="~/Jobick/vendor/bootstrap-datepicker-master/js/bootstrap-datepicker.min.js"></script>
+
+    <!-- All init script -->
+    <script src="~/Jobick/js/plugins-init/jqvmap-init.js"></script>
+
+    <script src="~/Jobick/js/custom.min.js"></script>
+    <script src="~/Jobick/js/dlabnav-init.js"></script>
+    
+    
+}

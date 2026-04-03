@@ -75,9 +75,13 @@
                         <a asp-action="EditUser" asp-route-id="@user.Id" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>
                         </a>
-                        <a asp-action="DeleteUser" asp-route-id="@user.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
+                        <form asp-action="DeleteUser" asp-route-id="@user.Id" method="post" class="d-inline"
+                              data-confirm-title="Delete User" data-confirm-message="Delete this user? This cannot be undone.">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
                     </td>
                 </tr>
             }
@@ -89,6 +93,7 @@
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-person-gear display-1"></i>
-        <p class="mt-3">No users found.</p>
+        <p class="mt-3 mb-3">No portal users yet.</p>
+        <a asp-action="CreateUser" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i> Add First User</a>
     </div>
 }

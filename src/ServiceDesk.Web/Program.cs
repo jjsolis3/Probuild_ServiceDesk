@@ -1,15 +1,48 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Filters;
 using ServiceDesk.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllersWithViews();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
+
+builder.Services.AddScoped<BrandingFilter>();
+builder.Services.AddControllersWithViews(options =>
+    options.Filters.AddService<BrandingFilter>());
 
 // Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<ServiceDeskDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ServiceSphere")));
+
+// Cookie-based authentication using the existing PortalUsers table
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Account/Login";
+        options.LogoutPath = "/Account/Logout";
+        options.AccessDeniedPath = "/Account/AccessDenied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Cookie.Name = "ServiceSphere.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    // IT staff (admin dashboard)
+    options.AddPolicy("ITStaff", policy =>
+        policy.RequireRole("Admin", "IT Agent"));
+
+    // Any authenticated user (portal + IT staff)
+    options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 // Register Gmail API service (singleton BackgroundService for polling + sending)
 builder.Services.AddSingleton<GmailApiService>();
@@ -18,12 +51,16 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GmailApiService>()
 // Register notification service (scoped, uses GmailApiService for sending)
 builder.Services.AddScoped<EmailNotificationService>();
 
+// Register assignment resolver (scoped — needs DbContext)
+builder.Services.AddScoped<AssignmentResolverService>();
+
 var app = builder.Build();
 
-// Seed the database
+// Apply incremental schema upgrades then seed reference data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+    DbInitializer.ApplySchemaUpgrades(context);
     DbInitializer.Seed(context);
 }
 
@@ -37,6 +74,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();   // Must be before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllerRoute(

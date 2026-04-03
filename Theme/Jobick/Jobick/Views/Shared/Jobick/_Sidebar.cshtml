@@ -1,0 +1,233 @@
+﻿<!--**********************************
+    Sidebar start
+***********************************-->
+<div class="dlabnav">
+    <div class="dlabnav-scroll">
+        <div class="dropdown header-profile2 ">
+            <a class="nav-link " href="javascript:void(0);" role="button" data-bs-toggle="dropdown">
+                <div class="header-info2 d-flex align-items-center">
+                    <img src="~/Jobick/images/profile/pic1.jpg" alt="">
+                    <div class="d-flex align-items-center sidebar-info">
+                        <div>
+                            <span class="font-w400 d-block">Franklin Jr</span>
+                            <small class="text-end font-w400">Superadmin</small>
+                        </div>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+
+                </div>
+            </a>
+            <div class="dropdown-menu dropdown-menu-end">
+                <a href="@Url.Action("AppProfile","Jobick")" class="dropdown-item ai-icon ">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="text-primary" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    <span class="ms-2">Profile </span>
+                </a>
+                <a href="@Url.Action("Inbox","Jobick")" class="dropdown-item ai-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="text-success" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    <span class="ms-2">Inbox </span>
+                </a>
+                <a href="@Url.Action("Register","Jobick")" class="dropdown-item ai-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="text-danger" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    <span class="ms-2">Logout </span>
+                </a>
+            </div>
+        </div>
+        <ul class="metismenu" id="menu">
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-025-dashboard"></i>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Index","Jobick")">Dashboard Light</a></li>
+                    <li><a href="@Url.Action("Index2","Jobick")">Dashboard Dark</a></li>
+                    <li><a href="@Url.Action("JobsPage","Jobick")">Jobs</a></li>
+                    <li><a href="@Url.Action("ApplicationPage","Jobick")">Application</a></li>
+                    <li><a href="@Url.Action("MyProfile","Jobick")">Profile</a></li>
+                    <li><a href="@Url.Action("Statistics","Jobick")">Statistics</a></li>
+                    <li><a href="@Url.Action("Compaines","Jobick")">Companies</a></li>
+                </ul>
+
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-093-waving"></i>
+                    <span class="nav-text">Jobs</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("JobList","Jobick")">Job Lists</a></li>
+                    <li><a href="@Url.Action("JobView","Jobick")">Job View</a></li>
+                    <li><a href="@Url.Action("JobApplication","Jobick")">Job Application</a></li>
+                    <li><a href="@Url.Action("ApplyJob","Jobick")">Apply Job</a></li>
+                    <li><a href="@Url.Action("NewJob","Jobick")">New Job</a></li>
+                    <li><a href="@Url.Action("UserProfile","Jobick")">User Profile</a></li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
+                    <i class="fa-solid fa-gear"></i>
+                    <span class="nav-text">CMS</span>
+                    <span class="badge badge-xs style-1 badge-danger">New</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Content","Jobick")">Content</a></li>
+                    <li><a href="@Url.Action("ContentAdd","Jobick")">Add Content</a></li>
+                    <li><a href="@Url.Action("Menu","Jobick")">Menus</a></li>
+                    <li><a href="@Url.Action("EmailTemplate","Jobick")">Email Template</a></li>
+                    <li><a href="@Url.Action("AddEmail","Jobick")">Add Email</a></li>
+                    <li><a href="@Url.Action("Blog","Jobick")">Blog</a></li>
+                    <li><a href="@Url.Action("AddBlog","Jobick")">Add Blog</a></li>
+                    <li><a href="@Url.Action("BlogCategory","Jobick")">Blog Category</a></li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-050-info"></i>
+                    <span class="nav-text">Apps</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("AppProfile","Jobick")">Profile</a></li>
+                    <li><a href="@Url.Action("EditProfile","Jobick")">Edit Profile<span class="badge badge-xs badge-danger ms-3">New</span></a></li>
+                    <li><a href="@Url.Action("PostDetails","Jobick")">Post Details</a></li>
+                    <li>
+                        <a class="has-arrow" href="javascript:void()" aria-expanded="false">Email</a>
+                        <ul aria-expanded="false">
+                            <li><a href="@Url.Action("Compose","Jobick")">Compose</a></li>
+                            <li><a href="@Url.Action("Inbox","Jobick")">Inbox</a></li>
+                            <li><a href="@Url.Action("Read","Jobick")">Read</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="@Url.Action("AppCalender","Jobick")">Calendar</a></li>
+                    <li>
+                        <a class="has-arrow" href="javascript:void()" aria-expanded="false">Shop</a>
+                        <ul aria-expanded="false">
+                            <li><a href="@Url.Action("ProductGrid","Jobick")">Product Grid</a></li>
+                            <li><a href="@Url.Action("List","Jobick")">Product List</a></li>
+                            <li><a href="@Url.Action("Detail","Jobick")">Product Details</a></li>
+                            <li><a href="@Url.Action("Order","Jobick")">Order</a></li>
+                            <li><a href="@Url.Action("Checkout","Jobick")">Checkout</a></li>
+                            <li><a href="@Url.Action("Invoice","Jobick")">Invoice</a></li>
+                            <li><a href="@Url.Action("Customers","Jobick")">Customers</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-041-graph"></i>
+                    <span class="nav-text">Charts</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Flot","Jobick")">Flot</a></li>
+                    <li><a href="@Url.Action("Morris","Jobick")">Morris</a></li>
+                    <li><a href="@Url.Action("Chartjs","Jobick")">Chartjs</a></li>
+                    <li><a href="@Url.Action("Chartist","Jobick")">Chartist</a></li>
+                    <li><a href="@Url.Action("Sparkline","Jobick")">Sparkline</a></li>
+                    <li><a href="@Url.Action("Peity","Jobick")">Peity</a></li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-086-star"></i>
+                    <span class="nav-text">Bootstrap</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Accordion","Jobick")">Accordion</a></li>
+                    <li><a href="@Url.Action("Alert","Jobick")">Alert</a></li>
+                    <li><a href="@Url.Action("Badge","Jobick")">Badge</a></li>
+                    <li><a href="@Url.Action("Button","Jobick")">Button</a></li>
+                    <li><a href="@Url.Action("Modal","Jobick")">Modal</a></li>
+                    <li><a href="@Url.Action("ButtonGroup","Jobick")">Button Group</a></li>
+                    <li><a href="@Url.Action("ListGroup","Jobick")">List Group</a></li>
+                    <li><a href="@Url.Action("Card","Jobick")">Cards</a></li>
+                    <li><a href="@Url.Action("Carousel","Jobick")">Carousel</a></li>
+                    <li><a href="@Url.Action("Dropdown","Jobick")">Dropdown</a></li>
+                    <li><a href="@Url.Action("Popover","Jobick")">Popover</a></li>
+                    <li><a href="@Url.Action("ProgressBar","Jobick")">Progressbar</a></li>
+                    <li><a href="@Url.Action("Tab","Jobick")">Tab</a></li>
+                    <li><a href="@Url.Action("Typography","Jobick")">Typography</a></li>
+                    <li><a href="@Url.Action("Pagination","Jobick")">Pagination</a></li>
+                    <li><a href="@Url.Action("Grid","Jobick")">Grid</a></li>
+
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-045-heart"></i>
+                    <span class="nav-text">Plugins</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Select2","Jobick")">Select 2</a></li>
+                    <li><a href="@Url.Action("Nestable","Jobick")">Nestedable</a></li>
+                    <li><a href="@Url.Action("Nouislider","Jobick")">Noui Slider</a></li>
+                    <li><a href="@Url.Action("Sweetalert","Jobick")">Sweet Alert</a></li>
+                    <li><a href="@Url.Action("Toastr","Jobick")">Toastr</a></li>
+                    <li><a href="@Url.Action("Jqvmap","Jobick")">Jqv Map</a></li>
+                    <li><a href="@Url.Action("LightGallery","Jobick")">Light Gallery</a></li>
+                </ul>
+            </li>
+            <li>
+                <a href="@Url.Action("Widget","Jobick")" class="" aria-expanded="false">
+                    <i class="flaticon-013-checkmark"></i>
+                    <span class="nav-text">Widget</span>
+                </a>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-072-printer"></i>
+                    <span class="nav-text">Forms</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Element","Jobick")">Form Elements</a></li>
+                    <li><a href="@Url.Action("Wizard","Jobick")">Wizard</a></li>
+                    <li><a href="@Url.Action("Ckeditor","Jobick")">CkEditor</a></li>
+                    <li><a href="@Url.Action("Pickers","Jobick")">Pickers</a></li>
+                    <li><a href="@Url.Action("Validation","Jobick")">Form Validate</a></li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-043-menu"></i>
+                    <span class="nav-text">Table</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Bootstrap","Jobick")">Bootstrap</a></li>
+                    <li><a href="@Url.Action("Datatable","Jobick")">Datatable</a></li>
+                </ul>
+            </li>
+            <li>
+                <a class="has-arrow " href="javascript:void()" aria-expanded="false">
+                    <i class="flaticon-022-copy"></i>
+                    <span class="nav-text">Pages</span>
+                </a>
+                <ul aria-expanded="false">
+                    <li><a href="@Url.Action("Login","Jobick")">Login</a></li>
+                    <li><a href="@Url.Action("Register","Jobick")">Register</a></li>
+                    <li>
+                        <a class="has-arrow" href="javascript:void()" aria-expanded="false">Error</a>
+                        <ul aria-expanded="false">
+                            <li><a href="@Url.Action("Error400","Jobick")">Error 400</a></li>
+                            <li><a href="@Url.Action("Error403","Jobick")">Error 403</a></li>
+                            <li><a href="@Url.Action("Error404","Jobick")">Error 404</a></li>
+                            <li><a href="@Url.Action("Error500","Jobick")">Error 500</a></li>
+                            <li><a href="@Url.Action("Error503","Jobick")">Error 503</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="@Url.Action("LockScreen","Jobick")">Lock Screen</a></li>
+                    <li><a href="@Url.Action("EmptyPage","Jobick")">Empty Page</a></li>
+                </ul>
+            </li>
+        </ul>
+        <div class="plus-box">
+            <p class="fs-14 font-w600 mb-2">Let Jobick Managed<br>Your Resume Easily<br></p>
+            <p class="plus-box-p">Lorem ipsum dolor sit amet</p>
+        </div>
+        <div class="copyright">
+            <p><strong>Jobick Job Admin</strong> © 2023 All Rights Reserved</p>
+            <p class="fs-12">Made with <span class="heart"></span> by DexignLab</p>
+        </div>
+    </div>
+</div>
+<!--**********************************
+    Sidebar end
+***********************************-->

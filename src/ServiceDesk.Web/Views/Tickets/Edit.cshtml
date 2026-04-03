@@ -1,79 +1,814 @@
 @model Ticket
 @{
-    ViewData["Title"] = $"Edit Ticket #{Model.Id}";
+    ViewData["Title"] = $"Ticket #{Model.Id}";
+    // Antiforgery token rendered via hidden field in form
 }
 
-<nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
-        <li class="breadcrumb-item active">Edit Ticket #@Model.Id</li>
-    </ol>
-</nav>
+<!-- SolarWinds-style ticket edit page -->
+<form asp-action="Edit" id="ticketEditForm" data-loading-btn="btnSaveTicket">
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="CreatedDate" />
+    <input type="hidden" asp-for="ResolvedDate" />
+    <input type="hidden" asp-for="ClosedDate" />
+    <input type="hidden" asp-for="UpdatedDate" />
+    <input type="hidden" asp-for="DueDate" id="dueDateHidden" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
 
-<h1><i class="bi bi-pencil"></i> Edit Ticket #@Model.Id</h1>
+    <!-- ===== TOP HEADER BAR ===== -->
+    <div class="ticket-header-bar bg-white border-bottom shadow-sm mb-0">
+        <div class="d-flex align-items-center gap-2 flex-wrap py-2 px-3">
+            <!-- Back -->
+            <a asp-action="Index" class="btn btn-sm btn-light border me-2" title="Back to Tickets">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+            <!-- Incident label -->
+            <span class="text-muted fw-semibold text-nowrap" style="font-size:0.85rem;">INCIDENT #@Model.Id</span>
 
-<div class="row">
-    <div class="col-md-8">
-        <form asp-action="Edit">
-            <input type="hidden" asp-for="Id" />
-            <input type="hidden" asp-for="CreatedDate" />
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <!-- Status -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">State</label>
+                <select asp-for="Status" asp-items="Html.GetEnumSelectList<TicketStatus>()" class="form-select form-select-sm ticket-header-select status-select" id="statusSelect"></select>
+            </div>
 
+            <!-- Group Assignment (placeholder — using AssignedTo as proxy) -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Group Assignment</label>
+                <select class="form-select form-select-sm ticket-header-select" disabled>
+                    <option>IT FORCE</option>
+                </select>
+            </div>
+
+            <!-- Assigned To -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Assigned to</label>
+                <select asp-for="AssignedToId" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.ITStaff">
+                    <option value="">— Unassigned —</option>
+                </select>
+            </div>
+
+            <!-- Priority -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Priority</label>
+                <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select form-select-sm ticket-header-select priority-select" id="prioritySelect"></select>
+            </div>
+
+            <!-- Category -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Category</label>
+                <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
+            </div>
+
+            <!-- Sub-Category -->
+            <div class="ticket-header-field" id="subCategoryField">
+                <label class="ticket-header-label">Sub-Category</label>
+                <select name="SubCategoryId" id="subCategorySelect" class="form-select form-select-sm ticket-header-select">
+                    <option value="">— None —</option>
+                </select>
+            </div>
+
+            <!-- Submitted By -->
+            <div class="ticket-header-field">
+                <label class="ticket-header-label">Submitted By</label>
+                <select asp-for="SubmittedById" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.Employees">
+                    <option value="">— Select —</option>
+                </select>
+            </div>
+
+            <!-- Actions right side -->
+            <div class="ms-auto d-flex gap-2">
+                <button type="submit" id="btnSaveTicket" class="btn btn-sm btn-primary">
+                    <i class="bi bi-check-lg"></i> Save Changes
+                </button>
+                <a asp-action="Details" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-eye"></i>
+                </a>
+                <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="ticket-edit-body">
+
+        <!-- Ticket Subject & Meta -->
+        <div class="mb-4 pb-3 border-bottom">
+            <!-- Requester row (shown from selected SubmittedById; editable via header bar dropdown) -->
+            <div class="d-flex align-items-center gap-2 mb-2" id="requesterDisplay">
+                <div class="ticket-avatar rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
+                     style="width:40px;height:40px;font-size:1rem;flex-shrink:0;" id="requesterInitials">
+                    @(Model.SubmittedBy?.FirstName?.Substring(0,1).ToUpper() ?? "?")@(Model.SubmittedBy?.LastName?.Substring(0,1).ToUpper() ?? "")
+                </div>
+                <div>
+                    <div class="fw-semibold" id="requesterName">@(Model.SubmittedBy?.FullName ?? "Unknown")</div>
+                    <div class="text-muted small" id="requesterTitle">@(Model.SubmittedBy?.JobTitle ?? "")</div>
+                    <div class="text-muted small"><i class="bi bi-pencil-square me-1"></i><span class="fst-italic">Change via "Submitted By" above</span></div>
+                </div>
+            </div>
+
+            <!-- Subject -->
             <div class="mb-3">
-                <label asp-for="Title" class="form-label"></label>
-                <input asp-for="Title" class="form-control" />
-                <span asp-validation-for="Title" class="text-danger"></span>
+                <input asp-for="Title" class="form-control form-control-lg fw-bold border-0 border-bottom rounded-0 px-0 ticket-title-input" placeholder="Subject" />
+                <span asp-validation-for="Title" class="text-danger small"></span>
             </div>
 
-            <div class="mb-3">
-                <label asp-for="Description" class="form-label"></label>
-                <textarea asp-for="Description" class="form-control" rows="5"></textarea>
-                <span asp-validation-for="Description" class="text-danger"></span>
+            <!-- Created date -->
+            <div class="text-muted small">
+                <i class="bi bi-calendar3 me-1"></i>
+                Created: @Model.CreatedDate.ToString("MMM dd, yyyy") at @Model.CreatedDate.ToString("h:mm tt")
+                @if (Model.SubmittedBy != null)
+                {
+                    <span> by <strong>@Model.SubmittedBy.FullName</strong></span>
+                }
+                @if (Model.UpdatedDate.HasValue)
+                {
+                    <span class="ms-3"><i class="bi bi-pencil me-1"></i>Updated: @Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</span>
+                }
+            </div>
+        </div>
+
+        <!-- ===== TABS ===== -->
+        <ul class="nav nav-tabs mb-3" id="ticketTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="comments-tab" data-bs-toggle="tab" data-bs-target="#tab-comments" type="button" role="tab">
+                    <i class="bi bi-chat-left-text me-1"></i> Comments
+                    @if (Model.Notes.Any())
+                    {
+                        <span class="badge bg-secondary ms-1">@Model.Notes.Count(n => !n.IsInternal)</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="details-tab" data-bs-toggle="tab" data-bs-target="#tab-details" type="button" role="tab">
+                    <i class="bi bi-info-circle me-1"></i> Details
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="related-tab" data-bs-toggle="tab" data-bs-target="#tab-related" type="button" role="tab">
+                    <i class="bi bi-link-45deg me-1"></i> Related
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tab-tasks" type="button" role="tab">
+                    <i class="bi bi-check2-square me-1"></i> Tasks
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#tab-attachments" type="button" role="tab">
+                    <i class="bi bi-paperclip me-1"></i> Attachments
+                    @if (Model.Attachments.Any())
+                    {
+                        <span class="badge bg-secondary ms-1">@Model.Attachments.Count</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#tab-audit" type="button" role="tab">
+                    <i class="bi bi-clock-history me-1"></i> Audit
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="ticketTabContent">
+
+            <!-- ===== COMMENTS TAB ===== -->
+            <div class="tab-pane fade show active" id="tab-comments" role="tabpanel">
+                <!-- Existing comments -->
+                <div id="commentsContainer">
+                    @if (!Model.Notes.Any(n => !n.IsInternal))
+                    {
+                        <div class="text-muted text-center py-4" id="noCommentsMsg">
+                            <i class="bi bi-chat-left fs-3 d-block mb-2"></i>
+                            No comments yet.
+                        </div>
+                    }
+                    @foreach (var note in Model.Notes.Where(n => !n.IsInternal))
+                    {
+                        <div class="comment-item d-flex gap-3 mb-3">
+                            <div class="ticket-avatar rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                                 style="width:36px;height:36px;font-size:0.85rem;">
+                                @note.AuthorName.Substring(0, Math.Min(2, note.AuthorName.Length)).ToUpper()
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-semibold">@note.AuthorName</span>
+                                    <span class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</span>
+                                </div>
+                                <div class="comment-body bg-light rounded p-3">@note.Content</div>
+                                @if (note.Source != "Portal")
+                                {
+                                    <div class="text-muted small mt-1"><i class="bi bi-envelope me-1"></i>via @note.Source</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- New comment editor -->
+                <div class="comment-editor-area mt-4 border-top pt-3">
+                    <div class="d-flex gap-3">
+                        <div class="ticket-avatar rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                             style="width:36px;height:36px;font-size:0.85rem;">AG</div>
+                        <div class="flex-grow-1">
+                            <div class="border rounded">
+                                <textarea id="newCommentText" class="form-control border-0 rounded-top"
+                                          rows="4" placeholder="Type your comment here..."></textarea>
+                                <div class="d-flex align-items-center justify-content-between px-2 py-1 bg-light border-top rounded-bottom">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="internalToggle">
+                                        <label class="form-check-label small text-muted" for="internalToggle">
+                                            <i class="bi bi-lock me-1"></i> Public
+                                        </label>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <div class="dropdown">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="btnCannedResponses" title="Insert canned response">
+                                                <i class="bi bi-chat-square-text me-1"></i> Templates
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end" id="cannedResponsesMenu" style="max-height:320px;overflow-y:auto;min-width:280px;">
+                                                <li><span class="dropdown-item text-muted small">Loading...</span></li>
+                                            </ul>
+                                        </div>
+                                        <label class="btn btn-sm btn-outline-secondary mb-0" id="btnAttach" title="Attach file (max 10 MB)">
+                                            <i class="bi bi-paperclip"></i> Attach
+                                            <input type="file" id="attachFileInput" style="display:none;" />
+                                        </label>
+                                        <button type="button" class="btn btn-sm btn-primary" id="btnPostComment">
+                                            Post
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <label asp-for="Category" class="form-label"></label>
-                    <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select"></select>
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="Priority" class="form-label"></label>
-                    <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select"></select>
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="Status" class="form-label"></label>
-                    <select asp-for="Status" asp-items="Html.GetEnumSelectList<TicketStatus>()" class="form-select"></select>
+            <!-- ===== DETAILS TAB ===== -->
+            <div class="tab-pane fade" id="tab-details" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Description</label>
+                        <textarea asp-for="Description" class="form-control" rows="6"></textarea>
+                        <span asp-validation-for="Description" class="text-danger small"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Submitted By</label>
+                                <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees"></select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Related Service</label>
+                                <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
+                                    <option value="">— None —</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                <input type="datetime-local" id="dueDatePicker"
+                                       class="form-control @(Model.IsOverdue ? "border-danger" : "")"
+                                       value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
+                                       onchange="document.getElementById('dueDateHidden').value = this.value;" />
+                                @if (Model.IsOverdue)
+                                {
+                                    <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Overdue since @Model.DueDate!.Value.ToString("MMM dd, yyyy")</div>
+                                }
+                            </div>
+                            @if (Model.ResolvedDate.HasValue)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold text-success">Resolved Date</label>
+                                    <div class="form-control-plaintext">@Model.ResolvedDate.Value.ToString("MMM dd, yyyy h:mm tt")</div>
+                                </div>
+                            }
+                            @if (Model.ClosedDate.HasValue)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">Closed Date</label>
+                                    <div class="form-control-plaintext">@Model.ClosedDate.Value.ToString("MMM dd, yyyy h:mm tt")</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (Model.Status == TicketStatus.Resolved || Model.Status == TicketStatus.Closed)
+                    {
+                        <div class="col-12">
+                            <label asp-for="ResolutionNotes" class="form-label fw-semibold">Resolution Notes</label>
+                            <textarea asp-for="ResolutionNotes" class="form-control" rows="3" placeholder="Describe how this ticket was resolved"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center gap-2 p-3 bg-light rounded border">
+                                <i class="bi bi-book-half text-primary fs-4 flex-shrink-0"></i>
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">Promote to Knowledge Base</div>
+                                    <div class="text-muted small">Share this solution so other users can find it.</div>
+                                </div>
+                                <a asp-controller="Kb" asp-action="Create" asp-route-ticketId="@Model.Id"
+                                   class="btn btn-sm btn-outline-primary flex-shrink-0">
+                                    <i class="bi bi-plus-lg me-1"></i> Add to KB
+                                </a>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <input type="hidden" asp-for="ResolutionNotes" />
+                    }
                 </div>
             </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <label asp-for="SubmittedById" class="form-label">Submitted By</label>
-                    <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees"></select>
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="AssignedToId" class="form-label">Assign To (IT Staff)</label>
-                    <select asp-for="AssignedToId" class="form-select" asp-items="@ViewBag.ITStaff">
-                        <option value="">-- Unassigned --</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="CompanyServiceId" class="form-label">Related Service</label>
-                    <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
-                        <option value="">-- None --</option>
-                    </select>
+            <!-- ===== RELATED TAB ===== -->
+            <div class="tab-pane fade" id="tab-related" role="tabpanel">
+                <div class="py-3">
+                    @if (Model.CompanyService != null)
+                    {
+                        <div class="card mb-3" style="max-width:400px;">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-gear-fill text-primary fs-4"></i>
+                                    <div>
+                                        <div class="fw-semibold">@Model.CompanyService.Name</div>
+                                        <div class="text-muted small">Related Service</div>
+                                    </div>
+                                    <a asp-controller="Services" asp-action="Details" asp-route-id="@Model.CompanyServiceId" class="btn btn-sm btn-outline-primary ms-auto">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-muted text-center py-4">
+                            <i class="bi bi-link-45deg fs-3 d-block mb-2"></i>
+                            No related items. Use the <strong>Details</strong> tab to link a service.
+                        </div>
+                    }
                 </div>
             </div>
 
-            <div class="mb-3">
-                <label asp-for="ResolutionNotes" class="form-label"></label>
-                <textarea asp-for="ResolutionNotes" class="form-control" rows="3" placeholder="Add resolution details when resolving this ticket"></textarea>
+            <!-- ===== TASKS TAB ===== -->
+            <div class="tab-pane fade" id="tab-tasks" role="tabpanel">
+                <div class="text-muted text-center py-5">
+                    <i class="bi bi-check2-square fs-2 d-block mb-2"></i>
+                    <p>Task tracking coming soon.</p>
+                    <p class="small">You will be able to create and assign sub-tasks to this ticket.</p>
+                </div>
             </div>
 
-            <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
-                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <!-- ===== ATTACHMENTS TAB ===== -->
+            <div class="tab-pane fade" id="tab-attachments" role="tabpanel">
+                <div class="mt-2">
+                    <!-- Upload area -->
+                    <div class="border rounded p-3 bg-light mb-3 text-center attachment-drop-zone" id="attachDropZone">
+                        <i class="bi bi-cloud-upload fs-3 text-muted d-block mb-1"></i>
+                        <p class="mb-1 text-muted small">Drag &amp; drop files here, or</p>
+                        <label class="btn btn-sm btn-outline-primary mb-0">
+                            <i class="bi bi-folder2-open me-1"></i> Browse Files
+                            <input type="file" id="attachTabFileInput" style="display:none;" multiple />
+                        </label>
+                        <p class="text-muted small mt-1 mb-0">Maximum file size: 10 MB</p>
+                    </div>
+
+                    <!-- Upload progress -->
+                    <div id="attachUploadProgress" style="display:none;" class="mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="spinner-border spinner-border-sm text-primary"></div>
+                            <span class="small text-muted">Uploading...</span>
+                        </div>
+                    </div>
+
+                    <!-- Existing attachments list -->
+                    <div id="attachmentsList">
+                        @if (!Model.Attachments.Any())
+                        {
+                            <div class="text-muted text-center py-3" id="noAttachmentsMsg">
+                                <i class="bi bi-paperclip fs-3 d-block mb-2"></i>
+                                No attachments yet.
+                            </div>
+                        }
+                        else
+                        {
+                            foreach (var att in Model.Attachments.OrderByDescending(a => a.UploadedDate))
+                            {
+                                <div class="attachment-item d-flex align-items-center gap-3 p-2 border rounded mb-2" data-att-id="@att.Id">
+                                    <i class="bi bi-file-earmark fs-4 text-muted flex-shrink-0"></i>
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="fw-semibold text-truncate">@att.FileName</div>
+                                        <div class="text-muted small">@att.FileSizeDisplay &mdash; uploaded @att.UploadedDate.ToString("MMM dd, yyyy") by @att.UploadedBy</div>
+                                    </div>
+                                    <a href="/uploads/tickets/@Model.Id/@att.StoredFileName" download="@att.FileName" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
             </div>
-        </form>
+
+            <!-- ===== AUDIT TAB ===== -->
+            <div class="tab-pane fade" id="tab-audit" role="tabpanel">
+                <div class="audit-timeline mt-2">
+                    <!-- Ticket created event -->
+                    <div class="audit-entry d-flex gap-3">
+                        <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                            <div class="audit-dot bg-primary rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                            <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
+                        </div>
+                        <div class="pb-3">
+                            <div class="fw-semibold text-primary small">Ticket Created</div>
+                            <div class="text-muted small">@Model.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</div>
+                            @if (Model.SubmittedBy != null)
+                            {
+                                <div class="small">Submitted by <strong>@Model.SubmittedBy.FullName</strong></div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Field changes + notes merged and sorted by date -->
+                    @{
+                        // Build a unified timeline: notes + field changes
+                        var auditNotes = Model.Notes
+                            .Select(n => new { Time = n.CreatedDate, Kind = "note", Note = n, History = (TicketHistory?)null })
+                            .ToList();
+                        var auditHistory = Model.History
+                            .Select(h => new { Time = h.ChangedDate, Kind = "change", Note = (TicketNote?)null, History = h })
+                            .ToList();
+                        var auditEntries = auditNotes
+                            .Cast<dynamic>()
+                            .Concat(auditHistory.Cast<dynamic>())
+                            .OrderBy(e => (DateTime)e.Time)
+                            .ToList();
+                    }
+                    @foreach (var entry in auditEntries)
+                    {
+                        if (entry.Kind == "note")
+                        {
+                            var note = (TicketNote)entry.Note;
+                            <div class="audit-entry d-flex gap-3">
+                                <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                    <div class="audit-dot @(note.Source == "Email" ? "bg-info" : note.IsInternal ? "bg-warning" : "bg-success") rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                                    <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
+                                </div>
+                                <div class="pb-3">
+                                    <div class="fw-semibold small @(note.IsInternal ? "text-warning" : "text-success")">
+                                        @(note.IsInternal ? "Internal Note" : "Comment") — @note.Source
+                                    </div>
+                                    <div class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt") by @note.AuthorName</div>
+                                    <div class="small text-truncate" style="max-width:500px;">@note.Content</div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            var hist = (TicketHistory)entry.History;
+                            <div class="audit-entry d-flex gap-3">
+                                <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                    <div class="audit-dot bg-primary rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                                    <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
+                                </div>
+                                <div class="pb-3">
+                                    <div class="fw-semibold small text-primary">Field Changed: @hist.FieldName</div>
+                                    <div class="text-muted small">@hist.ChangedDate.ToString("MMM dd, yyyy h:mm tt") by @hist.ChangedBy</div>
+                                    <div class="small">
+                                        <span class="text-muted">@(hist.OldValue ?? "—")</span>
+                                        <i class="bi bi-arrow-right mx-1 text-muted"></i>
+                                        <span class="fw-semibold">@(hist.NewValue ?? "—")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    <!-- Resolved event -->
+                    @if (Model.ResolvedDate.HasValue)
+                    {
+                        <div class="audit-entry d-flex gap-3">
+                            <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                <div class="audit-dot bg-success rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                                <div class="audit-line bg-secondary mx-auto" style="width:2px;flex:1;min-height:30px;"></div>
+                            </div>
+                            <div class="pb-3">
+                                <div class="fw-semibold text-success small">Ticket Resolved</div>
+                                <div class="text-muted small">@Model.ResolvedDate.Value.ToString("MMM dd, yyyy h:mm tt")</div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Closed event -->
+                    @if (Model.ClosedDate.HasValue)
+                    {
+                        <div class="audit-entry d-flex gap-3">
+                            <div class="audit-icon-col text-center" style="width:32px;flex-shrink:0;">
+                                <div class="audit-dot bg-secondary rounded-circle mx-auto" style="width:12px;height:12px;margin-top:4px;"></div>
+                            </div>
+                            <div class="pb-3">
+                                <div class="fw-semibold text-secondary small">Ticket Closed</div>
+                                <div class="text-muted small">@Model.ClosedDate.Value.ToString("MMM dd, yyyy h:mm tt")</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+        </div><!-- /.tab-content -->
+    </div><!-- /.ticket-edit-body -->
+</form>
+
+<!-- Toast for comment post feedback -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+    <div id="commentToast" class="toast align-items-center text-bg-success border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body"><i class="bi bi-check-circle me-2"></i><span id="commentToastMsg">Comment posted.</span></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    const ticketId = @Model.Id;
+    const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const toast = new bootstrap.Toast(document.getElementById('commentToast'), { delay: 2800 });
+    const toastMsg = document.getElementById('commentToastMsg');
+
+    // --- Status select coloring ---
+    const statusSelect = document.getElementById('statusSelect');
+    const prioritySelect = document.getElementById('prioritySelect');
+
+    function applySelectColor(sel, map) {
+        if (!sel) return;
+        function update() {
+            const val = (sel.value || '').toLowerCase();
+            sel.className = sel.className.replace(/\bselect-color-\S+/g, '').trim();
+            if (map[val]) sel.classList.add('select-color-' + val);
+        }
+        sel.addEventListener('change', update);
+        update();
+    }
+
+    const statusColors = { open: 'open', inprogress: 'inprogress', onhold: 'onhold', resolved: 'resolved', closed: 'closed', cancelled: 'cancelled' };
+    const priorityColors = { low: 'low', medium: 'medium', high: 'high', critical: 'critical' };
+    applySelectColor(statusSelect, statusColors);
+    applySelectColor(prioritySelect, priorityColors);
+
+    // --- Sub-category AJAX loader ---
+    (function () {
+        const catSel = document.getElementById('categorySelect');
+        const subSel = document.getElementById('subCategorySelect');
+        if (!catSel || !subSel) return;
+
+        const currentSubId = @(Model.SubCategoryId.HasValue ? Model.SubCategoryId.Value.ToString() : "null");
+
+        function loadSubCategories(category, selectId) {
+            subSel.innerHTML = '<option value="">— None —</option>';
+            if (!category) return;
+            fetch(`/Tickets/SubCategories?category=${encodeURIComponent(category)}`)
+                .then(r => r.json())
+                .then(items => {
+                    items.forEach(function (item) {
+                        const opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = item.name;
+                        if (selectId && item.id === selectId) opt.selected = true;
+                        subSel.appendChild(opt);
+                    });
+                });
+        }
+
+        // Load on page init for current category
+        loadSubCategories(catSel.value, currentSubId);
+
+        catSel.addEventListener('change', function () {
+            loadSubCategories(this.value, null);
+        });
+    })();
+
+    // --- Internal toggle label ---
+    const internalToggle = document.getElementById('internalToggle');
+    const internalLabel = internalToggle?.nextElementSibling;
+    internalToggle?.addEventListener('change', function () {
+        if (internalLabel) {
+            internalLabel.innerHTML = this.checked
+                ? '<i class="bi bi-lock-fill me-1"></i> Internal Note'
+                : '<i class="bi bi-lock me-1"></i> Public';
+        }
+    });
+
+    // --- Canned Responses picker ---
+    (function () {
+        const btn = document.getElementById('btnCannedResponses');
+        const menu = document.getElementById('cannedResponsesMenu');
+        if (!btn || !menu) return;
+        let loaded = false;
+        btn.addEventListener('click', function () {
+            if (loaded) return;
+            loaded = true;
+            fetch('/Tickets/CannedResponses')
+                .then(r => r.json())
+                .then(items => {
+                    menu.innerHTML = '';
+                    if (!items || items.length === 0) {
+                        menu.innerHTML = '<li><span class="dropdown-item text-muted small">No templates available</span></li>';
+                        return;
+                    }
+                    const groups = {};
+                    items.forEach(t => {
+                        const cat = t.category || 'General';
+                        if (!groups[cat]) groups[cat] = [];
+                        groups[cat].push(t);
+                    });
+                    Object.keys(groups).sort().forEach(cat => {
+                        const header = document.createElement('li');
+                        header.innerHTML = `<h6 class="dropdown-header">${cat}</h6>`;
+                        menu.appendChild(header);
+                        groups[cat].forEach(t => {
+                            const li = document.createElement('li');
+                            const a = document.createElement('a');
+                            a.className = 'dropdown-item small';
+                            a.href = '#';
+                            a.textContent = t.title;
+                            a.title = t.content.substring(0, 120);
+                            a.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                const ta = document.getElementById('newCommentText');
+                                if (ta) {
+                                    const cur = ta.value;
+                                    ta.value = cur ? cur + '\n\n' + t.content : t.content;
+                                    ta.focus();
+                                }
+                            });
+                            li.appendChild(a);
+                            menu.appendChild(li);
+                        });
+                        const divider = document.createElement('li');
+                        divider.innerHTML = '<hr class="dropdown-divider">';
+                        menu.appendChild(divider);
+                    });
+                    // remove trailing divider
+                    if (menu.lastChild) menu.removeChild(menu.lastChild);
+                })
+                .catch(() => {
+                    menu.innerHTML = '<li><span class="dropdown-item text-muted small">Failed to load templates</span></li>';
+                });
+        });
+    })();
+
+    // --- Post Comment ---
+    document.getElementById('btnPostComment')?.addEventListener('click', function () {
+        const textarea = document.getElementById('newCommentText');
+        const content = textarea?.value?.trim();
+        if (!content) { textarea?.focus(); return; }
+        const isInternal = document.getElementById('internalToggle')?.checked || false;
+
+        const fd = new FormData();
+        fd.append('id', ticketId);
+        fd.append('content', content);
+        fd.append('isInternal', isInternal);
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        this.disabled = true;
+        fetch('/Tickets/AddNote', { method: 'POST', body: fd })
+            .then(r => {
+                if (!r.ok) throw new Error();
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    textarea.value = '';
+                    document.getElementById('noCommentsMsg')?.remove();
+                    appendComment(data);
+                    toastMsg.textContent = 'Comment posted successfully.';
+                    const el = document.getElementById('commentToast');
+                    el.classList.remove('text-bg-danger');
+                    el.classList.add('text-bg-success');
+                    toast.show();
+                }
+            })
+            .catch(() => {
+                toastMsg.textContent = 'Failed to post comment. Please try again.';
+                const el = document.getElementById('commentToast');
+                el.classList.remove('text-bg-success');
+                el.classList.add('text-bg-danger');
+                toast.show();
+            })
+            .finally(() => { this.disabled = false; });
+    });
+
+    function appendComment(data) {
+        const container = document.getElementById('commentsContainer');
+        const initials = data.authorName.substring(0, Math.min(2, data.authorName.length)).toUpperCase();
+        const div = document.createElement('div');
+        div.className = 'comment-item d-flex gap-3 mb-3';
+        div.innerHTML = `
+            <div class="ticket-avatar rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                 style="width:36px;height:36px;font-size:0.85rem;">${initials}</div>
+            <div class="flex-grow-1">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-semibold">${escHtml(data.authorName)}</span>
+                    <span class="text-muted small">${escHtml(data.createdDate)}</span>
+                </div>
+                <div class="comment-body bg-light rounded p-3">${escHtml(data.content)}</div>
+            </div>`;
+        container.appendChild(div);
+    }
+
+    function escHtml(str) {
+        const d = document.createElement('div');
+        d.appendChild(document.createTextNode(str || ''));
+        return d.innerHTML;
+    }
+
+    // --- Attach button in comment area (triggers the tab-based file input) ---
+    document.getElementById('attachFileInput')?.addEventListener('change', function () {
+        if (this.files && this.files.length > 0) uploadFile(this.files[0]);
+    });
+
+    // --- Attachments tab file input ---
+    document.getElementById('attachTabFileInput')?.addEventListener('change', function () {
+        Array.from(this.files).forEach(f => uploadFile(f));
+        this.value = '';
+    });
+
+    // --- Drag & drop on the drop zone ---
+    const dropZone = document.getElementById('attachDropZone');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('border-primary');
+            Array.from(e.dataTransfer.files).forEach(f => uploadFile(f));
+        });
+    }
+
+    function uploadFile(file) {
+        if (file.size > 10 * 1024 * 1024) {
+            showAttachToast('File "' + file.name + '" exceeds the 10 MB limit.', true);
+            return;
+        }
+        const progress = document.getElementById('attachUploadProgress');
+        if (progress) progress.style.display = '';
+
+        const fd = new FormData();
+        fd.append('id', ticketId);
+        fd.append('file', file);
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/UploadAttachment', { method: 'POST', body: fd })
+            .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(e.error || 'Upload failed.')); return r.json(); })
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('noAttachmentsMsg')?.remove();
+                    appendAttachment(data, ticketId);
+                    showAttachToast('"' + data.fileName + '" uploaded successfully.');
+                }
+            })
+            .catch(err => showAttachToast(err || 'Upload failed.', true))
+            .finally(() => { if (progress) progress.style.display = 'none'; });
+    }
+
+    function appendAttachment(data, tid) {
+        const list = document.getElementById('attachmentsList');
+        if (!list) return;
+        const div = document.createElement('div');
+        div.className = 'attachment-item d-flex align-items-center gap-3 p-2 border rounded mb-2';
+        div.setAttribute('data-att-id', data.id);
+        div.innerHTML = `
+            <i class="bi bi-file-earmark fs-4 text-muted flex-shrink-0"></i>
+            <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold text-truncate">${escHtml(data.fileName)}</div>
+                <div class="text-muted small">${escHtml(data.fileSize)} &mdash; just now</div>
+            </div>
+            <a href="${escHtml(data.downloadUrl)}" download="${escHtml(data.fileName)}" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+                <i class="bi bi-download"></i>
+            </a>`;
+        list.prepend(div);
+        // Update attachment tab badge
+        const tabBtn = document.getElementById('attachments-tab');
+        if (tabBtn) {
+            let badge = tabBtn.querySelector('.badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'badge bg-secondary ms-1';
+                tabBtn.appendChild(badge);
+            }
+            badge.textContent = (list.querySelectorAll('.attachment-item').length).toString();
+        }
+    }
+
+    function showAttachToast(msg, isError) {
+        const el = document.getElementById('commentToast');
+        el.classList.toggle('text-bg-success', !isError);
+        el.classList.toggle('text-bg-danger', !!isError);
+        toastMsg.textContent = msg;
+        toast.show();
+    }
+})();
+</script>
+}

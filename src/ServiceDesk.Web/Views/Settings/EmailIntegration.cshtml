@@ -175,9 +175,13 @@ else
                                         <i class="bi bi-plug"></i> Test
                                     </button>
                                 </form>
-                                <a asp-action="DeleteEmailConfig" asp-route-id="@config.Id" class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trash"></i> Delete
-                                </a>
+                                <form asp-action="DeleteEmailConfig" asp-route-id="@config.Id" method="post" class="d-inline"
+                                      data-confirm-title="Delete Config" data-confirm-message="Delete this email configuration? This cannot be undone.">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i> Delete
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>

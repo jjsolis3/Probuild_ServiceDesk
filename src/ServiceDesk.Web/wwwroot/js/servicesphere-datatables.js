@@ -2,7 +2,64 @@
  * ServiceSphere DataTables - Global Initialization
  * Automatically initializes DataTables on tables with class "ss-datatable"
  * Provides: Pagination, Search, Column Sorting, PDF/Excel Export
+ *
+ * window.load timing note:
+ *   Jobick's custom.min.js fires handleSelectPicker() on $(window).on('load'),
+ *   which wraps .dataTables_wrapper select with bootstrap-select.
+ *   Since our script loads after Jobick, our window.load handler fires after
+ *   Jobick's — letting us destroy that wrapper and restore a clean native select.
+ *   We also use window.load to initialize liveSearch on form selects.
  */
+
+$(window).on('load', function () {
+
+    // --- Fix DataTables length select ---
+    // Jobick's handleSelectPicker wraps .dataTables_wrapper select with
+    // bootstrap-select. Destroy it and restore a proper native select.
+    $('.dataTables_wrapper .dataTables_length select').each(function () {
+        var $sel = $(this);
+        if ($.fn.selectpicker && $sel.data('selectpicker')) {
+            $sel.selectpicker('destroy');
+        }
+        // Remove any leftover display:none the selectpicker may have set
+        $sel.show()
+            .css({
+                display: 'inline-block',
+                visibility: 'visible',
+                opacity: '1',
+                color: '#374151',
+                width: 'auto'
+            });
+    });
+
+    // --- Searchable form selects (live-search) ---
+    // Auto-apply bootstrap-select with liveSearch to any .form-select
+    // that has more than 7 options, except filter-bar and DataTables selects.
+    $('select.form-select').each(function () {
+        var $sel = $(this);
+        // Skip filter bar selects (they use onchange submit — keep native)
+        if ($sel.closest('.filter-bar').length > 0) return;
+        // Skip DataTables wrappers (handled above)
+        if ($sel.closest('.dataTables_wrapper').length > 0) return;
+        // Skip if already initialized
+        if ($sel.data('selectpicker')) return;
+        // Only enhance selects with enough options to benefit from search
+        if ($sel.find('option').length <= 7) return;
+
+        $sel.selectpicker({
+            liveSearch: true,
+            liveSearchPlaceholder: 'Type to search...',
+            size: 8,
+            width: '100%',
+            style: '',          // remove default btn-light class
+            styleBase: 'btn'    // just .btn, we style via .ss-form-select
+        });
+
+        // Tag the wrapper so our CSS (.ss-form-select) applies
+        $sel.closest('.bootstrap-select').addClass('ss-form-select');
+    });
+});
+
 $(document).ready(function () {
 
     // ---- Full DataTable (pagination, search, sort, export) ----
@@ -37,31 +94,31 @@ $(document).ready(function () {
 
             // Export Buttons
             dom: '<"row align-items-center mb-3"' +
-                     '<"col-sm-12 col-md-4"l>' +
-                     '<"col-sm-12 col-md-4 text-center"B>' +
+                     '<"col-sm-6 col-md-3"l>' +
+                     '<"col-sm-6 col-md-5 text-center"B>' +
                      '<"col-sm-12 col-md-4"f>' +
                  '>' +
-                 'rtip',
+                 'rt' +
+                 '<"row align-items-center mt-2"' +
+                     '<"col-sm-12 col-md-5"i>' +
+                     '<"col-sm-12 col-md-7"p>' +
+                 '>',
             buttons: [
                 {
                     extend: 'excelHtml5',
-                    text: '<i class="bi bi-file-earmark-spreadsheet"></i> Excel',
+                    text: '<i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel',
                     className: 'btn btn-sm btn-outline-success',
                     title: exportTitle,
-                    exportOptions: {
-                        columns: ':not(.no-export)'
-                    }
+                    exportOptions: { columns: ':not(.no-export)' }
                 },
                 {
                     extend: 'pdfHtml5',
-                    text: '<i class="bi bi-file-earmark-pdf"></i> PDF',
+                    text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',
                     className: 'btn btn-sm btn-outline-danger',
                     title: exportTitle,
                     orientation: 'landscape',
                     pageSize: 'LETTER',
-                    exportOptions: {
-                        columns: ':not(.no-export)'
-                    }
+                    exportOptions: { columns: ':not(.no-export)' }
                 }
             ],
 
@@ -86,6 +143,15 @@ $(document).ready(function () {
                     next: '<i class="bi bi-chevron-right"></i>',
                     last: '<i class="bi bi-chevron-double-right"></i>'
                 }
+            },
+
+            // initComplete: basic class application at init time.
+            // The actual bootstrap-select cleanup happens in the window.load
+            // handler above (which fires after Jobick's handleSelectPicker).
+            initComplete: function () {
+                var wrapper = this.api().table().container();
+                var $lengthSelect = $(wrapper).find('.dataTables_length select');
+                $lengthSelect.css({ width: 'auto', color: '#374151' });
             }
         });
     });

@@ -1,0 +1,667 @@
+﻿@{
+    Layout = "~/Views/Shared/_LayoutJobick.cshtml";
+    ViewData["Title"] = "Companies";
+}
+<div class="content-body">
+	<!-- row -->
+	<div class="container-fluid">
+		<div class="d-flex align-items-center flex-wrap search-job mb-4">
+			<div class="col-xl-2 col-xxl-3 col-lg-3 col-sm-6 col-12 search-dropdown d-flex align-items-center">
+				<select class="form-control border-0 default-select dashboard-select-1 wide h-auto">
+					<option>Choose Location</option>
+					<option>London</option>
+					<option>France</option>
+				</select>
+			</div>
+			<div class="col-xl-2 col-xxl-3 col-lg-3 col-sm-6 col-12 search-dropdown d-flex align-items-center">
+				<select class="form-control border-0 default-select dashboard-select-1 wide h-auto">
+					<option>Salary Range</option>
+					<option>London</option>
+					<option>France</option>
+				</select>
+			</div>
+			<div class="col-xl-8 col-xxl-6 col-lg-6 col-12 d-md-flex job-title-search pe-0">
+				<div class="input-group search-box">
+					<input type="text" class="form-control" placeholder="Search job title here...">
+					<a href="javascript:void(0)" class="btn btn-primary btn-rounded">Search<i class="flaticon-381-search-2 ms-2"></i></a>
+				</div>
+			</div>
+		</div>
+		<div class="mt-3 d-flex justify-content-between align-items-center flex-wrap">
+			<div class="mb-4">
+				<h6 class="mb-2">Showing 12 of 124 Jobs Results</h6>
+				<p class="mb-0">Based your preferences</p>
+			</div>
+			<div class="d-flex align-items-center mb-4">
+				<div class="default-tab job-tabs">
+					<ul class="nav nav-tabs" role="tablist">
+						<li class="nav-item">
+							<a class="nav-link active" data-bs-toggle="tab" href="#List1">
+								<i class="fas fa-list"></i>
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link" data-bs-toggle="tab" href="#Boxed">
+								<i class="fas fa-th-large"></i>
+							</a>
+						</li>
+					</ul>
+				</div>
+				<div>
+					<select class="default-select dashboard-select border-0">
+						<option data-display="Newest">Newest</option>
+
+						<option value="2">oldest</option>
+					</select>
+				</div>
+			</div>
+		</div>
+		<div class="tab-content">
+			<div class="tab-pane fade show active" id="List1" role="tabpanel">
+				<div class="row">
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#2769ee" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Bubble Studios</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#47ae3b" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Foodia Studios</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available  mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#8030d0" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#e1b746" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#314c82" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#676767" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt text-primary me-2"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#f94a4a" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-6">
+						<div class="card">
+							<div class="card-body">
+								<div class="d-flex justify-content-between align-items-center flex-wrap">
+									<div class="d-flex">
+										<div class="icon-img-bx lg me-3">
+											<svg xmlns="http://www.w3.org/2000/svg" width="97" height="97" viewBox="0 0 97 97">
+												<g transform="translate(-0.785)">
+													<rect width="97" height="97" rx="12" transform="translate(0.785)" fill="#c5c5c5" />
+													<g transform="translate(0.348)">
+														<rect data-name="placeholder" width="97" height="97" rx="12" transform="translate(0.438)" fill="#ee9827" />
+														<ellipse data-name="Ellipse 12" cx="24.359" cy="24.702" rx="24.359" ry="24.702" transform="translate(20.2 27.447)" fill="#fff" />
+														<ellipse data-name="Ellipse 11" cx="14.853" cy="15.096" rx="14.853" ry="15.096" transform="translate(49.907 20.585)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div>
+											<h4 class="mb-0">Kelon inc.</h4>
+											<p class="mb-2">Desgin Team Agency</p>
+											<p class="mb-0 fs-13"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Manchester, England</p>
+										</div>
+									</div>
+									<div class="job-available mt-sm-0 mt-3">
+										<a href="javascript:void(0);" class="btn btn-outline-primary btn-sm btn-rounded">6 Jobs Available</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="tab-pane fade" id="Boxed" role="tabpane2">
+				<div class="row">
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class="card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-457 -443)">
+												<rect width="71" height="71" rx="12" transform="translate(457 443)" fill="#c5c5c5"></rect>
+												<g transform="translate(457 443)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#2769ee"></rect>
+													<circle data-name="Ellipse 12" cx="18" cy="18" r="18" transform="translate(15 20)" fill="#fff"></circle>
+													<circle data-name="Ellipse 11" cx="11" cy="11" r="11" transform="translate(36 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate"></circle>
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UI Designer</a></h5>
+									<p class="text-primary mb-2 fs-13">Bubbles Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.332)">
+												<rect width="71" height="71" rx="12" transform="translate(0.332)" fill="#c5c5c5" />
+												<g transform="translate(0.332)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#ee27c0" />
+													<ellipse data-name="Ellipse 12" cx="17.987" cy="18" rx="17.987" ry="18" transform="translate(15.147 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.887" cy="11" rx="10.887" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Programmer</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(0.093)">
+												<rect width="71" height="71" rx="12" transform="translate(-0.093)" fill="#c5c5c5" />
+												<g transform="translate(-0.093)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#27beee" />
+													<ellipse data-name="Ellipse 12" cx="17.75" cy="18" rx="17.75" ry="18" transform="translate(14.947 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="11.211" cy="11" rx="11.211" ry="11" transform="translate(35.5 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UX Researcher</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.483)">
+												<rect width="71" height="71" rx="12" transform="translate(0.483)" fill="#c5c5c5" />
+												<g transform="translate(0.483)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#bec747" />
+													<ellipse data-name="Ellipse 12" cx="18.46" cy="18" rx="18.46" ry="18" transform="translate(14.2 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.887" cy="11" rx="10.887" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Data Scientist</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(0.228)">
+												<rect width="71" height="71" rx="12" transform="translate(-0.228)" fill="#c5c5c5" />
+												<g transform="translate(-0.228)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#7b25d1" />
+													<ellipse data-name="Ellipse 12" cx="17.75" cy="18" rx="17.75" ry="18" transform="translate(14.947 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="11.211" cy="11" rx="11.211" ry="11" transform="translate(35.5 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Graphic Designer</a></h5>
+									<p class="text-primary mb-2 fs-13">Bubbles Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.394)">
+												<rect width="71" height="71" rx="12" transform="translate(0.394)" fill="#c5c5c5" />
+												<g transform="translate(0.394)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#345ad6" />
+													<ellipse data-name="Ellipse 12" cx="17.987" cy="18" rx="17.987" ry="18" transform="translate(15.147 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.887" cy="11" rx="10.887" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Animator</a></h5>
+									<p class="text-primary mb-2 fs-13">Bubbles Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.016)">
+												<rect width="71" height="71" rx="12" transform="translate(0.016)" fill="#c5c5c5" />
+												<g transform="translate(0.016)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#ee9827" />
+													<ellipse data-name="Ellipse 12" cx="17.987" cy="18" rx="17.987" ry="18" transform="translate(15.147 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="11.36" cy="11" rx="11.36" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Animator</a></h5>
+									<p class="text-primary mb-2 fs-13">Bubbles Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(0.362)">
+												<rect width="71" height="71" rx="12" transform="translate(-0.362)" fill="#c5c5c5" />
+												<g transform="translate(-0.362)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#3ca44d" />
+													<ellipse data-name="Ellipse 12" cx="18.217" cy="18" rx="18.217" ry="18" transform="translate(14.947 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.743" cy="11" rx="10.743" ry="11" transform="translate(36.434 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">Lead Design Rese..</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(0.228)">
+												<rect width="71" height="71" rx="12" transform="translate(-0.228)" fill="#c5c5c5" />
+												<g transform="translate(-0.228)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#cba336" />
+													<ellipse data-name="Ellipse 12" cx="17.75" cy="18" rx="17.75" ry="18" transform="translate(14.947 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="11.211" cy="11" rx="11.211" ry="11" transform="translate(35.5 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UI Designer</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.394)">
+												<rect width="71" height="71" rx="12" transform="translate(0.394)" fill="#c5c5c5" />
+												<g transform="translate(0.394)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#80bc3b" />
+													<ellipse data-name="Ellipse 12" cx="17.987" cy="18" rx="17.987" ry="18" transform="translate(15.147 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.887" cy="11" rx="10.887" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UX Researcher</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(-0.016)">
+												<rect width="71" height="71" rx="12" transform="translate(0.016)" fill="#c5c5c5" />
+												<g transform="translate(0.016)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#858585" />
+													<ellipse data-name="Ellipse 12" cx="17.987" cy="18" rx="17.987" ry="18" transform="translate(15.147 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="11.36" cy="11" rx="11.36" ry="11" transform="translate(35.973 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UX Researcher</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-xl-3  col-md-4 col-sm-6">
+						<div class="card jobs2">
+							<div class=" card-body">
+								<div class="text-center">
+									<div class="icon-img-bx">
+										<svg class="mb-2" xmlns="http://www.w3.org/2000/svg" width="71" height="71" viewBox="0 0 71 71">
+											<g transform="translate(0.362)">
+												<rect width="71" height="71" rx="12" transform="translate(-0.362)" fill="#c5c5c5" />
+												<g transform="translate(-0.362)">
+													<rect data-name="placeholder" width="71" height="71" rx="12" fill="#df2c57" />
+													<ellipse data-name="Ellipse 12" cx="18.217" cy="18" rx="18.217" ry="18" transform="translate(14.947 20)" fill="#fff" />
+													<ellipse data-name="Ellipse 11" cx="10.743" cy="11" rx="10.743" ry="11" transform="translate(36.434 15)" fill="#ffe70c" style="mix-blend-mode: multiply;isolation: isolate" />
+												</g>
+											</g>
+										</svg>
+									</div>
+									<h5 class="mb-1"><a href="javascript:void(0);">UX Researcher</a></h5>
+									<p class="text-primary mb-2 fs-13">Kleon Studios</p>
+								</div>
+								<div class="bottom-info pt-1">
+									<p class="mb-0"><i class="fas fa-map-marker-alt me-2"></i>Manchester, England</p>
+									<p class="mb-0"><i class="fas fa-comments-dollar me-2"></i>$ 2,000 - $ 2,500</p>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="d-flex align-items-center justify-content-sm-between flex-wrap justify-content-center">
+			<div class="sm-mb-0 mb-3">
+				<p class="mb-0">Showing 5 of 102 Data</p>
+			</div>
+			<nav>
+				<ul class="pagination pagination-circle">
+					<li class="page-item page-indicator">
+						<a class="page-link" href="javascript:void(0)">
+							<i class="la la-angle-left"></i>
+						</a>
+					</li>
+					<li class="page-item active">
+						<a class="page-link" href="javascript:void(0)">1</a>
+					</li>
+					<li class="page-item"><a class="page-link" href="javascript:void(0)">2</a></li>
+					<li class="page-item"><a class="page-link" href="javascript:void(0)">3</a></li>
+					<li class="page-item"><a class="page-link" href="javascript:void(0)">4</a></li>
+					<li class="page-item page-indicator">
+						<a class="page-link" href="javascript:void(0)">
+							<i class="la la-angle-right"></i>
+						</a>
+					</li>
+				</ul>
+			</nav>
+		</div>
+	</div>
+</div>
+
+@section Jobick_style
+    {
+    <link href="~/Jobick/vendor/bootstrap-datepicker-master/css/bootstrap-datepicker.min.css" rel="stylesheet">
+}
+
+@section Jobick_script
+    {
+	<!-- Required vendors -->
+	<script src="~/Jobick/vendor/global/global.min.js"></script>
+
+	<script src="~/Jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-datepicker-master/js/bootstrap-datepicker.min.js"></script>
+
+	<!-- Dashboard 1 -->
+	<script src="~/Jobick/js/custom.min.js"></script>
+	<script src="~/Jobick/js/dlabnav-init.js"></script>
+	
+	
+}

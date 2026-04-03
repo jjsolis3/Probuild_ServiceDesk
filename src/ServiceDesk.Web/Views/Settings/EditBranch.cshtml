@@ -14,7 +14,7 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="EditBranch" method="post">
+        <form asp-action="EditBranch" method="post" data-loading-btn="btnSave">
             <input type="hidden" asp-for="Id" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -56,7 +56,7 @@
 
             <div class="mb-3">
                 <label asp-for="SiteManagerId" class="form-label"></label>
-                <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees, "Id", "FullName"))">
+                <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees ?? Enumerable.Empty<object>(), "Id", "FullName"))">
                     <option value="">-- Select Site Manager --</option>
                 </select>
                 <span asp-validation-for="SiteManagerId" class="text-danger"></span>
@@ -70,7 +70,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+                <button type="submit" id="btnSave" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
                 <a asp-action="Branches" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>

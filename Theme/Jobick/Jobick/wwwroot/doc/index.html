@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+	<!-- Meta -->
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="author" content="DexignLab">
+	<meta name="robots" content="">
+	<meta name="keywords" content="admin dashboard, admin template, analytics, bootstrap, bootstrap 5, bootstrap 5 admin template, job board admin, job portal admin, modern, responsive admin dashboard, sales dashboard, sass, ui kit, web app">
+	<meta name="description" content="We proudly present Jobick, a Job Admin dashboard ASP.NET Core MVC Template, If you are hiring a job expert you would like to build a superb website for your Jobick, it's a best choice.">
+	<meta property="og:title" content="Jobick : Job Admin Dashboard ASP.NET Core MVC Template">
+	<meta property="og:description" content="We proudly present Jobick, a Job Admin dashboard HTML Template, If you are hiring a job expert you would like to build a superb website for your Jobick, it's a best choice.">
+	<meta property="og:image" content="https://products.w3itexpert.com/images/jobick_ogimage.png">
+	<meta name="format-detection" content="telephone=no">
+
+	<meta name="twitter:title" content="Jobick : Job Admin Dashboard ASP.NET Core MVC Template">
+	<meta name="twitter:description" content="We proudly present Jobick, a Job Admin dashboard ASP.NET Core MVC Template, If you are hiring a job expert you would like to build a superb website for your Jobick, it's a best choice.">
+	<meta name="twitter:image" content="https://products.w3itexpert.com/images/jobick_ogimage.png">
+	<meta name="twitter:card" content="summary_large_image">
+
+
+	<!-- Mobile Specific -->
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<!-- Page Title -->
+	<title>Jobick : Job Admin Dashboard ASP.NET Core MVC Template</title>
+
+	<!-- Favicon icon -->
+	<link rel="shortcut icon" type="image/x-icon" href="images/favicon.png">
+
+	<!-- Bootstrap CSS CDN -->
+	<link rel="stylesheet" href="plugins/bootstrap/bootstrap.min.css">
+	<link rel="stylesheet" href="plugins/jstree//themes/default/style.min.css">
+	<link rel="stylesheet" href="plugins/font-awesome/css/all.min.css">
+	<link rel="stylesheet" href="css/styles.css">
+
+
+	<!-- Google Fonts -->
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+
+</head>
+<body data-bs-spy="scroll" data-bs-target=".nav-bar" data-bs-offset="50">
+<div class="wrapper" id="tableofcontent">
+
+	<!-- Sidebar Holder -->
+	<nav id="nevbarleft">
+		<div class="side-nav">
+			<div class="sidebar-header">
+				<img src="images/logo.png" alt="logo" class="small-logo">
+				<img src="images/logo-text.png" alt="logo">
+			</div>
+			<div class="nav-bar deznav-scroll">
+				<ul class="list-unstyled components navbar-nav nav">
+					<li class="nav-item"><a class="nav-link" href="#dzDocIntro">Introduction</a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocInstallation">Sass Compile</a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocFolderDir">Folder Directories</a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocHtmlFile">Folder Structure</a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocRTLint">RTL integration</a></li>	
+					<li class="nav-item"><a class="nav-link" href="#dzDocThemeFeatureAdmin">Admin Theme Features</a></li>	
+					<li class="nav-item"><a class="nav-link" href="#dzDocCreditsFile">Credits </a></li>
+					<li class="nav-item"><a class="nav-link" href="#html_structure">Basic HTML Structure</a></li>
+					<li class="nav-item"><a class="nav-link" href="#share_button">Share Button</a></li>
+					<li class="nav-item"><a class="nav-link" href="#recaptcha">reCAPTCHA <i class="fa fa-star text-yellow"></i></a></li>
+					<li class="nav-item"><a class="nav-link" href="#mailChimp">MailChimp <i class="fa fa-star text-yellow"></i></a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocProducts">Our Products </a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocCustomWork">Custom Work Requirements </a></li>
+					<li class="nav-item"><a class="nav-link" href="#dzDocVersionHistory">Version History</a></li>
+				</ul>
+			</div>
+			<div class="sidebar-bottom">
+				<h6 class="name">Jobick Job Admin Template</h6>
+				<span class="ver-info">Version 4.0</span>
+			</div>
+		</div>
+		<button type="button" id="mobileCloseBtn" class="navbar-btn">
+			<img src="images/close.png" alt="">
+		</button>
+	</nav>
+	
+	<!-- Page Content Holder -->
+	<div id="content">
+		
+		<!-- Top Nav -->
+		<header class="header">
+			<nav class="navbar navbar-default top-nav-bar">
+				<div class="container-fluid">
+					<div class="navbar-header">
+					   <button type="button" id="sidebarCollapse" class="navbar-btn">
+							<span></span>
+							<span></span>
+							<span></span>
+						</button>
+					</div>
+					<div class="extra-nav">
+						<a target="_blank" href="https://support.w3itexperts.com/" class="btn DZSupportBtn support-button">Support</a>
+						<a target="_blank" href="javascript:void(0);" class="btn DZBuyNowBtn support-button">Buy Now</a>
+						<a target="_blank" href="../" class="btn support-button">Live Demo</a>
+					</div>
+				</div>
+			</nav>	
+		</header>
+		
+		<!-- Banner -->
+		<section class="slide-banner overlay-black" style="background-image: url(images/slide.png);">
+			<div class="container">
+				<div class="inner-content">
+					<h1 class="title">Documentation</h1>
+					<div class="colored-line"></div>
+					<div class="section-description">
+						Jobick : Job Admin Dashboard ASP.NET Core MVC Template 
+					</div>
+					<div class="colored-line"></div>
+				</div>
+			</div>
+		</section>
+		
+		<!-- Product Introduction -->
+		<section class="content-inner dz-intro-wrapper text-center" id="dzDocIntro">
+			<div class="container">
+				<h2 class="title">Jobick</h2>
+				<h4 class="sub-title">Jobick : Job Admin Dashboard ASP.NET Core MVC Template</h4>
+				<p>This documentation is last updated on 21 November 2023</p>
+				<div class="dz-wish">
+					<p>Thank you for purchasing this ASP.NET Core MVC template.</p>
+					<p class="rating-text">If you like this template, Please support us by rating this template with <strong>5 stars</strong></p>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- Sass Compile -->
+		<section class="content-inner-2" id="dzDocInstallation">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Sass Compile - </h2>
+				</div>
+				<div class="sass-compile">
+					<div class="content-bx">
+						<h5 class="title">1.- Install Node.js</h5>
+						<p>To compile Sass via the command line first, we need to install <a href="https://nodejs.org/en/" target="_blank" class="btn-link">node.js</a>. The easiest way is downloading it from the official website nodejs.org open the package and follow the wizard.</p>
+					</div>
+					
+					<div class="content-bx">
+						<h5 class="title">2.- Initialize NPM</h5>
+						<p>NPM is the Node Package Manager for JavaScript. NPM makes it easy to install and uninstall third party packages. To initialize a Sass project with NPM, open your terminal and CD (change directory) to your project folder.</p>
+<pre class="brush: javascript; h-100">
+npm init
+</pre>
+<img src="images/cmd.png" alt="">
+<p>Once in the correct folder, run the command <code>npm init</code>. You will be prompted to answer several questions about the project, after which NPM will generate a <code>package.json</code> file in your folder.</p>
+					</div>
+
+					<div class="content-bx">
+						<h5 class="title">3.- Install Node-Sass</h5>
+						<p>Node-sass is an NPM package that compiles Sass to CSS (which it does very quickly too). To install node-sass run the following command in your terminal:  <code>npm install node-sass</code></p>
+<pre class="brush: javascript; h-100">
+npm install node-sass
+</pre>
+					</div>
+					
+					<div class="content-bx">
+						<h5 class="title">4.- Write Node-sass Command</h5>
+						<p>Everything is ready to write a small script in order to compile Sass. Open the package.json file in a code editor. You will see something like this: In the scripts section add an <strong>scss command</strong></p>
+						<img src="images/jsn.png" alt="">
+<pre class="brush: javascript; h-100">
+"scripts": {
+  "sass": "node-sass --watch scss/main.scss css/style.css"
+},
+</pre>
+					</div>
+					
+					<div class="content-bx">
+						<h5 class="title">5.- Run the Script</h5>
+						<p>To execute our one-line script, we need to run the following command in the terminal: <code>npm run sass</code></p>
+<pre class="brush: javascript; h-100">
+npm run sass
+</pre>
+					</div>
+
+					<div class="content-bx">
+						<h5 class="title">6.- Other Option</h5>
+						<p><code>--source-map</code></p>
+<pre class="brush: javascript; h-100">
+"sass": "node-sass --watch scss/main.scss css/style.css --source-map css/style.css.map"
+</pre>
+					</div>
+
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- Folder Directories -->
+		<section class="content-inner grey-bg" id="dzDocFolderDir">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Folder Directories - </h2>
+				</div>
+				<ul class="dz-table-list">
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">images</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder contains all the images of <span class="text-highlight">Jobick</span> template.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">fonts</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder font files for various template features.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">css</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder contains all the CSS files of <span class="text-highlight">Jobick</span> template.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">js</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder has all javascript files for various template features.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">vendor</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder has all plugins used in the template.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">script</p>
+							</div>
+							<div class="col-sm-8">
+								<p>This folder has all script contact form used in the template.</p>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-sm-4">
+								<p class="text-highlight">scss</p>
+							</div>
+							<div class="col-sm-8">
+								<p>Scss File</p>
+							</div>
+						</div>
+					</li>
+				</ul>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- Folder Structure -->
+		<section class="content-inner" id="dzDocHtmlFile">
+			<div class="container">
+				<div class="row">
+					<div class="col-lg-12 col-md-12 col-sm-12">
+						<div class="section-head">
+							<h2 class="dark-text">Folder Structure - Dashboard</h2>
+						</div>
+						<div id="dzTree" class="tree-demo">
+							<ul>
+								<li data-jstree='{ "opened" : true }'>
+									Jobick
+									<ul>
+										<li data-jstree='{ "selected" : false }'>
+											Controllers
+											<ul>
+												<li data-jstree='{ "type" : "file" }'>AjaxController.cs</li>
+												<li data-jstree='{ "type" : "file" }'>HomeController.cs</li>
+												<li data-jstree='{ "type" : "file" }'>JobickController.cs</li>
+											</ul>
+										</li>
+										<li data-jstree='{ "selected" : false }'>
+											Models
+											<ul>
+												<li data-jstree='{ "type" : "file" }'>ErrorViewModel.cs</li>
+											</ul>
+										</li>
+										<li data-jstree='{ "selected" : false }'>
+											Views
+											<ul>
+												<li data-jstree='{ "selected" : false }'>
+													Ajax
+													<ul>
+														<li data-jstree='{ "type" : "file" }'>FeaturedCompanies.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>RecentActivity.cshtml</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													Home
+													<ul>
+														<li data-jstree='{ "type" : "file" }'>Index.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>Privacy.cshtml</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													Jobick
+													<ul>
+														<li data-jstree='{ "type" : "file" }'>Index.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>Index2.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>JobsPage.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>ApplicationPage.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>MyProfile.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>Statistics.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>Compaines.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>.....</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													Shared
+													<ul>
+														<li data-jstree='{ "selected" : false }'>
+															Jobick
+															<ul>
+																<li data-jstree='{ "type" : "file" }'>_Chatbox.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_EditJob.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_Footer.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_Header.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_JobTitle.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_Meta.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_NavHeader.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_PreLoader.cshtml</li>
+																<li data-jstree='{ "type" : "file" }'>_Sidebar.cshtml</li>
+															</ul>
+														</li>
+														<li data-jstree='{ "type" : "file" }'>_Layout.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>_Layout.cshtml.css</li>
+														<li data-jstree='{ "type" : "file" }'>_LayoutJobick.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>_LayoutJobickAjax.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>_LayoutJobickBlank.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>_ValidationScriptsPartial.cshtml</li>
+														<li data-jstree='{ "type" : "file" }'>Error.cshtml</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "type" : "file" }'>_ViewImports.cshtml</li>
+												<li data-jstree='{ "type" : "file" }'>_ViewStart.cshtml</li>
+											</ul>
+										</li>
+										<li data-jstree='{ "selected" : false }'>
+											wwwroot
+											<ul>
+												<li data-jstree='{ "selected" : false }'>css</li>
+												<li data-jstree='{ "selected" : false }'>
+													icons
+													<ul>
+														<li data-jstree='{ "opened" : true }'>avasta</li>
+														<li data-jstree='{ "opened" : true }'>feather</li>
+														<li data-jstree='{ "opened" : true }'>flaticon</li>
+														<li data-jstree='{ "opened" : true }'>helveticaNeue</li>
+														<li data-jstree='{ "opened" : true }'>icomoon</li>
+														<li data-jstree='{ "opened" : true }'>line-awesome</li>
+														<li data-jstree='{ "opened" : true }'>material-design-iconic-font</li>
+														<li data-jstree='{ "opened" : true }'>simple-line-icons</li>
+														<li data-jstree='{ "opened" : true }'>themify-icons</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													images
+													<ul>
+														<li data-jstree='{ "opened" : true }'>avatar</li>
+														<li data-jstree='{ "opened" : true }'>big</li>
+														<li data-jstree='{ "opened" : true }'>card</li>
+														<li data-jstree='{ "opened" : true }'>product</li>
+														<li data-jstree='{ "opened" : true }'>profile</li>
+														<li data-jstree='{ "opened" : true }'>tab</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													js
+													<ul>
+														<li data-jstree='{ "opened" : true }'>dashboard</li>
+														<li data-jstree='{ "opened" : true }'>plugins-init</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													scss
+													<ul>
+														<li data-jstree='{ "opened" : true }'>abstracts</li>
+														<li data-jstree='{ "opened" : true }'>base</li>
+														<li data-jstree='{ "selected" : false }'>
+															components
+															<ul>
+																<li data-jstree='{ "opened" : true }'>app</li>
+																<li data-jstree='{ "opened" : true }'>charts</li>
+																<li data-jstree='{ "opened" : true }'>forms</li>
+																<li data-jstree='{ "opened" : true }'>ico</li>
+																<li data-jstree='{ "opened" : true }'>map</li>
+																<li data-jstree='{ "opened" : true }'>tables</li>
+																<li data-jstree='{ "opened" : true }'>uc</li>
+																<li data-jstree='{ "opened" : true }'>ui</li>
+																<li data-jstree='{ "opened" : true }'>widget</li>
+															</ul>
+														</li>
+														<li data-jstree='{ "selected" : false }'>
+															layout
+															<ul>
+																<li data-jstree='{ "opened" : true }'>footer</li>
+																<li data-jstree='{ "opened" : true }'>header</li>
+																<li data-jstree='{ "opened" : true }'>rtl</li>
+																<li data-jstree='{ "opened" : true }'>sidebar</li>
+																<li data-jstree='{ "opened" : true }'>theme</li>
+																<li data-jstree='{ "opened" : true }'>typography</li>
+																<li data-jstree='{ "opened" : true }'>version-dark</li>
+																<li data-jstree='{ "opened" : true }'>version-transparent</li>
+															</ul>
+														</li>
+														<li data-jstree='{ "opened" : true }'>pages</li>
+													</ul>
+												</li>
+												<li data-jstree='{ "selected" : false }'>
+													vendor
+													<ul>
+														<li data-jstree='{ "opened" : true }'>amcharts</li>
+														<li data-jstree='{ "opened" : true }'>apexchart</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-daterangepicker</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-material-datetimepicker</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-multiselect</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-select</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-tagsinput</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-touchspin</li>
+														<li data-jstree='{ "opened" : true }'>bootstrap-v4-rtl</li>
+														<li data-jstree='{ "opened" : true }'>chart.js</li>
+														<li data-jstree='{ "opened" : true }'>chartist</li>
+														<li data-jstree='{ "opened" : true }'>chartist-plugin-tooltips</li>
+														<li data-jstree='{ "opened" : true }'>clockpicker</li>
+														<li data-jstree='{ "opened" : true }'>datatables</li>
+														<li data-jstree='{ "opened" : true }'>dropzone</li>
+														<li data-jstree='{ "opened" : true }'>flot</li>
+														<li data-jstree='{ "opened" : true }'>flot-spline</li>
+														<li data-jstree='{ "opened" : true }'>fullcalendar</li>
+														<li data-jstree='{ "opened" : true }'>global</li>
+														<li data-jstree='{ "opened" : true }'>highlightjs</li>
+														<li data-jstree='{ "opened" : true }'>jquery</li>
+														<li data-jstree='{ "opened" : true }'>jquery-asColor</li>
+														<li data-jstree='{ "opened" : true }'>jquery-asColorPicker</li>
+														<li data-jstree='{ "opened" : true }'>jquery-asGradient</li>
+														<li data-jstree='{ "opened" : true }'>jquery-sparkline</li>
+														<li data-jstree='{ "opened" : true }'>jquery-steps</li>
+														<li data-jstree='{ "opened" : true }'>jqueryui</li>
+														<li data-jstree='{ "opened" : true }'>jquery-validation</li>
+														<li data-jstree='{ "opened" : true }'>jqvmap</li>
+														<li data-jstree='{ "opened" : true }'>metismenu</li>
+														<li data-jstree='{ "opened" : true }'>moment</li>
+														<li data-jstree='{ "opened" : true }'>morris</li>
+														<li data-jstree='{ "opened" : true }'>nestable2</li>
+														<li data-jstree='{ "opened" : true }'>nouislider</li>
+														<li data-jstree='{ "opened" : true }'>peity</li>
+														<li data-jstree='{ "opened" : true }'>perfect-scrollbar</li>
+														<li data-jstree='{ "opened" : true }'>pickadate</li>
+														<li data-jstree='{ "opened" : true }'>raphael</li>
+														<li data-jstree='{ "opened" : true }'>select2</li>
+														<li data-jstree='{ "opened" : true }'>summernote</li>
+														<li data-jstree='{ "opened" : true }'>svganimation</li>
+														<li data-jstree='{ "opened" : true }'>sweetalert2</li>
+														<li data-jstree='{ "opened" : true }'>toastr</li>
+														<li data-jstree='{ "opened" : true }'>wnumb</li>
+													</ul>
+												</li>
+
+											</ul>
+										</li>
+									</ul>
+								</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- RTL integration -->
+		<section class="content-inner" id="dzDocRTLint">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">RTL integration - </h2>
+				</div>
+				
+				<video class="video-frame m-b30" controls>
+					<source src="video/video.mp4" type="video/mp4">
+				</video>
+				
+				<h5>Step 1</h5>
+				<p>Change the direction of theme from here. The file path is given below:-</p>
+				<p><code>js/dlabnav-init.js</code></p>
+<pre class="brush: javascript; h-100">
+var dlabSettingsOptions = {
+  direction: 'rtl'
+};
+</pre>
+				<br>
+				
+				<h5>Step 2</h5>
+				<p><code>scss/main.scss</code></p>
+				<p>Uncomment the given files for enable RTL direction</p>
+				<img src="images/screenshot/rtl-scss.png" alt="">
+				<br>
+				
+				<h5>Step 3</h5>
+				<p>To Compile RTL CSS, Change The File Path And Then Compile CSS in <code>package.json</code> file</p>
+				<img src="images/screenshot/rtl-scss-2.png" alt="" class="mb-2">
+<pre class="brush: javascript; h-100">
+"scripts": {
+  "sass": "node-sass --watch scss/main.scss css/style-rtl.css --source-map css/style.css.map"
+},
+</pre>
+
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- Theme Feature Admin -->
+		<section class="content-inner-2" id="dzDocThemeFeatureAdmin">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Admin Theme Features - </h2>
+                </div>
+				
+				<p>File Path - <code>js/dlabnav-init.js</code></p>
+				<div class="row demo-row m-b30">
+					<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabSettingsOptions = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_1",
+	sidebarBg: "color_1",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full"
+};
+</pre>
+					</div>
+					<div class="col-lg-7">
+                        <img src="images/demo/demo1.jpg" alt="" class="w-100 demo-img">
+					</div>
+				</div>
+                  
+				<h3>Color Theme - </h3>
+                <p>So many color option available</p>
+				<ul class="color-list m-b30">
+					<li>
+                        <div class="overlay-text color-1">color_1</div>
+					</li>
+					<li>
+                        <div class="overlay-text color-2">color_2</div>
+					</li>
+					<li>
+                        <div class="overlay-text color-3">color_3</div>
+					</li>
+					<li>
+                        <div class="overlay-text color-4">color_4</div>
+					</li>
+					<li>
+                        <div class="overlay-text color-5">color_5</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-6">color_6</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-7">color_7</div>
+					</li>
+					<li>
+                        <div class="overlay-text border text-black  color-8">color_8</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-9">color_9</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-10">color_10</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-11">color_11</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-12">color_12</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-13">color_13</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-14">color_14</div>
+					</li>
+					<li>
+                        <div class="overlay-text  color-15">color_15</div>
+					</li>
+				</ul>
+
+<pre class="h-100 m-b50">
+var dlabSettingsOptions = {
+	typography: "poppins",  		More Options => ["poppins" , "roboto" , "Open Sans" ]
+	version: "light",       		More Options => ["light" , "dark"]
+	layout: "horizontal",   		More Options => ["horizontal" , "vertical"]
+	primary: "color_15",			More Options => ["color_1," , "color_2," ..... "color_15"]
+	headerBg: "color_1",			More Options => ["color_1," , "color_2," ..... "color_15"]
+	navheaderBg: "color_1",			More Options => ["color_1," , "color_2," ..... "color_15"]
+	sidebarBg: "color_15",			More Options => ["color_1," , "color_2," ..... "color_15"]
+	sidebarStyle: "compact",		More Options => ["full" , "mini" , "compact" , "modern" , "overlay" , "icon-hover"]
+	sidebarPosition: "static",		More Options => ["static" , "fixed"]
+	headerPosition: "fixed",		More Options => ["static" , "fixed"]
+	containerLayout: "full",		More Options => ["full" , "wide" , "wide-box"]
+	direction: direction			More Options => ["ltr" , "rtl"]	
+};
+</pre>
+                  
+				<ul class="nav nav-pills m-b15">
+					<li><a class="active" data-bs-toggle="tab" href="#themeSet1">Theme Set-1</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet2">Theme Set-2</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet3">Theme Set-3</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet4">Theme Set-4</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet5">Theme Set-5</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet6">Theme Set-6</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet7">Theme Set-7</a></li>
+					<li><a data-bs-toggle="tab" href="#themeSet8">Theme Set-8</a></li>
+				</ul>
+				<div class="tab-content m-b30">
+					<div id="themeSet1" class="tab-pane fade in active">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+							
+<pre class="brush: javascript; h-100">
+var dlabThemeSet1 = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_1",
+	sidebarBg: "color_1",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo1.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet2" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet2 = {
+	typography: "poppins",
+	version: "dark",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_1",
+	sidebarBg: "color_1",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo2.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet3" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet3 = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_3",
+	sidebarBg: "color_3",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo3.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet4" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet4 = {
+	typography: "poppins",
+	version: "dark",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_8",
+	sidebarBg: "color_8",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo4.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet5" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet5 = {
+	typography: "poppins",
+	version: "light",
+	layout: "horizontal",
+	primary: "color_5",
+	headerBg: "color_5",
+	navheaderBg: "color_5",
+	sidebarBg: "color_1",
+	sidebarStyle: "full",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo5.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet6" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet6 = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_11",
+	headerBg: "color_1",
+	navheaderBg: "color_11",
+	sidebarBg: "color_11",
+	sidebarStyle: "compact",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo6.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet7" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet7 = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_1",
+	headerBg: "color_1",
+	navheaderBg: "color_13",
+	sidebarBg: "color_13",
+	sidebarStyle: "mini",
+	sidebarPosition: "fixed",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo7.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+					<div id="themeSet8" class="tab-pane fade">
+                        <div class="row demo-row">
+							<div class="col-lg-5">
+<pre class="brush: javascript; h-100">
+var dlabThemeSet8 = {
+	typography: "poppins",
+	version: "light",
+	layout: "vertical",
+	primary: "color_14",
+	headerBg: "color_1",
+	navheaderBg: "color_14",
+	sidebarBg: "color_14",
+	sidebarStyle: "modern",
+	sidebarPosition: "static",
+	headerPosition: "fixed",
+	containerLayout: "full",
+	direction: 'ltr',
+};
+</pre>
+							</div>
+							<div class="col-lg-7">
+								<img src="images/demo/demo8.jpg" alt="" class="w-100 demo-img">
+							</div>
+                        </div>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<section class="content-inner bg-grey" id="dzDocCreditsFile">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Credits -</h2>
+					<p>List of web development libraries and plugins:</p>
+				</div>
+				<ul class="dz-table-list">
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">amCharts</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.amcharts.com" target="_blank" class="btn-link">https://www.amcharts.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">ApexChart</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://apexcharts.com" target="_blank" class="btn-link">https://apexcharts.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://getbootstrap.com" target="_blank" class="btn-link">https://getbootstrap.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap daterangepicker</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.daterangepicker.com" target="_blank" class="btn-link">https://www.daterangepicker.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap Material Datetimepicker</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/T00rk/bootstrap-material-datetimepicker" target="_blank" class="btn-link">https://github.com/T00rk/bootstrap-material-datetimepicker</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap Multiselect</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/davidstutz/bootstrap-multiselect" target="_blank" class="btn-link">https://github.com/davidstutz/bootstrap-multiselect</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap Select</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://developer.snapappointments.com/bootstrap-select" target="_blank" class="btn-link">https://developer.snapappointments.com/bootstrap-select</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap Tags Input</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://bootstrap-tagsinput.github.io/bootstrap-tagsinput/examples" target="_blank" class="btn-link">https://bootstrap-tagsinput.github.io/bootstrap-tagsinput/examples</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Bootstrap Touchspin</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.virtuosoft.eu/code/bootstrap-touchspin" target="_blank" class="btn-link">https://www.virtuosoft.eu/code/bootstrap-touchspin</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Chart JS</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.chartjs.org" target="_blank" class="btn-link">https://www.chartjs.org</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Chartist</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://gionkunz.github.io/chartist-js" target="_blank" class="btn-link">https://gionkunz.github.io/chartist-js</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Chartist Plugin Tooltips</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/tmmdata/chartist-plugin-tooltip" target="_blank" class="btn-link">https://github.com/tmmdata/chartist-plugin-tooltip</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Clock Picker</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://weareoutman.github.io/clockpicker" target="_blank" class="btn-link">https://weareoutman.github.io/clockpicker</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">datatables</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://datatables.net" target="_blank" class="btn-link">https://datatables.net</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">dropzone</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.dropzonejs.com" target="_blank" class="btn-link">https://www.dropzonejs.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Flot</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.flotcharts.org" target="_blank" class="btn-link">https://www.flotcharts.org</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Flot Spline</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/miloszfalinski/jquery.flot.spline" target="_blank" class="btn-link">https://github.com/miloszfalinski/jquery.flot.spline</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Full Calendar</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://fullcalendar.io" target="_blank" class="btn-link">https://fullcalendar.io</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Highlight JS</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://highlightjs.org" target="_blank" class="btn-link">https://highlightjs.org</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://jquery.com" target="_blank" class="btn-link">https://jquery.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery asColor</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/thecreation/jquery-asColor" target="_blank" class="btn-link">https://github.com/thecreation/jquery-asColor</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery asColorPicker</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/thecreation/jquery-asColorPicker" target="_blank" class="btn-link">https://github.com/thecreation/jquery-asColorPicker</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery asGradient</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://www.npmtrends.com/jquery-asGradient" target="_blank" class="btn-link">https://www.npmtrends.com/jquery-asGradient</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery Sparkline</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://plugins.jquery.com/sparkline" target="_blank" class="btn-link">https://plugins.jquery.com/sparkline</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery steps</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="http://www.jquery-steps.com" target="_blank" class="btn-link">http://www.jquery-steps.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQueryui</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://jqueryui.com" target="_blank" class="btn-link">https://jqueryui.com</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">jQuery Validation</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://jqueryvalidation.org" target="_blank" class="btn-link">https://jqueryvalidation.org</a>									
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">JQV Map</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/10bestdesign/jqvmap" target="_blank" class="btn-link">https://github.com/10bestdesign/jqvmap</a>
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Metis Menu</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/onokumus/metismenu" target="_blank" class="btn-link">https://github.com/onokumus/metismenu</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Moment</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://momentjs.com" target="_blank" class="btn-link">https://momentjs.com</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Morris</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://morrisjs.github.io/morris.js" target="_blank" class="btn-link">https://morrisjs.github.io/morris.js</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Nestable2</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://ramonsmit.github.io/Nestable2" target="_blank" class="btn-link">https://ramonsmit.github.io/Nestable2</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Nouislider</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://refreshless.com/nouislider" target="_blank" class="btn-link">https://refreshless.com/nouislider</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Peity</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="http://benpickles.github.io/peity" target="_blank" class="btn-link">http://benpickles.github.io/peity</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Perfect Scrollbar</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://plugins.jquery.com/perfect-scrollbar" target="_blank" class="btn-link">https://plugins.jquery.com/perfect-scrollbar</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Pickadate</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://amsul.ca/pickadate.js" target="_blank" class="btn-link">https://amsul.ca/pickadate.js</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Raphael</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/DmitryBaranovskiy/raphael" target="_blank" class="btn-link">https://github.com/DmitryBaranovskiy/raphael</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Select2</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://select2.org" target="_blank" class="btn-link">https://select2.org</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Summer Note</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://summernote.org" target="_blank" class="btn-link">https://summernote.org</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">SVG Animation</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/maxwellito/vivus" target="_blank" class="btn-link">https://github.com/maxwellito/vivus</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Sweet Alert 2</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://sweetalert2.github.io" target="_blank" class="btn-link">https://sweetalert2.github.io</a>	
+							</div>
+						</div>
+					</li>
+					<li>	
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">Toastr</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://github.com/CodeSeven/toastr" target="_blank" class="btn-link">https://github.com/CodeSeven/toastr</a>	
+							</div>
+						</div>
+					</li>
+					<li>
+						<div class="row">
+							<div class="col-lg-4">
+								<p class="text-highlight">WNUMB</p>
+							</div>
+							<div class="col-lg-8">
+								<a href="https://refreshless.com/wnumb" target="_blank" class="btn-link">https://refreshless.com/wnumb</a>
+							</div>
+						</div>
+					</li>
+				</ul>
+			</div>
+		</section>
+		
+		
+		<hr>
+		
+		<section class="content-inner" id="html_structure">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">HTML Structure - </h2>
+				</div>
+				<div class="content-bx">
+					<h3>Head Structure</h3>
+					<div class="img-frame">
+						<img src="images/screenshot/Screenshot_1.png" alt="1">
+					</div>	
+				</div>	
+				<div class="content-bx">
+					<h3>Header</h3>
+					<div class="img-frame">
+						<img src="images/screenshot/Screenshot_2.png" alt="2">
+					</div>	
+				</div>	
+				<div class="content-bx">
+					<h3>Footer</h3>
+					<div class="img-frame">
+						<img src="images/screenshot/Screenshot_3.png" alt="3">
+					</div>
+				</div>
+				<div class="content-bx mb-0">
+					<h3>Footer Essentials</h3>
+					<div class="img-frame">
+						<img src="images/screenshot/Screenshot_4.png" alt="4">
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<section class="content-inner" id="share_button">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Share Button - </h2>
+				</div>
+				<div class="theme-images">
+					<div class="img-frame">
+						<img src="images/screenshot/5.png" alt="8">
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		
+		<!-- Contact Form -->
+		<section class="content-inner" id="contact_form">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">Contact Form Handler - </h2>
+				</div>
+				<div class="theme-images">
+					<div class="content-bx">
+						<h5 class="mb-3">1. Simple Mail Function</h5>
+						<div class="img-frame">
+							<img src="images/screenshot/7.png" alt="8">
+						</div>
+					</div>
+					<div class="content-bx mb-0">
+						<h5 class="mb-3">2. Using SMTP</h5>
+						<p>Enter the required details for the SMTP server. These should be provided by your system administrator.</p>
+						<code>
+							<ul>
+								<li>Host = '&lt;Put Your Server Host&gt;';</li>
+								<li>Username = '&lt;Put Your SMTP Username&gt;';</li>
+								<li>Password = '&lt;Put Your SMTP Password&gt;';</li>
+								<li>SMTPSecure = '&lt;PHPMailer::ENCRYPTION_SMTPS or 'ssl' OR PHPMailer::ENCRYPTION_STARTTLS or 'tls'&gt;';</li>
+								<li>Port = '&lt;465 or 587&gt;';</li>
+							</ul>
+						</code>
+						<div class="img-frame">
+							<img src="images/screenshot/10.png" alt="8">
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		<!-- reCAPTCHA -->
+		<section class="content-inner" id="recaptcha">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="title">reCAPTCHA - </h2>
+				</div>
+				<div class="content-bx">
+					<div class="theme-images">
+						<div class="item m-b10">
+							<img src="images/important/recaptcha.png" width="350" alt="8">
+						</div>
+					</div>
+					<h5>Register your website and get Secret Key.</h5>
+					<p>Very first thing you need to do is register your website on Google recaptcha to do that click <a href="https://www.google.com/recaptcha/admin" class="text-primary">here.</a></p>
+					<p>Login to your Google account and submit the form.</p>
+					<div class="theme-images">
+						<img class="img-frame" src="images/important/capcha.png" alt="8">
+					</div>
+					<p>Once submit, Google will provide you following two information.</p>
+					<ul>
+						<li>Site key</li>
+						<li>Secret key</li>
+					</ul>
+				</div>
+				
+				<div class="content-bx">
+					<h5>Integrate Google reCAPTCHA in your website.</h5>
+					<p>To integrate it into your website you need to put it in client side as well as in Server side. In client HTML page you need to integrate this line before <code>HEAD</code>tag.</p>
+					<img src="images/important/script1.png" alt="10">
+					<p>And to show the widget into your form you need to put this below contact form, comment form etc.</p>
+					<img src="images/important/script2.png" alt="10">
+					<p>When the form get submit to Server, this script will send ‘g-recaptcha-response’ as a POST data. You need to verify it in order to see whether user has checked the Captcha or not.</p>
+				</div>
+				
+				<div class="content-bx mb-0">
+					<h5>Sample project</h5>
+					<p>Here is the HTML code for the simple form with comment box and submit button. On submit of this form we will use PHP in back-end to do the Google reCAPTCHA validation.</p>
+					<div class="theme-images">
+						<div class="item">
+							<img src="images/important/9.png" alt="8">
+						</div>
+					</div>
+					<p>This will generate this form.</p>	
+					<img src="images/important/recaptcha2.png" alt="8">
+					<p>On server side i am using PHP for now. So on Form submit request we will check the POST variable.</p>
+					<div class="theme-images">
+						<div class="item">
+							<img src="images/important/8.png" alt="8">
+						</div>
+					</div>
+					<p>try out the demo to see how it works.</p>
+				</div>
+			</div>
+		</section>
+		
+		<!-- MailChimp -->
+		<section class="content-inner" id="mailChimp">
+			<div class="container">
+				<div class="section-head">
+					<h2 class="dark-text title">MailChimp - </h2>
+				</div>
+				<iframe width="560" height="315" class="mailchimp-video" src="https://www.youtube.com/embed/Z-2iSAUpivw" allow="autoplay; encrypted-media" allowfullscreen></iframe>						
+				<div class="content-bx">
+					<p>MailChimp is an email marketing service, helps to manage the subscribers of your website. MailChimp provides an easy way to integrate email signup form in your website and send the email newsletter to the subscriber. Beside the premium plan MailChimp also has a forever free plan. Using the free plan, you can add up to 2,000 subscribers to MailChimp and send 12,000 emails per month to the subscriber.</p>
+					<p>In this tutorial, we’ll show you how to integrate newsletter subscription form in your website and add subscriber to list with MailChimp using PHP. We’ll use MailChimp API 3.0 and PHP to add subscriber to list without confirmation email.</p>
+					<p>To integrate <strong>MailChimp API in PHP</strong> you need a MailChimp<strong> API Key </strong>and <strong>List ID </strong>where you want to add members. Before you begin, sign up for a MailChimp account and follow the below steps to get API Key and List ID.</p>
+				</div>
+				<div class="content-bx">
+					<h5>Creating API Key and List ID</h5>
+					<p><strong>Get API Key:</strong></p>
+					
+					<div class="content-bx">
+						<p>1. Login to your MailChimp account.</p>
+					</div>
+					
+					<div class="content-bx">
+						<p>2. Under the user menu dropdown at the top left side, click on <strong>Account </strong>link. </p>
+						<img src="images/important/mailchimp-user-account.png" alt="12">
+					</div>
+					
+					<div class="content-bx">
+						<p>3. Go to the <strong>Extras » API Keys </strong>from the top navigation menu. </p>
+						<img src="images/important/mailchimp-extras-api-keys.png" alt="13">
+						<p>Under the <strong>Your API keys </strong>section, create an <strong>API Key </strong>by clicking on Create A Key button. Once generated, copy <strong>API key </strong>for later use in PHP script. </p>
+						<img src="images/important/mailchimp-api-key.png" alt="13">
+						
+						<div class="content-bx">
+							<p><strong>Get List ID:</strong></p>
+							<p>1. Choose a list in which all the subscriber’s information would be stored. In that case, you need to create a list in the <strong>Lists </strong>page. </p>
+							<img src="images/important/mailchimp-list.png" alt="14">
+							<p>Enter into your created list and navigate to <strong>Settings » List name and campaign defaults</strong>.</p>
+							<img src="images/important/mailchimp-api-php-settings.png" alt="15">
+							<p>Under the <strong>List ID </strong>label you will find the List ID. Copy <strong>List ID </strong>for later use in PHP script. </p>
+							<img src="images/important/mailchimp-api-php-list-id.png" alt="15">
+							<p>In our example script, a simple newsletter subscription form will be implemented. Once the user submits the subscription form along with the details (First Name, Last Name, and Email), respective details would be added to the list of MailChimp account using MailChimp API and PHP. Also, the subscriber would be able to receive the newsletter of your website via MailChimp.</p>
+						</div>
+							
+						<div class="content-bx">
+							<p><strong>Subscription Form (index.php)</strong></p>
+							<p>The <code> index.php </code>file contains the custom subscription form HTML. The subscriber needs to enter their First Name, Last Name, and Email. By clicking on SUBSCRIBE button, the form will submit to the <code> action.php </code>file for adding the subscriber to the MailChimp subscriber list.</p>
+							<img src="images/important/11.png" alt="16">
+						</div>
+						
+						<div class="content-bx">
+							<p><strong>Add subscriber to MailChimp List (action.php)</strong></p>
+							<p>In the <code> action.php </code>file, subscription form data is received and send the subscriber details to the MailChimp using MailChimp API and PHP. To Use MailChimp API, you need to mention API Key and List ID. Insert the API Key and List ID which you’ve got in the previous step.</p>
+							<p>Here cURL is used to send an HTTP POST request to the List Members endpoint with member information. After adding the subscriber to MailChimp list, the call returns a response. Based on the response <code> ($httpCode) </code>, the status message would be shown to the subscriber.</p>
+							<p>To add a subscriber, you must include the subscriber’s status in your JSON object. If you include the subscriber’s status <code> subscribed </code>, subscriber email address would be added right away without sending a confirmation email. Use <code> pending </code>status to send a confirmation email to subscriber.</p>
+							<img src="images/important/10.png" alt="16">
+						</div>
+						<h5><strong>Conclusion</strong></h5>
+						<p>This example code helps to add subscribers to mailChimp list from the website through custom subscription form. You can see the added subscriber’s list from MilChimp account. Login to your MailChimp account and go to the subscriber’s list, you’ll see the newly added subscribers in the list.</p>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<hr>
+		
+		
+		
+		<!-- Products -->
+		<section class="content-inner-2" id="dzDocProducts">
+			<div class="container">
+				<div class="row section-head align-items-center">
+					<div class="col-lg-6 col-md-7">
+						<h2 class="title">Our Products - </h2>
+						<p class="mb-0">Don’t Forget To Check Our Popular Items</p>
+					</div>
+					<div class="col-lg-6 col-md-5 text-md-end mt-3 mt-md-0">
+						<a href="https://themeforest.net/user/dexignlabs/portfolio" target="_blank" class="btn btn-primary btn-lg btn-shadow">Our Products</a>
+					</div>				
+				</div>
+				<div class="row">
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/x0b4x">
+								<img src="images/product/motaadmin.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/x0b4x">
+										MotaAdmin - Laravel Admin Dashboard Template 
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/jxv75">
+								<img src="images/product/vora.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/jxv75">
+										Vora - Saas React Admin Dashboard Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/KrOOv">
+								<img src="images/product/edumin.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/KrOOv">
+										EduMin - Education Admin Dashboard Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/zaXJ1r">
+								<img src="images/product/jobick.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/zaXJ1r">
+										Jobick : Job Admin Dashboard ASP.NET Core MVC Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/P0bBxM">
+								<img src="images/product/fillow.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/P0bBxM">
+										Fillow Saas Admin Dashboard Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/EaG4Q2">
+								<img src="images/product/dopmet.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/EaG4Q2">
+										Dompet - Payment Admin Dashboard Bootstrap Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/MXb4r3">
+								<img src="images/product/workload.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/MXb4r3">
+										Workload | Project Management Bootstrap 5 Admin Dashboard
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/GjoLrm">
+								<img src="images/product/invome.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/GjoLrm">
+										Invome - Admin Dashboard Bootstrap 5 Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-4 col-sm-6 m-b30">
+						<div class="dz-items">
+							<a class="dz-media" target="_blank" href="https://1.envato.market/P0r3Dz">
+								<img src="images/product/travl.png"/>
+							</a>
+							<div class="product-info">
+								<h4 class="title">
+									<a target="_blank" href="https://1.envato.market/P0r3Dz">
+										Travl Hotel Admin Dashboard Template
+									</a>
+								</h4>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<!-- Help Wrapper -->
+		<section class="content-inner dz-help-wrapper" id="dzDocCustomWork" style="background-image: url(images/bg1.png); background-position: left center;">
+			<div class="container">
+				<div class="col-md-12 text-center">
+					<h2 class="title">Do You Need Help To Customization</h2>
+					<h3 class="text-primary">After Purchase A Template...</h3>
+					<p class="dz-info-text">You Will Start Customizing According Your Requirement but what if you don't know</p>
+					<h3>SOLUTION IS <u class="text-primary">HIRE DexignLab</u></h3>
+					<div class="dz-hire">
+						<h5>Hire Same Team For Quality Customization</h5>
+						<p>In Order To Ensure Your Website Is Live, We Will Customize The Template According To Your Requirements And Upload It to the Server.</p>
+						<div class="dz-message">
+							<a href="skype:rahulxarma?chat" class="icon-skype"><i class="fa-brands fa-skype"></i>rahulxarma</a>
+							<a target="_blank" href="mailto:dexignzones@gmail.com" class="icon-gmail"><i class="fa fa-envelope"></i>dexignzones@gmail.com</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		
+		<!-- Product Version History -->
+		<section class="content-inner-2" id="dzDocVersionHistory">
+			<div class="container">
+				<div class="section-head">
+					<h3 class="title">Version History - <a href="javascript:void();" class="scroltop text-primary" >#back to top</a></h3>
+				</div>
+				
+				<h5><span class="text-primary">v4.0</span> - 21 November 2023 </h5>
+				<ul class="dz-version-history">
+					<li>
+						<ol>
+							<li>Added RTL Mode, users can work in both LTR and RTL versions of Jobick.</li>
+							<li>Best Meta tags are added for better Seo Analysis And searching.</li>
+							<li>Added Responsive datatable for user-friendly experience and improved website functionality.</li>
+							<li>Optimize Dashboard layout for user-friendly experience and improved website functionality.</li>
+							<li>Updated Chart JS library for enhanced data visualization capabilities.</li>
+							<li>Update Demo files for enhanced performance for seamless integration and better user experience.</li>
+							<li>Unwanted and useless code remove from package.</li>
+							<li>Optimized And Updated CSS and JS files for better fluency.</li>
+							<li>Updated and Optimized HTML files for beter visiblility and clean coded.</li>
+							<li>Update Bootstrap Element designs for better user experience and interface.</li>
+							<li>DataTables new features, bug fixes, enhanced performance for seamless integration.</li>
+							<li>Migrated to NouiSlider for smoother and more user-friendly sliders.</li>
+							<li>SweetAlert2 for Attractive and customizable pop-up alerts.</li>
+							<li>Select2 Feature-rich and customizable dropdown select experience.</li>
+							<li>Upgraded Bootstrap Select for improved dropdown select functionality.</li>
+							<li>Light Gallery Enhanced performance, customizable features for a superior user experience.</li>
+							<li>Email pages now features a left sidebar for mobile size.</li>
+							<li>Updated CMS pages design for better user experience in Content management system.</li>
+							<li>Design issues resolved for consistent, polished visuals.</li>
+							<li>Fixed HTML W3 validation errors for better accessibility.</li>
+							<li>Addressed Firefox scrolling for smoother browsing experience.</li>
+						</ol>
+					</li>
+				</ul>
+				
+				<h5><span class="text-primary">v1.0</span> - 11 December 2023</h5>
+				<ul class="dz-version-history">
+					<li>
+						<ol>
+							<li>New - Created & Upload Jobick</li>
+						</ol>
+					</li>
+				</ul>
+				
+			</div>
+		</section>
+		
+		<!-- Footer -->
+		<footer class="footer text-center bg-grey">
+			<div class="container">
+				<p class="copyright text-muted">© 2023 DexignLab, All Rights Reserved</p>
+			</div>
+		</footer>
+	
+	</div>
+	
+</div>
+
+<!-- JAVASCRIPT FILES ========================================= -->
+<script src="js/jquery.min.js"></script>
+<script src="plugins/bootstrap/bootstrap.min.js"></script>
+<script src="plugins/jstree/jstree.min.js"></script>
+<script src="js/custom.js"></script>
+</body>
+</html>

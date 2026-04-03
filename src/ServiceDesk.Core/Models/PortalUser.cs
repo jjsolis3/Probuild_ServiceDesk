@@ -33,6 +33,12 @@ public class PortalUser
     [Display(Name = "Created Date")]
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
+    // Password reset
+    [StringLength(200)]
+    public string? PasswordResetToken { get; set; }
+
+    public DateTime? PasswordResetTokenExpiry { get; set; }
+
     // Foreign keys
     [Display(Name = "Linked Employee")]
     public int? EmployeeId { get; set; }

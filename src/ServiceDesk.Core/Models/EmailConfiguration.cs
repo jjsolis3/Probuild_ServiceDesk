@@ -52,6 +52,14 @@ public class EmailConfiguration
     [Display(Name = "Use SSL")]
     public bool UseSsl { get; set; } = true;
 
+    [StringLength(200)]
+    [Display(Name = "SMTP Username")]
+    public string? SmtpUsername { get; set; }
+
+    [StringLength(500)]
+    [Display(Name = "SMTP Password / App Password")]
+    public string? SmtpPassword { get; set; }
+
     // ---- Behavior ----
 
     [Display(Name = "Is Active")]

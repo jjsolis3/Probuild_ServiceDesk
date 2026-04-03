@@ -41,7 +41,7 @@ else
     </div>
 }
 
-<form asp-action="EditEmailConfig" method="post">
+<form asp-action="EditEmailConfig" method="post" data-loading-btn="btnSave">
     <input type="hidden" asp-for="Id" />
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -114,6 +114,25 @@ else
                             <span asp-validation-for="SmtpPort" class="text-danger"></span>
                         </div>
                     </div>
+
+                    <div class="mb-3">
+                        <label asp-for="SmtpUsername" class="form-label"></label>
+                        <input asp-for="SmtpUsername" class="form-control" placeholder="e.g. support@company.com" />
+                        <div class="form-text">Usually the same as your email address.</div>
+                        <span asp-validation-for="SmtpUsername" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-0">
+                        <label asp-for="SmtpPassword" class="form-label"></label>
+                        <input asp-for="SmtpPassword" class="form-control" type="password" placeholder="Leave blank to keep current" />
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i>
+                            For <strong>Gmail Workspace with 2-Step Verification</strong>, use a
+                            <strong>16-character App Password</strong> (not your account password).
+                            Generate one at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.
+                        </div>
+                        <span asp-validation-for="SmtpPassword" class="text-danger"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -168,7 +187,7 @@ else
     </div>
 
     <div class="mt-2">
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+        <button type="submit" id="btnSave" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
         <a asp-action="EmailIntegration" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>

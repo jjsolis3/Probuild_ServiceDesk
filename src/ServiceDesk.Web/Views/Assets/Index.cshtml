@@ -19,7 +19,8 @@
                 <option value="">All Types</option>
                 @foreach (var t in Enum.GetValues<AssetType>())
                 {
-                    <option value="@t" selected="@(ViewBag.CurrentType != null && (AssetType)ViewBag.CurrentType == t)">@t</option>
+                    var assetTypeSel = ViewBag.CurrentType != null && (AssetType)ViewBag.CurrentType == t;
+                    <option value="@t" selected="@(assetTypeSel ? "selected" : null)">@t</option>
                 }
             </select>
         </div>
@@ -29,7 +30,8 @@
                 <option value="">All Statuses</option>
                 @foreach (var s in Enum.GetValues<AssetStatus>())
                 {
-                    <option value="@s" selected="@(ViewBag.CurrentStatus != null && (AssetStatus)ViewBag.CurrentStatus == s)">@s</option>
+                    var assetStatusSel = ViewBag.CurrentStatus != null && (AssetStatus)ViewBag.CurrentStatus == s;
+                    <option value="@s" selected="@(assetStatusSel ? "selected" : null)">@s</option>
                 }
             </select>
         </div>
@@ -84,6 +86,8 @@
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3">No assets found matching the current filters.</p>
+        <p class="mt-3 mb-3">No assets found matching the current filters.</p>
+        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> Add Asset</a>
+        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
 }

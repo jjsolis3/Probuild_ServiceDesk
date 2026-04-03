@@ -1,11 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
+[Authorize(Roles = "Admin,IT Agent")]
 public class HomeController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -31,6 +35,13 @@ public class HomeController : Controller
             .Where(s => s.Status == SubscriptionStatus.Active)
             .SumAsync(s => s.MonthlyCost);
 
+        var slaBreachCount = await _context.Tickets
+            .CountAsync(t => t.DueDate.HasValue
+                && t.DueDate.Value < DateTime.UtcNow
+                && t.Status != TicketStatus.Resolved
+                && t.Status != TicketStatus.Closed
+                && t.Status != TicketStatus.Cancelled);
+
         var criticalTickets = await _context.Tickets
             .Where(t => t.Priority == TicketPriority.Critical && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
             .Include(t => t.SubmittedBy)
@@ -46,6 +57,39 @@ public class HomeController : Controller
             .Take(5)
             .ToListAsync();
 
+        // Phase 4 — 7-day ticket volume
+        var today = DateTime.UtcNow.Date;
+        var sevenDaysAgo = today.AddDays(-6);
+        var recentCreated = await _context.Tickets
+            .Where(t => t.CreatedDate >= sevenDaysAgo)
+            .Select(t => t.CreatedDate)
+            .ToListAsync();
+        var volumeDates = Enumerable.Range(0, 7).Select(i => today.AddDays(-6 + i)).ToList();
+        var volumeCounts = volumeDates.Select(d => recentCreated.Count(t => t.Date == d)).ToList();
+
+        // Phase 4 — Status distribution (active tickets only, excluding Cancelled)
+        var allActiveTickets = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Cancelled)
+            .GroupBy(t => t.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        // Phase 4 — Priority distribution (open + in-progress tickets)
+        var openByPriority = await _context.Tickets
+            .Where(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress)
+            .GroupBy(t => t.Priority)
+            .Select(g => new { Priority = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        // Phase 4 — Expiring warranties (next 90 days)
+        var warrantyThreshold = DateTime.UtcNow.AddDays(90);
+        var expiringWarranties = await _context.Assets
+            .Where(a => a.WarrantyExpiry.HasValue && a.WarrantyExpiry.Value >= DateTime.UtcNow && a.WarrantyExpiry.Value <= warrantyThreshold)
+            .Include(a => a.AssignedTo)
+            .OrderBy(a => a.WarrantyExpiry)
+            .Take(10)
+            .ToListAsync();
+
         var model = new DashboardViewModel
         {
             OpenTickets = openTickets,
@@ -57,7 +101,20 @@ public class HomeController : Controller
             ActiveSubscriptions = activeSubscriptions,
             MonthlySubscriptionCost = monthlyCost,
             CriticalTickets = criticalTickets,
-            RecentTickets = recentTickets
+            RecentTickets = recentTickets,
+            TicketVolumeDates = volumeDates.Select(d => d.ToString("MMM dd")).ToList(),
+            TicketVolumeCounts = volumeCounts,
+            StatusOpen = allActiveTickets.FirstOrDefault(x => x.Status == TicketStatus.Open)?.Count ?? 0,
+            StatusInProgress = allActiveTickets.FirstOrDefault(x => x.Status == TicketStatus.InProgress)?.Count ?? 0,
+            StatusOnHold = allActiveTickets.FirstOrDefault(x => x.Status == TicketStatus.OnHold)?.Count ?? 0,
+            StatusResolved = allActiveTickets.FirstOrDefault(x => x.Status == TicketStatus.Resolved)?.Count ?? 0,
+            StatusClosed = allActiveTickets.FirstOrDefault(x => x.Status == TicketStatus.Closed)?.Count ?? 0,
+            PriorityLow = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Low)?.Count ?? 0,
+            PriorityMedium = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Medium)?.Count ?? 0,
+            PriorityHigh = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.High)?.Count ?? 0,
+            PriorityCritical = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Critical)?.Count ?? 0,
+            ExpiringWarranties = expiringWarranties,
+            SlaBreachCount = slaBreachCount
         };
 
         return View(model);
@@ -102,16 +159,28 @@ public class HomeController : Controller
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName, e.Email, e.Department, e.JobTitle })
                 .ToListAsync(),
 
-            "subscriptions" => await _context.Subscriptions
+            "subscriptions" => (await _context.Subscriptions
                 .Where(s => s.Status == SubscriptionStatus.Active)
                 .OrderBy(s => s.Name)
-                .Select(s => new { s.Id, s.Name, s.Provider, Cost = s.MonthlyCost.ToString("C"), Status = s.Status.ToString(), Renewal = s.RenewalDate.ToString("MMM dd, yyyy") })
-                .ToListAsync(),
+                .ToListAsync())
+                .Select(s => new { s.Id, s.Name, s.Provider, Cost = s.MonthlyCost.ToString("C"), Status = s.Status.ToString(), Renewal = s.RenewalDate.HasValue ? s.RenewalDate.Value.ToString("MMM dd, yyyy") : "N/A" })
+                .ToList(),
 
             _ => null
         };
 
         if (data == null) return NotFound();
         return Json(data);
+    }
+
+    // Error handler — called by UseExceptionHandler in production
+    [AllowAnonymous]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult Error()
+    {
+        var feature = HttpContext.Features.Get<IExceptionHandlerPathFeature>();
+        ViewBag.RequestId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        ViewBag.ErrorPath = feature?.Path;
+        return View();
     }
 }

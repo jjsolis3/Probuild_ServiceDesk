@@ -15,7 +15,7 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="Edit">
+        <form asp-action="Edit" data-loading-btn="btnSaveEmployee">
             <input type="hidden" asp-for="Id" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -73,7 +73,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+                <button type="submit" id="btnSaveEmployee" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
                 <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>

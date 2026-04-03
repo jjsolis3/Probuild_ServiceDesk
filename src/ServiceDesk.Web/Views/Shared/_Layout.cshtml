@@ -1,210 +1,310 @@
+@{
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    var currentAction     = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+
+    string NavClass(string controller, string action = "") =>
+        currentController.Equals(controller, StringComparison.OrdinalIgnoreCase) &&
+        (string.IsNullOrEmpty(action) || currentAction.Equals(action, StringComparison.OrdinalIgnoreCase))
+            ? "mm-active"
+            : "";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - ServiceSphere</title>
-    <!-- Bootstrap 5 CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" />
+    <!-- Favicon -->
+    <link rel="shortcut icon" type="image/png" href="~/images/logo-sm.png" />
+    <!-- Jobick Theme CSS (includes MetisMenu, Font Awesome, Bootstrap Icons via @@import) -->
+    <link rel="stylesheet" href="~/jobick/css/style.css" />
+    <!-- Bootstrap Select (required by Jobick custom.min.js handleSelectPicker) -->
+    <link rel="stylesheet" href="~/jobick/vendor/bootstrap-select/dist/css/bootstrap-select.min.css" />
     <!-- DataTables Bootstrap 5 CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" />
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" />
-    <!-- ServiceSphere Custom CSS -->
+    <!-- ServiceSphere Overrides -->
     <link rel="stylesheet" href="~/css/servicesphere.css" />
-    <link rel="stylesheet" href="~/css/site.css" />
     @await RenderSectionAsync("Styles", required: false)
 </head>
-<body>
+<body data-sidebar-style="full" data-layout="vertical" data-nav-headerbg="color_1" data-headerbg="color_1" data-sibebarbg="color_1">
 
-    <div class="ss-wrapper">
+    <!--**********************************
+        Preloader
+    ***********************************-->
+    <div id="preloader">
+        <div class="sk-three-bounce">
+            <div class="sk-child sk-bounce1"></div>
+            <div class="sk-child sk-bounce2"></div>
+            <div class="sk-child sk-bounce3"></div>
+        </div>
+    </div>
 
-        <!-- Sidebar Overlay (Mobile) -->
-        <div class="ss-sidebar-overlay" id="ss-sidebar-overlay"></div>
+    <!--**********************************
+        Main wrapper start
+    ***********************************-->
+    <div id="main-wrapper">
 
-        <!-- Sidebar -->
-        <nav class="ss-sidebar" id="ss-sidebar">
-            <!-- Brand -->
-            <div class="ss-sidebar-brand">
-                <img src="~/images/logo-sm.png" alt="ServiceSphere" onerror="this.style.display='none'" />
-                <span class="brand-text">Service<span>Sphere</span></span>
+        <!--**********************************
+            Nav header start
+        ***********************************-->
+        <div class="nav-header">
+            <a asp-controller="Home" asp-action="Index" class="brand-logo">
+                <img src="~/images/logo-sm.png" class="logo-abbr" alt="ServiceSphere" style="width:44px;height:44px;object-fit:contain;" />
+                <span class="brand-title ms-2 fw-bold" style="font-size:1.1rem;color:#fff;letter-spacing:.02em;">ServiceSphere</span>
+            </a>
+            <div class="nav-control">
+                <div class="hamburger">
+                    <span class="line"></span><span class="line"></span><span class="line"></span>
+                </div>
             </div>
+        </div>
+        <!--**********************************
+            Nav header end
+        ***********************************-->
 
-            <!-- Sidebar Menu -->
-            <div class="ss-sidebar-menu">
-                <ul class="nav flex-column">
+        <!--**********************************
+            Header start
+        ***********************************-->
+        <div class="header">
+            <div class="header-content">
+                <nav class="navbar navbar-expand">
+                    <div class="collapse navbar-collapse justify-content-between">
+                        <div class="header-left">
+                            <div class="dashboard_bar">
+                                @(ViewData["Title"]?.ToString() ?? "Dashboard")
+                            </div>
+                        </div>
+                        <ul class="navbar-nav header-right">
+                            <!-- Dark/Light Mode Toggle -->
+                            <li class="nav-item dropdown notification_dropdown">
+                                <a class="nav-link bell dlab-theme-mode p-0" href="javascript:void(0);" title="Toggle Theme">
+                                    <i id="icon-light" class="fas fa-sun"></i>
+                                    <i id="icon-dark" class="fas fa-moon"></i>
+                                </a>
+                            </li>
+                            <!-- Profile Dropdown -->
+                            <li class="nav-item dropdown header-profile">
+                                <a class="nav-link" href="javascript:void(0);" role="button" data-bs-toggle="dropdown">
+                                    <div class="header-info">
+                                        <span class="fw-semibold small me-1 d-none d-md-inline">@User.Identity?.Name</span>
+                                        <i class="fas fa-user-circle fa-lg"></i>
+                                    </div>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <div class="dropdown-item text-muted small py-1 disabled">
+                                        <i class="fas fa-user-circle me-1"></i>@User.Identity?.Name
+                                        <div class="small opacity-75">@User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value</div>
+                                    </div>
+                                    <div class="dropdown-divider"></div>
+                                    @if (User.IsInRole("Admin"))
+                                    {
+                                        <a asp-controller="Settings" asp-action="Index" class="dropdown-item ai-icon">
+                                            <i class="fas fa-cog text-primary me-2"></i>
+                                            <span>Settings</span>
+                                        </a>
+                                    }
+                                    <a asp-controller="Portal" asp-action="Index" class="dropdown-item ai-icon">
+                                        <i class="fas fa-globe text-info me-2"></i>
+                                        <span>User Portal</span>
+                                    </a>
+                                    <div class="dropdown-divider"></div>
+                                    <form asp-controller="Account" asp-action="Logout" method="post" class="d-block">
+                                        <button type="submit" class="dropdown-item ai-icon text-danger">
+                                            <i class="fas fa-sign-out-alt me-2"></i>
+                                            <span>Sign Out</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        <!--**********************************
+            Header end
+        ***********************************-->
+
+        <!--**********************************
+            Sidebar start
+        ***********************************-->
+        <div class="dlabnav">
+            <div class="dlabnav-scroll">
+                <ul class="metismenu" id="menu">
 
                     <!-- MAIN -->
-                    <li><span class="menu-label">Main</span></li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Home" asp-action="Index">
-                            <i class="bi bi-grid-1x2"></i> Dashboard
+                    <li class="menu-title"><span>Main</span></li>
+                    <li class="@NavClass("Home")">
+                        <a asp-controller="Home" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-tachometer-alt"></i>
+                            <span class="nav-text">Dashboard</span>
                         </a>
                     </li>
 
                     <!-- MANAGEMENT -->
-                    <li><span class="menu-label">Management</span></li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Tickets" asp-action="Index">
-                            <i class="bi bi-ticket-detailed"></i> Tickets
+                    <li class="menu-title"><span>Management</span></li>
+                    <li class="@NavClass("Tickets")">
+                        <a asp-controller="Tickets" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-ticket-alt"></i>
+                            <span class="nav-text">Tickets</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Assets" asp-action="Index">
-                            <i class="bi bi-laptop"></i> Assets
+                    <li class="@NavClass("Assets")">
+                        <a asp-controller="Assets" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-laptop"></i>
+                            <span class="nav-text">Assets</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Employees" asp-action="Index">
-                            <i class="bi bi-people"></i> Employees
+                    <li class="@NavClass("Employees")">
+                        <a asp-controller="Employees" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-users"></i>
+                            <span class="nav-text">Employees</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Subscriptions" asp-action="Index">
-                            <i class="bi bi-credit-card-2-front"></i> Subscriptions
+                    <li class="@NavClass("Subscriptions")">
+                        <a asp-controller="Subscriptions" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-credit-card"></i>
+                            <span class="nav-text">Subscriptions</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Services" asp-action="Index">
-                            <i class="bi bi-gear"></i> Services
+                    <li class="@NavClass("Services")">
+                        <a asp-controller="Services" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-cog"></i>
+                            <span class="nav-text">Services</span>
+                        </a>
+                    </li>
+
+                    <!-- KNOWLEDGE BASE -->
+                    <li class="@NavClass("Kb")">
+                        <a asp-controller="Kb" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-book-open"></i>
+                            <span class="nav-text">Knowledge Base</span>
                         </a>
                     </li>
 
                     <!-- ANALYTICS -->
-                    <li><span class="menu-label">Analytics</span></li>
-                    <li class="nav-item has-submenu">
-                        <a class="nav-link" href="#">
-                            <i class="bi bi-bar-chart-line"></i> Reports
-                            <i class="bi bi-chevron-right menu-arrow"></i>
+                    <li class="menu-title"><span>Analytics</span></li>
+                    <li class="@NavClass("Reports") @(currentController == "Reports" ? "mm-active" : "")">
+                        <a class="has-arrow" href="javascript:void(0);" aria-expanded="@(currentController == "Reports" ? "true" : "false")">
+                            <i class="fas fa-chart-bar"></i>
+                            <span class="nav-text">Reports</span>
                         </a>
-                        <ul class="submenu">
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Reports" asp-action="Tickets">
-                                    Ticket Reports
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Reports" asp-action="Assets">
-                                    Asset Reports
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Reports" asp-action="Users">
-                                    User Reports
-                                </a>
-                            </li>
+                        <ul aria-expanded="@(currentController == "Reports" ? "true" : "false")">
+                            <li class="@NavClass("Reports","Tickets")"><a asp-controller="Reports" asp-action="Tickets">Ticket Reports</a></li>
+                            <li class="@NavClass("Reports","Assets")"><a asp-controller="Reports" asp-action="Assets">Asset Reports</a></li>
+                            <li class="@NavClass("Reports","Users")"><a asp-controller="Reports" asp-action="Users">User Reports</a></li>
                         </ul>
                     </li>
 
                     <!-- ADMINISTRATION -->
-                    <li><span class="menu-label">Administration</span></li>
-                    <li class="nav-item has-submenu">
-                        <a class="nav-link" href="#">
-                            <i class="bi bi-sliders"></i> Settings
-                            <i class="bi bi-chevron-right menu-arrow"></i>
-                        </a>
-                        <ul class="submenu">
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Index">
-                                    Overview
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Account">
-                                    Account
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Roles">
-                                    Roles & Permissions
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Branches">
-                                    Branches & Sites
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="TicketStates">
-                                    Ticket States
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="ResolutionCodes">
-                                    Resolution Codes
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Users">
-                                    Users & Groups
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="EmailIntegration">
-                                    Email Integration
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <li class="menu-title"><span>Administration</span></li>
+                        <li class="@NavClass("Settings")">
+                            <a asp-controller="Settings" asp-action="Index">
+                                <i class="fas fa-sliders-h"></i>
+                                <span class="nav-text">Settings</span>
+                            </a>
+                        </li>
+                    }
 
                 </ul>
+
+                <div class="copyright">
+                    <p><strong>ServiceSphere</strong> &copy; @DateTime.Now.Year</p>
+                    <p class="fs-12">Powered by ProbuildIQ</p>
+                </div>
             </div>
-        </nav>
+        </div>
+        <!--**********************************
+            Sidebar end
+        ***********************************-->
 
-        <!-- Main Content Area -->
-        <div class="ss-main" id="ss-main">
+        <!--**********************************
+            Content body start
+        ***********************************-->
+        <div class="content-body">
+            <div class="container-fluid">
 
-            <!-- Topbar -->
-            <header class="ss-topbar">
-                <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
-                    <i class="bi bi-list"></i>
-                </button>
-
-                <div class="topbar-search position-relative d-none d-md-block">
-                    <i class="bi bi-search search-icon"></i>
-                    <input type="text" class="form-control" placeholder="Search..." />
-                </div>
-
-                <div class="ss-topbar-right">
-                    <button class="topbar-btn" id="fullscreen-toggle" data-bs-toggle="tooltip" title="Fullscreen">
-                        <i class="bi bi-arrows-fullscreen"></i>
-                    </button>
-                    <button class="topbar-btn" id="dark-mode-toggle" data-bs-toggle="tooltip" title="Toggle Theme">
-                        <i class="bi bi-moon"></i>
-                    </button>
-                    <div class="dropdown">
-                        <button class="topbar-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-circle"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#"><i class="bi bi-person me-2"></i>Profile</a></li>
-                            <li><a class="dropdown-item" asp-controller="Settings" asp-action="Index"><i class="bi bi-gear me-2"></i>Settings</a></li>
-                            <li><hr class="dropdown-divider" /></li>
-                            <li><a class="dropdown-item" href="#"><i class="bi bi-box-arrow-right me-2"></i>Sign Out</a></li>
-                        </ul>
+                @* Global TempData alerts — shown on any page after a redirect *@
+                @if (TempData["Success"] != null)
+                {
+                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                        <i class="bi bi-check-circle-fill me-2"></i>@TempData["Success"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
-                </div>
-            </header>
+                }
+                @if (TempData["Error"] != null)
+                {
+                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                        <i class="bi bi-exclamation-circle-fill me-2"></i>@TempData["Error"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+                @if (TempData["Warning"] != null)
+                {
+                    <div class="alert alert-warning alert-dismissible fade show mt-3" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>@TempData["Warning"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
 
-            <!-- Page Content -->
-            <div class="ss-content">
                 @RenderBody()
             </div>
-
-            <!-- Footer -->
-            <footer class="ss-footer">
-                <span>ProbuildIQ ServiceSphere &copy; @DateTime.Now.Year — Crafted by ProbuildIQ</span>
-            </footer>
-
         </div>
+        <!--**********************************
+            Content body end
+        ***********************************-->
+
+        <!--**********************************
+            Footer start
+        ***********************************-->
+        <div class="footer">
+            <div class="copyright">
+                <p>ServiceSphere &copy; @DateTime.Now.Year &mdash; Crafted by <strong>ProbuildIQ</strong></p>
+            </div>
+        </div>
+        <!--**********************************
+            Footer end
+        ***********************************-->
 
     </div>
+    <!--**********************************
+        Main wrapper end
+    ***********************************-->
 
+    <!-- jQuery (required by MetisMenu + DataTables) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- jQuery (required by DataTables) -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- MetisMenu (sidebar accordion) -->
+    <script src="~/jobick/vendor/metismenu/js/metisMenu.min.js"></script>
+    <!-- Jobick deznav scroll -->
+    <script src="~/jobick/vendor/deznav/deznav.min.js"></script>
+    <!-- Bootstrap Select (required by Jobick custom.min.js handleSelectPicker) -->
+    <script src="~/jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+    <!-- Polyfills required by custom.min.js (originally from global.min.js) -->
+    <script>
+        // getCookie / setCookie — used by Jobick's handleThemeMode to persist dark/light preference
+        function getCookie(name) {
+            var value = '; ' + document.cookie;
+            var parts = value.split('; ' + name + '=');
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+        function setCookie(name, value, days) {
+            var expires = '';
+            if (days) {
+                var date = new Date();
+                date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+                expires = '; expires=' + date.toUTCString();
+            }
+            document.cookie = name + '=' + (value || '') + expires + '; path=/';
+        }
+    </script>
+    <!-- Jobick Custom JS (theme behavior: sidebar toggle, dark mode, preloader) -->
+    <script src="~/jobick/js/custom.min.js"></script>
     <!-- DataTables Core + Bootstrap 5 -->
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
@@ -220,6 +320,75 @@
     <script src="~/js/servicesphere.js"></script>
     <!-- DataTables Initialization -->
     <script src="~/js/servicesphere-datatables.js"></script>
+    <!-- ===== Global: Confirm Delete Modal ===== -->
+    <div class="modal fade" id="ssConfirmModal" tabindex="-1" aria-labelledby="ssConfirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="ssConfirmModalLabel"><i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="ssConfirmModalBody">Are you sure? This action cannot be undone.</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="ssConfirmModalConfirm">
+                        <i class="bi bi-trash me-1"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== Global: Confirm modal =====
+    (function () {
+        var modal = null;
+        var pendingForm = null;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            modal = new bootstrap.Modal(document.getElementById('ssConfirmModal'));
+
+            // Wire up any form with data-confirm-message attribute
+            document.querySelectorAll('form[data-confirm-message]').forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    pendingForm = form;
+                    var title = form.getAttribute('data-confirm-title') || 'Confirm Delete';
+                    var msg   = form.getAttribute('data-confirm-message') || 'Are you sure? This cannot be undone.';
+                    document.getElementById('ssConfirmModalLabel').innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i>' + title;
+                    document.getElementById('ssConfirmModalBody').textContent = msg;
+                    modal.show();
+                });
+            });
+
+            document.getElementById('ssConfirmModalConfirm').addEventListener('click', function () {
+                if (pendingForm) {
+                    modal.hide();
+                    // Remove the event listener to prevent infinite loop then submit
+                    pendingForm.removeAttribute('data-confirm-message');
+                    pendingForm.submit();
+                    pendingForm = null;
+                }
+            });
+
+            // ===== Global: Auto-disable submit button on form submit =====
+            document.querySelectorAll('form[data-loading-btn]').forEach(function (form) {
+                form.addEventListener('submit', function () {
+                    var btnId = form.getAttribute('data-loading-btn');
+                    var btn = document.getElementById(btnId);
+                    if (btn && !btn.disabled) {
+                        btn.disabled = true;
+                        var orig = btn.innerHTML;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Saving…';
+                        // Re-enable after 8s as safety fallback
+                        setTimeout(function () { btn.disabled = false; btn.innerHTML = orig; }, 8000);
+                    }
+                });
+            });
+        });
+    })();
+    </script>
+
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

@@ -1,0 +1,92 @@
+@model KbArticle
+@{
+    ViewData["Title"] = "Create KB Article";
+    bool isFromTicket = Model.SourceTicketId.HasValue;
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="All">Knowledge Base</a></li>
+        <li class="breadcrumb-item active">New Article</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <h1 class="mb-0"><i class="bi bi-plus-circle me-2 text-primary"></i>New KB Article</h1>
+    @if (isFromTicket)
+    {
+        <span class="badge bg-info">
+            <i class="bi bi-ticket me-1"></i>Promoted from Ticket #@Model.SourceTicketId
+        </span>
+    }
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        @TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form asp-action="Create" method="post" data-loading-btn="btnSaveArticle">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="SourceTicketId" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label asp-for="Title" class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                    <input asp-for="Title" class="form-control" placeholder="E.g. How to fix Outlook not syncing on mobile" />
+                    <span asp-validation-for="Title" class="text-danger small"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label asp-for="Category" class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                    <select asp-for="Category" asp-items="Html.GetEnumSelectList<ServiceDesk.Core.Enums.TicketCategory>()" class="form-select"></select>
+                </div>
+
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" asp-for="IsPublished" id="isPublished" />
+                        <label class="form-check-label fw-semibold" for="isPublished">
+                            Publish immediately
+                        </label>
+                        <div class="text-muted small">Uncheck to save as draft.</div>
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <label asp-for="Problem" class="form-label fw-semibold">
+                        <i class="bi bi-exclamation-circle text-danger me-1"></i>Problem / Symptom <span class="text-danger">*</span>
+                    </label>
+                    <textarea asp-for="Problem" class="form-control" rows="4"
+                              placeholder="Describe the problem or error the user experiences..."></textarea>
+                    <span asp-validation-for="Problem" class="text-danger small"></span>
+                </div>
+
+                <div class="col-12">
+                    <label asp-for="Solution" class="form-label fw-semibold">
+                        <i class="bi bi-check-circle text-success me-1"></i>Solution / Resolution Steps <span class="text-danger">*</span>
+                    </label>
+                    <textarea asp-for="Solution" class="form-control" rows="8"
+                              placeholder="Step-by-step instructions to resolve the issue..."></textarea>
+                    <span asp-validation-for="Solution" class="text-danger small"></span>
+                    <div class="text-muted small mt-1">You can use plain text or numbered steps.</div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex gap-2 justify-content-end">
+            <a asp-action="All" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" id="btnSaveArticle" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i>Save Article
+            </button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+}

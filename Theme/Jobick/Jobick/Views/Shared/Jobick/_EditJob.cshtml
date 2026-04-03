@@ -1,0 +1,58 @@
+﻿<div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="exampleModalLabel">Edit Job</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div class="mb-4">
+					<label class="form-label">Position</label>
+					<input type="text" class="form-control" placeholder="Name" aria-label="name">
+				</div>
+				<div class="mb-4">
+					<label class="form-label">Job Type</label>
+					<select id="inputState" class="form-select form-control">
+						<option selected>Choose...</option>
+						<option>Part-Time</option>
+						<option>Full-Time</option>
+						<option>Freelancer</option>
+					</select>
+				</div>
+				<div class="mb-4">
+					<label class="form-label">Description:</label>
+					<textarea class="form-control" aria-label="With textarea"></textarea>
+				</div>
+				<div class="mb-4">
+					<label class="form-label">Posted Date</label>
+					<div class="input-group">
+						<div class="input-group-text"><i class="far fa-clock"></i></div>
+						<input size="16" type="text" value="2012-06-15" readonly class="form-control form_datetime">
+					</div>
+				</div>
+				<div class="mb-4">
+					<label class="form-label">Last Date To Apply</label>
+					<div class="input-group">
+						<div class="input-group-text"><i class="far fa-clock"></i></div>
+						<input size="16" type="text" value="2012-06-15" readonly class="form-control form_datetime">
+					</div>
+				</div>
+				<div class="mb-4">
+					<label class="form-label">Close Date</label>
+					<div class="input-group">
+						<div class="input-group-text"><i class="far fa-clock"></i></div>
+						<input size="16" type="text" value="2012-06-15" readonly class="form-control form_datetime">
+					</div>
+				</div>
+				<div class="mb-4">
+					<span>Status:<label class="radio-inline mx-3"><input type="radio" name="optradio"> Active</label></span>
+					<span><label class="radio-inline me-3"><input type="radio" name="optradio"> In Active</label></span>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					<button type="button" class="btn btn-primary">Save changes</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

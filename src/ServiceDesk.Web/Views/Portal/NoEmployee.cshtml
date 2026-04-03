@@ -1,0 +1,15 @@
+@{
+    ViewData["Title"] = "Account Setup Needed";
+    Layout = "_PortalLayout";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center py-5">
+        <i class="fas fa-user-slash fa-3x text-warning mb-3"></i>
+        <h4>Account Not Linked</h4>
+        <p class="text-muted">Your portal account isn't linked to an employee record yet. Please contact the IT Help Desk to get this set up.</p>
+        <form asp-controller="Account" asp-action="Logout" method="post" class="mt-3">
+            <button type="submit" class="btn btn-outline-secondary">Sign Out</button>
+        </form>
+    </div>
+</div>

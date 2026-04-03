@@ -1,0 +1,22 @@
+@{
+    ViewData["Title"] = "Access Denied";
+    Layout = "_LoginLayout";
+}
+
+<div class="card shadow-sm border-0 text-center">
+    <div class="card-body p-5">
+        <div class="text-danger mb-3">
+            <i class="fas fa-shield-alt" style="font-size:3rem;"></i>
+        </div>
+        <h4 class="fw-bold">Access Denied</h4>
+        <p class="text-muted">You don't have permission to access that area.</p>
+        <div class="d-flex gap-2 justify-content-center mt-4">
+            <a asp-controller="Portal" asp-action="Index" class="btn btn-primary">
+                <i class="fas fa-home me-1"></i> Go to My Portal
+            </a>
+            <form asp-action="Logout" asp-controller="Account" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">Sign Out</button>
+            </form>
+        </div>
+    </div>
+</div>

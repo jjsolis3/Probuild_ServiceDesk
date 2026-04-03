@@ -1,0 +1,115 @@
+﻿@{
+    Layout = "~/Views/Shared/_LayoutJobick.cshtml";
+    ViewData["Title"] = "User Profile";
+}
+<div class="content-body">
+	<!-- row -->
+	<div class="container-fluid">
+		<div class="d-flex align-items-center mb-4">
+			<h3 class="me-auto">User Profile</h3>
+			<div>
+				<a href="javascript:void(0);" class="icon-btn me-3"> <i class="fas fa-envelope"></i></a>
+				<a href="javascript:void(0);" class="icon-btn me-3"><i class="fas fa-phone-alt"></i></a>
+				<a href="javascript:void(0);" class="icon-btn"><i class="fas fa-info"></i></a>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col-xl-12">
+				<div class="card">
+					<div class="card-header border-0 flex-wrap align-items-start">
+						<div class="col-md-8">
+							<div class="user d-sm-flex d-block pe-md-5 pe-0">
+								<img src="images/profile/pic1.jpg" alt="">
+								<div class="ms-sm-3 ms-0 me-md-5 md-0">
+									<h5 class="mb-1"><a href="javascript:void(0);" class="text-dark">Andrew Jonson</a></h5>
+									<div class="listline-wrapper mb-2">
+										<span class="item"><i class="text-primary far fa-envelope"></i>example@gmail.com</span>
+										<span class="item"><i class="text-primary far fa-id-badge"></i>Manager</span>
+										<span class="item"><i class="text-primary fas fa-map-marker-alt"></i>Indonesia</span>
+									</div>
+									<p>A data analyst collects, interprets and visualizes data to uncover insights. A data analyst assigns a numerical value to business functions so performance.</p>
+								</div>
+							</div>
+						</div>
+						<div class="col-md-4 col-12 text-end">
+							<a href="javascript:void(0);" class="btn btn-sm btn-primary me-2">Ask</a>
+							<a href="javascript:void(0);" class="btn btn-sm btn-info">Hire</a>
+							<div class="mt-3">
+								<h6 class="text-start">
+									Progress
+									<span class="float-end">85%</span>
+								</h6>
+								<div class="progress ">
+									<div class="progress-bar bg-danger progress-animated" style="width: 85%; height:6px;" role="progressbar">
+										<span class="sr-only">60% Complete</span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="card-body pt-0">
+						<h4 class="card-title">Description</h4>
+						<div class="row">
+							<div class="col-xl-6 col-md-6">
+								<ul class="list-style-1">
+									<li><label class="custom-label-2 mb-0">Full Name :</label>Andrew Jonson</li>
+									<li><label class="custom-label-2 mb-0">Resume Title :</label>Searching For PHP Doveloper</li>
+									<li><label class="custom-label-2 mb-0">Current Designation :</label>PHP Programmer</li>
+									<li><label class="custom-label-2 mb-0">Annual Salary :</label>$7.5Lacs</li>
+									<li><label class="custom-label-2 mb-0">Current Company :</label>Abcd pvt Ltd</li>
+									<li><label class="custom-label-2 mb-0">Experience :</label>3 Yrs</li>
+									<li><label class="custom-label-2 mb-0">Location :</label>USA</li>
+									<li><label class="custom-label-2 mb-0">Preferred Location :</label>AUSA</li>
+									<li><label class="custom-label-2 mb-0">Qualification :</label>B.Tech(CSE)</li>
+									<li><label class="custom-label-2 mb-0">Key Skills :</label>Good Communication, Planning and research skills</li>
+								</ul>
+							</div>
+							<div class="col-xl-6 col-md-6">
+								<ul class="list-style-1">
+									<li><label class="custom-label-2 mb-0">Launguages :</label>English, German, Spanish</li>
+									<li><label class="custom-label-2 mb-0">Email :</label>andrew@gmail.com</li>
+									<li><label class="custom-label-2 mb-0">Phone :</label>1234598765</li>
+									<li><label class="custom-label-2 mb-0">Industry :</label>it Software/ Developer</li>
+									<li><label class="custom-label-2 mb-0">Date Of Birth :</label>13 June 1996</li>
+									<li><label class="custom-label-2 mb-0">Gender :</label>Female</li>
+									<li><label class="custom-label-2 mb-0">Marital Status :</label>Unmarried</li>
+									<li><label class="custom-label-2 mb-0">Permanent Address :</label>USA</li>
+									<li><label class="custom-label-2 mb-0">Zip code :</label>12345</li>
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="card-footer d-flex flex-wrap justify-content-between align-items-center">
+						<div class="mb-md-2 mb-3 exp-del">
+							<span class="d-block mb-1"><i class="fas fa-circle me-2 op4"></i>Currently Working at  <strong>Abcd Pvt Ltd</strong></span>
+							<span><i class="fas fa-circle me-2 op4"></i>3 Yrs Of Working Experience in   <strong>Abcd Pvt Ltd</strong></span>
+						</div>
+						<div>
+							<a href="javascript:void(0);" class="btn btn-primary btn-sm me-2 mb-1"><i class="fas fa-download me-2"></i>Download Ruseme</a>
+							<a href="javascript:void(0);" class="btn btn-warning btn-sm me-2 mb-1"><i class="fas fa-share-alt me-2"></i>Share Profile</a>
+							<a href="javascript:void(0);" class="btn btn-info btn-sm me-2 mb-1"><i class="fas fa-phone-alt me-2"></i>Contact</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+@section Jobick_style
+    {
+    <link href="~/Jobick/vendor/bootstrap-datepicker-master/css/bootstrap-datepicker.min.css" rel="stylesheet">
+}
+
+@section Jobick_script
+    {
+	<!-- Required vendors -->
+	<script src="~/Jobick/vendor/global/global.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+	<script src="~/Jobick/vendor/bootstrap-datepicker-master/js/bootstrap-datepicker.min.js"></script>
+
+	<script src="~/Jobick/js/custom.min.js"></script>
+	<script src="~/Jobick/js/dlabnav-init.js"></script>
+	
+	
+}

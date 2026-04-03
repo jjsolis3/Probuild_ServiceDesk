@@ -1,0 +1,49 @@
+﻿@{
+    @using Microsoft.Extensions.Configuration
+    @inject IConfiguration Configuration
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <partial name="Jobick/_Meta" />
+
+    <title>@Configuration.GetSection("DefaultValue")["Title"]</title>
+
+    <!-- Favicon icon -->
+    <link rel="shortcut icon" type="image/png" href="~/Jobick/images/favicon.png">
+
+    @RenderSection("Jobick_style", false)
+    <!-- All StyleSheet -->
+    <link href="~/Jobick/vendor/bootstrap-select/dist/css/bootstrap-select.min.css" rel="stylesheet">
+    <!-- Globle CSS -->
+    <link class="main-css" href="~/Jobick/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <partial name="Jobick/_PreLoader" />
+    <!--**********************************
+        Main wrapper start
+    ***********************************-->
+    <div id="main-wrapper">
+        <partial name="Jobick/_NavHeader" />
+        <partial name="Jobick/_Chatbox" />
+        <partial name="Jobick/_Header" />
+        <partial name="Jobick/_Sidebar" />
+        <!--**********************************
+            Content body start
+        ***********************************-->
+        @RenderBody()
+        <!--**********************************
+            Content body end
+        ***********************************-->
+        <partial name="Jobick/_Footer" />
+    </div>
+    <!--**********************************
+        Main wrapper end
+    ***********************************-->
+    <partial name="Jobick/_JobTitle" />
+    <!--**********************************
+        Scripts
+    ***********************************-->
+    @RenderSection("Jobick_script", false)
+</body>
+</html>

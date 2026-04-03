@@ -36,18 +36,18 @@
     </a>
 </div>
 
-@if (TempData["SuccessMessage"] != null)
+@if (TempData["Success"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <i class="bi bi-check-circle me-2"></i> @TempData["SuccessMessage"]
+        <i class="bi bi-check-circle me-2"></i> @TempData["Success"]
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }
 
-@if (TempData["ErrorMessage"] != null)
+@if (TempData["Error"] != null)
 {
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["ErrorMessage"]
+        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }
@@ -105,9 +105,13 @@
                         </a>
                         @if (!role.IsSystem)
                         {
-                            <a asp-action="DeleteRole" asp-route-id="@role.Id" class="btn btn-sm btn-outline-danger" title="Delete">
-                                <i class="bi bi-trash"></i>
-                            </a>
+                            <form asp-action="DeleteRole" asp-route-id="@role.Id" method="post" class="d-inline"
+                                  data-confirm-title="Delete Role" data-confirm-message="Delete this role? This cannot be undone.">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
                         }
                     </td>
                 </tr>

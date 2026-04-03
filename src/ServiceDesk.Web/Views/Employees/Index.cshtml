@@ -21,7 +21,8 @@
                 {
                     foreach (var dept in (List<string>)ViewBag.Departments)
                     {
-                        <option value="@dept" selected="@(ViewBag.CurrentDepartment != null && (string)ViewBag.CurrentDepartment == dept)">@dept</option>
+                        var deptSel = ViewBag.CurrentDepartment != null && (string)ViewBag.CurrentDepartment == dept;
+                        <option value="@dept" selected="@(deptSel ? "selected" : null)">@dept</option>
                     }
                 }
             </select>
@@ -30,8 +31,8 @@
             <label class="form-label small">Status</label>
             <select name="active" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All</option>
-                <option value="true" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true)">Active</option>
-                <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false)">Inactive</option>
+                <option value="true" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true ? "selected" : null)">Active</option>
+                <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
             </select>
         </div>
         <div class="col-auto">
@@ -94,6 +95,8 @@
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-people display-1"></i>
-        <p class="mt-3">No employees found matching the current filters.</p>
+        <p class="mt-3 mb-3">No employees found matching the current filters.</p>
+        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> Add Employee</a>
+        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
 }
