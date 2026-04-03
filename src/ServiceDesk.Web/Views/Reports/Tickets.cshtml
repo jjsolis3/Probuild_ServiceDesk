@@ -17,48 +17,48 @@
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="total" role="button" title="View all tickets">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">Total Tickets</div>
-                <div class="report-stat text-primary" style="font-size: x-large;">@Model.TotalTickets</div>
+                <div class="text-muted small text-uppercase">Total Tickets</div>
+                <div class="report-stat text-primary">@Model.TotalTickets</div>
             </div>
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="open" role="button" title="View Open tickets">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">Open</div>
-                <div class="report-stat text-info" style="font-size: x-large;">@Model.OpenTickets</div>
+                <div class="text-muted small text-uppercase">Open</div>
+                <div class="report-stat text-info">@Model.OpenTickets</div>
             </div>
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="inprogress" role="button" title="View In Progress tickets">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">In Progress</div>
-                <div class="report-stat text-warning" style="font-size: x-large;">@Model.InProgressTickets</div>
+                <div class="text-muted small text-uppercase">In Progress</div>
+                <div class="report-stat text-warning">@Model.InProgressTickets</div>
             </div>
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="resolved" role="button" title="View Resolved tickets">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">Resolved</div>
-                <div class="report-stat text-success" style="font-size: x-large;">@Model.ResolvedTickets</div>
+                <div class="text-muted small text-uppercase">Resolved</div>
+                <div class="report-stat text-success">@Model.ResolvedTickets</div>
             </div>
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="closed" role="button" title="View Closed tickets">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">Closed</div>
-                <div class="report-stat text-secondary" style="font-size: x-large;"> @Model.ClosedTickets</div>
+                <div class="text-muted small text-uppercase">Closed</div>
+                <div class="report-stat text-secondary">@Model.ClosedTickets</div>
             </div>
         </div>
     </div>
     <div class="col-md-4 col-lg-2">
         <div class="card h-100 kpi-clickable" data-kpi-type="avgresolution" role="button" title="Average time to resolve a ticket">
             <div class="card-body text-center">
-                <div class="text-muted text-uppercase">Avg Resolution <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="Average hours from ticket creation to resolution"></i></div>
-                <div class="report-stat text-dark" style="font-size: x-large;">@Model.AverageResolutionHours.ToString("F1")h</div>
+                <div class="text-muted small text-uppercase">Avg Resolution <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="Average hours from ticket creation to resolution"></i></div>
+                <div class="report-stat text-dark">@Model.AverageResolutionHours.ToString("F1")h</div>
             </div>
         </div>
     </div>
