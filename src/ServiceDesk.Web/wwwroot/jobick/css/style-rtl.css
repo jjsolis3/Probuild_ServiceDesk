@@ -3810,7 +3810,7 @@ textarea.form-control-lg {
   --bs-card-color: ;
   --bs-card-bg: var(--bs-body-bg);
   --bs-card-img-overlay-padding: 1rem;
-  --bs-card-group-margin: 15px;
+  --bs-card-group-margin: 10px;
   position: relative;
   display: flex;
   flex-direction: column;
