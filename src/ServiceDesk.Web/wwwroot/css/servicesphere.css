@@ -369,7 +369,7 @@ table.dataTable thead .sorting_desc::after {
 }
 
 .report-stat .stat-label {
-    font-size: 0.75rem;
+    font-size: 1.5rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-weight: 500;
