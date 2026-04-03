@@ -92,7 +92,7 @@
                             @if (User.IsInRole("Admin"))
                             {
                                 <form asp-action="Delete" asp-route-id="@article.Id" method="post" class="d-inline"
-                                      onsubmit="return confirm('Delete this KB article permanently?');">
+                                      data-confirm-title="Delete Article" data-confirm-message="Delete this KB article permanently? This cannot be undone.">
                                     @Html.AntiForgeryToken()
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                         <i class="bi bi-trash"></i>

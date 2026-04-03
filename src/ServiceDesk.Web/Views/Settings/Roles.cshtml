@@ -106,7 +106,7 @@
                         @if (!role.IsSystem)
                         {
                             <form asp-action="DeleteRole" asp-route-id="@role.Id" method="post" class="d-inline"
-                                  onsubmit="return confirm('Delete role \'@role.Name\'? This cannot be undone.')">
+                                  data-confirm-title="Delete Role" data-confirm-message="Delete this role? This cannot be undone.">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                     <i class="bi bi-trash"></i>

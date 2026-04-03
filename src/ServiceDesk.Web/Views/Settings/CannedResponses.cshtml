@@ -72,7 +72,7 @@
                         </a>
                         <form asp-action="DeleteCannedResponse" asp-route-id="@item.Id" method="post"
                               class="d-inline"
-                              onsubmit="return confirm('Delete \'@item.Title\'? This cannot be undone.')">
+                              data-confirm-title="Delete Template" data-confirm-message="Delete this canned response? This cannot be undone.">
                             @Html.AntiForgeryToken()
                             <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                 <i class="bi bi-trash"></i>

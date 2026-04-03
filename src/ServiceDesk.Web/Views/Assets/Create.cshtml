@@ -14,17 +14,17 @@
 
 <div class="row">
     <div class="col-md-8">
-        <form asp-action="Create">
+        <form asp-action="Create" data-loading-btn="btnSubmit">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label asp-for="Name" class="form-label"></label>
+                    <label asp-for="Name" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="Name" class="form-control" placeholder="Asset name" />
                     <span asp-validation-for="Name" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="AssetTag" class="form-label"></label>
+                    <label asp-for="AssetTag" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <input asp-for="AssetTag" class="form-control" placeholder="e.g. ASSET-001" />
                     <span asp-validation-for="AssetTag" class="text-danger"></span>
                 </div>
@@ -32,14 +32,14 @@
 
             <div class="row g-3 mb-3">
                 <div class="col-md-4">
-                    <label asp-for="AssetType" class="form-label"></label>
+                    <label asp-for="AssetType" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <select asp-for="AssetType" asp-items="Html.GetEnumSelectList<AssetType>()" class="form-select">
                         <option value="">-- Select Type --</option>
                     </select>
                     <span asp-validation-for="AssetType" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label asp-for="Status" class="form-label"></label>
+                    <label asp-for="Status" class="form-label"><span class="text-danger ms-1">*</span></label>
                     <select asp-for="Status" asp-items="Html.GetEnumSelectList<AssetStatus>()" class="form-select"></select>
                     <span asp-validation-for="Status" class="text-danger"></span>
                 </div>
@@ -92,7 +92,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Asset</button>
+                <button type="submit" class="btn btn-primary" id="btnSubmit"><i class="bi bi-check-lg"></i> Create Asset</button>
                 <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>
