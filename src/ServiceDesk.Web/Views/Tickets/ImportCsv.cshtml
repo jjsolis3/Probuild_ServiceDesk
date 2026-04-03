@@ -5,7 +5,7 @@
 <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
-        <li class="breadcrumb-item active">Import from SolarWinds</li>
+        <li class="breadcrumb-item active">Import Tickets</li>
     </ol>
 </nav>
 
@@ -15,61 +15,113 @@
 
 <div class="row g-4">
     <div class="col-lg-7">
+
+        <!-- Step 1: Download template -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white border-bottom py-3">
+                <h5 class="mb-0">
+                    <span class="badge bg-primary rounded-circle me-2" style="width:26px;height:26px;line-height:18px;">1</span>
+                    Download the Template
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Start with the ServiceSphere template. It has only the columns you need with example rows
+                    and valid values listed at the top. <strong>Delete the first two rows</strong> (the header instructions
+                    and example notice) before importing.
+                </p>
+                <a href="~/templates/tickets-import-template.csv" download="tickets-import-template.csv" class="btn btn-success">
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Download Template (.csv)
+                </a>
+            </div>
+        </div>
+
+        <!-- Step 2: Fill in data -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white border-bottom py-3">
+                <h5 class="mb-0">
+                    <span class="badge bg-primary rounded-circle me-2" style="width:26px;height:26px;line-height:18px;">2</span>
+                    Fill in Your Ticket Data
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Open the template in Excel, copy/paste your ticket data into the columns, then save as <strong>CSV</strong>. Key rules:</p>
+                <ul class="small text-muted ps-3 mb-0">
+                    <li class="mb-1"><strong>Requester</strong> — must be an email address that matches an existing Employee in ServiceSphere (e.g. <code>jim@seamlessflooring.com</code>). Rows without a match will be skipped.</li>
+                    <li class="mb-1"><strong>Assignee Email</strong> — optional, same rule as Requester. Leave blank if unknown.</li>
+                    <li class="mb-1"><strong>State</strong> — must be exactly: <code>Open</code>, <code>In Progress</code>, <code>On Hold</code>, <code>Resolved</code>, <code>Closed</code>, or <code>Cancelled</code></li>
+                    <li class="mb-1"><strong>Priority</strong> — <code>Low</code>, <code>Medium</code>, <code>High</code>, or <code>Critical</code></li>
+                    <li class="mb-1"><strong>Category</strong> — <code>Hardware</code>, <code>Applications</code>, <code>Network</code>, <code>Employee</code>, <code>Security</code>, or <code>Service Request</code></li>
+                    <li class="mb-1"><strong>Site</strong> — optional, must match a Branch name or city (e.g. <code>Las Vegas</code>, <code>Phoenix</code>). Leave blank if unknown.</li>
+                    <li class="mb-1"><strong>Dates</strong> — use <code>M/D/YYYY</code> format (e.g. <code>3/24/2026</code>). Leave blank if not applicable.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Step 3: Upload -->
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white border-bottom py-3">
-                <h5 class="mb-0"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Upload SolarWinds Export</h5>
+                <h5 class="mb-0">
+                    <span class="badge bg-primary rounded-circle me-2" style="width:26px;height:26px;line-height:18px;">3</span>
+                    Upload &amp; Preview
+                </h5>
             </div>
             <div class="card-body">
                 <div asp-validation-summary="All" class="alert alert-danger py-2 small"></div>
-
                 <form asp-action="ImportCsv" method="post" enctype="multipart/form-data" data-loading-btn="btnUpload">
                     @Html.AntiForgeryToken()
                     <div class="mb-4">
-                        <label class="form-label fw-semibold">Select Export File <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold">Select CSV File <span class="text-danger">*</span></label>
                         <input type="file" name="file" class="form-control" accept=".csv,.tsv,.txt" required />
-                        <div class="form-text">Supported formats: <strong>.tsv</strong> (tab-separated) or <strong>.csv</strong> — the standard SolarWinds export format.</div>
+                        <div class="form-text">Works with the ServiceSphere template <em>or</em> a SolarWinds export.</div>
                     </div>
                     <button type="submit" id="btnUpload" class="btn btn-primary">
-                        <i class="bi bi-search me-1"></i> Parse & Preview
+                        <i class="bi bi-search me-1"></i> Parse &amp; Preview
                     </button>
                     <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
                 </form>
             </div>
         </div>
+
     </div>
 
+    <!-- Right column: column reference -->
     <div class="col-lg-5">
-        <div class="card border-0 shadow-sm bg-light">
-            <div class="card-body">
-                <h6 class="fw-bold mb-3"><i class="bi bi-info-circle text-primary me-1"></i>How the import works</h6>
-                <ol class="small text-muted ps-3 mb-3">
-                    <li class="mb-1">Export tickets from SolarWinds as a <strong>TSV or CSV</strong> file (all fields).</li>
-                    <li class="mb-1">Upload the file here — a <strong>preview</strong> will show what will be imported.</li>
-                    <li class="mb-1">Review the preview and click <strong>Confirm Import</strong> to save.</li>
-                </ol>
-                <hr class="my-2" />
-                <h6 class="fw-bold mb-2 small">Field mapping</h6>
-                <table class="table table-sm table-borderless small mb-0">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom py-3">
+                <h5 class="mb-0"><i class="bi bi-table me-2 text-muted"></i>Template Columns</h5>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Column</th>
+                            <th>Required</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
                     <tbody>
-                        <tr><td class="text-muted">Title</td><td>→ Title</td></tr>
-                        <tr><td class="text-muted">Description</td><td>→ Description</td></tr>
-                        <tr><td class="text-muted">State</td><td>→ Status</td></tr>
-                        <tr><td class="text-muted">Priority</td><td>→ Priority</td></tr>
-                        <tr><td class="text-muted">Category</td><td>→ Category</td></tr>
-                        <tr><td class="text-muted">Subcategory</td><td>→ Sub-Category</td></tr>
-                        <tr><td class="text-muted">Requester</td><td>→ Submitted By <span class="text-danger">*</span></td></tr>
-                        <tr><td class="text-muted">Assignee Email</td><td>→ Assigned To</td></tr>
-                        <tr><td class="text-muted">Site</td><td>→ Branch</td></tr>
-                        <tr><td class="text-muted">Created At</td><td>→ Created Date</td></tr>
-                        <tr><td class="text-muted">Resolved At</td><td>→ Resolved Date</td></tr>
-                        <tr><td class="text-muted">Resolution</td><td>→ Resolution Notes</td></tr>
+                        <tr><td><code>Title</code></td><td><span class="text-danger">Yes</span></td><td>Max 200 characters</td></tr>
+                        <tr><td><code>Description</code></td><td><span class="text-danger">Yes</span></td><td>Max 2000 characters</td></tr>
+                        <tr><td><code>State</code></td><td>No</td><td>Defaults to Open</td></tr>
+                        <tr><td><code>Priority</code></td><td>No</td><td>Defaults to Medium</td></tr>
+                        <tr><td><code>Category</code></td><td>No</td><td>Defaults to Other</td></tr>
+                        <tr><td><code>Subcategory</code></td><td>No</td><td>Must match existing sub-category name</td></tr>
+                        <tr><td><code>Requester</code></td><td><span class="text-danger">Yes</span></td><td>Employee email — row skipped if not found</td></tr>
+                        <tr><td><code>Assignee Email</code></td><td>No</td><td>Employee email, leave blank if none</td></tr>
+                        <tr><td><code>Site</code></td><td>No</td><td>Branch name or city</td></tr>
+                        <tr><td><code>Created At</code></td><td>No</td><td>Defaults to today</td></tr>
+                        <tr><td><code>Due Date</code></td><td>No</td><td></td></tr>
+                        <tr><td><code>Resolved At</code></td><td>No</td><td></td></tr>
+                        <tr><td><code>Resolution</code></td><td>No</td><td>Resolution notes text</td></tr>
                     </tbody>
                 </table>
-                <div class="small text-muted mt-2">
-                    <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
-                    Tickets whose <strong>Requester email</strong> doesn't match an existing Employee will be skipped.
-                </div>
             </div>
+        </div>
+
+        <div class="alert alert-info border-0 shadow-sm mt-3 small">
+            <i class="bi bi-lightbulb-fill me-1"></i>
+            <strong>Tip:</strong> Before importing, go to <strong>Employees</strong> and make sure everyone who submitted or was assigned a ticket has an account. The import matches on email address.
         </div>
     </div>
 </div>
