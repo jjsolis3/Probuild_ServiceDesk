@@ -51,3 +51,4 @@ Thumbs.db
 # Local development secrets — never commit
 src/**/appsettings.Development.json
 src/**/appsettings.Local.json
+src/**/appsettings.Production.json
