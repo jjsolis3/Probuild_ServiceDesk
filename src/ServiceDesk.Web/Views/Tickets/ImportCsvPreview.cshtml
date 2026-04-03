@@ -1,0 +1,174 @@
+@model List<ServiceDesk.Web.Models.ImportTicketRow>
+@{
+    ViewData["Title"] = "Import Preview";
+    var canImport = Model.Where(r => r.CanImport).ToList();
+    var skipped   = Model.Where(r => !r.CanImport).ToList();
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
+        <li class="breadcrumb-item"><a asp-action="ImportCsv">Import</a></li>
+        <li class="breadcrumb-item active">Preview</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="mb-0"><i class="bi bi-list-check text-primary me-2"></i>Import Preview</h1>
+    <div class="d-flex gap-2">
+        <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Upload Different File
+        </a>
+        @if (canImport.Any())
+        {
+            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirm">
+                @Html.AntiForgeryToken()
+                <button type="submit" id="btnConfirm" class="btn btn-success btn-sm">
+                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Ticket(s)
+                </button>
+            </form>
+        }
+    </div>
+</div>
+
+<!-- Summary banner -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-primary">@Model.Count</div>
+            <div class="text-muted small">Total rows parsed</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-success">@canImport.Count</div>
+            <div class="text-muted small">Ready to import</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-warning">@skipped.Count</div>
+            <div class="text-muted small">Will be skipped</div>
+        </div>
+    </div>
+</div>
+
+@if (skipped.Any())
+{
+    <div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>@skipped.Count row(s) will be skipped</strong> because their Requester email was not found in Employees.
+        To import them, first add the employees to ServiceSphere, then re-import.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Preview table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+        <h5 class="mb-0">All Rows (@Model.Count)</h5>
+        <span class="badge bg-secondary small">Scroll right to see all columns</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:.8rem;">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Status</th>
+                    <th style="min-width:200px;">Title</th>
+                    <th>Priority</th>
+                    <th>Category</th>
+                    <th>Requester</th>
+                    <th>Assignee</th>
+                    <th>Branch</th>
+                    <th>Created</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model)
+                {
+                    <tr class="@(row.CanImport ? "" : "table-warning opacity-75")">
+                        <td class="text-muted">@row.RowNumber</td>
+                        <td>
+                            <span class="badge @StatusBadgeClass(row.Status)">@row.Status</span>
+                        </td>
+                        <td style="max-width:280px;" class="text-truncate" title="@row.OriginalTitle">
+                            @row.OriginalTitle
+                        </td>
+                        <td>
+                            <span class="badge @PriorityBadgeClass(row.Priority)">@row.Priority</span>
+                        </td>
+                        <td>@row.Category</td>
+                        <td class="text-truncate" style="max-width:150px;" title="@row.RequesterRaw">
+                            @if (row.SubmittedById.HasValue)
+                            {
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                            }
+                            else
+                            {
+                                <i class="bi bi-x-circle-fill text-danger me-1"></i>
+                            }
+                            @row.RequesterRaw
+                        </td>
+                        <td class="text-truncate" style="max-width:130px;" title="@row.AssigneeEmailRaw">
+                            @if (row.AssignedToId.HasValue)
+                            {
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                            }
+                            else
+                            {
+                                <span class="text-muted small">—</span>
+                            }
+                            @(string.IsNullOrEmpty(row.AssigneeEmailRaw) ? "—" : row.AssigneeEmailRaw)
+                        </td>
+                        <td>
+                            @if (row.BranchId.HasValue) { @row.SiteRaw }
+                            else { <span class="text-muted small">—</span> }
+                        </td>
+                        <td class="text-muted">@row.CreatedDate.ToString("MM/dd/yy")</td>
+                        <td>
+                            @if (row.CanImport)
+                            {
+                                <span class="badge bg-success">Import</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark" title="@row.SkipReason">Skip</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (canImport.Any())
+    {
+        <div class="card-footer bg-white text-end py-3">
+            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirmBottom">
+                @Html.AntiForgeryToken()
+                <button type="submit" id="btnConfirmBottom" class="btn btn-success">
+                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Ticket(s)
+                </button>
+            </form>
+        </div>
+    }
+</div>
+
+@functions {
+    string StatusBadgeClass(ServiceDesk.Core.Enums.TicketStatus s) => s switch {
+        ServiceDesk.Core.Enums.TicketStatus.Open       => "badge-open text-white",
+        ServiceDesk.Core.Enums.TicketStatus.InProgress => "badge-inprogress",
+        ServiceDesk.Core.Enums.TicketStatus.Resolved   => "badge-resolved text-white",
+        ServiceDesk.Core.Enums.TicketStatus.Closed     => "badge-closed text-white",
+        ServiceDesk.Core.Enums.TicketStatus.Cancelled  => "badge-cancelled text-white",
+        _                                              => "bg-secondary text-white"
+    };
+
+    string PriorityBadgeClass(ServiceDesk.Core.Enums.TicketPriority p) => p switch {
+        ServiceDesk.Core.Enums.TicketPriority.Critical => "badge-critical text-white",
+        ServiceDesk.Core.Enums.TicketPriority.High     => "badge-high text-white",
+        ServiceDesk.Core.Enums.TicketPriority.Low      => "badge-low text-white",
+        _                                              => "badge-medium",
+    };
+}

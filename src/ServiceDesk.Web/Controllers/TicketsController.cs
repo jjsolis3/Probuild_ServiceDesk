@@ -7,6 +7,7 @@ using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -384,6 +385,287 @@ public class TicketsController : Controller
         }
         return RedirectToAction(nameof(Index));
     }
+
+    // ── CSV / TSV Import ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin")]
+    public IActionResult ImportCsv() => View();
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> ImportCsv(IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            ModelState.AddModelError("", "Please select a file to upload.");
+            return View();
+        }
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".csv" && ext != ".tsv" && ext != ".txt")
+        {
+            ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
+            return View();
+        }
+
+        using var reader = new System.IO.StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8);
+        var headerLine = await reader.ReadLineAsync();
+        if (string.IsNullOrWhiteSpace(headerLine))
+        {
+            ModelState.AddModelError("", "The file appears to be empty.");
+            return View();
+        }
+
+        // Auto-detect delimiter: tab if >10 tabs on first line, else comma
+        var delimiter = headerLine.Count(c => c == '\t') > 10 ? '\t' : ',';
+        var headers = SplitCsvLine(headerLine, delimiter);
+        var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < headers.Count; i++)
+            colIndex[headers[i].Trim()] = i;
+
+        // Load lookup data once
+        var employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .Select(e => new { e.Id, e.Email, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+        var emailToId = employees.ToDictionary(e => e.Email.ToLower(), e => e.Id);
+
+        var branches = await _context.Branches
+            .Select(b => new { b.Id, b.Name, b.City })
+            .ToListAsync();
+
+        var subCats = await _context.TicketSubCategories
+            .Where(s => s.IsActive)
+            .Select(s => new { s.Id, s.Name, s.Category })
+            .ToListAsync();
+
+        var preview = new List<ImportTicketRow>();
+        int rowNum = 1;
+        string? line;
+
+        while ((line = await reader.ReadLineAsync()) != null)
+        {
+            rowNum++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var cols = SplitCsvLine(line, delimiter);
+            string Get(string name) =>
+                colIndex.TryGetValue(name, out var i) && i < cols.Count ? cols[i].Trim() : "";
+
+            var title = Get("Title");
+            if (string.IsNullOrWhiteSpace(title)) continue; // skip blank rows
+
+            var row = new ImportTicketRow { RowNumber = rowNum, OriginalTitle = title };
+
+            // Title — truncate to model limit
+            row.Title = title.Length > 200 ? title[..200] : title;
+
+            // Description
+            var desc = Get("Description");
+            if (string.IsNullOrWhiteSpace(desc)) desc = "(No description provided)";
+            row.Description = desc.Length > 2000 ? desc[..2000] : desc;
+
+            // Status
+            row.Status = MapStatus(Get("State"));
+
+            // Priority
+            row.Priority = MapPriority(Get("Priority"));
+
+            // Category
+            row.Category = MapCategory(Get("Category"));
+
+            // Sub-category (best match within the mapped parent category)
+            var subCatName = Get("Subcategory");
+            if (!string.IsNullOrWhiteSpace(subCatName))
+            {
+                var match = subCats.FirstOrDefault(s =>
+                    s.Category == row.Category &&
+                    s.Name.Equals(subCatName, StringComparison.OrdinalIgnoreCase));
+                row.SubCategoryId = match?.Id;
+            }
+
+            // Submitted By — parse "Name <email>" or plain email
+            var requester = Get("Requester");
+            row.RequesterRaw = requester;
+            var reqEmail = ExtractEmail(requester);
+            if (!string.IsNullOrEmpty(reqEmail) && emailToId.TryGetValue(reqEmail.ToLower(), out var subId))
+            {
+                row.SubmittedById = subId;
+            }
+
+            // Assigned To
+            var assigneeEmail = Get("Assignee Email");
+            row.AssigneeEmailRaw = assigneeEmail;
+            if (!string.IsNullOrEmpty(assigneeEmail) && emailToId.TryGetValue(assigneeEmail.ToLower(), out var asnId))
+                row.AssignedToId = asnId;
+
+            // Branch from Site column
+            var site = Get("Site");
+            if (!string.IsNullOrWhiteSpace(site))
+            {
+                var branch = branches.FirstOrDefault(b =>
+                    b.Name.Contains(site, StringComparison.OrdinalIgnoreCase) ||
+                    (b.City != null && b.City.Contains(site, StringComparison.OrdinalIgnoreCase)) ||
+                    site.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
+                row.BranchId = branch?.Id;
+                row.SiteRaw = site;
+            }
+
+            // Dates
+            row.CreatedDate  = ParseDate(Get("Created At")) ?? DateTime.UtcNow;
+            row.UpdatedDate  = ParseDate(Get("Updated At"));
+            row.DueDate      = ParseDate(Get("Due Date"));
+            row.ResolvedDate = ParseDate(Get("Resolved At"));
+            row.ClosedDate   = ParseDate(Get("Closed At"));
+
+            // Resolution notes
+            var resolution = Get("Resolution");
+            if (!string.IsNullOrWhiteSpace(resolution))
+                row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
+
+            // Determine if row can be imported
+            row.CanImport = row.SubmittedById.HasValue;
+            row.SkipReason = row.CanImport ? null : $"Requester '{reqEmail}' not found in Employees";
+
+            preview.Add(row);
+        }
+
+        // Serialize preview into TempData for the confirm step
+        TempData["ImportPreview"] = System.Text.Json.JsonSerializer.Serialize(preview);
+        TempData["ImportFileName"] = file.FileName;
+
+        return View("ImportCsvPreview", preview);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportCsvConfirm()
+    {
+        var json = TempData["ImportPreview"] as string;
+        if (string.IsNullOrEmpty(json))
+        {
+            TempData["Error"] = "Import session expired. Please upload the file again.";
+            return RedirectToAction(nameof(ImportCsv));
+        }
+
+        var rows = System.Text.Json.JsonSerializer.Deserialize<List<ImportTicketRow>>(json)!;
+        var toImport = rows.Where(r => r.CanImport).ToList();
+
+        var tickets = toImport.Select(r => new Ticket
+        {
+            Title           = r.Title,
+            Description     = r.Description,
+            Status          = r.Status,
+            Priority        = r.Priority,
+            Category        = r.Category,
+            SubCategoryId   = r.SubCategoryId,
+            SubmittedById   = r.SubmittedById!.Value,
+            AssignedToId    = r.AssignedToId,
+            BranchId        = r.BranchId,
+            CreatedDate     = r.CreatedDate,
+            UpdatedDate     = r.UpdatedDate,
+            DueDate         = r.DueDate,
+            ResolvedDate    = r.ResolvedDate,
+            ClosedDate      = r.ClosedDate,
+            ResolutionNotes = r.ResolutionNotes,
+        }).ToList();
+
+        await _context.Tickets.AddRangeAsync(tickets);
+        await _context.SaveChangesAsync();
+
+        int skipped = rows.Count - toImport.Count;
+        TempData["Success"] = $"Import complete: {tickets.Count} ticket(s) imported, {skipped} skipped.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // ── Import helpers ────────────────────────────────────────────────────────
+
+    private static List<string> SplitCsvLine(string line, char delimiter)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (c == delimiter && !inQuotes)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        result.Add(current.ToString());
+        return result;
+    }
+
+    private static string ExtractEmail(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        // "Name <email>" format
+        var start = raw.LastIndexOf('<');
+        var end   = raw.LastIndexOf('>');
+        if (start >= 0 && end > start)
+            return raw[(start + 1)..end].Trim();
+        // plain email
+        return raw.Contains('@') ? raw.Trim() : "";
+    }
+
+    private static DateTime? ParseDate(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        return DateTime.TryParse(raw, out var dt) ? dt.ToUniversalTime() : null;
+    }
+
+    private static TicketStatus MapStatus(string raw) => raw.ToLower().Replace(" ", "") switch
+    {
+        "inprogress" or "open(inprogress)" => TicketStatus.InProgress,
+        "resolved"   or "solved"           => TicketStatus.Resolved,
+        "closed"                           => TicketStatus.Closed,
+        "cancelled"  or "canceled"         => TicketStatus.Cancelled,
+        "onhold"     or "pending"          => TicketStatus.OnHold,
+        _                                  => TicketStatus.Open
+    };
+
+    private static TicketPriority MapPriority(string raw) => raw.ToLower() switch
+    {
+        "low"                        => TicketPriority.Low,
+        "high" or "urgent"           => TicketPriority.High,
+        "critical" or "emergency"    => TicketPriority.Critical,
+        _                            => TicketPriority.Medium
+    };
+
+    private static TicketCategory MapCategory(string raw) =>
+        raw.ToLower().Replace(" ", "").Replace("-", "") switch
+        {
+            "hardware"                       => TicketCategory.HardwareIssue,
+            "software" or "applications"
+                or "application"             => TicketCategory.SoftwareIssue,
+            "network" or "networkissue"      => TicketCategory.NetworkIssue,
+            "employee" or "hr" or "people"   => TicketCategory.EmployeeIssue,
+            "security" or "securityincident" => TicketCategory.SecurityIncident,
+            "servicerequest" or "service"    => TicketCategory.ServiceRequest,
+            _                                => TicketCategory.Other
+        };
 
     private void PopulateDropdowns(Ticket? ticket = null)
     {
