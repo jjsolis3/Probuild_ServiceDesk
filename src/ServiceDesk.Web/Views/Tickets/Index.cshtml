@@ -438,12 +438,12 @@
 }
 
 @functions {
-    string SortHeader(string col, string label) {
+    IHtmlContent SortHeader(string col, string label) {
         var sb = (string?)ViewBag.SortBy ?? "created";
         var sd = (string?)ViewBag.SortDir ?? "desc";
         var newDir = sb == col && sd == "asc" ? "desc" : "asc";
         var icon = sb == col ? (sd == "asc" ? " ↑" : " ↓") : "";
-        return $"<a href=\"{PageUrl(1, col, newDir)}\" class=\"text-white text-decoration-none\">{label}{icon}</a>";
+        return new HtmlString($"<a href=\"{PageUrl(1, col, newDir)}\" class=\"text-white text-decoration-none\">{label}{icon}</a>");
     }
 
     string PageUrl(int p, string? sb = null, string? sd = null) {
