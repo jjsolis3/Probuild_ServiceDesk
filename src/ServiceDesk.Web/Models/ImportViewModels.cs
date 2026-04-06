@@ -56,6 +56,7 @@ public class ImportTicketRow
     public string? ResolutionNotes { get; set; }
 
     // Import decision
-    public bool    CanImport   { get; set; }
-    public string? SkipReason  { get; set; }
+    public bool    CanImport        { get; set; }
+    public bool    RequesterMatched { get; set; }  // false = will use placeholder employee
+    public string? SkipReason       { get; set; }
 }

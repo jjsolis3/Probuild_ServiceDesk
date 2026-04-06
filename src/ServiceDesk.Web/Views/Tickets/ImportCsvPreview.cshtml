@@ -1,8 +1,8 @@
 @model List<ServiceDesk.Web.Models.ImportTicketRow>
 @{
     ViewData["Title"] = "Import Preview";
-    var canImport = Model.Where(r => r.CanImport).ToList();
-    var skipped   = Model.Where(r => !r.CanImport).ToList();
+    var matched   = Model.Where(r => r.RequesterMatched).ToList();
+    var unmatched = Model.Where(r => !r.RequesterMatched).ToList();
 }
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -19,19 +19,16 @@
         <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-arrow-left me-1"></i> Upload Different File
         </a>
-        @if (canImport.Any())
-        {
-            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirm">
-                @Html.AntiForgeryToken()
-                <button type="submit" id="btnConfirm" class="btn btn-success btn-sm">
-                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Ticket(s)
-                </button>
-            </form>
-        }
+        <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirm">
+            @Html.AntiForgeryToken()
+            <button type="submit" id="btnConfirm" class="btn btn-success btn-sm">
+                <i class="bi bi-check-lg me-1"></i> Confirm — Import All @Model.Count Ticket(s)
+            </button>
+        </form>
     </div>
 </div>
 
-<!-- Summary banner -->
+<!-- Summary KPI cards -->
 <div class="row g-3 mb-4">
     <div class="col-sm-4">
         <div class="card border-0 shadow-sm text-center py-3">
@@ -41,24 +38,25 @@
     </div>
     <div class="col-sm-4">
         <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-2 fw-bold text-success">@canImport.Count</div>
-            <div class="text-muted small">Ready to import</div>
+            <div class="fs-2 fw-bold text-success">@matched.Count</div>
+            <div class="text-muted small">Requester matched</div>
         </div>
     </div>
     <div class="col-sm-4">
         <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-2 fw-bold text-warning">@skipped.Count</div>
-            <div class="text-muted small">Will be skipped</div>
+            <div class="fs-2 fw-bold text-warning">@unmatched.Count</div>
+            <div class="text-muted small">Unmatched requester</div>
         </div>
     </div>
 </div>
 
-@if (skipped.Any())
+@if (unmatched.Any())
 {
     <div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
         <i class="bi bi-exclamation-triangle-fill me-1"></i>
-        <strong>@skipped.Count row(s) will be skipped</strong> because their Requester email was not found in Employees.
-        To import them, first add the employees to ServiceSphere, then re-import.
+        <strong>@unmatched.Count ticket(s) have an unmatched requester</strong> — they will still be imported.
+        The original requester name will be saved at the top of the ticket description for reference.
+        These tickets are assigned to a system placeholder and can be re-assigned later.
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 }
@@ -88,7 +86,7 @@
             <tbody>
                 @foreach (var row in Model)
                 {
-                    <tr class="@(row.CanImport ? "" : "table-warning opacity-75")">
+                    <tr class="@(row.RequesterMatched ? "" : "table-warning")">
                         <td class="text-muted">@row.RowNumber</td>
                         <td>
                             <span class="badge @StatusBadgeClass(row.Status)">@row.Status</span>
@@ -101,15 +99,15 @@
                         </td>
                         <td>@row.Category</td>
                         <td class="text-truncate" style="max-width:150px;" title="@row.RequesterRaw">
-                            @if (row.SubmittedById.HasValue)
+                            @if (row.RequesterMatched)
                             {
                                 <i class="bi bi-check-circle-fill text-success me-1"></i>
                             }
                             else
                             {
-                                <i class="bi bi-x-circle-fill text-danger me-1"></i>
+                                <i class="bi bi-exclamation-circle-fill text-warning me-1"></i>
                             }
-                            @row.RequesterRaw
+                            @(string.IsNullOrEmpty(row.RequesterRaw) ? "—" : row.RequesterRaw)
                         </td>
                         <td class="text-truncate" style="max-width:130px;" title="@row.AssigneeEmailRaw">
                             @if (row.AssignedToId.HasValue)
@@ -128,13 +126,13 @@
                         </td>
                         <td class="text-muted">@row.CreatedDate.ToString("MM/dd/yy")</td>
                         <td>
-                            @if (row.CanImport)
+                            @if (row.RequesterMatched)
                             {
                                 <span class="badge bg-success">Import</span>
                             }
                             else
                             {
-                                <span class="badge bg-warning text-dark" title="@row.SkipReason">Skip</span>
+                                <span class="badge bg-warning text-dark" title="@row.SkipReason">Import*</span>
                             }
                         </td>
                     </tr>
@@ -142,17 +140,14 @@
             </tbody>
         </table>
     </div>
-    @if (canImport.Any())
-    {
-        <div class="card-footer bg-white text-end py-3">
-            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirmBottom">
-                @Html.AntiForgeryToken()
-                <button type="submit" id="btnConfirmBottom" class="btn btn-success">
-                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Ticket(s)
-                </button>
-            </form>
-        </div>
-    }
+    <div class="card-footer bg-white text-end py-3">
+        <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirmBottom">
+            @Html.AntiForgeryToken()
+            <button type="submit" id="btnConfirmBottom" class="btn btn-success">
+                <i class="bi bi-check-lg me-1"></i> Confirm — Import All @Model.Count Ticket(s)
+            </button>
+        </form>
+    </div>
 </div>
 
 @functions {

@@ -436,17 +436,42 @@ public class TicketsController : Controller
         var rows = await ParseTicketImportAsync(tempPath);
         System.IO.File.Delete(tempPath);
 
-        var toImport = rows.Where(r => r.CanImport).ToList();
+        // Get or create a placeholder employee for tickets whose requester couldn't be matched
+        int? placeholderEmpId = null;
+        if (rows.Any(r => !r.RequesterMatched))
+        {
+            const string placeholderEmail = "imported.ticket@servicesphere.local";
+            var placeholder = await _context.Employees
+                .FirstOrDefaultAsync(e => e.Email == placeholderEmail);
+            if (placeholder == null)
+            {
+                placeholder = new Employee
+                {
+                    FirstName  = "Imported",
+                    LastName   = "Ticket",
+                    Email      = placeholderEmail,
+                    Department = "System",
+                    IsActive   = false,
+                    HireDate   = DateTime.Today,
+                };
+                _context.Employees.Add(placeholder);
+                await _context.SaveChangesAsync();
+            }
+            placeholderEmpId = placeholder.Id;
+        }
 
-        var tickets = toImport.Select(r => new Ticket
+        var tickets = rows.Select(r => new Ticket
         {
             Title           = r.Title,
-            Description     = r.Description,
+            // Prepend original requester name to description when not matched
+            Description     = r.RequesterMatched
+                                ? r.Description
+                                : $"[Original Requester: {r.RequesterRaw}]\n{r.Description}",
             Status          = r.Status,
             Priority        = r.Priority,
             Category        = r.Category,
             SubCategoryId   = r.SubCategoryId,
-            SubmittedById   = r.SubmittedById!.Value,
+            SubmittedById   = r.SubmittedById ?? placeholderEmpId!.Value,
             AssignedToId    = r.AssignedToId,
             BranchId        = r.BranchId,
             CreatedDate     = r.CreatedDate,
@@ -460,8 +485,9 @@ public class TicketsController : Controller
         await _context.Tickets.AddRangeAsync(tickets);
         await _context.SaveChangesAsync();
 
-        int skipped = rows.Count - toImport.Count;
-        TempData["Success"] = $"Import complete: {tickets.Count} ticket(s) imported, {skipped} skipped.";
+        int unmatched = rows.Count(r => !r.RequesterMatched);
+        TempData["Success"] = $"Import complete: {tickets.Count} ticket(s) imported" +
+            (unmatched > 0 ? $" ({unmatched} with unmatched requester — original name saved in description)" : "") + ".";
         return RedirectToAction(nameof(Index));
     }
 
@@ -572,8 +598,9 @@ public class TicketsController : Controller
             if (!string.IsNullOrWhiteSpace(resolution))
                 row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
 
-            row.CanImport  = row.SubmittedById.HasValue;
-            row.SkipReason = row.CanImport ? null : $"Requester '{requester}' not found in Employees (tried email and name match)";
+            row.RequesterMatched = row.SubmittedById.HasValue;
+            row.CanImport  = true; // all tickets import — unmatched use a placeholder employee
+            row.SkipReason = row.RequesterMatched ? null : $"Requester '{requester}' not matched — original name will be saved in ticket description";
 
             preview.Add(row);
         }
