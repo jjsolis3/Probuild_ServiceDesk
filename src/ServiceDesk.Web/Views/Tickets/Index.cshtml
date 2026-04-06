@@ -440,15 +440,19 @@
 
 @functions {
     IHtmlContent SortHeader(string col, string label) {
-        var sb = (string?)ViewBag.SortBy ?? "created";
+        var sb = (string?)ViewBag.SortBy ?? "id";
         var sd = (string?)ViewBag.SortDir ?? "desc";
-        var newDir = sb == col && sd == "asc" ? "desc" : "asc";
+        // Date columns: natural direction is desc (newest first).
+        // All other columns: natural direction is asc (A-Z / low-high).
+        var naturalDir = col is "created" or "due" ? "desc" : "asc";
+        // If already on this column → toggle; otherwise → start at natural direction.
+        var newDir = sb == col ? (sd == "asc" ? "desc" : "asc") : naturalDir;
         var icon = sb == col ? (sd == "asc" ? " ↑" : " ↓") : "";
         return new HtmlString($"<a href=\"{PageUrl(1, col, newDir)}\" class=\"text-white text-decoration-none\">{label}{icon}</a>");
     }
 
     string PageUrl(int p, string? sb = null, string? sd = null) {
-        var sortBy  = sb ?? (string?)ViewBag.SortBy  ?? "created";
+        var sortBy  = sb ?? (string?)ViewBag.SortBy  ?? "id";
         var sortDir = sd ?? (string?)ViewBag.SortDir ?? "desc";
         var ps = (int)ViewBag.PageSize;
         var qs = $"?page={p}&pageSize={ps}&sortBy={sortBy}&sortDir={sortDir}";

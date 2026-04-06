@@ -24,7 +24,7 @@ public class TicketsController : Controller
     public async Task<IActionResult> Index(
         TicketStatus? status, TicketCategory? category, TicketPriority? priority,
         bool? unmatched, bool? unassigned,
-        string sortBy = "created", string sortDir = "desc",
+        string sortBy = "id", string sortDir = "desc",
         int page = 1, int pageSize = 25)
     {
         var query = _context.Tickets
