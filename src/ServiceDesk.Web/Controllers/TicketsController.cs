@@ -410,132 +410,14 @@ public class TicketsController : Controller
             return View();
         }
 
-        using var reader = new System.IO.StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8);
-        var headerLine = await reader.ReadLineAsync();
-        if (string.IsNullOrWhiteSpace(headerLine))
-        {
-            ModelState.AddModelError("", "The file appears to be empty.");
-            return View();
-        }
+        // Save uploaded file to a server temp path — avoids TempData cookie overflow
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ss_ticket_{Guid.NewGuid():N}.dat");
+        await using (var fs = System.IO.File.Create(tempPath))
+            await file.CopyToAsync(fs);
 
-        // Auto-detect delimiter: tab if >10 tabs on first line, else comma
-        var delimiter = headerLine.Count(c => c == '\t') > 10 ? '\t' : ',';
-        var headers = SplitCsvLine(headerLine, delimiter);
-        var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < headers.Count; i++)
-            colIndex[headers[i].Trim()] = i;
+        TempData["ImportTempPath"] = tempPath;
 
-        // Load lookup data once
-        var employees = await _context.Employees
-            .Where(e => e.IsActive)
-            .Select(e => new { e.Id, e.Email, Name = e.FirstName + " " + e.LastName })
-            .ToListAsync();
-        var emailToId = employees.ToDictionary(e => e.Email.ToLower(), e => e.Id);
-
-        var branches = await _context.Branches
-            .Select(b => new { b.Id, b.Name, b.City })
-            .ToListAsync();
-
-        var subCats = await _context.TicketSubCategories
-            .Where(s => s.IsActive)
-            .Select(s => new { s.Id, s.Name, s.Category })
-            .ToListAsync();
-
-        var preview = new List<ImportTicketRow>();
-        int rowNum = 1;
-        string? line;
-
-        while ((line = await reader.ReadLineAsync()) != null)
-        {
-            rowNum++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            var cols = SplitCsvLine(line, delimiter);
-            string Get(string name) =>
-                colIndex.TryGetValue(name, out var i) && i < cols.Count ? cols[i].Trim() : "";
-
-            var title = Get("Title");
-            if (string.IsNullOrWhiteSpace(title)) continue; // skip blank rows
-
-            var row = new ImportTicketRow { RowNumber = rowNum, OriginalTitle = title };
-
-            // Title — truncate to model limit
-            row.Title = title.Length > 200 ? title[..200] : title;
-
-            // Description
-            var desc = Get("Description");
-            if (string.IsNullOrWhiteSpace(desc)) desc = "(No description provided)";
-            row.Description = desc.Length > 2000 ? desc[..2000] : desc;
-
-            // Status
-            row.Status = MapStatus(Get("State"));
-
-            // Priority
-            row.Priority = MapPriority(Get("Priority"));
-
-            // Category
-            row.Category = MapCategory(Get("Category"));
-
-            // Sub-category (best match within the mapped parent category)
-            var subCatName = Get("Subcategory");
-            if (!string.IsNullOrWhiteSpace(subCatName))
-            {
-                var match = subCats.FirstOrDefault(s =>
-                    s.Category == row.Category &&
-                    s.Name.Equals(subCatName, StringComparison.OrdinalIgnoreCase));
-                row.SubCategoryId = match?.Id;
-            }
-
-            // Submitted By — parse "Name <email>" or plain email
-            var requester = Get("Requester");
-            row.RequesterRaw = requester;
-            var reqEmail = ExtractEmail(requester);
-            if (!string.IsNullOrEmpty(reqEmail) && emailToId.TryGetValue(reqEmail.ToLower(), out var subId))
-            {
-                row.SubmittedById = subId;
-            }
-
-            // Assigned To
-            var assigneeEmail = Get("Assignee Email");
-            row.AssigneeEmailRaw = assigneeEmail;
-            if (!string.IsNullOrEmpty(assigneeEmail) && emailToId.TryGetValue(assigneeEmail.ToLower(), out var asnId))
-                row.AssignedToId = asnId;
-
-            // Branch from Site column
-            var site = Get("Site");
-            if (!string.IsNullOrWhiteSpace(site))
-            {
-                var branch = branches.FirstOrDefault(b =>
-                    b.Name.Contains(site, StringComparison.OrdinalIgnoreCase) ||
-                    (b.City != null && b.City.Contains(site, StringComparison.OrdinalIgnoreCase)) ||
-                    site.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
-                row.BranchId = branch?.Id;
-                row.SiteRaw = site;
-            }
-
-            // Dates
-            row.CreatedDate  = ParseDate(Get("Created At")) ?? DateTime.UtcNow;
-            row.UpdatedDate  = ParseDate(Get("Updated At"));
-            row.DueDate      = ParseDate(Get("Due Date"));
-            row.ResolvedDate = ParseDate(Get("Resolved At"));
-            row.ClosedDate   = ParseDate(Get("Closed At"));
-
-            // Resolution notes
-            var resolution = Get("Resolution");
-            if (!string.IsNullOrWhiteSpace(resolution))
-                row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
-
-            // Determine if row can be imported
-            row.CanImport = row.SubmittedById.HasValue;
-            row.SkipReason = row.CanImport ? null : $"Requester '{reqEmail}' not found in Employees";
-
-            preview.Add(row);
-        }
-
-        // Serialize preview into TempData for the confirm step
-        TempData["ImportPreview"] = System.Text.Json.JsonSerializer.Serialize(preview);
-        TempData["ImportFileName"] = file.FileName;
-
+        var preview = await ParseTicketImportAsync(tempPath);
         return View("ImportCsvPreview", preview);
     }
 
@@ -544,14 +426,16 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ImportCsvConfirm()
     {
-        var json = TempData["ImportPreview"] as string;
-        if (string.IsNullOrEmpty(json))
+        var tempPath = TempData["ImportTempPath"] as string;
+        if (string.IsNullOrEmpty(tempPath) || !System.IO.File.Exists(tempPath))
         {
             TempData["Error"] = "Import session expired. Please upload the file again.";
             return RedirectToAction(nameof(ImportCsv));
         }
 
-        var rows = System.Text.Json.JsonSerializer.Deserialize<List<ImportTicketRow>>(json)!;
+        var rows = await ParseTicketImportAsync(tempPath);
+        System.IO.File.Delete(tempPath);
+
         var toImport = rows.Where(r => r.CanImport).ToList();
 
         var tickets = toImport.Select(r => new Ticket
@@ -582,6 +466,110 @@ public class TicketsController : Controller
     }
 
     // ── Import helpers ────────────────────────────────────────────────────────
+
+    private async Task<List<ImportTicketRow>> ParseTicketImportAsync(string filePath)
+    {
+        using var reader = new System.IO.StreamReader(filePath, System.Text.Encoding.UTF8);
+        var headerLine = await reader.ReadLineAsync();
+        if (string.IsNullOrWhiteSpace(headerLine)) return new List<ImportTicketRow>();
+
+        var delimiter = headerLine.Count(c => c == '\t') > 10 ? '\t' : ',';
+        var headers = SplitCsvLine(headerLine, delimiter);
+        var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < headers.Count; i++)
+            colIndex[headers[i].Trim()] = i;
+
+        var employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .Select(e => new { e.Id, e.Email })
+            .ToListAsync();
+        var emailToId = employees.ToDictionary(e => e.Email.ToLower(), e => e.Id);
+
+        var branches = await _context.Branches
+            .Select(b => new { b.Id, b.Name, b.City })
+            .ToListAsync();
+
+        var subCats = await _context.TicketSubCategories
+            .Where(s => s.IsActive)
+            .Select(s => new { s.Id, s.Name, s.Category })
+            .ToListAsync();
+
+        var preview = new List<ImportTicketRow>();
+        int rowNum = 1;
+        string? line;
+
+        while ((line = await reader.ReadLineAsync()) != null)
+        {
+            rowNum++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var cols = SplitCsvLine(line, delimiter);
+            string Get(string name) =>
+                colIndex.TryGetValue(name, out var i) && i < cols.Count ? cols[i].Trim() : "";
+
+            var title = Get("Title");
+            if (string.IsNullOrWhiteSpace(title)) continue;
+
+            var row = new ImportTicketRow { RowNumber = rowNum, OriginalTitle = title };
+            row.Title = title.Length > 200 ? title[..200] : title;
+
+            var desc = Get("Description");
+            if (string.IsNullOrWhiteSpace(desc)) desc = "(No description provided)";
+            row.Description = desc.Length > 2000 ? desc[..2000] : desc;
+
+            row.Status   = MapStatus(Get("State"));
+            row.Priority = MapPriority(Get("Priority"));
+            row.Category = MapCategory(Get("Category"));
+
+            var subCatName = Get("Subcategory");
+            if (!string.IsNullOrWhiteSpace(subCatName))
+            {
+                var match = subCats.FirstOrDefault(s =>
+                    s.Category == row.Category &&
+                    s.Name.Equals(subCatName, StringComparison.OrdinalIgnoreCase));
+                row.SubCategoryId = match?.Id;
+            }
+
+            var requester = Get("Requester");
+            row.RequesterRaw = requester;
+            var reqEmail = ExtractEmail(requester);
+            if (!string.IsNullOrEmpty(reqEmail) && emailToId.TryGetValue(reqEmail.ToLower(), out var subId))
+                row.SubmittedById = subId;
+
+            var assigneeEmail = Get("Assignee Email");
+            row.AssigneeEmailRaw = assigneeEmail;
+            if (!string.IsNullOrEmpty(assigneeEmail) && emailToId.TryGetValue(assigneeEmail.ToLower(), out var asnId))
+                row.AssignedToId = asnId;
+
+            var site = Get("Site");
+            if (!string.IsNullOrWhiteSpace(site))
+            {
+                var branch = branches.FirstOrDefault(b =>
+                    b.Name.Contains(site, StringComparison.OrdinalIgnoreCase) ||
+                    (b.City != null && b.City.Contains(site, StringComparison.OrdinalIgnoreCase)) ||
+                    site.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
+                row.BranchId = branch?.Id;
+                row.SiteRaw  = site;
+            }
+
+            row.CreatedDate  = ParseDate(Get("Created At")) ?? DateTime.UtcNow;
+            row.UpdatedDate  = ParseDate(Get("Updated At"));
+            row.DueDate      = ParseDate(Get("Due Date"));
+            row.ResolvedDate = ParseDate(Get("Resolved At"));
+            row.ClosedDate   = ParseDate(Get("Closed At"));
+
+            var resolution = Get("Resolution");
+            if (!string.IsNullOrWhiteSpace(resolution))
+                row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
+
+            row.CanImport  = row.SubmittedById.HasValue;
+            row.SkipReason = row.CanImport ? null : $"Requester '{reqEmail}' not found in Employees";
+
+            preview.Add(row);
+        }
+
+        return preview;
+    }
 
     private static List<string> SplitCsvLine(string line, char delimiter)
     {
