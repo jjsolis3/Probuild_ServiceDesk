@@ -462,6 +462,17 @@
 
 @section Scripts {
 <script type="application/json" id="itStaffData">@Html.Raw(ViewBag.ITStaffJson ?? "[]")</script>
+<script type="application/json" id="pageStateData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    activeViewId    = (int?)ViewBag.ActiveViewId,
+    currentStatus   = (string?)ViewBag.CurrentStatus?.ToString(),
+    currentCategory = (string?)ViewBag.CurrentCategory?.ToString(),
+    currentPriority = (string?)ViewBag.CurrentPriority?.ToString(),
+    currentUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched,
+    currentUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned,
+    sortBy   = (string?)ViewBag.SortBy  ?? "id",
+    sortDir  = (string?)ViewBag.SortDir ?? "desc",
+    pageSize = (int)(ViewBag.PageSize ?? 25)
+}))</script>
 <script>
 (function () {
     const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
@@ -649,8 +660,10 @@
         menu.innerHTML = html;
     }
 
+    const pageState = JSON.parse(document.getElementById('pageStateData').textContent);
+
     function viewItem(v) {
-        const active = v.id == @(ViewBag.ActiveViewId?.ToString() ?? "0");
+        const active = v.id === pageState.activeViewId;
         const starCls = v.isDefault ? 'bi-star-fill text-warning' : 'bi-star text-muted';
         return `<li>
           <div class="dropdown-item d-flex align-items-center gap-1 pe-2 ${active ? 'active' : ''}">
@@ -726,15 +739,15 @@
         document.getElementById('svAssignedToMe').checked  = false;
         document.getElementById('svUnassigned').checked    = false;
         document.getElementById('svUnmatched').checked     = false;
-        document.getElementById('svSortBy').value  = '@(ViewBag.SortBy ?? "id")';
-        document.getElementById('svSortDir').value = '@(ViewBag.SortDir ?? "desc")';
-        document.getElementById('svPageSize').value = '@(ViewBag.PageSize ?? 25)';
+        document.getElementById('svSortBy').value   = pageState.sortBy;
+        document.getElementById('svSortDir').value  = pageState.sortDir;
+        document.getElementById('svPageSize').value = pageState.pageSize;
         // Pre-fill current active filters
-        const curStatus   = '@(ViewBag.CurrentStatus)';
-        const curCategory = '@(ViewBag.CurrentCategory)';
-        const curPriority = '@(ViewBag.CurrentPriority)';
-        const curUnmatched  = @((ViewBag.CurrentUnmatched != null && (bool)ViewBag.CurrentUnmatched) ? "true" : "false");
-        const curUnassigned = @((ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) ? "true" : "false");
+        const curStatus     = pageState.currentStatus   ?? '';
+        const curCategory   = pageState.currentCategory ?? '';
+        const curPriority   = pageState.currentPriority ?? '';
+        const curUnmatched  = pageState.currentUnmatched;
+        const curUnassigned = pageState.currentUnassigned;
         if (curStatus)   { const opts = document.getElementById('svStatus').options; for (let o of opts) if (o.text === curStatus) { o.selected=true; break; } }
         if (curCategory) { const opts = document.getElementById('svCategory').options; for (let o of opts) if (o.text === curCategory) { o.selected=true; break; } }
         if (curPriority) { const opts = document.getElementById('svPriority').options; for (let o of opts) if (o.text === curPriority) { o.selected=true; break; } }
