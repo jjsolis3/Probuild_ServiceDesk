@@ -479,11 +479,16 @@ public class TicketsController : Controller
         for (int i = 0; i < headers.Count; i++)
             colIndex[headers[i].Trim()] = i;
 
+        // Load all employees (active or not) for matching during import
         var employees = await _context.Employees
-            .Where(e => e.IsActive)
-            .Select(e => new { e.Id, e.Email })
+            .Select(e => new { e.Id, e.Email, FullName = (e.FirstName + " " + e.LastName).Trim() })
             .ToListAsync();
-        var emailToId = employees.ToDictionary(e => e.Email.ToLower(), e => e.Id);
+        var emailToId = employees
+            .GroupBy(e => e.Email.ToLower())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+        var nameToId = employees
+            .GroupBy(e => e.FullName.ToLower())
+            .ToDictionary(g => g.Key, g => g.First().Id);
 
         var branches = await _context.Branches
             .Select(b => new { b.Id, b.Name, b.City })
@@ -535,11 +540,16 @@ public class TicketsController : Controller
             var reqEmail = ExtractEmail(requester);
             if (!string.IsNullOrEmpty(reqEmail) && emailToId.TryGetValue(reqEmail.ToLower(), out var subId))
                 row.SubmittedById = subId;
+            else if (!string.IsNullOrEmpty(requester) && nameToId.TryGetValue(requester.Trim().ToLower(), out var subIdByName))
+                row.SubmittedById = subIdByName;
 
-            var assigneeEmail = Get("Assignee Email");
-            row.AssigneeEmailRaw = assigneeEmail;
-            if (!string.IsNullOrEmpty(assigneeEmail) && emailToId.TryGetValue(assigneeEmail.ToLower(), out var asnId))
+            var assigneeRaw = Get("Assignee Email");
+            row.AssigneeEmailRaw = assigneeRaw;
+            var asnEmail = ExtractEmail(assigneeRaw);
+            if (!string.IsNullOrEmpty(asnEmail) && emailToId.TryGetValue(asnEmail.ToLower(), out var asnId))
                 row.AssignedToId = asnId;
+            else if (!string.IsNullOrEmpty(assigneeRaw) && nameToId.TryGetValue(assigneeRaw.Trim().ToLower(), out var asnIdByName))
+                row.AssignedToId = asnIdByName;
 
             var site = Get("Site");
             if (!string.IsNullOrWhiteSpace(site))
@@ -563,7 +573,7 @@ public class TicketsController : Controller
                 row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
 
             row.CanImport  = row.SubmittedById.HasValue;
-            row.SkipReason = row.CanImport ? null : $"Requester '{reqEmail}' not found in Employees";
+            row.SkipReason = row.CanImport ? null : $"Requester '{requester}' not found in Employees (tried email and name match)";
 
             preview.Add(row);
         }
