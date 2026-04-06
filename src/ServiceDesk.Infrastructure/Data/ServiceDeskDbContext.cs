@@ -40,6 +40,9 @@ public class ServiceDeskDbContext : DbContext
     // Routing & assignment
     public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
 
+    // Saved ticket view presets (per-user filter shortcuts)
+    public DbSet<SavedTicketView> SavedTicketViews => Set<SavedTicketView>();
+
     // Agent productivity
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
 
@@ -228,6 +231,31 @@ public class ServiceDeskDbContext : DbContext
         // Index for KB search by category + published status
         modelBuilder.Entity<KbArticle>()
             .HasIndex(k => new { k.IsPublished, k.Category });
+
+        // SavedTicketView -> Owner (PortalUser)
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.Owner)
+            .WithMany()
+            .HasForeignKey(v => v.OwnerPortalUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SavedTicketView -> FilterBranch
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.FilterBranch)
+            .WithMany()
+            .HasForeignKey(v => v.FilterBranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // SavedTicketView -> FilterGroup
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.FilterGroup)
+            .WithMany()
+            .HasForeignKey(v => v.FilterGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index: fast lookup of a user's views + shared views
+        modelBuilder.Entity<SavedTicketView>()
+            .HasIndex(v => new { v.OwnerPortalUserId, v.IsShared });
 
         // Decimal precision — prevents silent truncation on SQL Server
         modelBuilder.Entity<Asset>()

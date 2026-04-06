@@ -25,8 +25,46 @@ public class TicketsController : Controller
         TicketStatus? status, TicketCategory? category, TicketPriority? priority,
         bool? unmatched, bool? unassigned,
         string sortBy = "id", string sortDir = "desc",
-        int page = 1, int pageSize = 25)
+        int page = 1, int pageSize = 25,
+        int? viewId = null)
     {
+        // If no filters supplied and no explicit viewId, check for user's default view.
+        var userId = CurrentPortalUserId();
+        bool noFilters = status == null && category == null && priority == null
+                      && unmatched == null && unassigned == null && viewId == null
+                      && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
+
+        if (noFilters && userId != null)
+        {
+            var def = await _context.SavedTicketViews
+                .FirstOrDefaultAsync(v => v.IsDefault
+                    && (v.OwnerPortalUserId == userId || v.IsShared));
+            if (def != null)
+                return RedirectToAction(nameof(Index), BuildViewParams(def));
+        }
+
+        // If a viewId was supplied, load that view's criteria.
+        SavedTicketView? activeView = null;
+        if (viewId != null)
+        {
+            activeView = await _context.SavedTicketViews
+                .Include(v => v.FilterBranch)
+                .Include(v => v.FilterGroup)
+                .FirstOrDefaultAsync(v => v.Id == viewId
+                    && (v.OwnerPortalUserId == userId || v.IsShared));
+            if (activeView != null)
+            {
+                status    ??= activeView.FilterStatus;
+                category  ??= activeView.FilterCategory;
+                priority  ??= activeView.FilterPriority;
+                unmatched ??= activeView.FilterUnmatchedOnly  ? true : null;
+                unassigned ??= activeView.FilterUnassignedOnly ? true : null;
+                sortBy   = sortBy   == "id"   ? activeView.SortBy   : sortBy;
+                sortDir  = sortDir  == "desc" ? activeView.SortDir  : sortDir;
+                pageSize = pageSize == 25     ? activeView.PageSize : pageSize;
+            }
+        }
+
         var query = _context.Tickets
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
@@ -93,6 +131,20 @@ public class TicketsController : Controller
                 .OrderBy(e => e.LastName)
                 .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
                 .ToListAsync());
+
+        ViewBag.ActiveViewId   = activeView?.Id;
+        ViewBag.ActiveViewName = activeView?.Name;
+
+        // Data for the Save View modal dropdowns
+        ViewBag.Branches = await _context.Branches
+            .Where(b => b.IsActive).OrderBy(b => b.Name)
+            .Select(b => new { b.Id, b.Name }).ToListAsync();
+        ViewBag.Groups = await _context.UserGroups
+            .Where(g => g.IsActive).OrderBy(g => g.Name)
+            .Select(g => new { g.Id, g.Name }).ToListAsync();
+        ViewBag.Departments = await _context.Employees
+            .Where(e => e.Department != null && e.Department != "")
+            .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
 
         return View(tickets);
     }
@@ -745,6 +797,172 @@ public class TicketsController : Controller
             "servicerequest" or "service"    => TicketCategory.ServiceRequest,
             _                                => TicketCategory.Other
         };
+
+    // ── Saved Views ──────────────────────────────────────────────────────────
+
+    /// <summary>Returns the current user's saved views + all shared views as JSON.</summary>
+    [HttpGet]
+    public async Task<IActionResult> GetSavedViews()
+    {
+        var userId = CurrentPortalUserId();
+        var views = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId || v.IsShared)
+            .OrderBy(v => v.IsShared).ThenBy(v => v.Name)
+            .Select(v => new {
+                v.Id, v.Name, v.IsDefault, v.IsShared,
+                v.FilterStatus, v.FilterCategory, v.FilterPriority,
+                v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
+                v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
+                v.SortBy, v.SortDir, v.PageSize,
+                isOwner = v.OwnerPortalUserId == userId
+            })
+            .ToListAsync();
+        return Json(views);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveView(
+        string name, bool isShared,
+        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
+        string sortBy = "id", string sortDir = "desc", int pageSize = 25)
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        var view = new SavedTicketView
+        {
+            Name                 = name.Trim(),
+            OwnerPortalUserId    = userId,
+            IsShared             = isShared,
+            FilterStatus         = filterStatus,
+            FilterCategory       = filterCategory,
+            FilterPriority       = filterPriority,
+            FilterBranchId       = filterBranchId,
+            FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim(),
+            FilterGroupId        = filterGroupId,
+            FilterAssignedToMe   = filterAssignedToMe,
+            FilterUnassignedOnly = filterUnassignedOnly,
+            FilterUnmatchedOnly  = filterUnmatchedOnly,
+            SortBy               = sortBy,
+            SortDir              = sortDir,
+            PageSize             = pageSize,
+            CreatedDate          = DateTime.UtcNow
+        };
+        _context.SavedTicketViews.Add(view);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true, id = view.Id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateView(
+        int id, string name, bool isShared,
+        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
+        string sortBy = "id", string sortDir = "desc", int pageSize = 25)
+    {
+        var userId = CurrentPortalUserId();
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && v.OwnerPortalUserId == userId);
+        if (view == null) return NotFound();
+
+        view.Name                 = name.Trim();
+        view.IsShared             = isShared;
+        view.FilterStatus         = filterStatus;
+        view.FilterCategory       = filterCategory;
+        view.FilterPriority       = filterPriority;
+        view.FilterBranchId       = filterBranchId;
+        view.FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim();
+        view.FilterGroupId        = filterGroupId;
+        view.FilterAssignedToMe   = filterAssignedToMe;
+        view.FilterUnassignedOnly = filterUnassignedOnly;
+        view.FilterUnmatchedOnly  = filterUnmatchedOnly;
+        view.SortBy               = sortBy;
+        view.SortDir              = sortDir;
+        view.PageSize             = pageSize;
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteView(int id)
+    {
+        var userId = CurrentPortalUserId();
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && v.OwnerPortalUserId == userId);
+        if (view == null) return NotFound();
+
+        _context.SavedTicketViews.Remove(view);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetDefaultView(int id)
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        // Clear any existing default for this user
+        var existing = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId && v.IsDefault)
+            .ToListAsync();
+        existing.ForEach(v => v.IsDefault = false);
+
+        // Set the new default (must belong to this user or be shared)
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && (v.OwnerPortalUserId == userId || v.IsShared));
+        if (view != null) view.IsDefault = true;
+
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ClearDefaultView()
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        var existing = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId && v.IsDefault)
+            .ToListAsync();
+        existing.ForEach(v => v.IsDefault = false);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    private int? CurrentPortalUserId()
+    {
+        var raw = User.FindFirstValue("UserId");
+        return int.TryParse(raw, out var id) ? id : null;
+    }
+
+    private static object BuildViewParams(SavedTicketView v)
+    {
+        var d = new Dictionary<string, string?>
+        {
+            ["viewId"]   = v.Id.ToString(),
+            ["sortBy"]   = v.SortBy,
+            ["sortDir"]  = v.SortDir,
+            ["pageSize"] = v.PageSize.ToString(),
+        };
+        if (v.FilterStatus   != null) d["status"]    = v.FilterStatus.ToString();
+        if (v.FilterCategory != null) d["category"]  = v.FilterCategory.ToString();
+        if (v.FilterPriority != null) d["priority"]  = v.FilterPriority.ToString();
+        if (v.FilterUnmatchedOnly)   d["unmatched"]  = "true";
+        if (v.FilterUnassignedOnly)  d["unassigned"] = "true";
+        return d;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void PopulateDropdowns(Ticket? ticket = null)
     {

@@ -270,6 +270,44 @@ public static class DbInitializer
                         ON DELETE SET NULL;
                 END");
 
+            // 14. Create SavedTicketViews table (user filter presets)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SavedTicketViews')
+                BEGIN
+                    CREATE TABLE dbo.SavedTicketViews (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name                NVARCHAR(100)   NOT NULL,
+                        OwnerPortalUserId   INT             NULL
+                            CONSTRAINT FK_SavedTicketViews_PortalUsers
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        IsDefault           BIT             NOT NULL DEFAULT 0,
+                        IsShared            BIT             NOT NULL DEFAULT 0,
+                        FilterStatus        INT             NULL,
+                        FilterCategory      INT             NULL,
+                        FilterPriority      INT             NULL,
+                        FilterBranchId      INT             NULL
+                            CONSTRAINT FK_SavedTicketViews_Branches
+                            REFERENCES dbo.Branches(Id)
+                            ON DELETE SET NULL,
+                        FilterDepartment    NVARCHAR(100)   NULL,
+                        FilterGroupId       INT             NULL
+                            CONSTRAINT FK_SavedTicketViews_UserGroups
+                            REFERENCES dbo.UserGroups(Id)
+                            ON DELETE SET NULL,
+                        FilterAssignedToMe  BIT             NOT NULL DEFAULT 0,
+                        FilterUnassignedOnly BIT            NOT NULL DEFAULT 0,
+                        FilterUnmatchedOnly BIT             NOT NULL DEFAULT 0,
+                        SortBy              NVARCHAR(20)    NOT NULL DEFAULT 'id',
+                        SortDir             NVARCHAR(4)     NOT NULL DEFAULT 'desc',
+                        PageSize            INT             NOT NULL DEFAULT 25,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_SavedTicketViews_Owner_Shared
+                        ON dbo.SavedTicketViews (OwnerPortalUserId, IsShared);
+                END");
+
             // 11. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')

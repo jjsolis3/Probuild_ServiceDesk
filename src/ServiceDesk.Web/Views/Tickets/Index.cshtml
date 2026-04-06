@@ -19,9 +19,36 @@
     </div>
 </div>
 
+<!-- Views Bar -->
+<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+    @if (ViewBag.ActiveViewId != null)
+    {
+        <span class="badge bg-primary fs-6 px-3 py-2">
+            <i class="bi bi-funnel-fill me-1"></i>@ViewBag.ActiveViewName
+            <a asp-action="Index" class="text-white ms-2" title="Clear view" style="text-decoration:none;">×</a>
+        </span>
+    }
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="viewsDropdownBtn"
+                data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-layout-text-sidebar-reverse me-1"></i> My Views
+        </button>
+        <ul class="dropdown-menu shadow" id="viewsDropdownMenu" style="min-width:280px;">
+            <li><span class="dropdown-item-text text-muted small px-3">Loading…</span></li>
+        </ul>
+    </div>
+    <button class="btn btn-outline-primary btn-sm" onclick="openSaveViewModal()">
+        <i class="bi bi-bookmark-plus me-1"></i> Save as View
+    </button>
+</div>
+
 <!-- Filters -->
 <div class="filter-bar">
     <form method="get" class="row g-2 align-items-end">
+        @if (ViewBag.ActiveViewId != null)
+        {
+            <input type="hidden" name="viewId" value="@ViewBag.ActiveViewId" />
+        }
         <div class="col-auto">
             <label class="form-label small">Status</label>
             <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -276,6 +303,153 @@
     </nav>
 }
 
+<!-- ── Save / Edit View Modal ──────────────────────────────────────────── -->
+<div class="modal fade" id="saveViewModal" tabindex="-1" aria-labelledby="saveViewModalLabel">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="saveViewModalLabel"><i class="bi bi-bookmark-plus me-2"></i>Save Ticket View</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="svEditId" value="" />
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">View Name <span class="text-danger">*</span></label>
+            <input type="text" id="svName" class="form-control" placeholder="e.g. My Open Tickets, Unassigned Critical" maxlength="100" />
+          </div>
+          <div class="col-md-4 d-flex align-items-end gap-3">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" id="svIsShared" />
+              <label class="form-check-label" for="svIsShared">Shared with all users</label>
+            </div>
+          </div>
+          <div class="col-12"><hr class="my-1" /><p class="text-muted small mb-1">Filter Criteria</p></div>
+          <div class="col-md-4">
+            <label class="form-label small">Status</label>
+            <select id="svStatus" class="form-select form-select-sm">
+              <option value="">All Statuses</option>
+              @foreach (var s in Enum.GetValues<TicketStatus>())
+              { <option value="@((int)s)">@s</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Category</label>
+            <select id="svCategory" class="form-select form-select-sm">
+              <option value="">All Categories</option>
+              @foreach (var c in Enum.GetValues<TicketCategory>())
+              { <option value="@((int)c)">@c</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Priority</label>
+            <select id="svPriority" class="form-select form-select-sm">
+              <option value="">All Priorities</option>
+              @foreach (var p in Enum.GetValues<TicketPriority>())
+              { <option value="@((int)p)">@p</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Branch / Location</label>
+            <select id="svBranch" class="form-select form-select-sm">
+              <option value="">All Branches</option>
+              @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
+              { <option value="@b.Id">@b.Name</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Department</label>
+            <select id="svDepartment" class="form-select form-select-sm">
+              <option value="">All Departments</option>
+              @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
+              { <option value="@d">@d</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Group / Team</label>
+            <select id="svGroup" class="form-select form-select-sm">
+              <option value="">All Groups</option>
+              @foreach (var g in (ViewBag.Groups as IEnumerable<dynamic> ?? []))
+              { <option value="@g.Id">@g.Name</option> }
+            </select>
+          </div>
+          <div class="col-12 d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svAssignedToMe" />
+              <label class="form-check-label small" for="svAssignedToMe">Assigned to me only</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svUnassigned" />
+              <label class="form-check-label small" for="svUnassigned">Unassigned tickets only</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svUnmatched" />
+              <label class="form-check-label small" for="svUnmatched">Unmatched requester only</label>
+            </div>
+          </div>
+          <div class="col-12"><hr class="my-1" /><p class="text-muted small mb-1">Default Sort &amp; Display</p></div>
+          <div class="col-md-4">
+            <label class="form-label small">Sort By</label>
+            <select id="svSortBy" class="form-select form-select-sm">
+              <option value="id">Ticket ID</option>
+              <option value="created">Created Date</option>
+              <option value="due">Due Date</option>
+              <option value="priority">Priority</option>
+              <option value="status">Status</option>
+              <option value="title">Title</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Sort Direction</label>
+            <select id="svSortDir" class="form-select form-select-sm">
+              <option value="desc">Newest / Highest First ↓</option>
+              <option value="asc">Oldest / Lowest First ↑</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Tickets Per Page</label>
+            <select id="svPageSize" class="form-select form-select-sm">
+              <option value="15">15</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitSaveView()">
+          <i class="bi bi-bookmark-check me-1"></i><span id="svSaveLabel">Save View</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Manage Views Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="manageViewsModal" tabindex="-1" aria-labelledby="manageViewsModalLabel">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="manageViewsModalLabel"><i class="bi bi-layout-text-sidebar-reverse me-2"></i>Manage Views</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="manageViewsList" class="list-group list-group-flush">
+          <div class="list-group-item text-muted text-center py-3">Loading…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="openSaveViewModal()">
+          <i class="bi bi-bookmark-plus me-1"></i> New View
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast notification -->
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="quickEditToast" class="toast align-items-center text-bg-success border-0" role="alert">
@@ -437,7 +611,240 @@
     })();
 })();
 </script>
+
+<script>
+// ── Saved Views ────────────────────────────────────────────────────────────
+(function () {
+    const aft = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    // ---- Load views into dropdown and manage list -------------------------
+    async function loadViews() {
+        const resp = await fetch('@Url.Action("GetSavedViews", "Tickets")', { credentials: 'same-origin' });
+        if (!resp.ok) return [];
+        return await resp.json();
+    }
+
+    async function renderDropdown() {
+        const views = await loadViews();
+        const menu  = document.getElementById('viewsDropdownMenu');
+        if (!menu) return;
+        if (views.length === 0) {
+            menu.innerHTML = '<li><span class="dropdown-item-text text-muted small px-3 py-2">No saved views yet.<br>Click <strong>Save as View</strong> to create one.</span></li>';
+            return;
+        }
+        const owned  = views.filter(v => v.isOwner && !v.isShared);
+        const shared = views.filter(v => v.isShared);
+
+        let html = '';
+        if (owned.length) {
+            html += '<li><h6 class="dropdown-header">My Views</h6></li>';
+            owned.forEach(v => html += viewItem(v));
+        }
+        if (shared.length) {
+            html += '<li><h6 class="dropdown-header mt-1">Shared Views</h6></li>';
+            shared.forEach(v => html += viewItem(v));
+        }
+        html += '<li><hr class="dropdown-divider" /></li>';
+        html += '<li><a class="dropdown-item small" href="#" onclick="openManageViews(event)"><i class="bi bi-gear me-1"></i>Manage Views…</a></li>';
+        menu.innerHTML = html;
+    }
+
+    function viewItem(v) {
+        const active = v.id == @(ViewBag.ActiveViewId?.ToString() ?? "0");
+        const starCls = v.isDefault ? 'bi-star-fill text-warning' : 'bi-star text-muted';
+        return `<li>
+          <div class="dropdown-item d-flex align-items-center gap-1 pe-2 ${active ? 'active' : ''}">
+            <a href="?viewId=${v.id}" class="flex-grow-1 text-decoration-none ${active ? 'text-white' : ''}" style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${escHtml(v.name)}">
+              ${escHtml(v.name)}
+            </a>
+            <button class="btn btn-link btn-sm p-0 ms-1" title="${v.isDefault ? 'Remove default' : 'Set as default'}" onclick="toggleDefault(event,${v.id},${v.isDefault})">
+              <i class="bi ${starCls}"></i>
+            </button>
+            ${v.isOwner ? `<button class="btn btn-link btn-sm p-0" title="Edit" onclick="editView(event,${v.id})"><i class="bi bi-pencil text-muted"></i></button>
+            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})"><i class="bi bi-trash text-danger"></i></button>` : ''}
+          </div></li>`;
+    }
+
+    function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // Trigger dropdown load when shown
+    document.getElementById('viewsDropdownBtn')?.addEventListener('show.bs.dropdown', renderDropdown);
+
+    // ---- Manage Views modal ----------------------------------------------
+    window.openManageViews = async function(e) {
+        if (e) e.preventDefault();
+        const views = await loadViews();
+        const list  = document.getElementById('manageViewsList');
+        if (!list) return;
+        if (views.length === 0) {
+            list.innerHTML = '<div class="list-group-item text-muted text-center py-3">No saved views yet.</div>';
+        } else {
+            list.innerHTML = views.map(v => `
+              <div class="list-group-item d-flex align-items-center gap-2">
+                <i class="bi ${v.isDefault ? 'bi-star-fill text-warning' : 'bi-star text-muted'}"></i>
+                <div class="flex-grow-1">
+                  <strong>${escHtml(v.name)}</strong>
+                  ${v.isShared ? '<span class="badge bg-info ms-1">Shared</span>' : ''}
+                  <div class="text-muted small">${buildSummary(v)}</div>
+                </div>
+                <div class="d-flex gap-1">
+                  <a href="?viewId=${v.id}" class="btn btn-sm btn-outline-primary" title="Apply view"><i class="bi bi-play-fill"></i></a>
+                  ${v.isOwner ? `<button class="btn btn-sm btn-outline-secondary" onclick="editView(event,${v.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                </div>
+              </div>`).join('');
+        }
+        new bootstrap.Modal(document.getElementById('manageViewsModal')).show();
+    };
+
+    function buildSummary(v) {
+        const parts = [];
+        const statusLabels = ['Open','InProgress','OnHold','Resolved','Closed','Cancelled'];
+        const catLabels    = ['ServiceRequest','HardwareIssue','SoftwareIssue','EmployeeIssue','NetworkIssue','SecurityIncident','Other'];
+        const priLabels    = ['Low','Medium','High','Critical'];
+        if (v.filterStatus   != null) parts.push('Status: ' + (statusLabels[v.filterStatus] ?? v.filterStatus));
+        if (v.filterCategory != null) parts.push('Category: ' + (catLabels[v.filterCategory] ?? v.filterCategory));
+        if (v.filterPriority != null) parts.push('Priority: ' + (priLabels[v.filterPriority] ?? v.filterPriority));
+        if (v.filterAssignedToMe)   parts.push('Assigned to me');
+        if (v.filterUnassignedOnly) parts.push('Unassigned');
+        if (v.filterUnmatchedOnly)  parts.push('Unmatched requester');
+        if (v.filterDepartment) parts.push('Dept: ' + v.filterDepartment);
+        return parts.length ? parts.join(' · ') : 'No filters — shows all tickets';
+    }
+
+    // ---- Save / Edit modal -----------------------------------------------
+    window.openSaveViewModal = function() {
+        document.getElementById('svEditId').value  = '';
+        document.getElementById('svName').value    = '';
+        document.getElementById('svIsShared').checked = false;
+        document.getElementById('svStatus').value  = '';
+        document.getElementById('svCategory').value = '';
+        document.getElementById('svPriority').value = '';
+        document.getElementById('svBranch').value  = '';
+        document.getElementById('svDepartment').value = '';
+        document.getElementById('svGroup').value   = '';
+        document.getElementById('svAssignedToMe').checked  = false;
+        document.getElementById('svUnassigned').checked    = false;
+        document.getElementById('svUnmatched').checked     = false;
+        document.getElementById('svSortBy').value  = '@(ViewBag.SortBy ?? "id")';
+        document.getElementById('svSortDir').value = '@(ViewBag.SortDir ?? "desc")';
+        document.getElementById('svPageSize').value = '@(ViewBag.PageSize ?? 25)';
+        // Pre-fill current active filters
+        const curStatus   = '@(ViewBag.CurrentStatus)';
+        const curCategory = '@(ViewBag.CurrentCategory)';
+        const curPriority = '@(ViewBag.CurrentPriority)';
+        const curUnmatched  = @((ViewBag.CurrentUnmatched != null && (bool)ViewBag.CurrentUnmatched) ? "true" : "false");
+        const curUnassigned = @((ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) ? "true" : "false");
+        if (curStatus)   { const opts = document.getElementById('svStatus').options; for (let o of opts) if (o.text === curStatus) { o.selected=true; break; } }
+        if (curCategory) { const opts = document.getElementById('svCategory').options; for (let o of opts) if (o.text === curCategory) { o.selected=true; break; } }
+        if (curPriority) { const opts = document.getElementById('svPriority').options; for (let o of opts) if (o.text === curPriority) { o.selected=true; break; } }
+        document.getElementById('svUnmatched').checked  = curUnmatched;
+        document.getElementById('svUnassigned').checked = curUnassigned;
+        document.getElementById('svSaveLabel').textContent = 'Save View';
+        document.getElementById('saveViewModalLabel').innerHTML = '<i class="bi bi-bookmark-plus me-2"></i>Save Ticket View';
+        new bootstrap.Modal(document.getElementById('saveViewModal')).show();
+    };
+
+    window.editView = async function(e, id) {
+        if (e) e.preventDefault();
+        const views = await loadViews();
+        const v = views.find(x => x.id === id);
+        if (!v) return;
+        const statusValues = [0,1,2,3,4,5];
+        document.getElementById('svEditId').value  = v.id;
+        document.getElementById('svName').value    = v.name;
+        document.getElementById('svIsShared').checked = v.isShared;
+        document.getElementById('svStatus').value  = v.filterStatus   != null ? v.filterStatus   : '';
+        document.getElementById('svCategory').value = v.filterCategory != null ? v.filterCategory : '';
+        document.getElementById('svPriority').value = v.filterPriority != null ? v.filterPriority : '';
+        document.getElementById('svBranch').value  = v.filterBranchId ?? '';
+        document.getElementById('svDepartment').value = v.filterDepartment ?? '';
+        document.getElementById('svGroup').value   = v.filterGroupId  ?? '';
+        document.getElementById('svAssignedToMe').checked  = v.filterAssignedToMe;
+        document.getElementById('svUnassigned').checked    = v.filterUnassignedOnly;
+        document.getElementById('svUnmatched').checked     = v.filterUnmatchedOnly;
+        document.getElementById('svSortBy').value  = v.sortBy;
+        document.getElementById('svSortDir').value = v.sortDir;
+        document.getElementById('svPageSize').value = v.pageSize;
+        document.getElementById('svSaveLabel').textContent = 'Update View';
+        document.getElementById('saveViewModalLabel').innerHTML = '<i class="bi bi-pencil me-2"></i>Edit View';
+        // Close manage modal if open, then open save modal
+        bootstrap.Modal.getInstance(document.getElementById('manageViewsModal'))?.hide();
+        setTimeout(() => new bootstrap.Modal(document.getElementById('saveViewModal')).show(), 200);
+    };
+
+    window.submitSaveView = async function() {
+        const editId = document.getElementById('svEditId').value;
+        const name   = document.getElementById('svName').value.trim();
+        if (!name) { alert('Please enter a view name.'); return; }
+
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('name',     name);
+        body.append('isShared', document.getElementById('svIsShared').checked);
+        const status   = document.getElementById('svStatus').value;
+        const category = document.getElementById('svCategory').value;
+        const priority = document.getElementById('svPriority').value;
+        const branch   = document.getElementById('svBranch').value;
+        const dept     = document.getElementById('svDepartment').value;
+        const group    = document.getElementById('svGroup').value;
+        if (status)   body.append('filterStatus',   status);
+        if (category) body.append('filterCategory', category);
+        if (priority) body.append('filterPriority', priority);
+        if (branch)   body.append('filterBranchId', branch);
+        if (dept)     body.append('filterDepartment', dept);
+        if (group)    body.append('filterGroupId',  group);
+        body.append('filterAssignedToMe',   document.getElementById('svAssignedToMe').checked);
+        body.append('filterUnassignedOnly', document.getElementById('svUnassigned').checked);
+        body.append('filterUnmatchedOnly',  document.getElementById('svUnmatched').checked);
+        body.append('sortBy',   document.getElementById('svSortBy').value);
+        body.append('sortDir',  document.getElementById('svSortDir').value);
+        body.append('pageSize', document.getElementById('svPageSize').value);
+        if (editId) body.append('id', editId);
+
+        const url = editId
+            ? '@Url.Action("UpdateView", "Tickets")'
+            : '@Url.Action("SaveView",   "Tickets")';
+        const resp = await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+        const result = await resp.json();
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('saveViewModal'))?.hide();
+            renderDropdown();
+            if (!editId && result.id) window.location.href = '?viewId=' + result.id;
+        }
+    };
+
+    window.deleteView = async function(e, id, name) {
+        if (e) e.preventDefault();
+        if (!confirm(`Delete the view "${name}"?`)) return;
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('id', id);
+        const resp = await fetch('@Url.Action("DeleteView", "Tickets")', { method: 'POST', body, credentials: 'same-origin' });
+        const result = await resp.json();
+        if (result.success) {
+            renderDropdown();
+            openManageViews(null);
+            if (window.location.search.includes('viewId=' + id))
+                window.location.href = '@Url.Action("Index", "Tickets")';
+        }
+    };
+
+    window.toggleDefault = async function(e, id, isCurrentlyDefault) {
+        if (e) e.preventDefault();
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('id', id);
+        const url = isCurrentlyDefault
+            ? '@Url.Action("ClearDefaultView", "Tickets")'
+            : '@Url.Action("SetDefaultView",  "Tickets")';
+        await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+        renderDropdown();
+    };
+})();
+</script>
 }
+
 
 @functions {
     IHtmlContent SortHeader(string col, string label) {
