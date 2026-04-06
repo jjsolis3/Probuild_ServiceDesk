@@ -460,26 +460,31 @@ public class TicketsController : Controller
             placeholderEmpId = placeholder.Id;
         }
 
-        var tickets = rows.Select(r => new Ticket
+        var tickets = rows.Select(r =>
         {
-            Title           = r.Title,
-            // Prepend original requester name to description when not matched
-            Description     = r.RequesterMatched
-                                ? r.Description
-                                : $"[Original Requester: {r.RequesterRaw}]\n{r.Description}",
-            Status          = r.Status,
-            Priority        = r.Priority,
-            Category        = r.Category,
-            SubCategoryId   = r.SubCategoryId,
-            SubmittedById   = r.SubmittedById ?? placeholderEmpId!.Value,
-            AssignedToId    = r.AssignedToId,
-            BranchId        = r.BranchId,
-            CreatedDate     = r.CreatedDate,
-            UpdatedDate     = r.UpdatedDate,
-            DueDate         = r.DueDate,
-            ResolvedDate    = r.ResolvedDate,
-            ClosedDate      = r.ClosedDate,
-            ResolutionNotes = r.ResolutionNotes,
+            // Build description — for unmatched requesters prepend the original name
+            var desc = r.RequesterMatched
+                ? r.Description
+                : $"[Original Requester: {r.RequesterRaw}]\n{r.Description}";
+
+            return new Ticket
+            {
+                Title           = Trunc(r.Title, 200),
+                Description     = Trunc(desc, 2000),
+                Status          = r.Status,
+                Priority        = r.Priority,
+                Category        = r.Category,
+                SubCategoryId   = r.SubCategoryId,
+                SubmittedById   = r.SubmittedById ?? placeholderEmpId!.Value,
+                AssignedToId    = r.AssignedToId,
+                BranchId        = r.BranchId,
+                CreatedDate     = r.CreatedDate,
+                UpdatedDate     = r.UpdatedDate,
+                DueDate         = r.DueDate,
+                ResolvedDate    = r.ResolvedDate,
+                ClosedDate      = r.ClosedDate,
+                ResolutionNotes = r.ResolutionNotes == null ? null : Trunc(r.ResolutionNotes, 2000),
+            };
         }).ToList();
 
         await _context.Tickets.AddRangeAsync(tickets);
@@ -492,6 +497,9 @@ public class TicketsController : Controller
     }
 
     // ── Import helpers ────────────────────────────────────────────────────────
+
+    private static string Trunc(string? s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max];
 
     private async Task<List<ImportTicketRow>> ParseTicketImportAsync(string filePath)
     {
