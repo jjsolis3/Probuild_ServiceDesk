@@ -49,10 +49,15 @@
             Nav header start
         ***********************************-->
         <div class="nav-header">
-            <a asp-controller="Home" asp-action="Index" class="brand-logo">
-                <img src="~/images/logo-sm.png" class="logo-abbr" alt="ServiceSphere" style="width:44px;height:44px;object-fit:contain;" />
-                <span class="brand-title ms-2 fw-bold" style="font-size:1.1rem;color:#fff;letter-spacing:.02em;">ServiceSphere</span>
+            <a asp-controller="Home" asp-action="Index" class="brand-logo ss-brand-logo">
+                <img id="brandLogo"
+                     src="@Url.Content("~/images/logo_Dark.png")"
+                     data-logo-dark="@Url.Content("~/images/logo_Dark.png")"
+                     data-logo-light="@Url.Content("~/images/logo_Light.png")"
+                     data-logo-small="@Url.Content("~/images/logo-sm.png")"
+                     alt="ServiceSphere" />
             </a>
+
             <div class="nav-control">
                 <div class="hamburger">
                     <span class="line"></span><span class="line"></span><span class="line"></span>
@@ -387,6 +392,86 @@
             });
         });
     })();
+    </script>
+    <script>
+        (function () {
+            function getThemeMode() {
+                const bodyTheme = document.body?.getAttribute('data-theme-version');
+                const htmlTheme = document.documentElement?.getAttribute('data-theme-version');
+
+                if (bodyTheme) return bodyTheme.toLowerCase();
+                if (htmlTheme) return htmlTheme.toLowerCase();
+
+                return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+
+            function isSidebarCollapsed() {
+                const wrapper = document.getElementById('main-wrapper');
+                const sidebarStyle = document.body?.getAttribute('data-sidebar-style');
+
+                return (
+                    wrapper?.classList.contains('menu-toggle') ||
+                    sidebarStyle === 'mini' ||
+                    sidebarStyle === 'compact' ||
+                    sidebarStyle === 'icon-hover'
+                );
+            }
+
+            function updateBrandLogo() {
+                const img = document.getElementById('brandLogo');
+                if (!img) return;
+
+                if (isSidebarCollapsed()) {
+                    img.src = img.dataset.logoSmall;
+                    return;
+                }
+
+                const theme = getThemeMode();
+                img.src = theme === 'dark'
+                    ? img.dataset.logoDark
+                    : img.dataset.logoLight;
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                updateBrandLogo();
+
+                const observer = new MutationObserver(updateBrandLogo);
+
+                if (document.body) {
+                    observer.observe(document.body, {
+                        attributes: true,
+                        attributeFilter: ['class', 'data-theme-version', 'data-sidebar-style']
+                    });
+                }
+
+                const wrapper = document.getElementById('main-wrapper');
+                if (wrapper) {
+                    observer.observe(wrapper, {
+                        attributes: true,
+                        attributeFilter: ['class']
+                    });
+                }
+
+                if (document.documentElement) {
+                    observer.observe(document.documentElement, {
+                        attributes: true,
+                        attributeFilter: ['class', 'data-theme-version']
+                    });
+                }
+
+                document.querySelector('.hamburger')?.addEventListener('click', function () {
+                    setTimeout(updateBrandLogo, 80);
+                    setTimeout(updateBrandLogo, 250);
+                });
+
+                document.querySelector('.dlab-theme-mode')?.addEventListener('click', function () {
+                    setTimeout(updateBrandLogo, 80);
+                    setTimeout(updateBrandLogo, 250);
+                });
+
+                window.addEventListener('resize', updateBrandLogo);
+            });
+        })();
     </script>
 
     @await RenderSectionAsync("Scripts", required: false)
