@@ -21,13 +21,16 @@ public class TicketsController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(TicketStatus? status, TicketCategory? category, TicketPriority? priority, bool? unmatched, bool? unassigned)
+    public async Task<IActionResult> Index(
+        TicketStatus? status, TicketCategory? category, TicketPriority? priority,
+        bool? unmatched, bool? unassigned,
+        string sortBy = "created", string sortDir = "desc",
+        int page = 1, int pageSize = 25)
     {
         var query = _context.Tickets
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
-            .Include(t => t.CompanyService)
-            .AsQueryable();
+            .AsQueryable();  // removed unused CompanyService join
 
         if (status.HasValue)
             query = query.Where(t => t.Status == status.Value);
@@ -40,11 +43,49 @@ public class TicketsController : Controller
         if (unassigned == true)
             query = query.Where(t => t.AssignedToId == null);
 
+        // Sort
+        query = (sortBy, sortDir) switch
+        {
+            ("id",       "asc")  => query.OrderBy(t => t.Id),
+            ("id",          _)   => query.OrderByDescending(t => t.Id),
+            ("title",    "asc")  => query.OrderBy(t => t.Title),
+            ("title",       _)   => query.OrderByDescending(t => t.Title),
+            ("category", "asc")  => query.OrderBy(t => t.Category),
+            ("category",    _)   => query.OrderByDescending(t => t.Category),
+            ("priority", "asc")  => query.OrderBy(t => t.Priority),
+            ("priority",    _)   => query.OrderByDescending(t => t.Priority),
+            ("status",   "asc")  => query.OrderBy(t => t.Status),
+            ("status",      _)   => query.OrderByDescending(t => t.Status),
+            ("due",      "asc")  => query.OrderBy(t => t.DueDate),
+            ("due",         _)   => query.OrderByDescending(t => t.DueDate),
+            ("created",  "asc")  => query.OrderBy(t => t.CreatedDate),
+            _                    => query.OrderByDescending(t => t.CreatedDate),
+        };
+
+        // Count before paginating (single fast COUNT query)
+        var totalCount = await query.CountAsync();
+
+        // Clamp page size to allowed values
+        pageSize = pageSize is 15 or 25 or 50 or 100 ? pageSize : 25;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize));
+        page = Math.Clamp(page, 1, totalPages);
+
+        var tickets = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
         ViewBag.CurrentStatus    = status;
         ViewBag.CurrentCategory  = category;
         ViewBag.CurrentPriority  = priority;
-        ViewBag.CurrentUnmatched = unmatched;
+        ViewBag.CurrentUnmatched  = unmatched;
         ViewBag.CurrentUnassigned = unassigned;
+        ViewBag.SortBy    = sortBy;
+        ViewBag.SortDir   = sortDir;
+        ViewBag.Page      = page;
+        ViewBag.PageSize  = pageSize;
+        ViewBag.TotalCount = totalCount;
+        ViewBag.TotalPages = totalPages;
 
         ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
             await _context.Employees
@@ -53,7 +94,6 @@ public class TicketsController : Controller
                 .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
                 .ToListAsync());
 
-        var tickets = await query.OrderByDescending(t => t.CreatedDate).ToListAsync();
         return View(tickets);
     }
 
