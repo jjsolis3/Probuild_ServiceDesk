@@ -108,11 +108,34 @@ public class EmployeesController : Controller
     public async Task<IActionResult> DeleteConfirmed(int id)
     {
         var employee = await _context.Employees.FindAsync(id);
-        if (employee != null)
+        if (employee == null) return RedirectToAction(nameof(Index));
+
+        // Check for FK-blocking records before attempting delete
+        var submittedTickets = await _context.Tickets.CountAsync(t => t.SubmittedById == id);
+        var assignedTickets  = await _context.Tickets.CountAsync(t => t.AssignedToId  == id);
+        var assignedAssets   = await _context.Assets.CountAsync(a => a.AssignedToId   == id);
+
+        if (submittedTickets > 0 || assignedTickets > 0 || assignedAssets > 0)
         {
-            _context.Employees.Remove(employee);
-            await _context.SaveChangesAsync();
+            var parts = new List<string>();
+            if (submittedTickets > 0) parts.Add($"{submittedTickets} submitted ticket(s)");
+            if (assignedTickets  > 0) parts.Add($"{assignedTickets} assigned ticket(s)");
+            if (assignedAssets   > 0) parts.Add($"{assignedAssets} assigned asset(s)");
+
+            TempData["Error"] = $"Cannot delete {employee.FirstName} {employee.LastName} — they have {string.Join(", ", parts)}. " +
+                                 "Reassign or delete those records first.";
+            return RedirectToAction(nameof(Index));
         }
+
+        // Unlink portal user (nullify FK) so the login account isn't orphaned
+        var portalUser = await _context.PortalUsers.FirstOrDefaultAsync(u => u.EmployeeId == id);
+        if (portalUser != null)
+            portalUser.EmployeeId = null;
+
+        _context.Employees.Remove(employee);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Employee {employee.FirstName} {employee.LastName} deleted.";
         return RedirectToAction(nameof(Index));
     }
 
