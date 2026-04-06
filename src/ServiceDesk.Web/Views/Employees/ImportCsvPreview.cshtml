@@ -104,9 +104,15 @@
                         <td class="text-muted">@row.RowNumber</td>
                         <td>@row.FirstName @row.LastName</td>
                         <td class="text-muted">@row.Email</td>
-                        <td>@(row.Department ?? <span class="text-muted">—</span>)</td>
-                        <td class="text-muted">@(row.JobTitle ?? "—")</td>
-                        <td>@(row.BranchId.HasValue ? row.SiteRaw : <span class="text-muted">—</span>)</td>
+                        <td>
+                            @if (string.IsNullOrEmpty(row.Department)) { <span class="text-muted">—</span> }
+                            else { @row.Department }
+                        </td>
+                        <td class="text-muted">@(string.IsNullOrEmpty(row.JobTitle) ? "—" : row.JobTitle)</td>
+                        <td>
+                            @if (row.BranchId.HasValue) { @row.SiteRaw }
+                            else { <span class="text-muted">—</span> }
+                        </td>
                         <td>
                             @if (!string.IsNullOrEmpty(row.RoleName))
                             {
