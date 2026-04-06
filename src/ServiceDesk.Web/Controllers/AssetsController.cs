@@ -18,7 +18,7 @@ public class AssetsController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(AssetType? type, AssetStatus? status)
+    public async Task<IActionResult> Index(AssetType? type, AssetStatus? status, string? manufacturer, bool? assigned)
     {
         var query = _context.Assets.Include(a => a.AssignedTo).AsQueryable();
 
@@ -26,9 +26,20 @@ public class AssetsController : Controller
             query = query.Where(a => a.AssetType == type.Value);
         if (status.HasValue)
             query = query.Where(a => a.Status == status.Value);
+        if (!string.IsNullOrEmpty(manufacturer))
+            query = query.Where(a => a.Manufacturer == manufacturer);
+        if (assigned.HasValue)
+            query = assigned.Value
+                ? query.Where(a => a.AssignedToId != null)
+                : query.Where(a => a.AssignedToId == null);
 
-        ViewBag.CurrentType = type;
-        ViewBag.CurrentStatus = status;
+        ViewBag.CurrentType         = type;
+        ViewBag.CurrentStatus       = status;
+        ViewBag.CurrentManufacturer = manufacturer;
+        ViewBag.CurrentAssigned     = assigned;
+        ViewBag.Manufacturers       = await _context.Assets
+            .Where(a => a.Manufacturer != null && a.Manufacturer != "")
+            .Select(a => a.Manufacturer!).Distinct().OrderBy(m => m).ToListAsync();
 
         var assets = await query.OrderBy(a => a.AssetTag).ToListAsync();
         return View(assets);

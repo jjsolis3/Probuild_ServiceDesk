@@ -21,7 +21,7 @@ public class TicketsController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(TicketStatus? status, TicketCategory? category, TicketPriority? priority)
+    public async Task<IActionResult> Index(TicketStatus? status, TicketCategory? category, TicketPriority? priority, bool? unmatched, bool? unassigned)
     {
         var query = _context.Tickets
             .Include(t => t.SubmittedBy)
@@ -35,10 +35,16 @@ public class TicketsController : Controller
             query = query.Where(t => t.Category == category.Value);
         if (priority.HasValue)
             query = query.Where(t => t.Priority == priority.Value);
+        if (unmatched == true)
+            query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
+        if (unassigned == true)
+            query = query.Where(t => t.AssignedToId == null);
 
-        ViewBag.CurrentStatus = status;
-        ViewBag.CurrentCategory = category;
-        ViewBag.CurrentPriority = priority;
+        ViewBag.CurrentStatus    = status;
+        ViewBag.CurrentCategory  = category;
+        ViewBag.CurrentPriority  = priority;
+        ViewBag.CurrentUnmatched = unmatched;
+        ViewBag.CurrentUnassigned = unassigned;
 
         ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
             await _context.Employees

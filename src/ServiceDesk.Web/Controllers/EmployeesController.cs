@@ -18,7 +18,7 @@ public class EmployeesController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(string? department, bool? active)
+    public async Task<IActionResult> Index(string? department, bool? active, int? branchId, bool? hasLogin)
     {
         var query = _context.Employees.AsQueryable();
 
@@ -26,11 +26,27 @@ public class EmployeesController : Controller
             query = query.Where(e => e.Department == department);
         if (active.HasValue)
             query = query.Where(e => e.IsActive == active.Value);
+        if (branchId.HasValue)
+            query = query.Where(e => e.BranchId == branchId.Value);
+        if (hasLogin.HasValue)
+        {
+            var linkedIds = _context.PortalUsers
+                .Where(u => u.EmployeeId != null)
+                .Select(u => u.EmployeeId!.Value);
+            query = hasLogin.Value
+                ? query.Where(e => linkedIds.Contains(e.Id))
+                : query.Where(e => !linkedIds.Contains(e.Id));
+        }
 
         ViewBag.CurrentDepartment = department;
-        ViewBag.CurrentActive = active;
-        ViewBag.Departments = await _context.Employees
-            .Select(e => e.Department).Distinct().OrderBy(d => d).ToListAsync();
+        ViewBag.CurrentActive     = active;
+        ViewBag.CurrentBranchId   = branchId;
+        ViewBag.CurrentHasLogin   = hasLogin;
+        ViewBag.Departments       = await _context.Employees
+            .Where(e => e.Department != null && e.Department != "")
+            .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
+        ViewBag.Branches          = await _context.Branches
+            .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
 
         var employees = await query.OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
         return View(employees);

@@ -39,11 +39,32 @@
             <label class="form-label small">Status</label>
             <select name="active" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All</option>
-                <option value="true" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true ? "selected" : null)">Active</option>
+                <option value="true"  selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true  ? "selected" : null)">Active</option>
                 <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
             </select>
         </div>
         <div class="col-auto">
+            <label class="form-label small">Branch</label>
+            <select name="branchId" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Branches</option>
+                @if (ViewBag.Branches != null)
+                {
+                    foreach (var b in (IEnumerable<dynamic>)ViewBag.Branches)
+                    {
+                        <option value="@b.Id" selected="@(ViewBag.CurrentBranchId != null && (int)ViewBag.CurrentBranchId == (int)b.Id ? "selected" : null)">@b.Name</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small">Login Account</label>
+            <select name="hasLogin" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="true"  selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == true  ? "selected" : null)">Has Login</option>
+                <option value="false" selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == false ? "selected" : null)">No Login</option>
+            </select>
+        </div>
+        <div class="col-auto align-self-end">
             <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
         </div>
     </form>

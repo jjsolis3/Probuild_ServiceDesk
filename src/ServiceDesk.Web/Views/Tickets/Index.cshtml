@@ -52,6 +52,20 @@
             </select>
         </div>
         <div class="col-auto">
+            <label class="form-label small">Assignee</label>
+            <select name="unassigned" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="true" selected="@(ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned == true ? "selected" : null)">Unassigned only</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small">Requester</label>
+            <select name="unmatched" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="true" selected="@(ViewBag.CurrentUnmatched != null && (bool)ViewBag.CurrentUnmatched == true ? "selected" : null)">Unmatched (needs update)</option>
+            </select>
+        </div>
+        <div class="col-auto align-self-end">
             <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
         </div>
     </form>
