@@ -5,9 +5,17 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1><i class="bi bi-people"></i> Employees</h1>
-    <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-lg"></i> New Employee
-    </a>
+    <div class="d-flex gap-2">
+        @if (User.IsInRole("Admin"))
+        {
+            <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-upload me-1"></i> Import Employees
+            </a>
+        }
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Employee
+        </a>
+    </div>
 </div>
 
 <!-- Filters -->
