@@ -286,10 +286,11 @@
 </div>
 
 @section Scripts {
+<script type="application/json" id="itStaffData">@Html.Raw(ViewBag.ITStaffJson ?? "[]")</script>
 <script>
 (function () {
     const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-    const itStaff = @Html.Raw(ViewBag.ITStaffJson ?? "[]");
+    const itStaff = JSON.parse(document.getElementById('itStaffData').textContent);
     const toast = new bootstrap.Toast(document.getElementById('quickEditToast'), { delay: 2500 });
     const toastMsg = document.getElementById('quickEditToastMsg');
 
