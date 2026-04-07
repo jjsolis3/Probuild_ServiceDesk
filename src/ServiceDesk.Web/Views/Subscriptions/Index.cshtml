@@ -15,8 +15,8 @@
 <div class="filter-bar">
     <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
         <div>
-            <label class="form-label small">Status</label>
-            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label small mb-1">Status</label>
+            <select name="status" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Statuses</option>
                 @foreach (var s in Enum.GetValues<SubscriptionStatus>())
                 {
@@ -24,7 +24,7 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="align-self-end">
             <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
         </div>
     </form>

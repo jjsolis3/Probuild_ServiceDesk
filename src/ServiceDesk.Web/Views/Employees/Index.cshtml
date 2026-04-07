@@ -22,8 +22,8 @@
 <div class="filter-bar">
     <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
         <div>
-            <label class="form-label small">Department</label>
-            <select name="department" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label small mb-1">Department</label>
+            <select name="department" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Departments</option>
                 @if (ViewBag.Departments != null)
                 {
@@ -36,16 +36,16 @@
             </select>
         </div>
         <div>
-            <label class="form-label small">Status</label>
-            <select name="active" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label small mb-1">Status</label>
+            <select name="active" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
                 <option value="">All</option>
                 <option value="true"  selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true  ? "selected" : null)">Active</option>
                 <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
             </select>
         </div>
         <div>
-            <label class="form-label small">Branch</label>
-            <select name="branchId" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label small mb-1">Branch</label>
+            <select name="branchId" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Branches</option>
                 @if (ViewBag.Branches != null)
                 {
@@ -57,8 +57,8 @@
             </select>
         </div>
         <div>
-            <label class="form-label small">Login Account</label>
-            <select name="hasLogin" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label small mb-1">Login Account</label>
+            <select name="hasLogin" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
                 <option value="">All</option>
                 <option value="true"  selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == true  ? "selected" : null)">Has Login</option>
                 <option value="false" selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == false ? "selected" : null)">No Login</option>
