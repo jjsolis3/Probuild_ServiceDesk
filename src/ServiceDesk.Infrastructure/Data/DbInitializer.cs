@@ -293,6 +293,7 @@ public static class DbInitializer
                             ON DELETE CASCADE,
                         IsDefault           BIT             NOT NULL DEFAULT 0,
                         IsShared            BIT             NOT NULL DEFAULT 0,
+                        FilterStatuses      NVARCHAR(200)   NULL,
                         FilterStatus        INT             NULL,
                         FilterCategory      INT             NULL,
                         FilterPriority      INT             NULL,
@@ -316,6 +317,34 @@ public static class DbInitializer
 
                     CREATE INDEX IX_SavedTicketViews_Owner_Shared
                         ON dbo.SavedTicketViews (OwnerPortalUserId, IsShared);
+                END
+                ELSE
+                BEGIN
+                    -- Upgrade: add FilterStatuses column if table already exists
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.SavedTicketViews') AND name = 'FilterStatuses'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.SavedTicketViews ADD FilterStatuses NVARCHAR(200) NULL;
+                    END
+                END");
+
+            // Seed the system-level default view (active/non-resolved tickets).
+            // OwnerPortalUserId = NULL means system-owned; applies to every user
+            // who has not set their own personal default.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM dbo.SavedTicketViews
+                    WHERE OwnerPortalUserId IS NULL AND IsDefault = 1
+                )
+                BEGIN
+                    INSERT INTO dbo.SavedTicketViews
+                        (Name, OwnerPortalUserId, IsDefault, IsShared,
+                         FilterStatuses, SortBy, SortDir, PageSize, CreatedDate)
+                    VALUES
+                        (N'Active Tickets (Default)', NULL, 1, 1,
+                         N'Open,InProgress,OnHold', 'id', 'desc', 25, SYSUTCDATETIME());
                 END");
 
             // 11. Seed additional Company Branding AppSettings keys if not present

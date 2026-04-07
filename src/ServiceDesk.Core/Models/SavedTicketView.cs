@@ -25,6 +25,14 @@ public class SavedTicketView
 
     // ── Filter criteria (all nullable = "not filtered") ──────────────────────
 
+    /// <summary>
+    /// Comma-separated list of TicketStatus enum names for multi-status filtering.
+    /// Takes priority over FilterStatus when present. e.g. "Open,InProgress,OnHold"
+    /// </summary>
+    [MaxLength(200)]
+    public string? FilterStatuses { get; set; }
+
+    /// <summary>Single status filter — superseded by FilterStatuses when that field is set.</summary>
     public TicketStatus?   FilterStatus   { get; set; }
     public TicketCategory? FilterCategory { get; set; }
     public TicketPriority? FilterPriority { get; set; }

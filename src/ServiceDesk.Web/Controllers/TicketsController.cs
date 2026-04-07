@@ -40,11 +40,16 @@ public class TicketsController : Controller
 
         if (noFilters && userId != null)
         {
+            // 1. Personal default takes priority
             var def = await _context.SavedTicketViews
-                .FirstOrDefaultAsync(v => v.IsDefault
-                    && (v.OwnerPortalUserId == userId || v.IsShared));
+                .FirstOrDefaultAsync(v => v.IsDefault && v.OwnerPortalUserId == userId);
+
+            // 2. Fall back to the system default (OwnerPortalUserId == null, IsDefault, IsShared)
+            def ??= await _context.SavedTicketViews
+                .FirstOrDefaultAsync(v => v.IsDefault && v.OwnerPortalUserId == null && v.IsShared);
+
             if (def != null)
-                return RedirectToAction(nameof(Index), BuildViewParams(def));
+                return Redirect(BuildViewUrl(def));
         }
 
         // Load saved view criteria when viewId supplied
@@ -825,14 +830,17 @@ public class TicketsController : Controller
         var userId = CurrentPortalUserId();
         var views = await _context.SavedTicketViews
             .Where(v => v.OwnerPortalUserId == userId || v.IsShared)
-            .OrderBy(v => v.IsShared).ThenBy(v => v.Name)
+            // System views (null owner) first, then personal, both sorted by name
+            .OrderBy(v => v.OwnerPortalUserId == null ? 0 : 1)
+            .ThenBy(v => v.Name)
             .Select(v => new {
                 v.Id, v.Name, v.IsDefault, v.IsShared,
-                v.FilterStatus, v.FilterCategory, v.FilterPriority,
+                v.FilterStatuses, v.FilterStatus, v.FilterCategory, v.FilterPriority,
                 v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
                 v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
                 v.SortBy, v.SortDir, v.PageSize,
-                isOwner = v.OwnerPortalUserId == userId
+                isOwner      = v.OwnerPortalUserId == userId,
+                isSystemView = v.OwnerPortalUserId == null
             })
             .ToListAsync();
         return Json(views);
@@ -963,21 +971,31 @@ public class TicketsController : Controller
         return int.TryParse(raw, out var id) ? id : null;
     }
 
-    private static object BuildViewParams(SavedTicketView v)
+    /// <summary>
+    /// Builds a redirect URL for a saved view, correctly handling multi-status
+    /// via the FilterStatuses comma-separated field.
+    /// </summary>
+    private static string BuildViewUrl(SavedTicketView v)
     {
-        var d = new Dictionary<string, string?>
+        var sb = new System.Text.StringBuilder(
+            $"/Tickets?viewId={v.Id}&sortBy={Uri.EscapeDataString(v.SortBy)}&sortDir={v.SortDir}&pageSize={v.PageSize}");
+
+        // Multi-status (FilterStatuses takes priority over FilterStatus)
+        if (!string.IsNullOrEmpty(v.FilterStatuses))
         {
-            ["viewId"]   = v.Id.ToString(),
-            ["sortBy"]   = v.SortBy,
-            ["sortDir"]  = v.SortDir,
-            ["pageSize"] = v.PageSize.ToString(),
-        };
-        if (v.FilterStatus   != null) d["statuses"]   = v.FilterStatus.ToString();
-        if (v.FilterCategory != null) d["categories"] = v.FilterCategory.ToString();
-        if (v.FilterPriority != null) d["priorities"] = v.FilterPriority.ToString();
-        if (v.FilterUnmatchedOnly)   d["unmatched"]   = "true";
-        if (v.FilterUnassignedOnly)  d["unassigned"]  = "true";
-        return d;
+            foreach (var s in v.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&statuses={Uri.EscapeDataString(s.Trim())}");
+        }
+        else if (v.FilterStatus != null)
+        {
+            sb.Append($"&statuses={v.FilterStatus}");
+        }
+
+        if (v.FilterCategory != null) sb.Append($"&categories={v.FilterCategory}");
+        if (v.FilterPriority != null) sb.Append($"&priorities={v.FilterPriority}");
+        if (v.FilterUnmatchedOnly)    sb.Append("&unmatched=true");
+        if (v.FilterUnassignedOnly)   sb.Append("&unassigned=true");
+        return sb.ToString();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
