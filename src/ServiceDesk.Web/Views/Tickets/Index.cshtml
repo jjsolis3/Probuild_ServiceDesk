@@ -710,10 +710,12 @@
 <script>
 // ── Multi-select filter apply ──────────────────────────────────────────────
 function applyFilters() {
+    // Read directly from the data island — avoids scope dependency on the IIFE below
+    const ps = JSON.parse(document.getElementById('pageStateData').textContent);
     const params = new URLSearchParams();
-    params.set('sortBy',   pageState.sortBy);
-    params.set('sortDir',  pageState.sortDir);
-    params.set('pageSize', pageState.pageSize);
+    params.set('sortBy',   ps.sortBy);
+    params.set('sortDir',  ps.sortDir);
+    params.set('pageSize', ps.pageSize);
     params.set('page', '1');
     document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
     document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
