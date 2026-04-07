@@ -25,6 +25,7 @@ public class TicketsController : Controller
         TicketStatus[]?  statuses,    TicketCategory[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
         bool? unmatched, bool? unassigned,
+        string? q,
         string sortBy = "id", string sortDir = "desc",
         int page = 1, int pageSize = 25,
         int? viewId = null, bool partial = false)
@@ -36,6 +37,7 @@ public class TicketsController : Controller
                       && (priorities  == null || priorities.Length  == 0)
                       && (assigneeIds == null || assigneeIds.Length == 0)
                       && unmatched == null && unassigned == null && viewId == null
+                      && string.IsNullOrWhiteSpace(q)
                       && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
 
         if (noFilters && userId != null)
@@ -87,6 +89,14 @@ public class TicketsController : Controller
         if (assigneeIds?.Length > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
         if (unmatched  == true)      query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
         if (unassigned == true)      query = query.Where(t => t.AssignedToId == null);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            q = q.Trim();
+            query = query.Where(t =>
+                t.Title.Contains(q) ||
+                (t.Description != null && t.Description.Contains(q)) ||
+                (t.ResolutionNotes != null && t.ResolutionNotes.Contains(q)));
+        }
 
         // Sort
         query = (sortBy, sortDir) switch
@@ -126,6 +136,7 @@ public class TicketsController : Controller
         ViewBag.SelectedAssigneeIds = assigneeIds ?? Array.Empty<int>();
         ViewBag.CurrentUnmatched  = unmatched;
         ViewBag.CurrentUnassigned = unassigned;
+        ViewBag.CurrentQuery = q ?? "";
         ViewBag.SortBy    = sortBy;
         ViewBag.SortDir   = sortDir;
         ViewBag.Page      = page;
@@ -193,6 +204,23 @@ public class TicketsController : Controller
         if (ticket == null) return NotFound();
 
         return View(ticket);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> DetailsModal(int? id)
+    {
+        if (id == null) return NotFound();
+
+        var ticket = await _context.Tickets
+            .Include(t => t.SubmittedBy)
+            .Include(t => t.AssignedTo)
+            .Include(t => t.CompanyService)
+            .Include(t => t.SubCategory)
+            .Include(t => t.Branch)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (ticket == null) return NotFound();
+        return PartialView("_TicketDetailsModalContent", ticket);
     }
 
     public IActionResult Create()
@@ -450,12 +478,18 @@ public class TicketsController : Controller
                 if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
                     ticket.ClosedDate = DateTime.UtcNow;
             }
+            else if (bulkAction == "delete")
+            {
+                _context.Tickets.Remove(ticket);
+            }
         }
 
         if (histories.Any()) _context.TicketHistory.AddRange(histories);
         await _context.SaveChangesAsync();
 
-        TempData["Success"] = $"{tickets.Count} ticket(s) updated.";
+        TempData["Success"] = bulkAction == "delete"
+            ? $"{tickets.Count} ticket(s) deleted."
+            : $"{tickets.Count} ticket(s) updated.";
         return RedirectToAction(nameof(Index));
     }
 

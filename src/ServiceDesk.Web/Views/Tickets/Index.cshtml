@@ -183,6 +183,15 @@
                 <i class="bi bi-x-circle me-1"></i>Clear Filters
             </a>
         </div>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="ticketKeywordSearch" class="form-control" placeholder="Search tickets..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")" onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -197,6 +206,7 @@
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
             <option value="assign">Reassign</option>
+            <option value="delete">Delete Selected</option>
         </select>
         <div id="bulkStatusGroup" class="d-none">
             <select name="bulkStatus" class="form-select form-select-sm" style="width:auto;">
@@ -219,6 +229,20 @@
 <!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
 <div id="ticketsTableContainer">
     @await Html.PartialAsync("_TicketsTable", Model)
+</div>
+
+<div class="modal fade" id="ticketDetailsModal" tabindex="-1" aria-labelledby="ticketDetailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ticketDetailsModalLabel"><i class="bi bi-ticket-detailed me-2"></i>Ticket Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="ticketDetailsModalBody">
+        <div class="text-muted">Loading ticket details…</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ── Save / Edit View Modal ──────────────────────────────────────────── -->
@@ -384,6 +408,7 @@
     activeViewId      = (int?)ViewBag.ActiveViewId,
     currentUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched,
     currentUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned,
+    currentQuery = (string?)ViewBag.CurrentQuery ?? "",
     sortBy   = (string?)ViewBag.SortBy  ?? "id",
     sortDir  = (string?)ViewBag.SortDir ?? "desc",
     pageSize = (int)(ViewBag.PageSize ?? 25)
@@ -539,6 +564,9 @@
                 ?.querySelectorAll('.ticket-chk:checked') ?? [];
             if (checked.length === 0) { e.preventDefault(); return; }
             if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
+            if (actionSelect.value === 'delete' && !confirm(`Delete ${checked.length} selected ticket(s)? This cannot be undone.`)) {
+                e.preventDefault(); return;
+            }
             checked.forEach(c => {
                 const inp = document.createElement('input');
                 inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = c.value;
@@ -546,6 +574,22 @@
             });
         });
     })();
+
+    const detailsModalEl = document.getElementById('ticketDetailsModal');
+    const detailsModalBody = document.getElementById('ticketDetailsModalBody');
+    const detailsModal = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('.ticket-details-link');
+        if (!link) return;
+        e.preventDefault();
+        if (!detailsModalBody || !detailsModal) return;
+        detailsModalBody.innerHTML = '<div class="text-muted">Loading ticket details…</div>';
+        detailsModal.show();
+        fetch('/Tickets/DetailsModal/' + link.getAttribute('data-ticket-id'), { credentials: 'same-origin' })
+            .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+            .then(html => detailsModalBody.innerHTML = html)
+            .catch(() => detailsModalBody.innerHTML = '<div class="alert alert-danger mb-0">Unable to load ticket details. Please try again.</div>');
+    });
 })();
 </script>
 
@@ -584,6 +628,8 @@ function changePageSize(value) {
     document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
 
@@ -615,6 +661,8 @@ function applyFilters() {
     document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
 </script>
@@ -853,5 +901,4 @@ function applyFilters() {
 })();
 </script>
 }
-
 
