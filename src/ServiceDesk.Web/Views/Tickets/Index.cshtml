@@ -43,60 +43,147 @@
 </div>
 
 <!-- Filters -->
+@{
+    var selStatuses   = (TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>());
+    var selCategories = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selPriorities = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
+    var selAssignees  = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>());
+    var curUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
+    var curUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
+
+    string AssigneeLabel() {
+        var cnt = selAssignees.Length + (curUnassigned ? 1 : 0);
+        return cnt == 0 ? "All Assignees" : cnt == 1 ? "1 Assignee" : $"{cnt} Assignees";
+    }
+}
 <div class="filter-bar">
-    <form method="get" class="row g-2 align-items-end">
-        @if (ViewBag.ActiveViewId != null)
-        {
-            <input type="hidden" name="viewId" value="@ViewBag.ActiveViewId" />
-        }
-        <div class="col-auto">
-            <label class="form-label small">Status</label>
-            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Statuses</option>
-                @foreach (var s in Enum.GetValues<TicketStatus>())
-                {
-                    <option value="@s" selected="@(ViewBag.CurrentStatus != null && (TicketStatus)ViewBag.CurrentStatus == s)">@s</option>
-                }
-            </select>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Status -->
+        <div>
+            <div class="form-label small mb-1">Status</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Status", "Statuses", selStatuses.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
+                    @foreach (var s in Enum.GetValues<TicketStatus>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="statuses"
+                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                            <label class="form-check-label small" for="fs_@s">@s</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Category</label>
-            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Categories</option>
-                @foreach (var c in Enum.GetValues<TicketCategory>())
-                {
-                    <option value="@c" selected="@(ViewBag.CurrentCategory != null && (TicketCategory)ViewBag.CurrentCategory == c)">@c</option>
-                }
-            </select>
+
+        <!-- Category -->
+        <div>
+            <div class="form-label small mb-1">Category</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selCategories.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Category", "Categories", selCategories.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
+                    @foreach (var c in Enum.GetValues<TicketCategory>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="categories"
+                                   value="@c" id="fc_@c" @(selCategories.Contains(c) ? "checked" : "")>
+                            <label class="form-check-label small" for="fc_@c">@c</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Priority</label>
-            <select name="priority" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Priorities</option>
-                @foreach (var p in Enum.GetValues<TicketPriority>())
-                {
-                    <option value="@p" selected="@(ViewBag.CurrentPriority != null && (TicketPriority)ViewBag.CurrentPriority == p)">@p</option>
-                }
-            </select>
+
+        <!-- Priority -->
+        <div>
+            <div class="form-label small mb-1">Priority</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selPriorities.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Priority", "Priorities", selPriorities.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
+                    @foreach (var p in Enum.GetValues<TicketPriority>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="priorities"
+                                   value="@p" id="fp_@p" @(selPriorities.Contains(p) ? "checked" : "")>
+                            <label class="form-check-label small" for="fp_@p">@p</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Assignee</label>
-            <select name="unassigned" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All</option>
-                <option value="true" selected="@(ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned == true ? "selected" : null)">Unassigned only</option>
-            </select>
+
+        <!-- Assignee (IT staff + Unassigned) -->
+        <div>
+            <div class="form-label small mb-1">Assignee</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selAssignees.Length > 0 || curUnassigned ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @AssigneeLabel()
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:200px; max-height:280px; overflow-y:auto;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="unassigned"
+                               value="true" id="fa_unassigned" @(curUnassigned ? "checked" : "")>
+                        <label class="form-check-label small fw-semibold" for="fa_unassigned">
+                            <i class="bi bi-person-dash me-1"></i>Unassigned
+                        </label>
+                    </div>
+                    <hr class="my-1">
+                    @foreach (var staff in (ViewBag.AssignableStaff as IEnumerable<dynamic> ?? []))
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="assigneeIds"
+                                   value="@staff.Id" id="fa_@staff.Id"
+                                   @(selAssignees.Contains((int)staff.Id) ? "checked" : "")>
+                            <label class="form-check-label small" for="fa_@staff.Id">@staff.Name</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Requester</label>
-            <select name="unmatched" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All</option>
-                <option value="true" selected="@(ViewBag.CurrentUnmatched != null && (bool)ViewBag.CurrentUnmatched == true ? "selected" : null)">Unmatched (needs update)</option>
-            </select>
+
+        <!-- Requester -->
+        <div>
+            <div class="form-label small mb-1">Requester</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curUnmatched ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @(curUnmatched ? "Unmatched only" : "All Requesters")
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="unmatched"
+                               value="true" id="fr_unmatched" @(curUnmatched ? "checked" : "")>
+                        <label class="form-check-label small" for="fr_unmatched">Unmatched (needs update)</label>
+                    </div>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+
+        <div class="align-self-end">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
         </div>
-    </form>
+    </div>
 </div>
 
 @Html.AntiForgeryToken()
@@ -463,10 +550,7 @@
 @section Scripts {
 <script type="application/json" id="itStaffData">@Html.Raw(ViewBag.ITStaffJson ?? "[]")</script>
 <script type="application/json" id="pageStateData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
-    activeViewId    = (int?)ViewBag.ActiveViewId,
-    currentStatus   = (string?)ViewBag.CurrentStatus?.ToString(),
-    currentCategory = (string?)ViewBag.CurrentCategory?.ToString(),
-    currentPriority = (string?)ViewBag.CurrentPriority?.ToString(),
+    activeViewId      = (int?)ViewBag.ActiveViewId,
     currentUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched,
     currentUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned,
     sortBy   = (string?)ViewBag.SortBy  ?? "id",
@@ -621,6 +705,24 @@
         });
     })();
 })();
+</script>
+
+<script>
+// ── Multi-select filter apply ──────────────────────────────────────────────
+function applyFilters() {
+    const params = new URLSearchParams();
+    params.set('sortBy',   pageState.sortBy);
+    params.set('sortDir',  pageState.sortDir);
+    params.set('pageSize', pageState.pageSize);
+    params.set('page', '1');
+    document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
+    document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb => params.append('priorities',  cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
+    if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
+    if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    window.location.href = '/Tickets?' + params.toString();
+}
 </script>
 
 <script>
@@ -877,9 +979,14 @@
         var sortDir = sd ?? (string?)ViewBag.SortDir ?? "desc";
         var ps = (int)ViewBag.PageSize;
         var qs = $"?page={p}&pageSize={ps}&sortBy={sortBy}&sortDir={sortDir}";
-        if (ViewBag.CurrentStatus   != null) qs += $"&status={ViewBag.CurrentStatus}";
-        if (ViewBag.CurrentCategory != null) qs += $"&category={ViewBag.CurrentCategory}";
-        if (ViewBag.CurrentPriority != null) qs += $"&priority={ViewBag.CurrentPriority}";
+        var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
+        var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
+        var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
+        var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
+        foreach (var s in selSt) qs += $"&statuses={s}";
+        foreach (var c in selCa) qs += $"&categories={c}";
+        foreach (var r in selPr) qs += $"&priorities={r}";
+        foreach (var i in selAi) qs += $"&assigneeIds={i}";
         if (ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched)  qs += "&unmatched=true";
         if (ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) qs += "&unassigned=true";
         return qs;

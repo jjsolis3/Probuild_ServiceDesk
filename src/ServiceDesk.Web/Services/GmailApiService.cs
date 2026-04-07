@@ -197,8 +197,9 @@ public class GmailApiService : BackgroundService
             return;
         }
 
-        // Extract body content
-        var body = ExtractBody(fullMessage);
+        // Extract body content — plain text for storage/searching, HTML for display
+        var body     = ExtractPlainBody(fullMessage);
+        var bodyHtml = ExtractHtmlBody(fullMessage);
 
         // ---- THREADING: Check subject for [#SS-XXXXX] ----
         var ticketMatch = TicketRefRegex.Match(subject);
@@ -295,7 +296,8 @@ public class GmailApiService : BackgroundService
             var ticket = new Ticket
             {
                 Title = string.IsNullOrWhiteSpace(cleanSubject) ? "Email Ticket (No Subject)" : cleanSubject,
-                Description = body.Length > 2000 ? body[..2000] : body,
+                Description    = body.Length > 2000 ? body[..2000] : body,
+                DescriptionHtml = bodyHtml,
                 Category = detectedCategory,
                 Status = TicketStatus.Open,
                 Priority = TicketPriority.Medium,
@@ -753,23 +755,54 @@ public class GmailApiService : BackgroundService
         return false;
     }
 
-    private static string ExtractBody(GmailFullMessage message)
+    /// <summary>Returns plain-text body for storage/search (stored in Description).</summary>
+    private static string ExtractPlainBody(GmailFullMessage message)
     {
-        // Try to get text/plain first, then text/html
         var textBody = ExtractPartBody(message.Payload, "text/plain");
         if (!string.IsNullOrWhiteSpace(textBody))
-            return textBody;
+            return textBody.Trim();
 
+        // Fall back: strip HTML tags so Description always has readable text
         var htmlBody = ExtractPartBody(message.Payload, "text/html");
         if (!string.IsNullOrWhiteSpace(htmlBody))
         {
-            // Sanitize HTML to remove scripts/XSS, then strip remaining tags for plain-text storage
             var sanitizer = new HtmlSanitizer();
             var sanitized = sanitizer.Sanitize(htmlBody);
             return Regex.Replace(sanitized, "<[^>]+>", " ").Trim();
         }
 
         return "(No content)";
+    }
+
+    /// <summary>
+    /// Returns sanitized HTML body for rich display (stored in DescriptionHtml).
+    /// Returns null when only plain text is available.
+    /// </summary>
+    private static string? ExtractHtmlBody(GmailFullMessage message)
+    {
+        var htmlBody = ExtractPartBody(message.Payload, "text/html");
+        if (string.IsNullOrWhiteSpace(htmlBody)) return null;
+
+        var sanitizer = new HtmlSanitizer();
+        // Allow safe styling attributes used by email clients
+        sanitizer.AllowedAttributes.Add("style");
+        sanitizer.AllowedAttributes.Add("align");
+        sanitizer.AllowedAttributes.Add("width");
+        sanitizer.AllowedAttributes.Add("height");
+        sanitizer.AllowedAttributes.Add("cellpadding");
+        sanitizer.AllowedAttributes.Add("cellspacing");
+        sanitizer.AllowedAttributes.Add("border");
+        sanitizer.AllowedAttributes.Add("bgcolor");
+        sanitizer.AllowedTags.Add("table");
+        sanitizer.AllowedTags.Add("thead");
+        sanitizer.AllowedTags.Add("tbody");
+        sanitizer.AllowedTags.Add("tr");
+        sanitizer.AllowedTags.Add("td");
+        sanitizer.AllowedTags.Add("th");
+        sanitizer.AllowedTags.Add("img");
+        sanitizer.AllowedAttributes.Add("src");
+        sanitizer.AllowedAttributes.Add("alt");
+        return sanitizer.Sanitize(htmlBody);
     }
 
     private static string? ExtractPartBody(GmailMessagePart? part, string mimeType)

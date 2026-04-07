@@ -15,6 +15,12 @@ public class Ticket
     [StringLength(2000, MinimumLength = 10)]
     public string Description { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Sanitized HTML body stored when a ticket is created from an inbound email.
+    /// Null for manually-created tickets. Rendered instead of Description when present.
+    /// </summary>
+    public string? DescriptionHtml { get; set; }
+
     [Required]
     [Display(Name = "Category")]
     public TicketCategory Category { get; set; }

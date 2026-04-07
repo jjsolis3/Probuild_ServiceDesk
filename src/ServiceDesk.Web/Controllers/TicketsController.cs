@@ -22,15 +22,19 @@ public class TicketsController : Controller
     }
 
     public async Task<IActionResult> Index(
-        TicketStatus? status, TicketCategory? category, TicketPriority? priority,
+        TicketStatus[]?  statuses,    TicketCategory[]? categories,
+        TicketPriority[]? priorities, int[]? assigneeIds,
         bool? unmatched, bool? unassigned,
         string sortBy = "id", string sortDir = "desc",
         int page = 1, int pageSize = 25,
         int? viewId = null)
     {
-        // If no filters supplied and no explicit viewId, check for user's default view.
         var userId = CurrentPortalUserId();
-        bool noFilters = status == null && category == null && priority == null
+
+        bool noFilters = (statuses    == null || statuses.Length    == 0)
+                      && (categories  == null || categories.Length  == 0)
+                      && (priorities  == null || priorities.Length  == 0)
+                      && (assigneeIds == null || assigneeIds.Length == 0)
                       && unmatched == null && unassigned == null && viewId == null
                       && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
 
@@ -43,21 +47,23 @@ public class TicketsController : Controller
                 return RedirectToAction(nameof(Index), BuildViewParams(def));
         }
 
-        // If a viewId was supplied, load that view's criteria.
+        // Load saved view criteria when viewId supplied
         SavedTicketView? activeView = null;
         if (viewId != null)
         {
             activeView = await _context.SavedTicketViews
-                .Include(v => v.FilterBranch)
-                .Include(v => v.FilterGroup)
+                .Include(v => v.FilterBranch).Include(v => v.FilterGroup)
                 .FirstOrDefaultAsync(v => v.Id == viewId
                     && (v.OwnerPortalUserId == userId || v.IsShared));
             if (activeView != null)
             {
-                status    ??= activeView.FilterStatus;
-                category  ??= activeView.FilterCategory;
-                priority  ??= activeView.FilterPriority;
-                unmatched ??= activeView.FilterUnmatchedOnly  ? true : null;
+                if ((statuses    == null || statuses.Length    == 0) && activeView.FilterStatus   != null)
+                    statuses    = [activeView.FilterStatus.Value];
+                if ((categories  == null || categories.Length  == 0) && activeView.FilterCategory != null)
+                    categories  = [activeView.FilterCategory.Value];
+                if ((priorities  == null || priorities.Length  == 0) && activeView.FilterPriority != null)
+                    priorities  = [activeView.FilterPriority.Value];
+                unmatched  ??= activeView.FilterUnmatchedOnly  ? true : null;
                 unassigned ??= activeView.FilterUnassignedOnly ? true : null;
                 sortBy   = sortBy   == "id"   ? activeView.SortBy   : sortBy;
                 sortDir  = sortDir  == "desc" ? activeView.SortDir  : sortDir;
@@ -68,18 +74,14 @@ public class TicketsController : Controller
         var query = _context.Tickets
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
-            .AsQueryable();  // removed unused CompanyService join
+            .AsQueryable();
 
-        if (status.HasValue)
-            query = query.Where(t => t.Status == status.Value);
-        if (category.HasValue)
-            query = query.Where(t => t.Category == category.Value);
-        if (priority.HasValue)
-            query = query.Where(t => t.Priority == priority.Value);
-        if (unmatched == true)
-            query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
-        if (unassigned == true)
-            query = query.Where(t => t.AssignedToId == null);
+        if (statuses?.Length    > 0) query = query.Where(t => statuses.Contains(t.Status));
+        if (categories?.Length  > 0) query = query.Where(t => categories.Contains(t.Category));
+        if (priorities?.Length  > 0) query = query.Where(t => priorities.Contains(t.Priority));
+        if (assigneeIds?.Length > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
+        if (unmatched  == true)      query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
+        if (unassigned == true)      query = query.Where(t => t.AssignedToId == null);
 
         // Sort
         query = (sortBy, sortDir) switch
@@ -113,9 +115,10 @@ public class TicketsController : Controller
             .Take(pageSize)
             .ToListAsync();
 
-        ViewBag.CurrentStatus    = status;
-        ViewBag.CurrentCategory  = category;
-        ViewBag.CurrentPriority  = priority;
+        ViewBag.SelectedStatuses    = statuses    ?? Array.Empty<TicketStatus>();
+        ViewBag.SelectedCategories  = categories  ?? Array.Empty<TicketCategory>();
+        ViewBag.SelectedPriorities  = priorities  ?? Array.Empty<TicketPriority>();
+        ViewBag.SelectedAssigneeIds = assigneeIds ?? Array.Empty<int>();
         ViewBag.CurrentUnmatched  = unmatched;
         ViewBag.CurrentUnassigned = unassigned;
         ViewBag.SortBy    = sortBy;
@@ -131,6 +134,21 @@ public class TicketsController : Controller
                 .OrderBy(e => e.LastName)
                 .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
                 .ToListAsync());
+
+        // Employees linked to IT/Admin portal accounts (for Assignee filter dropdown)
+        var itRoleIds = await _context.Roles
+            .Where(r => r.Name != "End User")
+            .Select(r => r.Id).ToListAsync();
+        var assignableEmpIds = await _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct().ToListAsync();
+        ViewBag.AssignableStaff = await _context.Employees
+            .Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
 
         ViewBag.ActiveViewId   = activeView?.Id;
         ViewBag.ActiveViewName = activeView?.Name;
@@ -954,11 +972,11 @@ public class TicketsController : Controller
             ["sortDir"]  = v.SortDir,
             ["pageSize"] = v.PageSize.ToString(),
         };
-        if (v.FilterStatus   != null) d["status"]    = v.FilterStatus.ToString();
-        if (v.FilterCategory != null) d["category"]  = v.FilterCategory.ToString();
-        if (v.FilterPriority != null) d["priority"]  = v.FilterPriority.ToString();
-        if (v.FilterUnmatchedOnly)   d["unmatched"]  = "true";
-        if (v.FilterUnassignedOnly)  d["unassigned"] = "true";
+        if (v.FilterStatus   != null) d["statuses"]   = v.FilterStatus.ToString();
+        if (v.FilterCategory != null) d["categories"] = v.FilterCategory.ToString();
+        if (v.FilterPriority != null) d["priorities"] = v.FilterPriority.ToString();
+        if (v.FilterUnmatchedOnly)   d["unmatched"]   = "true";
+        if (v.FilterUnassignedOnly)  d["unassigned"]  = "true";
         return d;
     }
 

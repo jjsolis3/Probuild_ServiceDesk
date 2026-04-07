@@ -1,4 +1,5 @@
 @model Ticket
+@using Ganss.Xss
 @{
     ViewData["Title"] = $"Ticket #{Model.Id}";
 }
@@ -25,9 +26,26 @@
 <div class="row g-3">
     <div class="col-md-8">
         <div class="card">
-            <div class="card-header">Description</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                Description
+                @if (Model.DescriptionHtml != null)
+                {
+                    <span class="badge bg-secondary"><i class="bi bi-envelope me-1"></i>Email</span>
+                }
+            </div>
             <div class="card-body">
-                <p>@Model.Description</p>
+                @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
+                {
+                    <!-- Render sanitized HTML email body in a scoped iframe-like container -->
+                    <div class="email-body-container" style="max-height:600px; overflow-y:auto;">
+                        @Html.Raw(new HtmlSanitizer().Sanitize(Model.DescriptionHtml))
+                    </div>
+                }
+                else
+                {
+                    <!-- Plain text: preserve line breaks and make URLs clickable -->
+                    <p style="white-space:pre-wrap; word-break:break-word;">@Model.Description</p>
+                }
             </div>
         </div>
 

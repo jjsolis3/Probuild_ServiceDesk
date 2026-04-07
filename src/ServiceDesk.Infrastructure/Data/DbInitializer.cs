@@ -270,7 +270,17 @@ public static class DbInitializer
                         ON DELETE SET NULL;
                 END");
 
-            // 14. Create SavedTicketViews table (user filter presets)
+            // 14. Add DescriptionHtml column to Tickets (rich HTML from email)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'DescriptionHtml'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD DescriptionHtml NVARCHAR(MAX) NULL;
+                END");
+
+            // 15. Create SavedTicketViews table (user filter presets)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SavedTicketViews')
                 BEGIN

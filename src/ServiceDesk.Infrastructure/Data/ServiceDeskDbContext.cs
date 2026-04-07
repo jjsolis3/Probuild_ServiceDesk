@@ -270,6 +270,11 @@ public class ServiceDeskDbContext : DbContext
             .Property(s => s.MonthlyCost)
             .HasPrecision(18, 2);
 
+        // Store sanitized HTML email body without length limit
+        modelBuilder.Entity<Ticket>()
+            .Property(t => t.DescriptionHtml)
+            .HasColumnType("nvarchar(max)");
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)
