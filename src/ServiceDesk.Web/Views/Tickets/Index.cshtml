@@ -216,179 +216,10 @@
     </form>
 </div>
 
-<!-- Table toolbar: count + page size -->
-<div class="d-flex justify-content-between align-items-center mb-2">
-    <span class="text-muted small">
-        Showing @((ViewBag.Page - 1) * ViewBag.PageSize + 1)–@(Math.Min((int)ViewBag.Page * (int)ViewBag.PageSize, (int)ViewBag.TotalCount))
-        of <strong>@ViewBag.TotalCount</strong> ticket(s)
-    </span>
-    <form method="get" class="d-flex align-items-center gap-2">
-        <!-- preserve all current filters when changing page size -->
-        @if (ViewBag.CurrentStatus   != null) { <input type="hidden" name="status"     value="@ViewBag.CurrentStatus"> }
-        @if (ViewBag.CurrentCategory != null) { <input type="hidden" name="category"   value="@ViewBag.CurrentCategory"> }
-        @if (ViewBag.CurrentPriority != null) { <input type="hidden" name="priority"   value="@ViewBag.CurrentPriority"> }
-        @if (ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched)  { <input type="hidden" name="unmatched"  value="true"> }
-        @if (ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) { <input type="hidden" name="unassigned" value="true"> }
-        <input type="hidden" name="sortBy"  value="@ViewBag.SortBy">
-        <input type="hidden" name="sortDir" value="@ViewBag.SortDir">
-        <input type="hidden" name="page"    value="1">
-        <label class="form-label small mb-0 me-1">Show</label>
-        <select name="pageSize" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
-            @foreach (var sz in new[] { 15, 25, 50, 100 })
-            {
-                <option value="@sz" selected="@((int)ViewBag.PageSize == sz ? "selected" : null)">@sz</option>
-            }
-        </select>
-        <label class="form-label small mb-0 ms-1">per page</label>
-    </form>
+<!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
+<div id="ticketsTableContainer">
+    @await Html.PartialAsync("_TicketsTable", Model)
 </div>
-
-<div class="table-responsive">
-    <table class="table table-striped table-hover align-middle mb-0">
-        <thead class="table-dark">
-            <tr>
-                <th class="text-center" style="width:36px;">
-                    <input type="checkbox" id="chkSelectAll" class="form-check-input" title="Select all">
-                </th>
-                <th>@SortHeader("id",       "ID")</th>
-                <th>@SortHeader("title",    "Title")</th>
-                <th>@SortHeader("category", "Category")</th>
-                <th>@SortHeader("priority", "Priority")</th>
-                <th>@SortHeader("status",   "Status")</th>
-                <th>Submitted By</th>
-                <th>Assigned To</th>
-                <th>@SortHeader("created",  "Created")</th>
-                <th>@SortHeader("due",      "Due Date")</th>
-                <th style="width:90px;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var ticket in Model)
-            {
-                <tr>
-                    <td class="text-center">
-                        <input type="checkbox" class="form-check-input ticket-chk" name="selectedIds" value="@ticket.Id">
-                    </td>
-                    <td>@ticket.Id</td>
-                    <td style="max-width:340px;">
-                        <a asp-action="Details" asp-route-id="@ticket.Id" class="text-truncate d-block" style="max-width:320px;" title="@ticket.Title">@ticket.Title</a>
-                        @if (ticket.IsOverdue)
-                        {
-                            <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
-                                <i class="bi bi-exclamation-circle me-1"></i>Overdue
-                            </span>
-                        }
-                    </td>
-                    <td>@ticket.Category</td>
-                    <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                    <td>
-                        <div class="dropdown inline-edit-dropdown">
-                            <span class="badge badge-@ticket.Status.ToString().ToLower() inline-edit-badge"
-                                  data-ticket-id="@ticket.Id" data-field="status" data-current="@ticket.Status"
-                                  title="Click to change status" role="button"
-                                  data-bs-toggle="dropdown" aria-expanded="false">
-                                @ticket.Status <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>
-                            </span>
-                            <ul class="dropdown-menu dropdown-menu-sm shadow-sm status-dropdown" data-ticket-id="@ticket.Id">
-                                @foreach (var s in Enum.GetValues<TicketStatus>())
-                                {
-                                    <li>
-                                        <a class="dropdown-item status-option @(ticket.Status == s ? "active" : "")"
-                                           data-value="@s" href="#">
-                                            <span class="badge badge-@s.ToString().ToLower() me-2">@s</span>
-                                        </a>
-                                    </li>
-                                }
-                            </ul>
-                        </div>
-                    </td>
-                    <td>@ticket.SubmittedBy?.FullName</td>
-                    <td>
-                        <div class="dropdown inline-edit-dropdown">
-                            <span class="inline-edit-assignee text-nowrap"
-                                  data-ticket-id="@ticket.Id" data-field="assignee"
-                                  data-current="@(ticket.AssignedToId?.ToString() ?? "0")"
-                                  title="Click to change assignee" role="button"
-                                  data-bs-toggle="dropdown" aria-expanded="false">
-                                @if (ticket.AssignedTo != null)
-                                {
-                                    <span>@ticket.AssignedTo.FullName <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i></span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>
-                                }
-                            </span>
-                            <div class="dropdown-menu p-2 shadow-sm assignee-dropdown" style="min-width:220px;" data-ticket-id="@ticket.Id">
-                                <input type="text" class="form-control form-control-sm mb-2 assignee-search" placeholder="Search agent..." autocomplete="off" />
-                                <ul class="list-unstyled mb-0 assignee-list" style="max-height:200px;overflow-y:auto;">
-                                    <li><a class="dropdown-item assignee-option @(ticket.AssignedToId == null ? "active" : "")" data-value="0" href="#">— Unassigned —</a></li>
-                                </ul>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="text-nowrap">@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
-                    <td class="text-nowrap">
-                        @if (ticket.DueDate.HasValue)
-                        {
-                            <span class="@(ticket.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
-                                @ticket.DueDate.Value.ToString("MMM dd, yyyy")
-                            </span>
-                        }
-                        else { <span class="text-muted">—</span> }
-                    </td>
-                    <td>
-                        <a asp-action="Edit"   asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
-                        <a asp-action="Delete" asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
-@if (!Model.Any())
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3 mb-3">No tickets found matching the current filters.</p>
-        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> New Ticket</a>
-        <a asp-action="Index"  class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
-    </div>
-}
-
-<!-- Pagination -->
-@if ((int)ViewBag.TotalPages > 1)
-{
-    <nav class="mt-3" aria-label="Ticket pages">
-        <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
-            <li class="page-item @((int)ViewBag.Page == 1 ? "disabled" : "")">
-                <a class="page-link" href="@PageUrl((int)ViewBag.Page - 1)">&#8249; Prev</a>
-            </li>
-            @{
-                int tp = (int)ViewBag.TotalPages, cp = (int)ViewBag.Page;
-                var pages = Enumerable.Range(1, tp)
-                    .Where(p => p == 1 || p == tp || Math.Abs(p - cp) <= 2)
-                    .ToList();
-                int? prev = null;
-                foreach (var p in pages)
-                {
-                    if (prev.HasValue && p - prev.Value > 1)
-                    {
-                        <li class="page-item disabled"><span class="page-link">…</span></li>
-                    }
-                    <li class="page-item @(p == cp ? "active" : "")">
-                        <a class="page-link" href="@PageUrl(p)">@p</a>
-                    </li>
-                    prev = p;
-                }
-            }
-            <li class="page-item @((int)ViewBag.Page == (int)ViewBag.TotalPages ? "disabled" : "")">
-                <a class="page-link" href="@PageUrl((int)ViewBag.Page + 1)">Next &#8250;</a>
-            </li>
-        </ul>
-    </nav>
-}
 
 <!-- ── Save / Edit View Modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="saveViewModal" tabindex="-1" aria-labelledby="saveViewModalLabel">
@@ -584,27 +415,29 @@
             .catch(() => showToast('Update failed. Please try again.', true));
     }
 
-    // Status inline edit
-    document.querySelectorAll('.status-option').forEach(function (opt) {
-        opt.addEventListener('click', function (e) {
-            e.preventDefault();
-            const dropdown = this.closest('.status-dropdown');
-            const ticketId = dropdown.getAttribute('data-ticket-id');
-            const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
-            sendQuickUpdate(ticketId, 'status', this.getAttribute('data-value'), function (data) {
-                badge.className = `badge badge-${data.status.toLowerCase()} inline-edit-badge`;
-                badge.setAttribute('data-current', data.status);
-                badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
-                dropdown.querySelectorAll('.status-option').forEach(o => o.classList.remove('active'));
-                opt.classList.add('active');
-            });
+    // Status inline edit — event delegation (survives AJAX table replacement)
+    document.addEventListener('click', function (e) {
+        const opt = e.target.closest('.status-option');
+        if (!opt) return;
+        e.preventDefault();
+        const dropdown = opt.closest('.status-dropdown');
+        const ticketId = dropdown.getAttribute('data-ticket-id');
+        const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
+        sendQuickUpdate(ticketId, 'status', opt.getAttribute('data-value'), function (data) {
+            badge.className = `badge badge-${data.status.toLowerCase()} inline-edit-badge`;
+            badge.setAttribute('data-current', data.status);
+            badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
+            dropdown.querySelectorAll('.status-option').forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
         });
     });
 
-    // Assignee dropdown populate
-    document.querySelectorAll('.assignee-dropdown').forEach(function (dd) {
-        const ticketId = dd.getAttribute('data-ticket-id');
+    // Assignee dropdown — lazy populate on first open (survives AJAX table replacement)
+    document.addEventListener('show.bs.dropdown', function (e) {
+        const dd = e.target.closest('.inline-edit-dropdown')?.querySelector('.assignee-dropdown');
+        if (!dd || dd.dataset.populated) return;
         const list = dd.querySelector('.assignee-list');
+        const ticketId = dd.getAttribute('data-ticket-id');
         const currentVal = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`)?.getAttribute('data-current') || '0';
         itStaff.forEach(function (emp) {
             const li = document.createElement('li');
@@ -616,17 +449,19 @@
             li.appendChild(a);
             list.appendChild(li);
         });
+        dd.dataset.populated = '1';
     });
 
-    // Assignee search
-    document.querySelectorAll('.assignee-search').forEach(function (input) {
-        input.addEventListener('input', function () {
-            const q = this.value.toLowerCase();
-            this.closest('.assignee-dropdown').querySelector('.assignee-list')
-                .querySelectorAll('.assignee-option')
-                .forEach(a => a.parentElement.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none');
-        });
-        input.addEventListener('click', e => e.stopPropagation());
+    // Assignee search — event delegation (survives AJAX table replacement)
+    document.addEventListener('input', function (e) {
+        if (!e.target.classList.contains('assignee-search')) return;
+        const q = e.target.value.toLowerCase();
+        e.target.closest('.assignee-dropdown').querySelector('.assignee-list')
+            .querySelectorAll('.assignee-option')
+            .forEach(a => a.parentElement.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none');
+    });
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('assignee-search')) e.stopPropagation();
     });
 
     // Assignee click
@@ -653,7 +488,6 @@
     (function () {
         const bar = document.getElementById('bulkActionBar');
         const countLabel = document.getElementById('bulkSelectionCount');
-        const chkAll = document.getElementById('chkSelectAll');
         const actionSelect = document.getElementById('bulkActionSelect');
         const statusGroup = document.getElementById('bulkStatusGroup');
         const assigneeGroup = document.getElementById('bulkAssigneeGroup');
@@ -670,31 +504,39 @@
         }
 
         function updateBar() {
-            const checked = document.querySelectorAll('.ticket-chk:checked');
-            bar.classList.toggle('d-none', checked.length === 0);
-            countLabel.textContent = checked.length + ' selected';
+            const checked = document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [];
+            bar?.classList.toggle('d-none', checked.length === 0);
+            if (countLabel) countLabel.textContent = checked.length + ' selected';
         }
 
-        chkAll?.addEventListener('change', function () {
-            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = this.checked);
-            updateBar();
+        // Checkbox delegation on container (survives AJAX table replacement)
+        document.getElementById('ticketsTableContainer')?.addEventListener('change', function (e) {
+            const container = document.getElementById('ticketsTableContainer');
+            if (e.target.id === 'chkSelectAll') {
+                container.querySelectorAll('.ticket-chk').forEach(c => c.checked = e.target.checked);
+                updateBar();
+            } else if (e.target.classList.contains('ticket-chk')) {
+                const all = container.querySelectorAll('.ticket-chk');
+                const chkAll = container.querySelector('#chkSelectAll');
+                if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
+                updateBar();
+            }
         });
-        document.querySelectorAll('.ticket-chk').forEach(c => c.addEventListener('change', function () {
-            const all = document.querySelectorAll('.ticket-chk');
-            if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
-            updateBar();
-        }));
         actionSelect?.addEventListener('change', function () {
             statusGroup.classList.toggle('d-none', this.value !== 'status');
             assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
         });
         document.getElementById('btnBulkClear')?.addEventListener('click', function () {
-            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = false);
+            document.getElementById('ticketsTableContainer')?.querySelectorAll('.ticket-chk')
+                .forEach(c => c.checked = false);
+            const chkAll = document.getElementById('ticketsTableContainer')?.querySelector('#chkSelectAll');
             if (chkAll) chkAll.checked = false;
-            bar.classList.add('d-none');
+            bar?.classList.add('d-none');
         });
         form?.addEventListener('submit', function (e) {
-            const checked = document.querySelectorAll('.ticket-chk:checked');
+            const checked = document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [];
             if (checked.length === 0) { e.preventDefault(); return; }
             if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
             checked.forEach(c => {
@@ -708,14 +550,33 @@
 </script>
 
 <script>
-// ── Multi-select filter apply ──────────────────────────────────────────────
-function applyFilters() {
-    // Read directly from the data island — avoids scope dependency on the IIFE below
-    const ps = JSON.parse(document.getElementById('pageStateData').textContent);
+// ── AJAX table management ──────────────────────────────────────────────────
+function loadTable(url) {
+    const container = document.getElementById('ticketsTableContainer');
+    if (!container) return;
+    container.style.opacity = '0.5';
+    container.style.pointerEvents = 'none';
+    const fetchUrl = url + (url.includes('?') ? '&' : '?') + 'partial=true';
+    fetch(fetchUrl, { credentials: 'same-origin' })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+            container.innerHTML = html;
+            container.style.opacity = '1';
+            container.style.pointerEvents = '';
+            history.pushState({ url: url }, '', url);
+        })
+        .catch(function () {
+            container.style.opacity = '1';
+            container.style.pointerEvents = '';
+        });
+}
+
+function changePageSize(value) {
+    const urlParams = new URLSearchParams(window.location.search);
     const params = new URLSearchParams();
-    params.set('sortBy',   ps.sortBy);
-    params.set('sortDir',  ps.sortDir);
-    params.set('pageSize', ps.pageSize);
+    params.set('sortBy',   urlParams.get('sortBy')   || 'id');
+    params.set('sortDir',  urlParams.get('sortDir')  || 'desc');
+    params.set('pageSize', value);
     params.set('page', '1');
     document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
     document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
@@ -723,7 +584,38 @@ function applyFilters() {
     document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
-    window.location.href = '/Tickets?' + params.toString();
+    loadTable('/Tickets?' + params.toString());
+}
+
+// Reload page on browser back/forward so filter bar stays in sync
+window.addEventListener('popstate', function () { location.reload(); });
+
+// Intercept sort and pagination link clicks inside the table container
+document.addEventListener('click', function (e) {
+    const link = e.target.closest('.tbl-nav');
+    if (!link || !link.closest('#ticketsTableContainer')) return;
+    e.preventDefault();
+    loadTable(link.href);
+});
+</script>
+
+<script>
+// ── Multi-select filter apply ──────────────────────────────────────────────
+function applyFilters() {
+    // Use current URL params for sort/page state (updated by pushState after AJAX loads)
+    const urlParams = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams();
+    params.set('sortBy',   urlParams.get('sortBy')   || 'id');
+    params.set('sortDir',  urlParams.get('sortDir')  || 'desc');
+    params.set('pageSize', urlParams.get('pageSize') || '25');
+    params.set('page', '1');
+    document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
+    document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb => params.append('priorities',  cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
+    if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
+    if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    loadTable('/Tickets?' + params.toString());
 }
 </script>
 
@@ -963,34 +855,3 @@ function applyFilters() {
 }
 
 
-@functions {
-    IHtmlContent SortHeader(string col, string label) {
-        var sb = (string?)ViewBag.SortBy ?? "id";
-        var sd = (string?)ViewBag.SortDir ?? "desc";
-        // Date columns: natural direction is desc (newest first).
-        // All other columns: natural direction is asc (A-Z / low-high).
-        var naturalDir = col is "created" or "due" ? "desc" : "asc";
-        // If already on this column → toggle; otherwise → start at natural direction.
-        var newDir = sb == col ? (sd == "asc" ? "desc" : "asc") : naturalDir;
-        var icon = sb == col ? (sd == "asc" ? " ↑" : " ↓") : "";
-        return new HtmlString($"<a href=\"{PageUrl(1, col, newDir)}\" class=\"text-white text-decoration-none\">{label}{icon}</a>");
-    }
-
-    string PageUrl(int p, string? sb = null, string? sd = null) {
-        var sortBy  = sb ?? (string?)ViewBag.SortBy  ?? "id";
-        var sortDir = sd ?? (string?)ViewBag.SortDir ?? "desc";
-        var ps = (int)ViewBag.PageSize;
-        var qs = $"?page={p}&pageSize={ps}&sortBy={sortBy}&sortDir={sortDir}";
-        var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
-        var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
-        var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
-        var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
-        foreach (var s in selSt) qs += $"&statuses={s}";
-        foreach (var c in selCa) qs += $"&categories={c}";
-        foreach (var r in selPr) qs += $"&priorities={r}";
-        foreach (var i in selAi) qs += $"&assigneeIds={i}";
-        if (ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched)  qs += "&unmatched=true";
-        if (ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) qs += "&unassigned=true";
-        return qs;
-    }
-}

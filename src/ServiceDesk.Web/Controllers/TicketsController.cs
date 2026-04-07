@@ -27,7 +27,7 @@ public class TicketsController : Controller
         bool? unmatched, bool? unassigned,
         string sortBy = "id", string sortDir = "desc",
         int page = 1, int pageSize = 25,
-        int? viewId = null)
+        int? viewId = null, bool partial = false)
     {
         var userId = CurrentPortalUserId();
 
@@ -133,6 +133,14 @@ public class TicketsController : Controller
         ViewBag.TotalCount = totalCount;
         ViewBag.TotalPages = totalPages;
 
+        ViewBag.ActiveViewId   = activeView?.Id;
+        ViewBag.ActiveViewName = activeView?.Name;
+
+        // When serving only the table partial, skip dropdown data (saves 3 DB queries)
+        if (partial)
+            return PartialView("_TicketsTable", tickets);
+
+        // Data for the Save View modal dropdowns (full-page load only)
         ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
             await _context.Employees
                 .Where(e => e.IsActive && e.Department == "IT")
@@ -140,7 +148,6 @@ public class TicketsController : Controller
                 .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
                 .ToListAsync());
 
-        // Employees linked to IT/Admin portal accounts (for Assignee filter dropdown)
         var itRoleIds = await _context.Roles
             .Where(r => r.Name != "End User")
             .Select(r => r.Id).ToListAsync();
@@ -155,10 +162,6 @@ public class TicketsController : Controller
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
 
-        ViewBag.ActiveViewId   = activeView?.Id;
-        ViewBag.ActiveViewName = activeView?.Name;
-
-        // Data for the Save View modal dropdowns
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
             .Select(b => new { b.Id, b.Name }).ToListAsync();
