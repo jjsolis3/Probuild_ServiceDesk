@@ -1,7 +1,10 @@
 @model IEnumerable<CompanyService>
 @{
     ViewData["Title"] = "Services";
-    var statusBtnStyle = ViewBag.CurrentStatus != null ? "btn-primary btn-sm" : "btn-outline-secondary btn-sm";
+    var selStatuses = (ServiceStatus[])(ViewBag.SelectedStatuses ?? Array.Empty<ServiceStatus>());
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,22 +16,46 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-        <div class="filter-control">
-            <label class="form-label small mb-1">Status</label>
-            <select name="status" class="form-select form-select-sm selectpicker ss-form-select" data-style="@statusBtnStyle" data-width="fit" onchange="this.form.submit()">
-                <option value="">All Statuses</option>
-                @foreach (var s in Enum.GetValues<ServiceStatus>())
-                {
-                    var svcSel = ViewBag.CurrentStatus != null && (ServiceStatus)ViewBag.CurrentStatus == s;
-                    <option value="@s" selected="@(svcSel ? "selected" : null)">@s</option>
-                }
-            </select>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Status -->
+        <div>
+            <div class="form-label small mb-1">Status</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Status", "Statuses", selStatuses.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
+                    @foreach (var s in Enum.GetValues<ServiceStatus>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="statuses"
+                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                            <label class="form-check-label small" for="fs_@s">@s</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
+
         <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
         </div>
-    </form>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="serviceKeywordSearch" class="form-control" placeholder="Search services..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="table-responsive">
@@ -87,3 +114,13 @@
         <p class="mt-3">No services found matching the current filters.</p>
     </div>
 }
+
+<script>
+function applyFilters() {
+    const params = new URLSearchParams();
+    document.querySelectorAll('input[name="statuses"]:checked').forEach(cb => params.append('statuses', cb.value));
+    const q = document.getElementById('serviceKeywordSearch').value.trim();
+    if (q) params.set('q', q);
+    window.location.href = '@Url.Action("Index", "Services")?' + params.toString();
+}
+</script>

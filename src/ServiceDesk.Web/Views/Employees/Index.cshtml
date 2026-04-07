@@ -1,7 +1,13 @@
 @model IEnumerable<Employee>
 @{
     ViewData["Title"] = "Employees";
-    string FilterBtnStyle(bool isActive) => isActive ? "btn-primary btn-sm" : "btn-outline-secondary btn-sm";
+    var selDepartments = (string[])(ViewBag.SelectedDepartments ?? Array.Empty<string>());
+    var selBranchIds   = (int[])(ViewBag.SelectedBranchIds      ?? Array.Empty<int>());
+    var curActive      = ViewBag.CurrentActive as bool?;
+    var curHasLogin    = ViewBag.CurrentHasLogin as bool?;
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -21,54 +27,127 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-        <div class="filter-control">
-            <label class="form-label small mb-1">Department</label>
-            <select name="department" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(!string.IsNullOrWhiteSpace((string?)ViewBag.CurrentDepartment))" data-width="fit" onchange="this.form.submit()">
-                <option value="">All Departments</option>
-                @if (ViewBag.Departments != null)
-                {
-                    foreach (var dept in (List<string>)ViewBag.Departments)
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Department -->
+        <div>
+            <div class="form-label small mb-1">Department</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selDepartments.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Department", "Departments", selDepartments.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px; max-height:260px; overflow-y:auto;">
+                    @if (ViewBag.Departments != null)
                     {
-                        var deptSel = ViewBag.CurrentDepartment != null && (string)ViewBag.CurrentDepartment == dept;
-                        <option value="@dept" selected="@(deptSel ? "selected" : null)">@dept</option>
+                        foreach (var dept in (List<string>)ViewBag.Departments)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="departments"
+                                       value="@dept" id="fd_@dept" @(selDepartments.Contains(dept) ? "checked" : "")>
+                                <label class="form-check-label small" for="fd_@dept">@dept</label>
+                            </div>
+                        }
                     }
-                }
-            </select>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="filter-control">
-            <label class="form-label small mb-1">Status</label>
-            <select name="active" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentActive != null)" data-width="fit" onchange="this.form.submit()">
-                <option value="">All</option>
-                <option value="true"  selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true  ? "selected" : null)">Active</option>
-                <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
-            </select>
+
+        <!-- Status -->
+        <div>
+            <div class="form-label small mb-1">Status</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curActive != null ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @(curActive == null ? "All" : curActive == true ? "Active" : "Inactive")
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="active" value="true"
+                               id="fst_active" @(curActive == true ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fst_inactive').checked=false;">
+                        <label class="form-check-label small" for="fst_active">Active</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="active" value="false"
+                               id="fst_inactive" @(curActive == false ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fst_active').checked=false;">
+                        <label class="form-check-label small" for="fst_inactive">Inactive</label>
+                    </div>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="filter-control">
-            <label class="form-label small mb-1">Branch</label>
-            <select name="branchId" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentBranchId != null)" data-width="fit" onchange="this.form.submit()">
-                <option value="">All Branches</option>
-                @if (ViewBag.Branches != null)
-                {
-                    foreach (var b in (IEnumerable<dynamic>)ViewBag.Branches)
+
+        <!-- Branch -->
+        <div>
+            <div class="form-label small mb-1">Branch</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selBranchIds.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Branch", "Branches", selBranchIds.Length)
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px; max-height:260px; overflow-y:auto;">
+                    @if (ViewBag.Branches != null)
                     {
-                        <option value="@b.Id" selected="@(ViewBag.CurrentBranchId != null && (int)ViewBag.CurrentBranchId == (int)b.Id ? "selected" : null)">@b.Name</option>
+                        foreach (var b in (IEnumerable<dynamic>)ViewBag.Branches)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="branchIds"
+                                       value="@b.Id" id="fb_@b.Id"
+                                       @(selBranchIds.Contains((int)b.Id) ? "checked" : "")>
+                                <label class="form-check-label small" for="fb_@b.Id">@b.Name</label>
+                            </div>
+                        }
                     }
-                }
-            </select>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="filter-control">
-            <label class="form-label small mb-1">Login Account</label>
-            <select name="hasLogin" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentHasLogin != null)" data-width="fit" onchange="this.form.submit()">
-                <option value="">All</option>
-                <option value="true"  selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == true  ? "selected" : null)">Has Login</option>
-                <option value="false" selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == false ? "selected" : null)">No Login</option>
-            </select>
+
+        <!-- Login Account -->
+        <div>
+            <div class="form-label small mb-1">Login Account</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curHasLogin != null ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @(curHasLogin == null ? "All" : curHasLogin == true ? "Has Login" : "No Login")
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="hasLogin" value="true"
+                               id="fl_yes" @(curHasLogin == true ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fl_no').checked=false;">
+                        <label class="form-check-label small" for="fl_yes">Has Login</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="hasLogin" value="false"
+                               id="fl_no" @(curHasLogin == false ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fl_yes').checked=false;">
+                        <label class="form-check-label small" for="fl_no">No Login</label>
+                    </div>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
+
         <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
         </div>
-    </form>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="employeeKeywordSearch" class="form-control" placeholder="Search employees..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="table-responsive">
@@ -130,3 +209,18 @@
         <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
 }
+
+<script>
+function applyFilters() {
+    const params = new URLSearchParams();
+    document.querySelectorAll('input[name="departments"]:checked').forEach(cb => params.append('departments', cb.value));
+    const activeCb = document.querySelector('input[name="active"]:checked');
+    if (activeCb) params.set('active', activeCb.value);
+    document.querySelectorAll('input[name="branchIds"]:checked').forEach(cb => params.append('branchIds', cb.value));
+    const hasLoginCb = document.querySelector('input[name="hasLogin"]:checked');
+    if (hasLoginCb) params.set('hasLogin', hasLoginCb.value);
+    const q = document.getElementById('employeeKeywordSearch').value.trim();
+    if (q) params.set('q', q);
+    window.location.href = '@Url.Action("Index", "Employees")?' + params.toString();
+}
+</script>
