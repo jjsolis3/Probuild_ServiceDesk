@@ -1,6 +1,7 @@
 @model IEnumerable<Asset>
 @{
     ViewData["Title"] = "Assets";
+    string FilterBtnStyle(bool isActive) => isActive ? "btn-primary btn-sm" : "btn-outline-secondary btn-sm";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,9 +14,9 @@
 <!-- Filters -->
 <div class="filter-bar">
     <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Asset Type</label>
-            <select name="type" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="type" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentType != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Types</option>
                 @foreach (var t in Enum.GetValues<AssetType>())
                 {
@@ -24,9 +25,9 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Status</label>
-            <select name="status" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="status" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentStatus != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Statuses</option>
                 @foreach (var s in Enum.GetValues<AssetStatus>())
                 {
@@ -35,9 +36,9 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Manufacturer</label>
-            <select name="manufacturer" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="manufacturer" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(!string.IsNullOrWhiteSpace((string?)ViewBag.CurrentManufacturer))" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Manufacturers</option>
                 @if (ViewBag.Manufacturers != null)
                 {
@@ -48,9 +49,9 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Assignment</label>
-            <select name="assigned" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="assigned" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentAssigned != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All</option>
                 <option value="true"  selected="@(ViewBag.CurrentAssigned != null && (bool)ViewBag.CurrentAssigned == true  ? "selected" : null)">Assigned</option>
                 <option value="false" selected="@(ViewBag.CurrentAssigned != null && (bool)ViewBag.CurrentAssigned == false ? "selected" : null)">Unassigned</option>

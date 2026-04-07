@@ -397,6 +397,17 @@ body[data-sidebar-style="icon-hover"] .ss-brand-logo img {
     background-color: #1e1e2d;
 }
 
+.filter-bar .filter-control {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.filter-bar .filter-control .form-label {
+    display: block;
+    width: 100%;
+}
+
 /* ----- Report Stat Cards ----- */
 .report-stat .stat-value {
     font-size: 2rem;

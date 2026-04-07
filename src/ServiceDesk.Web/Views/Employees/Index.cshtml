@@ -1,6 +1,7 @@
 @model IEnumerable<Employee>
 @{
     ViewData["Title"] = "Employees";
+    string FilterBtnStyle(bool isActive) => isActive ? "btn-primary btn-sm" : "btn-outline-secondary btn-sm";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -21,9 +22,9 @@
 <!-- Filters -->
 <div class="filter-bar">
     <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Department</label>
-            <select name="department" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="department" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(!string.IsNullOrWhiteSpace((string?)ViewBag.CurrentDepartment))" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Departments</option>
                 @if (ViewBag.Departments != null)
                 {
@@ -35,17 +36,17 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Status</label>
-            <select name="active" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="active" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentActive != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All</option>
                 <option value="true"  selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == true  ? "selected" : null)">Active</option>
                 <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Branch</label>
-            <select name="branchId" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="branchId" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentBranchId != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All Branches</option>
                 @if (ViewBag.Branches != null)
                 {
@@ -56,9 +57,9 @@
                 }
             </select>
         </div>
-        <div>
+        <div class="filter-control">
             <label class="form-label small mb-1">Login Account</label>
-            <select name="hasLogin" class="form-select form-select-sm selectpicker ss-form-select" data-style="btn-outline-secondary btn-sm" data-width="fit" onchange="this.form.submit()">
+            <select name="hasLogin" class="form-select form-select-sm selectpicker ss-form-select" data-style="@FilterBtnStyle(ViewBag.CurrentHasLogin != null)" data-width="fit" onchange="this.form.submit()">
                 <option value="">All</option>
                 <option value="true"  selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == true  ? "selected" : null)">Has Login</option>
                 <option value="false" selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == false ? "selected" : null)">No Login</option>
