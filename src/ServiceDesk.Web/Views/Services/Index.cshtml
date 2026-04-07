@@ -1,7 +1,7 @@
 @model IEnumerable<CompanyService>
 @{
     ViewData["Title"] = "Services";
-    var statusBtnStyle = ViewBag.CurrentStatus != null ? "btn-primary btn-sm" : "btn-outline-secondary btn-sm";
+    var currentStatus = ViewBag.CurrentStatus as ServiceStatus?;
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -14,22 +14,47 @@
 <!-- Filters -->
 <div class="filter-bar">
     <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-        <div class="filter-control">
-            <label class="form-label small mb-1">Status</label>
-            <select name="status" class="form-select form-select-sm selectpicker ss-form-select" data-style="@statusBtnStyle" data-width="fit" onchange="this.form.submit()">
-                <option value="">All Statuses</option>
-                @foreach (var s in Enum.GetValues<ServiceStatus>())
-                {
-                    var svcSel = ViewBag.CurrentStatus != null && (ServiceStatus)ViewBag.CurrentStatus == s;
-                    <option value="@s" selected="@(svcSel ? "selected" : null)">@s</option>
-                }
-            </select>
+        <div>
+            <div class="form-label small mb-1">Status</div>
+            <input type="hidden" id="svcStatusInput" name="status" value="@(currentStatus?.ToString() ?? "")" />
+            <div class="dropdown">
+                <button type="button" id="svcStatusBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(currentStatus != null ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @(currentStatus?.ToString() ?? "All Statuses")
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:180px;">
+                    <button type="button" class="dropdown-item small single-filter-option @(currentStatus == null ? "active" : "")" data-input-id="svcStatusInput" data-button-id="svcStatusBtn" data-value="" data-label="All Statuses">All Statuses</button>
+                    @foreach (var s in Enum.GetValues<ServiceStatus>())
+                    {
+                        <button type="button" class="dropdown-item small single-filter-option @(currentStatus == s ? "active" : "")"
+                                data-input-id="svcStatusInput" data-button-id="svcStatusBtn" data-value="@s" data-label="@s">@s</button>
+                    }
+                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                </div>
+            </div>
         </div>
         <div class="align-self-end">
             <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
         </div>
     </form>
 </div>
+
+@section Scripts {
+<script>
+document.addEventListener('click', function (e) {
+    const opt = e.target.closest('.single-filter-option');
+    if (!opt) return;
+    e.preventDefault();
+    const input = document.getElementById(opt.dataset.inputId);
+    const btn = document.getElementById(opt.dataset.buttonId);
+    if (!input || !btn) return;
+    input.value = opt.dataset.value ?? '';
+    btn.textContent = opt.dataset.label ?? '';
+    btn.classList.toggle('active', input.value !== '');
+    opt.closest('.dropdown-menu')?.querySelectorAll('.single-filter-option').forEach(x => x.classList.remove('active'));
+    opt.classList.add('active');
+});
+</script>
+}
 
 <div class="table-responsive">
     <table class="table table-striped table-hover ss-datatable" data-export-title="Services Report">
