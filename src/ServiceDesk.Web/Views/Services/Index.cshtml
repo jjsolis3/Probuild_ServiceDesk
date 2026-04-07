@@ -12,8 +12,8 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="row g-2 align-items-end">
-        <div class="col-auto">
+    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+        <div>
             <label class="form-label small">Status</label>
             <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Statuses</option>
@@ -24,8 +24,8 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+        <div>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
         </div>
     </form>
 </div>

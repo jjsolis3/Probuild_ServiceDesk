@@ -12,8 +12,8 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="row g-2 align-items-end">
-        <div class="col-auto">
+    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+        <div>
             <label class="form-label small">Asset Type</label>
             <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Types</option>
@@ -24,7 +24,7 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Status</label>
             <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Statuses</option>
@@ -35,7 +35,7 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Manufacturer</label>
             <select name="manufacturer" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Manufacturers</option>
@@ -48,7 +48,7 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Assignment</label>
             <select name="assigned" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All</option>
@@ -56,8 +56,8 @@
                 <option value="false" selected="@(ViewBag.CurrentAssigned != null && (bool)ViewBag.CurrentAssigned == false ? "selected" : null)">Unassigned</option>
             </select>
         </div>
-        <div class="col-auto align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+        <div class="align-self-end">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
         </div>
     </form>
 </div>

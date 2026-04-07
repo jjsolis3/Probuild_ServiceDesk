@@ -20,8 +20,8 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="row g-2 align-items-end">
-        <div class="col-auto">
+    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+        <div>
             <label class="form-label small">Department</label>
             <select name="department" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Departments</option>
@@ -35,7 +35,7 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Status</label>
             <select name="active" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All</option>
@@ -43,7 +43,7 @@
                 <option value="false" selected="@(ViewBag.CurrentActive != null && (bool)ViewBag.CurrentActive == false ? "selected" : null)">Inactive</option>
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Branch</label>
             <select name="branchId" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Branches</option>
@@ -56,7 +56,7 @@
                 }
             </select>
         </div>
-        <div class="col-auto">
+        <div>
             <label class="form-label small">Login Account</label>
             <select name="hasLogin" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All</option>
@@ -64,8 +64,8 @@
                 <option value="false" selected="@(ViewBag.CurrentHasLogin != null && (bool)ViewBag.CurrentHasLogin == false ? "selected" : null)">No Login</option>
             </select>
         </div>
-        <div class="col-auto align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+        <div class="align-self-end">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
         </div>
     </form>
 </div>
