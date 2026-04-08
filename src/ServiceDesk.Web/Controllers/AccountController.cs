@@ -59,13 +59,19 @@ public class AccountController : Controller
         await _context.SaveChangesAsync();
 
         // Build claims
+        // Normalize role name: "Administrator" is an alias for the canonical "Admin" role.
+        // All [Authorize] attributes use "Admin" as the exact string, so we map here once
+        // rather than updating every controller and view across the codebase.
         var roleName = user.Role?.Name ?? "End User";
+        var claimRole = roleName.Equals("Administrator", StringComparison.OrdinalIgnoreCase)
+            ? "Admin"
+            : roleName;
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name,           user.FullName),
             new(ClaimTypes.Email,          user.Email),
-            new(ClaimTypes.Role,           roleName),
+            new(ClaimTypes.Role,           claimRole),
             new("EmployeeId",              user.EmployeeId?.ToString() ?? string.Empty),
             new("UserId",                  user.Id.ToString()),
         };
