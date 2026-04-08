@@ -206,6 +206,7 @@
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
             <option value="assign">Reassign</option>
+            <option value="merge">Merge Tickets</option>
             <option value="delete">Delete Selected</option>
         </select>
         <div id="bulkStatusGroup" class="d-none">
@@ -582,7 +583,7 @@
             }
         });
         actionSelect?.addEventListener('change', function () {
-            statusGroup.classList.toggle('d-none', this.value !== 'status');
+            statusGroup.classList.toggle('d-none',  this.value !== 'status');
             assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
         });
         document.getElementById('btnBulkClear')?.addEventListener('click', function () {
@@ -593,12 +594,27 @@
             bar?.classList.add('d-none');
         });
         form?.addEventListener('submit', function (e) {
-            const checked = document.getElementById('ticketsTableContainer')
-                ?.querySelectorAll('.ticket-chk:checked') ?? [];
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
             if (checked.length === 0) { e.preventDefault(); return; }
             if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
             if (actionSelect.value === 'delete' && !confirm(`Delete ${checked.length} selected ticket(s)? This cannot be undone.`)) {
                 e.preventDefault(); return;
+            }
+            if (actionSelect.value === 'merge') {
+                if (checked.length < 2) {
+                    e.preventDefault();
+                    alert('Select at least 2 tickets to merge.');
+                    return;
+                }
+                const ids = checked.map(c => c.value).map(Number).sort((a, b) => a - b);
+                const primaryId = ids[0];
+                const others = ids.slice(1).join(', #');
+                if (!confirm(`Merge ticket(s) #${others} INTO ticket #${primaryId}?\n\nTicket #${primaryId} will remain open. The other ticket(s) will be closed and their comments moved to #${primaryId}.\n\nThis cannot be undone.`)) {
+                    e.preventDefault(); return;
+                }
+                // Post to MergeTickets action instead of BulkUpdate
+                form.action = '@Url.Action("MergeTickets", "Tickets")';
             }
             checked.forEach(c => {
                 const inp = document.createElement('input');

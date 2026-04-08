@@ -195,7 +195,16 @@
                                     <span class="fw-semibold">@note.AuthorName</span>
                                     <span class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</span>
                                 </div>
-                                <div class="comment-body bg-light rounded p-3">@note.Content</div>
+                                <div class="comment-body bg-light rounded p-3">
+                                    @if (note.Source == "Email")
+                                    {
+                                        @Html.Raw(note.Content)
+                                    }
+                                    else
+                                    {
+                                        <span style="white-space:pre-line;">@note.Content</span>
+                                    }
+                                </div>
                                 @if (note.Source != "Portal")
                                 {
                                     <div class="text-muted small mt-1"><i class="bi bi-envelope me-1"></i>via @note.Source</div>

@@ -172,14 +172,9 @@ public class TicketsController : Controller
         if (partial)
             return PartialView("_TicketsTable", tickets);
 
-        // Data for the Save View modal dropdowns (full-page load only)
-        ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
-            await _context.Employees
-                .Where(e => e.IsActive && e.Department == "IT")
-                .OrderBy(e => e.LastName)
-                .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
-                .ToListAsync());
-
+        // Data for filter bar assignee dropdown + bulk reassign dropdown (full-page load only).
+        // Use portal-user role membership (not department) so that any IT admin/agent with
+        // a portal account appears, regardless of their employee Department field.
         var itRoleIds = await _context.Roles
             .Where(r => r.Name != "End User")
             .Select(r => r.Id).ToListAsync();
@@ -188,11 +183,16 @@ public class TicketsController : Controller
                      && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
             .Select(u => u.EmployeeId!.Value)
             .Distinct().ToListAsync();
-        ViewBag.AssignableStaff = await _context.Employees
+        var assignableStaff = await _context.Employees
             .Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
+
+        ViewBag.AssignableStaff = assignableStaff;
+        // ITStaffJson is used by the bulk-reassign JS dropdown — same list, serialised
+        ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
+            assignableStaff.Select(e => new { id = e.Id, name = e.Name }));
 
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
@@ -512,6 +512,98 @@ public class TicketsController : Controller
             ? $"{tickets.Count} ticket(s) deleted."
             : $"{tickets.Count} ticket(s) updated.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // POST: Tickets/MergeTickets — merge 2+ tickets; lowest ID becomes primary, others are closed
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MergeTickets(int[] selectedIds)
+    {
+        if (selectedIds == null || selectedIds.Length < 2)
+        {
+            TempData["Error"] = "Select at least 2 tickets to merge.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var orderedIds  = selectedIds.OrderBy(id => id).ToArray();
+        var primaryId   = orderedIds[0];
+        var secondaryIds = orderedIds.Skip(1).ToArray();
+        var changedBy   = User.Identity?.Name ?? "Agent";
+        var now         = DateTime.UtcNow;
+
+        var primary = await _context.Tickets.FindAsync(primaryId);
+        if (primary == null)
+        {
+            TempData["Error"] = "Primary ticket not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaries = await _context.Tickets
+            .Include(t => t.Notes)
+            .Where(t => secondaryIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (!secondaries.Any())
+        {
+            TempData["Error"] = "Secondary tickets not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaryList = string.Join(", #", secondaries.Select(t => t.Id));
+
+        // Merge summary note on the primary ticket
+        _context.TicketNotes.Add(new TicketNote
+        {
+            TicketId   = primaryId,
+            AuthorName = changedBy,
+            Content    = $"Tickets #{secondaryList} were merged into this ticket by {changedBy}.",
+            CreatedDate = now, Source = "Agent", IsInternal = true
+        });
+
+        foreach (var secondary in secondaries)
+        {
+            // Copy all public notes from secondary → primary (prefixed for traceability)
+            foreach (var note in secondary.Notes.Where(n => !n.IsInternal))
+            {
+                _context.TicketNotes.Add(new TicketNote
+                {
+                    TicketId    = primaryId,
+                    AuthorName  = note.AuthorName,
+                    AuthorEmail = note.AuthorEmail,
+                    Content     = $"[Merged from #{secondary.Id}] {note.Content}",
+                    CreatedDate = note.CreatedDate,
+                    Source      = note.Source,
+                    IsInternal  = false
+                });
+            }
+
+            // Internal merge note on the secondary ticket
+            _context.TicketNotes.Add(new TicketNote
+            {
+                TicketId   = secondary.Id,
+                AuthorName = changedBy,
+                Content    = $"This ticket was merged into #{primaryId} by {changedBy}. Refer to #{primaryId} for all further updates.",
+                CreatedDate = now, Source = "Agent", IsInternal = true
+            });
+
+            _context.TicketHistory.Add(new TicketHistory
+            {
+                TicketId = secondary.Id, ChangedBy = changedBy,
+                FieldName = "Status",
+                OldValue  = secondary.Status.ToString(),
+                NewValue  = $"Closed (Merged into #{primaryId})"
+            });
+
+            secondary.Status     = TicketStatus.Closed;
+            secondary.ClosedDate ??= now;
+            secondary.UpdatedDate = now;
+        }
+
+        primary.UpdatedDate = now;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"{secondaries.Count} ticket(s) merged into #{primaryId}.";
+        return RedirectToAction(nameof(Edit), new { id = primaryId });
     }
 
     // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
