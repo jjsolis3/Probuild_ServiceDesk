@@ -44,7 +44,7 @@
     </div>
 }
 
-<div class="row g-3">
+<div class="row g-3 align-items-start">
     <!-- Main content -->
     <div class="col-lg-8">
         <div class="card border-0 shadow-sm mb-3">
@@ -79,7 +79,7 @@
                     <div class="fw-semibold small text-muted text-uppercase mb-2">
                         <i class="fas fa-align-left me-1"></i>Description
                     </div>
-                    <p class="mb-0" style="white-space:pre-wrap;">@ticket.Description</p>
+                    <p class="mb-0" style="white-space:pre-line;">@ticket.Description.Trim()</p>
                 </div>
             </div>
         </div>
