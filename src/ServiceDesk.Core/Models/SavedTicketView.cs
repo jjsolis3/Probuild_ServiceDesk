@@ -32,6 +32,14 @@ public class SavedTicketView
     [MaxLength(200)]
     public string? FilterStatuses { get; set; }
 
+    /// <summary>Comma-separated list of TicketCategory enum names for multi-category filtering. e.g. "HardwareIssue,SoftwareIssue"</summary>
+    [MaxLength(300)]
+    public string? FilterCategories { get; set; }
+
+    /// <summary>Comma-separated list of TicketPriority enum names for multi-priority filtering. e.g. "High,Critical"</summary>
+    [MaxLength(200)]
+    public string? FilterPriorities { get; set; }
+
     /// <summary>Single status filter — superseded by FilterStatuses when that field is set.</summary>
     public TicketStatus?   FilterStatus   { get; set; }
     public TicketCategory? FilterCategory { get; set; }

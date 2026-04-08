@@ -64,12 +64,33 @@ public class TicketsController : Controller
                     && (v.OwnerPortalUserId == userId || v.IsShared));
             if (activeView != null)
             {
-                if ((statuses    == null || statuses.Length    == 0) && activeView.FilterStatus   != null)
-                    statuses    = [activeView.FilterStatus.Value];
-                if ((categories  == null || categories.Length  == 0) && activeView.FilterCategory != null)
-                    categories  = [activeView.FilterCategory.Value];
-                if ((priorities  == null || priorities.Length  == 0) && activeView.FilterPriority != null)
-                    priorities  = [activeView.FilterPriority.Value];
+                if (statuses == null || statuses.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterStatuses))
+                        statuses = activeView.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => Enum.TryParse<TicketStatus>(s.Trim(), out var v) ? v : (TicketStatus?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterStatus != null)
+                        statuses = [activeView.FilterStatus.Value];
+                }
+                if (categories == null || categories.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterCategories))
+                        categories = activeView.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(c => Enum.TryParse<TicketCategory>(c.Trim(), out var v) ? v : (TicketCategory?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterCategory != null)
+                        categories = [activeView.FilterCategory.Value];
+                }
+                if (priorities == null || priorities.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterPriorities))
+                        priorities = activeView.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(p => Enum.TryParse<TicketPriority>(p.Trim(), out var v) ? v : (TicketPriority?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterPriority != null)
+                        priorities = [activeView.FilterPriority.Value];
+                }
                 unmatched  ??= activeView.FilterUnmatchedOnly  ? true : null;
                 unassigned ??= activeView.FilterUnassignedOnly ? true : null;
                 sortBy   = sortBy   == "id"   ? activeView.SortBy   : sortBy;
@@ -872,7 +893,8 @@ public class TicketsController : Controller
             .ThenBy(v => v.Name)
             .Select(v => new {
                 v.Id, v.Name, v.IsDefault, v.IsShared,
-                v.FilterStatuses, v.FilterStatus, v.FilterCategory, v.FilterPriority,
+                v.FilterStatuses, v.FilterCategories, v.FilterPriorities,
+                v.FilterStatus, v.FilterCategory, v.FilterPriority,
                 v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
                 v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
                 v.SortBy, v.SortDir, v.PageSize,
@@ -887,7 +909,7 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveView(
         string name, bool isShared,
-        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
         int? filterBranchId, string? filterDepartment, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
@@ -900,9 +922,9 @@ public class TicketsController : Controller
             Name                 = name.Trim(),
             OwnerPortalUserId    = userId,
             IsShared             = isShared,
-            FilterStatus         = filterStatus,
-            FilterCategory       = filterCategory,
-            FilterPriority       = filterPriority,
+            FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null,
+            FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null,
+            FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null,
             FilterBranchId       = filterBranchId,
             FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim(),
             FilterGroupId        = filterGroupId,
@@ -923,7 +945,7 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateView(
         int id, string name, bool isShared,
-        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
         int? filterBranchId, string? filterDepartment, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
@@ -935,9 +957,13 @@ public class TicketsController : Controller
 
         view.Name                 = name.Trim();
         view.IsShared             = isShared;
-        view.FilterStatus         = filterStatus;
-        view.FilterCategory       = filterCategory;
-        view.FilterPriority       = filterPriority;
+        view.FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null;
+        view.FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null;
+        view.FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null;
+        // Clear legacy single-value fields when multi-select values are stored
+        view.FilterStatus         = null;
+        view.FilterCategory       = null;
+        view.FilterPriority       = null;
         view.FilterBranchId       = filterBranchId;
         view.FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim();
         view.FilterGroupId        = filterGroupId;
@@ -1009,15 +1035,14 @@ public class TicketsController : Controller
     }
 
     /// <summary>
-    /// Builds a redirect URL for a saved view, correctly handling multi-status
-    /// via the FilterStatuses comma-separated field.
+    /// Builds a redirect URL for a saved view, handling multi-select for status, category, and priority.
     /// </summary>
     private static string BuildViewUrl(SavedTicketView v)
     {
         var sb = new System.Text.StringBuilder(
             $"/Tickets?viewId={v.Id}&sortBy={Uri.EscapeDataString(v.SortBy)}&sortDir={v.SortDir}&pageSize={v.PageSize}");
 
-        // Multi-status (FilterStatuses takes priority over FilterStatus)
+        // Multi-status (FilterStatuses takes priority over legacy FilterStatus)
         if (!string.IsNullOrEmpty(v.FilterStatuses))
         {
             foreach (var s in v.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries))
@@ -1028,8 +1053,28 @@ public class TicketsController : Controller
             sb.Append($"&statuses={v.FilterStatus}");
         }
 
-        if (v.FilterCategory != null) sb.Append($"&categories={v.FilterCategory}");
-        if (v.FilterPriority != null) sb.Append($"&priorities={v.FilterPriority}");
+        // Multi-category (FilterCategories takes priority over legacy FilterCategory)
+        if (!string.IsNullOrEmpty(v.FilterCategories))
+        {
+            foreach (var c in v.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&categories={Uri.EscapeDataString(c.Trim())}");
+        }
+        else if (v.FilterCategory != null)
+        {
+            sb.Append($"&categories={v.FilterCategory}");
+        }
+
+        // Multi-priority (FilterPriorities takes priority over legacy FilterPriority)
+        if (!string.IsNullOrEmpty(v.FilterPriorities))
+        {
+            foreach (var p in v.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&priorities={Uri.EscapeDataString(p.Trim())}");
+        }
+        else if (v.FilterPriority != null)
+        {
+            sb.Append($"&priorities={v.FilterPriority}");
+        }
+
         if (v.FilterUnmatchedOnly)    sb.Append("&unmatched=true");
         if (v.FilterUnassignedOnly)   sb.Append("&unassigned=true");
         return sb.ToString();
