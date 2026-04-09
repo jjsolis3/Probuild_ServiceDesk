@@ -47,6 +47,8 @@ $(window).on('load', function () {
         if ($sel.closest('.dataTables_wrapper').length > 0) return;
         // Skip if already initialized
         if ($sel.data('selectpicker')) return;
+        // Skip selects that explicitly opt out (e.g. settings page fields)
+        if ($sel.data('no-picker')) return;
 
         var pickerOptions;
         if (isFilterBarSelect) {

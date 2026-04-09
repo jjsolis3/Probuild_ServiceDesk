@@ -75,12 +75,11 @@
                                 else if (dropdownKeys.Contains(setting.Key) && employees != null)
                                 {
                                     <!-- Dropdown for DefaultAssigneeId -->
-                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key">
+                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key" data-no-picker="true">
                                         <option value="">-- No Default Assignee --</option>
                                         @foreach (var emp in employees)
                                         {
-                                            var isSelected = setting.Value == emp.Id.ToString();
-                                            <option value="@emp.Id" selected="@isSelected">
+                                            <option value="@emp.Id" @(setting.Value == emp.Id.ToString() ? "selected" : null)>
                                                 @emp.FullName (@emp.Department)
                                             </option>
                                         }
