@@ -40,6 +40,9 @@ public class ServiceDeskDbContext : DbContext
     // Routing & assignment
     public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
 
+    // Saved ticket view presets (per-user filter shortcuts)
+    public DbSet<SavedTicketView> SavedTicketViews => Set<SavedTicketView>();
+
     // Agent productivity
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
 
@@ -214,6 +217,13 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(r => r.AssigneeId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // AssignmentRule -> SubCategory (optional)
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.SubCategory)
+            .WithMany()
+            .HasForeignKey(r => r.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Index for fast rule lookup
         modelBuilder.Entity<AssignmentRule>()
             .HasIndex(r => new { r.IsActive, r.SortOrder });
@@ -229,11 +239,61 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<KbArticle>()
             .HasIndex(k => new { k.IsPublished, k.Category });
 
+        // SavedTicketView -> Owner (PortalUser)
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.Owner)
+            .WithMany()
+            .HasForeignKey(v => v.OwnerPortalUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SavedTicketView -> FilterBranch
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.FilterBranch)
+            .WithMany()
+            .HasForeignKey(v => v.FilterBranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // SavedTicketView -> FilterGroup
+        modelBuilder.Entity<SavedTicketView>()
+            .HasOne(v => v.FilterGroup)
+            .WithMany()
+            .HasForeignKey(v => v.FilterGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Index: fast lookup of a user's views + shared views
+        modelBuilder.Entity<SavedTicketView>()
+            .HasIndex(v => new { v.OwnerPortalUserId, v.IsShared });
+
+        // Decimal precision — prevents silent truncation on SQL Server
+        modelBuilder.Entity<Asset>()
+            .Property(a => a.PurchaseCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Subscription>()
+            .Property(s => s.AnnualCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Subscription>()
+            .Property(s => s.MonthlyCost)
+            .HasPrecision(18, 2);
+
+        // Store sanitized HTML email body without length limit
+        modelBuilder.Entity<Ticket>()
+            .Property(t => t.DescriptionHtml)
+            .HasColumnType("nvarchar(max)");
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)
             .WithMany()
             .HasForeignKey(t => t.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Ticket -> UserGroup (group assignment, optional)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.UserGroup)
+            .WithMany()
+            .HasForeignKey(t => t.UserGroupId)
             .OnDelete(DeleteBehavior.SetNull);
 
         // Index on SubCategory for fast lookup by parent category

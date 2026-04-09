@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Services;
@@ -23,22 +24,20 @@ public class AssignmentResolverService
     /// <summary>
     /// Determines the best agent to assign a ticket to.
     ///
-    /// Evaluation order (first match wins):
-    ///   1. Rules matching BOTH category AND branch  (most specific)
-    ///   2. Rules matching category only             (no branch filter)
-    ///   3. Rules matching branch only               (no category filter)
-    ///   4. Catch-all rules (no category, no branch)
-    ///   5. <paramref name="defaultAssigneeId"/> from the email configuration
-    ///
-    /// Within each tier, rules are sorted by <c>SortOrder</c> ascending.
+    /// Evaluation order (first match wins, within each tier sorted by SortOrder asc):
+    ///   1. category + subcategory + branch  (most specific)
+    ///   2. category + subcategory           (no branch filter)
+    ///   3. category + branch                (no subcategory filter)
+    ///   4. category only
+    ///   5. branch only
+    ///   6. Catch-all (no category, no subcategory, no branch)
+    ///   7. <paramref name="defaultAssigneeId"/> fallback
     /// </summary>
-    /// <param name="category">Detected ticket category.</param>
-    /// <param name="branchId">Branch of the submitting employee, or null.</param>
-    /// <param name="defaultAssigneeId">Fallback from the email configuration.</param>
     public async Task<int?> ResolveAsync(
         TicketCategory category,
         int? branchId,
-        int? defaultAssigneeId)
+        int? defaultAssigneeId,
+        int? subCategoryId = null)
     {
         var activeRules = await _context.AssignmentRules
             .Where(r => r.IsActive)
@@ -51,62 +50,62 @@ public class AssignmentResolverService
             return defaultAssigneeId;
         }
 
-        // Tier 1: category + branch both match
+        // Tier 1: category + subcategory + branch
+        if (subCategoryId.HasValue && branchId.HasValue)
+        {
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == category && r.SubCategoryId == subCategoryId && r.BranchId == branchId);
+            if (m != null) { Log(m, "category+subcategory+branch"); return m.AssigneeId; }
+        }
+
+        // Tier 2: category + subcategory (any branch)
+        if (subCategoryId.HasValue)
+        {
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == category && r.SubCategoryId == subCategoryId && r.BranchId == null);
+            if (m != null) { Log(m, "category+subcategory"); return m.AssigneeId; }
+        }
+
+        // Tier 3: category + branch (any subcategory)
         if (branchId.HasValue)
         {
-            var match = activeRules.FirstOrDefault(r =>
-                r.Category == category && r.BranchId == branchId.Value);
-            if (match != null)
-            {
-                _logger.LogInformation(
-                    "Assignment rule '{Name}' (category+branch) matched for category={Category}, branch={BranchId} → assignee {AssigneeId}",
-                    match.Name, category, branchId, match.AssigneeId);
-                return match.AssigneeId;
-            }
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == category && r.SubCategoryId == null && r.BranchId == branchId);
+            if (m != null) { Log(m, "category+branch"); return m.AssigneeId; }
         }
 
-        // Tier 2: category matches, rule has no branch restriction
-        var categoryOnlyMatch = activeRules.FirstOrDefault(r =>
-            r.Category == category && r.BranchId == null);
-        if (categoryOnlyMatch != null)
+        // Tier 4: category only
         {
-            _logger.LogInformation(
-                "Assignment rule '{Name}' (category-only) matched for category={Category} → assignee {AssigneeId}",
-                categoryOnlyMatch.Name, category, categoryOnlyMatch.AssigneeId);
-            return categoryOnlyMatch.AssigneeId;
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == category && r.SubCategoryId == null && r.BranchId == null);
+            if (m != null) { Log(m, "category-only"); return m.AssigneeId; }
         }
 
-        // Tier 3: branch matches, rule has no category restriction
+        // Tier 5: branch only
         if (branchId.HasValue)
         {
-            var branchOnlyMatch = activeRules.FirstOrDefault(r =>
-                r.Category == null && r.BranchId == branchId.Value);
-            if (branchOnlyMatch != null)
-            {
-                _logger.LogInformation(
-                    "Assignment rule '{Name}' (branch-only) matched for branch={BranchId} → assignee {AssigneeId}",
-                    branchOnlyMatch.Name, branchId, branchOnlyMatch.AssigneeId);
-                return branchOnlyMatch.AssigneeId;
-            }
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == null && r.SubCategoryId == null && r.BranchId == branchId);
+            if (m != null) { Log(m, "branch-only"); return m.AssigneeId; }
         }
 
-        // Tier 4: catch-all rule (no category, no branch)
-        var catchAll = activeRules.FirstOrDefault(r =>
-            r.Category == null && r.BranchId == null);
-        if (catchAll != null)
+        // Tier 6: catch-all
         {
-            _logger.LogInformation(
-                "Assignment rule '{Name}' (catch-all) matched → assignee {AssigneeId}",
-                catchAll.Name, catchAll.AssigneeId);
-            return catchAll.AssigneeId;
+            var m = activeRules.FirstOrDefault(r =>
+                r.Category == null && r.SubCategoryId == null && r.BranchId == null);
+            if (m != null) { Log(m, "catch-all"); return m.AssigneeId; }
         }
 
-        // Tier 5: email config default
         _logger.LogDebug(
-            "No assignment rule matched for category={Category}, branch={BranchId} — using default assignee {DefaultAssigneeId}",
-            category, branchId, defaultAssigneeId);
+            "No assignment rule matched for category={Category}, subCategory={SubCategoryId}, branch={BranchId} — using default {DefaultAssigneeId}",
+            category, subCategoryId, branchId, defaultAssigneeId);
         return defaultAssigneeId;
     }
+
+    private void Log(AssignmentRule rule, string tier) =>
+        _logger.LogInformation(
+            "Assignment rule '{Name}' ({Tier}) matched → assignee {AssigneeId}",
+            rule.Name, tier, rule.AssigneeId);
 
     // -------------------------------------------------------------------------
     // Keyword-based category detection

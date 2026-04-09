@@ -32,28 +32,44 @@ $(window).on('load', function () {
             });
     });
 
-    // --- Searchable form selects (live-search) ---
-    // Auto-apply bootstrap-select with liveSearch to any .form-select
-    // that has more than 7 options, except filter-bar and DataTables selects.
+    // --- Searchable form selects (live-search) + themed filter selects ---
+    // Auto-apply bootstrap-select:
+    // 1) for filter-bar selects that explicitly opt in via .selectpicker
+    // 2) for non-filter form-select controls with more than 7 options
     $('select.form-select').each(function () {
         var $sel = $(this);
-        // Skip filter bar selects (they use onchange submit — keep native)
-        if ($sel.closest('.filter-bar').length > 0) return;
+        var isFilterBarSelect = $sel.closest('.filter-bar').length > 0;
+        var wantsPicker = $sel.hasClass('selectpicker');
+
+        // Skip filter-bar selects unless explicitly opted in
+        if (isFilterBarSelect && !wantsPicker) return;
         // Skip DataTables wrappers (handled above)
         if ($sel.closest('.dataTables_wrapper').length > 0) return;
         // Skip if already initialized
         if ($sel.data('selectpicker')) return;
-        // Only enhance selects with enough options to benefit from search
-        if ($sel.find('option').length <= 7) return;
 
-        $sel.selectpicker({
-            liveSearch: true,
-            liveSearchPlaceholder: 'Type to search...',
-            size: 8,
-            width: '100%',
-            style: '',          // remove default btn-light class
-            styleBase: 'btn'    // just .btn, we style via .ss-form-select
-        });
+        var pickerOptions;
+        if (isFilterBarSelect) {
+            pickerOptions = {
+                liveSearch: false,
+                width: $sel.data('width') || 'fit',
+                style: $sel.data('style') || 'btn-outline-secondary btn-sm',
+                styleBase: 'btn'
+            };
+        } else {
+            // Only enhance non-filter selects with enough options to benefit from search
+            if ($sel.find('option').length <= 7) return;
+            pickerOptions = {
+                liveSearch: true,
+                liveSearchPlaceholder: 'Type to search...',
+                size: 8,
+                width: '100%',
+                style: '',          // remove default btn-light class
+                styleBase: 'btn'    // just .btn, we style via .ss-form-select
+            };
+        }
+
+        $sel.selectpicker(pickerOptions);
 
         // Tag the wrapper so our CSS (.ss-form-select) applies
         $sel.closest('.bootstrap-select').addClass('ss-form-select');

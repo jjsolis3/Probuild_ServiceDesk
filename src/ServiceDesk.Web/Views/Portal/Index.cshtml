@@ -2,23 +2,28 @@
 @{
     ViewData["Title"] = "My Support Tickets";
     Layout = "_PortalLayout";
+
+    var sf = Model.StatusFilter?.ToLower();
+
+    string KpiCardClass(string key) =>
+        sf == key ? "card text-center border-2 shadow-sm border-primary" : "card text-center border-0 shadow-sm";
+
+    string KpiNumClass(string key, string colour) =>
+        sf == key ? $"fs-3 fw-bold text-{colour}" : $"fs-3 fw-bold text-{colour}";
+
+    string FilterUrl(string key) =>
+        sf == key ? Url.Action("Index", "Portal")! : Url.Action("Index", "Portal", new { status = key })!;
+
+    string ListLabel = sf switch
+    {
+        "open"       => "Open Tickets",
+        "inprogress" => "In Progress Tickets",
+        "resolved"   => "Resolved & Closed Tickets",
+        _            => "All My Tickets"
+    };
 }
 
-@if (TempData["Error"] != null)
-{
-    <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
-        <i class="fas fa-exclamation-circle me-2"></i>@TempData["Error"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-}
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
-        <i class="fas fa-check-circle me-2"></i>@TempData["Success"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-}
-
+<!-- Quick Stats (clickable KPIs) -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="fw-bold mb-0">My Support Tickets</h2>
@@ -29,49 +34,84 @@
     </a>
 </div>
 
-<!-- Quick Stats -->
 <div class="row g-3 mb-4">
     <div class="col-4">
-        <div class="card text-center border-0 shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-3 fw-bold text-primary">@Model.OpenCount</div>
-                <div class="text-muted small">Open</div>
+        <a href="@FilterUrl("open")" class="text-decoration-none">
+            <div class="@KpiCardClass("open") h-100" style="cursor:pointer;transition:box-shadow .15s;">
+                <div class="card-body py-3">
+                    <div class="@KpiNumClass("open","primary")">@Model.OpenCount</div>
+                    <div class="text-muted small">Open</div>
+                    @if (sf == "open")
+                    {
+                        <div class="mt-1"><span class="badge bg-primary bg-opacity-10 text-primary small">Active filter</span></div>
+                    }
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-4">
-        <div class="card text-center border-0 shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-3 fw-bold text-warning">@Model.InProgressCount</div>
-                <div class="text-muted small">In Progress</div>
+        <a href="@FilterUrl("inprogress")" class="text-decoration-none">
+            <div class="@KpiCardClass("inprogress") h-100" style="cursor:pointer;transition:box-shadow .15s;">
+                <div class="card-body py-3">
+                    <div class="@KpiNumClass("inprogress","warning")">@Model.InProgressCount</div>
+                    <div class="text-muted small">In Progress</div>
+                    @if (sf == "inprogress")
+                    {
+                        <div class="mt-1"><span class="badge bg-warning bg-opacity-25 text-warning small">Active filter</span></div>
+                    }
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-4">
-        <div class="card text-center border-0 shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-3 fw-bold text-success">@Model.ResolvedCount</div>
-                <div class="text-muted small">Resolved</div>
+        <a href="@FilterUrl("resolved")" class="text-decoration-none">
+            <div class="@KpiCardClass("resolved") h-100" style="cursor:pointer;transition:box-shadow .15s;">
+                <div class="card-body py-3">
+                    <div class="@KpiNumClass("resolved","success")">@Model.ResolvedCount</div>
+                    <div class="text-muted small">Resolved</div>
+                    @if (sf == "resolved")
+                    {
+                        <div class="mt-1"><span class="badge bg-success bg-opacity-10 text-success small">Active filter</span></div>
+                    }
+                </div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 
 <!-- Ticket List -->
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-        <h6 class="mb-0 fw-semibold"><i class="fas fa-list me-2 text-muted"></i>All My Tickets</h6>
-        <span class="badge bg-secondary">@Model.MyTickets.Count total</span>
+        <h6 class="mb-0 fw-semibold">
+            <i class="fas fa-list me-2 text-muted"></i>@ListLabel
+            @if (!string.IsNullOrEmpty(Model.StatusFilter))
+            {
+                <a href="@Url.Action("Index","Portal")" class="ms-2 text-muted small fw-normal">
+                    <i class="fas fa-times-circle me-1"></i>Clear
+                </a>
+            }
+        </h6>
+        <span class="badge bg-secondary">@Model.TotalFiltered total</span>
     </div>
     <div class="card-body p-0">
-        @if (!Model.MyTickets.Any())
+        @if (!Model.MyTickets.Any() && Model.TotalFiltered == 0)
         {
             <div class="text-center py-5 text-muted">
                 <i class="fas fa-inbox fa-3x mb-3 d-block opacity-25"></i>
-                <p class="mb-1">You haven't submitted any tickets yet.</p>
-                <a asp-action="SubmitTicket" class="btn btn-primary mt-2">
-                    <i class="fas fa-plus me-1"></i> Submit Your First Ticket
-                </a>
+                @if (!string.IsNullOrEmpty(Model.StatusFilter))
+                {
+                    <p class="mb-1">No @ListLabel.ToLower() found.</p>
+                    <a href="@Url.Action("Index","Portal")" class="btn btn-outline-secondary mt-2 btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear Filter
+                    </a>
+                }
+                else
+                {
+                    <p class="mb-1">You haven't submitted any tickets yet.</p>
+                    <a asp-action="SubmitTicket" class="btn btn-primary mt-2">
+                        <i class="fas fa-plus me-1"></i> Submit Your First Ticket
+                    </a>
+                }
             </div>
         }
         else
@@ -127,6 +167,36 @@
                     </a>
                 }
             </div>
+
+            @if (Model.TotalPages > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top bg-light">
+                    <div class="text-muted small">
+                        Showing @((Model.Page - 1) * Model.PageSize + 1)–@(Math.Min(Model.Page * Model.PageSize, Model.TotalFiltered))
+                        of @Model.TotalFiltered
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item @(!Model.HasPrev ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index","Portal", new { status = Model.StatusFilter, page = Model.Page - 1 })">
+                                    <i class="fas fa-chevron-left"></i>
+                                </a>
+                            </li>
+                            @for (var p = Math.Max(1, Model.Page - 2); p <= Math.Min(Model.TotalPages, Model.Page + 2); p++)
+                            {
+                                <li class="page-item @(p == Model.Page ? "active" : "")">
+                                    <a class="page-link" href="@Url.Action("Index","Portal", new { status = Model.StatusFilter, page = p })">@p</a>
+                                </li>
+                            }
+                            <li class="page-item @(!Model.HasNext ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index","Portal", new { status = Model.StatusFilter, page = Model.Page + 1 })">
+                                    <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
         }
     </div>
 </div>

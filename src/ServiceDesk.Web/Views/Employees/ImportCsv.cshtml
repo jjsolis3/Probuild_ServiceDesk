@@ -1,0 +1,117 @@
+@{
+    ViewData["Title"] = "Import Employees";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Employees</a></li>
+        <li class="breadcrumb-item active">Import Employees</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="bi bi-people text-primary me-2"></i>Import Employees &amp; Users</h1>
+
+<div class="row g-4">
+
+    <!-- LEFT: Download + Upload -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+
+                <!-- Download -->
+                <div class="d-flex align-items-start gap-3 pb-3 mb-3 border-bottom">
+                    <div class="bg-success bg-opacity-10 rounded p-2 flex-shrink-0">
+                        <i class="bi bi-file-earmark-arrow-down fs-4 text-success"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1">Step 1 — Download the Template</div>
+                        <div class="text-muted small mb-2">
+                            Fill in employee data. If a <strong>Role</strong> is provided, a login account is also created
+                            with the default password <code>Welcome@@1</code>.
+                        </div>
+                        <a href="/templates/employees-import-template.csv" download="employees-import-template.csv" class="btn btn-success btn-sm">
+                            <i class="bi bi-download me-1"></i> Download Template (.csv)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Upload -->
+                <div class="d-flex align-items-start gap-3">
+                    <div class="bg-primary bg-opacity-10 rounded p-2 flex-shrink-0">
+                        <i class="bi bi-cloud-upload fs-4 text-primary"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1">Step 2 — Upload &amp; Preview</div>
+                        <div class="text-muted small mb-2">Select your completed CSV. A preview shows what will be created before anything is saved.</div>
+                        <div asp-validation-summary="All" class="alert alert-danger py-2 small mb-2"></div>
+                        <form asp-action="ImportCsv" method="post" enctype="multipart/form-data" data-loading-btn="btnUpload">
+                            @Html.AntiForgeryToken()
+                            <div class="input-group">
+                                <input type="file" name="file" class="form-control form-control-sm" accept=".csv,.tsv,.txt" required />
+                                <button type="submit" id="btnUpload" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-search me-1"></i> Parse &amp; Preview
+                                </button>
+                            </div>
+                            <div class="form-text">Supports .csv or .tsv files.</div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="card-footer bg-white border-top-0 pt-0">
+                <button class="btn btn-link btn-sm text-muted text-decoration-none px-0 py-1 d-flex align-items-center gap-1"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#empImportRules">
+                    <i class="bi bi-chevron-down small"></i> Field rules &amp; notes
+                </button>
+                <div class="collapse" id="empImportRules">
+                    <ul class="small text-muted ps-3 mb-2 mt-1">
+                        <li class="mb-1"><strong>FirstName, LastName, Email</strong> — all required. Row is skipped if any are blank.</li>
+                        <li class="mb-1"><strong>Email</strong> — must be unique. Rows where the email already exists are skipped.</li>
+                        <li class="mb-1"><strong>Role</strong> — optional. Must match a role name in Settings → Roles (e.g. <code>Admin</code>, <code>IT Agent</code>). If provided, a login account is created with password <code>Welcome@@1</code>. Leave blank for employees with no system access.</li>
+                        <li class="mb-1"><strong>Site</strong> — must match a Branch name or city. Leave blank if unknown.</li>
+                        <li class="mb-1"><strong>IsActive</strong> — <code>Yes</code> (default) or <code>No</code>.</li>
+                        <li><strong>HireDate</strong> — <code>M/D/YYYY</code> format. Defaults to today if blank.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT: Column reference -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom py-2">
+                <h6 class="mb-0"><i class="bi bi-table me-2 text-muted"></i>Template Columns</h6>
+            </div>
+            <div class="card-body p-0" style="max-height:420px;overflow-y:auto;">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th class="ps-3">Column</th>
+                            <th>Required</th>
+                            <th class="pe-3">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="ps-3"><code>FirstName</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Employee first name</td></tr>
+                        <tr><td class="ps-3"><code>LastName</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Employee last name</td></tr>
+                        <tr><td class="ps-3"><code>Email</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Must be unique — used as login email if Role given</td></tr>
+                        <tr><td class="ps-3"><code>Phone</code></td><td>No</td><td class="pe-3 text-muted">Direct / mobile number</td></tr>
+                        <tr><td class="ps-3"><code>Department</code></td><td>No</td><td class="pe-3 text-muted">e.g. IT, Operations, Sales. Defaults to General</td></tr>
+                        <tr><td class="ps-3"><code>JobTitle</code></td><td>No</td><td class="pe-3 text-muted">e.g. IT Support Specialist</td></tr>
+                        <tr><td class="ps-3"><code>HireDate</code></td><td>No</td><td class="pe-3 text-muted">M/D/YYYY — defaults to today</td></tr>
+                        <tr><td class="ps-3"><code>IsActive</code></td><td>No</td><td class="pe-3 text-muted"><code>Yes</code> or <code>No</code> — defaults to Yes</td></tr>
+                        <tr><td class="ps-3"><code>Site</code></td><td>No</td><td class="pe-3 text-muted">Branch name or city (e.g. Las Vegas)</td></tr>
+                        <tr class="table-info"><td class="ps-3"><code>Role</code></td><td>No</td><td class="pe-3 text-muted">Creates login account if set (e.g. <code>IT Agent</code>, <code>Admin</code>)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light py-2 small text-muted">
+                <i class="bi bi-info-circle-fill text-info me-1"></i>
+                Employees created without a <strong>Role</strong> can still submit tickets via the portal — they just won't have an agent/admin login.
+            </div>
+        </div>
+    </div>
+
+</div>

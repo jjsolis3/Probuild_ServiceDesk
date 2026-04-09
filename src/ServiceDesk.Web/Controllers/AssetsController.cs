@@ -18,22 +18,40 @@ public class AssetsController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(AssetType? type, AssetStatus? status)
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> Index(AssetType[]? types, AssetStatus[]? statuses, string[]? manufacturers, bool? assigned, string? q)
     {
         var query = _context.Assets.Include(a => a.AssignedTo).AsQueryable();
 
-        if (type.HasValue)
-            query = query.Where(a => a.AssetType == type.Value);
-        if (status.HasValue)
-            query = query.Where(a => a.Status == status.Value);
+        if (types is { Length: > 0 })
+            query = query.Where(a => types.Contains(a.AssetType));
+        if (statuses is { Length: > 0 })
+            query = query.Where(a => statuses.Contains(a.Status));
+        if (manufacturers is { Length: > 0 })
+            query = query.Where(a => manufacturers.Contains(a.Manufacturer));
+        if (assigned.HasValue)
+            query = assigned.Value
+                ? query.Where(a => a.AssignedToId != null)
+                : query.Where(a => a.AssignedToId == null);
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(a => a.Name.Contains(q) || a.AssetTag.Contains(q)
+                || (a.Manufacturer != null && a.Manufacturer.Contains(q))
+                || (a.Model != null && a.Model.Contains(q)));
 
-        ViewBag.CurrentType = type;
-        ViewBag.CurrentStatus = status;
+        ViewBag.SelectedTypes         = types ?? Array.Empty<AssetType>();
+        ViewBag.SelectedStatuses      = statuses ?? Array.Empty<AssetStatus>();
+        ViewBag.SelectedManufacturers = manufacturers ?? Array.Empty<string>();
+        ViewBag.CurrentAssigned       = assigned;
+        ViewBag.CurrentQuery          = q;
+        ViewBag.Manufacturers         = await _context.Assets
+            .Where(a => a.Manufacturer != null && a.Manufacturer != "")
+            .Select(a => a.Manufacturer!).Distinct().OrderBy(m => m).ToListAsync();
 
         var assets = await query.OrderBy(a => a.AssetTag).ToListAsync();
         return View(assets);
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();

@@ -1,52 +1,225 @@
 @model IEnumerable<Ticket>
+@using Microsoft.AspNetCore.Html
 @{
     ViewData["Title"] = "Tickets";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1><i class="bi bi-ticket-detailed"></i> Tickets</h1>
-    <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-lg"></i> New Ticket
-    </a>
+    <div class="d-flex gap-2">
+        @if (User.IsInRole("Admin"))
+        {
+            <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-upload me-1"></i> Import from SolarWinds
+            </a>
+        }
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Ticket
+        </a>
+    </div>
+</div>
+
+<!-- Views Bar -->
+<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+    @if (ViewBag.ActiveViewId != null)
+    {
+        <span class="badge bg-primary fs-6 px-3 py-2">
+            <i class="bi bi-funnel-fill me-1"></i>@ViewBag.ActiveViewName
+            <a asp-action="Index" class="text-white ms-2" title="Clear view" style="text-decoration:none;">×</a>
+        </span>
+    }
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="viewsDropdownBtn"
+                data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-layout-text-sidebar-reverse me-1"></i> My Views
+        </button>
+        <ul class="dropdown-menu shadow" id="viewsDropdownMenu" style="min-width:280px;">
+            <li><span class="dropdown-item-text text-muted small px-3">Loading…</span></li>
+        </ul>
+    </div>
+    <button class="btn btn-outline-primary btn-sm" onclick="openSaveViewModal()">
+        <i class="bi bi-bookmark-plus me-1"></i> Save as View
+    </button>
 </div>
 
 <!-- Filters -->
+@{
+    var selStatuses    = (TicketStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<TicketStatus>());
+    var selCategories  = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selPriorities  = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
+    var selAssignees   = (int[])(ViewBag.SelectedAssigneeIds  ?? Array.Empty<int>());
+    var selRequesters  = (int[])(ViewBag.SelectedRequesterIds ?? Array.Empty<int>());
+    var curUnmatched   = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
+    var curUnassigned  = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
+
+    string AssigneeLabel() {
+        var cnt = selAssignees.Length + (curUnassigned ? 1 : 0);
+        return cnt == 0 ? "All Assignees" : cnt == 1 ? "1 Assignee" : $"{cnt} Assignees";
+    }
+
+    string RequesterLabel() {
+        var cnt = selRequesters.Length + (curUnmatched ? 1 : 0);
+        return cnt == 0 ? "All Requesters" : cnt == 1 ? "1 Requester" : $"{cnt} Requesters";
+    }
+}
 <div class="filter-bar">
-    <form method="get" class="row g-2 align-items-end">
-        <div class="col-auto">
-            <label class="form-label small">Status</label>
-            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Statuses</option>
-                @foreach (var s in Enum.GetValues<TicketStatus>())
-                {
-                    <option value="@s" selected="@(ViewBag.CurrentStatus != null && (TicketStatus)ViewBag.CurrentStatus == s)">@s</option>
-                }
-            </select>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Status -->
+        <div>
+            <div class="form-label small mb-1">Status</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Status" data-plural="Statuses" data-all="All Statuses">
+                    <span class="filter-label">@FilterLabel("Status", "Statuses", selStatuses.Length)</span>
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
+                    @foreach (var s in Enum.GetValues<TicketStatus>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="statuses"
+                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                            <label class="form-check-label small" for="fs_@s">@s</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Category</label>
-            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Categories</option>
-                @foreach (var c in Enum.GetValues<TicketCategory>())
-                {
-                    <option value="@c" selected="@(ViewBag.CurrentCategory != null && (TicketCategory)ViewBag.CurrentCategory == c)">@c</option>
-                }
-            </select>
+
+        <!-- Category -->
+        <div>
+            <div class="form-label small mb-1">Category</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selCategories.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Category" data-plural="Categories" data-all="All Categories">
+                    <span class="filter-label">@FilterLabel("Category", "Categories", selCategories.Length)</span>
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
+                    @foreach (var c in Enum.GetValues<TicketCategory>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="categories"
+                                   value="@c" id="fc_@c" @(selCategories.Contains(c) ? "checked" : "")>
+                            <label class="form-check-label small" for="fc_@c">@c</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <label class="form-label small">Priority</label>
-            <select name="priority" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Priorities</option>
-                @foreach (var p in Enum.GetValues<TicketPriority>())
-                {
-                    <option value="@p" selected="@(ViewBag.CurrentPriority != null && (TicketPriority)ViewBag.CurrentPriority == p)">@p</option>
-                }
-            </select>
+
+        <!-- Priority -->
+        <div>
+            <div class="form-label small mb-1">Priority</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selPriorities.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Priority" data-plural="Priorities" data-all="All Priorities">
+                    <span class="filter-label">@FilterLabel("Priority", "Priorities", selPriorities.Length)</span>
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
+                    @foreach (var p in Enum.GetValues<TicketPriority>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="priorities"
+                                   value="@p" id="fp_@p" @(selPriorities.Contains(p) ? "checked" : "")>
+                            <label class="form-check-label small" for="fp_@p">@p</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-        <div class="col-auto">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+
+        <!-- Assignee (IT staff + Unassigned) -->
+        <div>
+            <div class="form-label small mb-1">Assignee</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selAssignees.Length > 0 || curUnassigned ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Assignee" data-plural="Assignees" data-all="All Assignees">
+                    <span class="filter-label">@AssigneeLabel()</span>
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:200px; max-height:280px; overflow-y:auto;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="unassigned"
+                               value="true" id="fa_unassigned" @(curUnassigned ? "checked" : "")>
+                        <label class="form-check-label small fw-semibold" for="fa_unassigned">
+                            <i class="bi bi-person-dash me-1"></i>Unassigned
+                        </label>
+                    </div>
+                    <hr class="my-1">
+                    @foreach (var staff in (ViewBag.AssignableStaff as IEnumerable<dynamic> ?? []))
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="assigneeIds"
+                                   value="@staff.Id" id="fa_@staff.Id"
+                                   @(selAssignees.Contains((int)staff.Id) ? "checked" : "")>
+                            <label class="form-check-label small" for="fa_@staff.Id">@staff.Name</label>
+                        </div>
+                    }
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
         </div>
-    </form>
+
+        <!-- Requester (employees who submitted tickets + Unmatched flag) -->
+        <div>
+            <div class="form-label small mb-1">Requester</div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selRequesters.Length > 0 || curUnmatched ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Requester" data-plural="Requesters" data-all="All Requesters">
+                    <span class="filter-label">@RequesterLabel()</span>
+                </button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:230px;">
+                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Search requester…" id="requesterSearchInput"
+                           oninput="filterRequesterList(this.value)">
+                    <div id="requesterCheckList" style="max-height:200px; overflow-y:auto;">
+                        @foreach (var req in (ViewBag.Requesters as IEnumerable<dynamic> ?? []))
+                        {
+                            <div class="form-check requester-option" data-name="@req.Name.ToLower()">
+                                <input class="form-check-input" type="checkbox" name="requesterIds"
+                                       value="@req.Id" id="fr_@req.Id"
+                                       @(selRequesters.Contains((int)req.Id) ? "checked" : "")>
+                                <label class="form-check-label small" for="fr_@req.Id">@req.Name</label>
+                            </div>
+                        }
+                    </div>
+                    <hr class="my-1">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="unmatched"
+                               value="true" id="fr_unmatched" @(curUnmatched ? "checked" : "")>
+                        <label class="form-check-label small text-muted" for="fr_unmatched">
+                            <i class="bi bi-question-circle me-1"></i>External / Unmatched only
+                        </label>
+                    </div>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="align-self-end">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
+        </div>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="ticketKeywordSearch" class="form-control" placeholder="Search tickets..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @Html.AntiForgeryToken()
@@ -60,6 +233,7 @@
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
             <option value="assign">Reassign</option>
+            <option value="delete">Delete Selected</option>
         </select>
         <div id="bulkStatusGroup" class="d-none">
             <select name="bulkStatus" class="form-select form-select-sm" style="width:auto;">
@@ -76,138 +250,231 @@
         </div>
         <button type="submit" class="btn btn-sm btn-primary" id="btnBulkApply">Apply</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnBulkClear">Clear</button>
+        <button type="button" class="btn btn-sm btn-warning ms-auto" id="btnBulkMerge" title="Merge selected ticket(s)">
+            <i class="bi bi-arrow-left-right me-1"></i> Merge Tickets
+        </button>
     </form>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-striped table-hover ss-datatable" data-export-title="Tickets Report">
-        <thead class="table-dark">
-            <tr>
-                <th class="no-sort no-export" style="width:36px;">
-                    <input type="checkbox" id="chkSelectAll" class="form-check-input" title="Select all">
-                </th>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Submitted By</th>
-                <th>Assigned To</th>
-                <th>Created</th>
-                <th>Due Date</th>
-                <th class="no-sort no-export">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var ticket in Model)
-            {
-                <tr>
-                    <td>
-                        <input type="checkbox" class="form-check-input ticket-chk" name="selectedIds" value="@ticket.Id">
-                    </td>
-                    <td>@ticket.Id</td>
-                    <td>
-                        <a asp-action="Details" asp-route-id="@ticket.Id">@ticket.Title</a>
-                        @if (ticket.IsOverdue)
-                        {
-                            <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
-                                <i class="bi bi-exclamation-circle me-1"></i>Overdue
-                            </span>
-                        }
-                    </td>
-                    <td>@ticket.Category</td>
-                    <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                    <td>
-                        <!-- Inline-editable Status -->
-                        <div class="dropdown inline-edit-dropdown">
-                            <span class="badge badge-@ticket.Status.ToString().ToLower() inline-edit-badge"
-                                  data-ticket-id="@ticket.Id"
-                                  data-field="status"
-                                  data-current="@ticket.Status"
-                                  title="Click to change status"
-                                  role="button"
-                                  data-bs-toggle="dropdown"
-                                  aria-expanded="false">
-                                @ticket.Status <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>
-                            </span>
-                            <ul class="dropdown-menu dropdown-menu-sm shadow-sm status-dropdown" data-ticket-id="@ticket.Id">
-                                @foreach (var s in Enum.GetValues<TicketStatus>())
-                                {
-                                    <li>
-                                        <a class="dropdown-item status-option @(ticket.Status == s ? "active" : "")"
-                                           data-value="@s" href="#">
-                                            <span class="badge badge-@s.ToString().ToLower() me-2">@s</span>
-                                        </a>
-                                    </li>
-                                }
-                            </ul>
-                        </div>
-                    </td>
-                    <td>@ticket.SubmittedBy?.FullName</td>
-                    <td>
-                        <!-- Inline-editable AssignedTo -->
-                        <div class="dropdown inline-edit-dropdown">
-                            <span class="inline-edit-assignee text-nowrap"
-                                  data-ticket-id="@ticket.Id"
-                                  data-field="assignee"
-                                  data-current="@(ticket.AssignedToId?.ToString() ?? "0")"
-                                  title="Click to change assignee"
-                                  role="button"
-                                  data-bs-toggle="dropdown"
-                                  aria-expanded="false">
-                                @if (ticket.AssignedTo != null)
-                                {
-                                    <span>@ticket.AssignedTo.FullName <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i></span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>
-                                }
-                            </span>
-                            <div class="dropdown-menu p-2 shadow-sm assignee-dropdown" style="min-width:220px;" data-ticket-id="@ticket.Id">
-                                <input type="text" class="form-control form-control-sm mb-2 assignee-search" placeholder="Search agent..." autocomplete="off" />
-                                <ul class="list-unstyled mb-0 assignee-list" style="max-height:200px;overflow-y:auto;">
-                                    <li><a class="dropdown-item assignee-option @(ticket.AssignedToId == null ? "active" : "")" data-value="0" href="#">— Unassigned —</a></li>
-                                </ul>
-                            </div>
-                        </div>
-                    </td>
-                    <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
-                    <td>
-                        @if (ticket.DueDate.HasValue)
-                        {
-                            <span class="@(ticket.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
-                                @ticket.DueDate.Value.ToString("MMM dd, yyyy")
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="text-muted">—</span>
-                        }
-                    </td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <a asp-action="Delete" asp-route-id="@ticket.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+<!-- Merge Target Modal: prompts for target ticket ID when only 1 ticket is selected -->
+<div class="modal fade" id="mergeTargetModal" tabindex="-1" aria-labelledby="mergeTargetModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mergeTargetModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Merge Ticket</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Enter the <strong>target ticket ID</strong> to merge ticket <strong id="mergeSourceLabel">#</strong> into:</p>
+        <input type="number" min="1" id="mergeTargetIdInput" class="form-control" placeholder="e.g. 1042" />
+        <div class="form-text">All public comments from ticket <span id="mergeSourceLabel2">#</span> will be moved to the target, and ticket <span id="mergeSourceLabel3">#</span> will be closed.</div>
+        <div id="mergeTargetError" class="alert alert-danger mt-2 d-none mb-0"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="btnConfirmMergeTarget">
+          <i class="bi bi-arrow-left-right me-1"></i> Merge
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
-@if (!Model.Any())
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3 mb-3">No tickets found matching the current filters.</p>
-        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> New Ticket</a>
-        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
+<!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
+<div id="ticketsTableContainer">
+    @await Html.PartialAsync("_TicketsTable", Model)
+</div>
+
+<div class="modal fade" id="ticketDetailsModal" tabindex="-1" aria-labelledby="ticketDetailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ticketDetailsModalLabel"><i class="bi bi-ticket-detailed me-2"></i>Ticket Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="ticketDetailsModalBody">
+        <div class="text-muted">Loading ticket details…</div>
+      </div>
     </div>
-}
+  </div>
+</div>
+
+<!-- ── Save / Edit View Modal ──────────────────────────────────────────── -->
+<div class="modal fade" id="saveViewModal" tabindex="-1" aria-labelledby="saveViewModalLabel">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="saveViewModalLabel"><i class="bi bi-bookmark-plus me-2"></i>Save Ticket View</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="svEditId" value="" />
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">View Name <span class="text-danger">*</span></label>
+            <input type="text" id="svName" class="form-control" placeholder="e.g. My Open Tickets, Unassigned Critical" maxlength="100" />
+          </div>
+          <div class="col-md-4 d-flex align-items-end gap-3">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" id="svIsShared" />
+              <label class="form-check-label" for="svIsShared">Shared with all users</label>
+            </div>
+          </div>
+          <div class="col-12"><hr class="my-1" /><p class="text-muted small mb-1">Filter Criteria</p></div>
+          <div class="col-md-4">
+            <label class="form-label small">Status</label>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svStatusBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Statuses
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
+                @foreach (var s in Enum.GetValues<TicketStatus>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-status-cb" type="checkbox" value="@s" id="sv_s_@s">
+                    <label class="form-check-label small" for="sv_s_@s">@s</label>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Category</label>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svCategoryBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Categories
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:200px;">
+                @foreach (var c in Enum.GetValues<TicketCategory>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c" id="sv_c_@c">
+                    <label class="form-check-label small" for="sv_c_@c">@c</label>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Priority</label>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svPriorityBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Priorities
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
+                @foreach (var p in Enum.GetValues<TicketPriority>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-priority-cb" type="checkbox" value="@p" id="sv_p_@p">
+                    <label class="form-check-label small" for="sv_p_@p">@p</label>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Branch / Location</label>
+            <select id="svBranch" class="form-select form-select-sm">
+              <option value="">All Branches</option>
+              @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
+              { <option value="@b.Id">@b.Name</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Department</label>
+            <select id="svDepartment" class="form-select form-select-sm">
+              <option value="">All Departments</option>
+              @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
+              { <option value="@d">@d</option> }
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Group / Team</label>
+            <select id="svGroup" class="form-select form-select-sm">
+              <option value="">All Groups</option>
+              @foreach (var g in (ViewBag.Groups as IEnumerable<dynamic> ?? []))
+              { <option value="@g.Id">@g.Name</option> }
+            </select>
+          </div>
+          <div class="col-12 d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svAssignedToMe" />
+              <label class="form-check-label small" for="svAssignedToMe">Assigned to me only</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svUnassigned" />
+              <label class="form-check-label small" for="svUnassigned">Unassigned tickets only</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="svUnmatched" />
+              <label class="form-check-label small" for="svUnmatched">Unmatched requester only</label>
+            </div>
+          </div>
+          <div class="col-12"><hr class="my-1" /><p class="text-muted small mb-1">Default Sort &amp; Display</p></div>
+          <div class="col-md-4">
+            <label class="form-label small">Sort By</label>
+            <select id="svSortBy" class="form-select form-select-sm">
+              <option value="id">Ticket ID</option>
+              <option value="created">Created Date</option>
+              <option value="due">Due Date</option>
+              <option value="priority">Priority</option>
+              <option value="status">Status</option>
+              <option value="title">Title</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Sort Direction</label>
+            <select id="svSortDir" class="form-select form-select-sm">
+              <option value="desc">Newest / Highest First ↓</option>
+              <option value="asc">Oldest / Lowest First ↑</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Tickets Per Page</label>
+            <select id="svPageSize" class="form-select form-select-sm">
+              <option value="15">15</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitSaveView()">
+          <i class="bi bi-bookmark-check me-1"></i><span id="svSaveLabel">Save View</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Manage Views Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="manageViewsModal" tabindex="-1" aria-labelledby="manageViewsModalLabel">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="manageViewsModalLabel"><i class="bi bi-layout-text-sidebar-reverse me-2"></i>Manage Views</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="manageViewsList" class="list-group list-group-flush">
+          <div class="list-group-item text-muted text-center py-3">Loading…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="openSaveViewModal()">
+          <i class="bi bi-bookmark-plus me-1"></i> New View
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Toast notification -->
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
@@ -220,10 +487,23 @@
 </div>
 
 @section Scripts {
+<script type="application/json" id="itStaffData">@Html.Raw(ViewBag.ITStaffJson ?? "[]")</script>
+<script type="application/json" id="pageStateData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    activeViewId      = (int?)ViewBag.ActiveViewId,
+    currentUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched,
+    currentUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned,
+    currentQuery = (string?)ViewBag.CurrentQuery ?? "",
+    sortBy   = (string?)ViewBag.SortBy  ?? "id",
+    sortDir  = (string?)ViewBag.SortDir ?? "desc",
+    pageSize = (int)(ViewBag.PageSize ?? 25),
+    currentStatuses    = ((TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>())).Select(s => s.ToString()).ToArray(),
+    currentCategories  = ((TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>())).Select(c => c.ToString()).ToArray(),
+    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray()
+}))</script>
 <script>
 (function () {
     const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-    const itStaff = @Html.Raw(ViewBag.ITStaffJson ?? "[]");
+    const itStaff = JSON.parse(document.getElementById('itStaffData').textContent);
     const toast = new bootstrap.Toast(document.getElementById('quickEditToast'), { delay: 2500 });
     const toastMsg = document.getElementById('quickEditToastMsg');
 
@@ -241,51 +521,36 @@
         fd.append('field', field);
         fd.append('value', value);
         fd.append('__RequestVerificationToken', antiForgeryToken);
-
         fetch('/Tickets/QuickUpdate', { method: 'POST', body: fd })
-            .then(r => {
-                if (!r.ok) throw new Error('Server error');
-                return r.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showToast('Updated successfully.');
-                    if (onSuccess) onSuccess(data);
-                }
-            })
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(data => { if (data.success) { showToast('Updated successfully.'); if (onSuccess) onSuccess(data); } })
             .catch(() => showToast('Update failed. Please try again.', true));
     }
 
-    // --- Status inline edit ---
-    document.querySelectorAll('.status-option').forEach(function (opt) {
-        opt.addEventListener('click', function (e) {
-            e.preventDefault();
-            const li = this.closest('.assignee-list, .dropdown-menu');
-            const dropdown = this.closest('.assignee-dropdown, .status-dropdown');
-            const ticketId = dropdown.getAttribute('data-ticket-id');
-            const newStatus = this.getAttribute('data-value');
-            const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
-
-            sendQuickUpdate(ticketId, 'status', newStatus, function (data) {
-                // Update badge appearance
-                const statusLower = data.status.toLowerCase();
-                badge.className = `badge badge-${statusLower} inline-edit-badge`;
-                badge.setAttribute('data-current', data.status);
-                badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
-
-                // Update active state in dropdown
-                dropdown.querySelectorAll('.status-option').forEach(o => o.classList.remove('active'));
-                opt.classList.add('active');
-            });
+    // Status inline edit — event delegation (survives AJAX table replacement)
+    document.addEventListener('click', function (e) {
+        const opt = e.target.closest('.status-option');
+        if (!opt) return;
+        e.preventDefault();
+        const dropdown = opt.closest('.status-dropdown');
+        const ticketId = dropdown.getAttribute('data-ticket-id');
+        const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
+        sendQuickUpdate(ticketId, 'status', opt.getAttribute('data-value'), function (data) {
+            badge.className = `badge badge-${data.status.toLowerCase()} inline-edit-badge`;
+            badge.setAttribute('data-current', data.status);
+            badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
+            dropdown.querySelectorAll('.status-option').forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
         });
     });
 
-    // --- Assignee inline edit: populate list ---
-    document.querySelectorAll('.assignee-dropdown').forEach(function (dd) {
-        const ticketId = dd.getAttribute('data-ticket-id');
+    // Assignee dropdown — lazy populate on first open (survives AJAX table replacement)
+    document.addEventListener('show.bs.dropdown', function (e) {
+        const dd = e.target.closest('.inline-edit-dropdown')?.querySelector('.assignee-dropdown');
+        if (!dd || dd.dataset.populated) return;
         const list = dd.querySelector('.assignee-list');
+        const ticketId = dd.getAttribute('data-ticket-id');
         const currentVal = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`)?.getAttribute('data-current') || '0';
-
         itStaff.forEach(function (emp) {
             const li = document.createElement('li');
             const a = document.createElement('a');
@@ -296,34 +561,51 @@
             li.appendChild(a);
             list.appendChild(li);
         });
+        dd.dataset.populated = '1';
     });
 
-    // --- Assignee search filter ---
-    document.querySelectorAll('.assignee-search').forEach(function (input) {
-        input.addEventListener('input', function () {
-            const q = this.value.toLowerCase();
-            const list = this.closest('.assignee-dropdown').querySelector('.assignee-list');
-            list.querySelectorAll('.assignee-option').forEach(function (a) {
-                const txt = a.textContent.toLowerCase();
-                a.parentElement.style.display = txt.includes(q) ? '' : 'none';
-            });
+    // Assignee search — event delegation (survives AJAX table replacement)
+    document.addEventListener('input', function (e) {
+        if (!e.target.classList.contains('assignee-search')) return;
+        const q = e.target.value.toLowerCase();
+        e.target.closest('.assignee-dropdown').querySelector('.assignee-list')
+            .querySelectorAll('.assignee-option')
+            .forEach(a => a.parentElement.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none');
+    });
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('assignee-search')) e.stopPropagation();
+    });
+
+    // Assignee click
+    document.addEventListener('click', function (e) {
+        const opt = e.target.closest('.assignee-option');
+        if (!opt) return;
+        e.preventDefault();
+        const dd = opt.closest('.assignee-dropdown');
+        const ticketId = dd.getAttribute('data-ticket-id');
+        const span = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`);
+        sendQuickUpdate(ticketId, 'assignee', opt.getAttribute('data-value'), function (data) {
+            span.innerHTML = data.assigneeName
+                ? `${data.assigneeName} <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i>`
+                : `<span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>`;
+            span.setAttribute('data-current', opt.getAttribute('data-value'));
+            dd.querySelectorAll('.assignee-option').forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            const bsDropdown = bootstrap.Dropdown.getInstance(span);
+            if (bsDropdown) bsDropdown.hide();
         });
-        // Prevent dropdown from closing when typing in search
-        input.addEventListener('click', function (e) { e.stopPropagation(); });
     });
 
-    // --- Bulk Actions ---
+    // Bulk actions
     (function () {
         const bar = document.getElementById('bulkActionBar');
         const countLabel = document.getElementById('bulkSelectionCount');
-        const chkAll = document.getElementById('chkSelectAll');
         const actionSelect = document.getElementById('bulkActionSelect');
         const statusGroup = document.getElementById('bulkStatusGroup');
         const assigneeGroup = document.getElementById('bulkAssigneeGroup');
         const form = document.getElementById('bulkActionForm');
-
-        // Populate bulk assignee dropdown from itStaff data
         const bulkAssigneeSelect = document.getElementById('bulkAssigneeSelect');
+
         if (bulkAssigneeSelect && itStaff) {
             itStaff.forEach(function (emp) {
                 const opt = document.createElement('option');
@@ -333,76 +615,533 @@
             });
         }
 
-        function getChecked() { return document.querySelectorAll('.ticket-chk:checked'); }
-
         function updateBar() {
-            const checked = getChecked();
-            bar.classList.toggle('d-none', checked.length === 0);
-            countLabel.textContent = checked.length + ' selected';
+            const checked = document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [];
+            bar?.classList.toggle('d-none', checked.length === 0);
+            if (countLabel) countLabel.textContent = checked.length + ' selected';
         }
 
-        chkAll?.addEventListener('change', function () {
-            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = this.checked);
-            updateBar();
+        // Checkbox delegation on container (survives AJAX table replacement)
+        document.getElementById('ticketsTableContainer')?.addEventListener('change', function (e) {
+            const container = document.getElementById('ticketsTableContainer');
+            if (e.target.id === 'chkSelectAll') {
+                container.querySelectorAll('.ticket-chk').forEach(c => c.checked = e.target.checked);
+                updateBar();
+            } else if (e.target.classList.contains('ticket-chk')) {
+                const all = container.querySelectorAll('.ticket-chk');
+                const chkAll = container.querySelector('#chkSelectAll');
+                if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
+                updateBar();
+            }
         });
-
-        document.querySelectorAll('.ticket-chk').forEach(c => c.addEventListener('change', function () {
-            const all = document.querySelectorAll('.ticket-chk');
-            if (chkAll) chkAll.checked = all.length > 0 && [...all].every(x => x.checked);
-            updateBar();
-        }));
-
         actionSelect?.addEventListener('change', function () {
-            statusGroup.classList.toggle('d-none', this.value !== 'status');
+            statusGroup.classList.toggle('d-none',  this.value !== 'status');
             assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
         });
-
         document.getElementById('btnBulkClear')?.addEventListener('click', function () {
-            document.querySelectorAll('.ticket-chk').forEach(c => c.checked = false);
+            document.getElementById('ticketsTableContainer')?.querySelectorAll('.ticket-chk')
+                .forEach(c => c.checked = false);
+            const chkAll = document.getElementById('ticketsTableContainer')?.querySelector('#chkSelectAll');
             if (chkAll) chkAll.checked = false;
-            bar.classList.add('d-none');
+            bar?.classList.add('d-none');
         });
-
         form?.addEventListener('submit', function (e) {
-            const checked = getChecked();
+            // Skip default validation when this submit was triggered by the Merge button —
+            // the Merge button handler injects its own selectedIds and posts to MergeTickets.
+            if (form.dataset.mergeSubmit === '1') {
+                form.dataset.mergeSubmit = '';
+                return;
+            }
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
             if (checked.length === 0) { e.preventDefault(); return; }
             if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
-            // Append selected IDs as hidden inputs
+            if (actionSelect.value === 'delete' && !confirm(`Delete ${checked.length} selected ticket(s)? This cannot be undone.`)) {
+                e.preventDefault(); return;
+            }
             checked.forEach(c => {
                 const inp = document.createElement('input');
-                inp.type = 'hidden';
-                inp.name = 'selectedIds';
-                inp.value = c.value;
+                inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = c.value;
                 form.appendChild(inp);
             });
         });
+
+        // ── Merge Tickets dedicated button ───────────────────────────────
+        const btnBulkMerge   = document.getElementById('btnBulkMerge');
+        const mergeTargetEl  = document.getElementById('mergeTargetModal');
+        const mergeTargetModal = mergeTargetEl ? new bootstrap.Modal(mergeTargetEl) : null;
+        const mergeTargetIdInput = document.getElementById('mergeTargetIdInput');
+        const mergeTargetError   = document.getElementById('mergeTargetError');
+        const mergeSourceLabels  = ['mergeSourceLabel','mergeSourceLabel2','mergeSourceLabel3']
+            .map(id => document.getElementById(id));
+        let pendingMergeSourceId = null;
+
+        function submitMergeForm(idsArray) {
+            // Strip any prior selectedIds hidden inputs from earlier submits
+            form.querySelectorAll('input[name="selectedIds"]').forEach(n => n.remove());
+            idsArray.forEach(v => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = v;
+                form.appendChild(inp);
+            });
+            form.action = '@Url.Action("MergeTickets", "Tickets")';
+            form.dataset.mergeSubmit = '1';
+            form.submit();
+        }
+
+        btnBulkMerge?.addEventListener('click', function () {
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
+            if (checked.length === 0) {
+                alert('Select at least 1 ticket to merge.');
+                return;
+            }
+            const ids = checked.map(c => Number(c.value)).sort((a, b) => a - b);
+
+            if (ids.length === 1) {
+                // Prompt for target ticket ID
+                pendingMergeSourceId = ids[0];
+                mergeSourceLabels.forEach(el => { if (el) el.textContent = '#' + pendingMergeSourceId; });
+                if (mergeTargetIdInput) mergeTargetIdInput.value = '';
+                if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+                mergeTargetModal?.show();
+                return;
+            }
+
+            // 2+ tickets: lowest ID becomes primary, others merged into it
+            const primaryId = ids[0];
+            const others = ids.slice(1).join(', #');
+            if (!confirm(`Merge ticket(s) #${others} INTO ticket #${primaryId}?\n\nTicket #${primaryId} will remain open. The other ticket(s) will be closed and their comments moved to #${primaryId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            submitMergeForm(ids);
+        });
+
+        document.getElementById('btnConfirmMergeTarget')?.addEventListener('click', function () {
+            if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+            const targetId = parseInt(mergeTargetIdInput?.value || '', 10);
+            if (!targetId || targetId < 1) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Enter a valid target ticket ID.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (targetId === pendingMergeSourceId) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Source and target cannot be the same ticket.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (!confirm(`Merge ticket #${pendingMergeSourceId} INTO ticket #${targetId}?\n\nTicket #${targetId} will remain open. Ticket #${pendingMergeSourceId} will be closed and its comments moved to #${targetId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            // Append hidden primaryId so server knows the explicit target (not just lowest ID)
+            form.querySelectorAll('input[name="primaryId"]').forEach(n => n.remove());
+            const primaryInput = document.createElement('input');
+            primaryInput.type = 'hidden'; primaryInput.name = 'primaryId'; primaryInput.value = targetId;
+            form.appendChild(primaryInput);
+            submitMergeForm([pendingMergeSourceId, targetId]);
+        });
     })();
 
-    // --- Assignee option click ---
+    const detailsModalEl = document.getElementById('ticketDetailsModal');
+    const detailsModalBody = document.getElementById('ticketDetailsModalBody');
+    const detailsModal = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
     document.addEventListener('click', function (e) {
-        const opt = e.target.closest('.assignee-option');
-        if (!opt) return;
+        const link = e.target.closest('.ticket-details-link');
+        if (!link) return;
         e.preventDefault();
-        const dd = opt.closest('.assignee-dropdown');
-        const ticketId = dd.getAttribute('data-ticket-id');
-        const newVal = opt.getAttribute('data-value');
-        const span = document.querySelector(`.inline-edit-assignee[data-ticket-id="${ticketId}"]`);
-
-        sendQuickUpdate(ticketId, 'assignee', newVal, function (data) {
-            const name = data.assigneeName;
-            if (name) {
-                span.innerHTML = `${name} <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i>`;
-            } else {
-                span.innerHTML = `<span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>`;
-            }
-            span.setAttribute('data-current', newVal);
-            dd.querySelectorAll('.assignee-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            // Close dropdown
-            const bsDropdown = bootstrap.Dropdown.getInstance(span);
-            if (bsDropdown) bsDropdown.hide();
-        });
+        if (!detailsModalBody || !detailsModal) return;
+        detailsModalBody.innerHTML = '<div class="text-muted">Loading ticket details…</div>';
+        detailsModal.show();
+        fetch('/Tickets/DetailsModal/' + link.getAttribute('data-ticket-id'), { credentials: 'same-origin' })
+            .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+            .then(html => detailsModalBody.innerHTML = html)
+            .catch(() => detailsModalBody.innerHTML = '<div class="alert alert-danger mb-0">Unable to load ticket details. Please try again.</div>');
     });
 })();
 </script>
+
+<script>
+// ── AJAX table management ──────────────────────────────────────────────────
+function loadTable(url) {
+    const container = document.getElementById('ticketsTableContainer');
+    if (!container) return;
+    container.style.opacity = '0.5';
+    container.style.pointerEvents = 'none';
+    const fetchUrl = url + (url.includes('?') ? '&' : '?') + 'partial=true';
+    fetch(fetchUrl, { credentials: 'same-origin' })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+            container.innerHTML = html;
+            container.style.opacity = '1';
+            container.style.pointerEvents = '';
+            history.pushState({ url: url }, '', url);
+        })
+        .catch(function () {
+            container.style.opacity = '1';
+            container.style.pointerEvents = '';
+        });
 }
+
+function changePageSize(value) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams();
+    params.set('sortBy',   urlParams.get('sortBy')   || 'id');
+    params.set('sortDir',  urlParams.get('sortDir')  || 'desc');
+    params.set('pageSize', value);
+    params.set('page', '1');
+    document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
+    document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb   => params.append('priorities',    cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb  => params.append('assigneeIds',   cb.value));
+    document.querySelectorAll('[name="requesterIds"]:checked').forEach(cb => params.append('requesterIds',  cb.value));
+    if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
+    if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
+    loadTable('/Tickets?' + params.toString());
+}
+
+function filterRequesterList(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.requester-option').forEach(function (opt) {
+        opt.style.display = (!q || opt.dataset.name.includes(q)) ? '' : 'none';
+    });
+}
+
+// ── Live filter label update ────────────────────────────────────────────────
+// Updates each dropdown button's label text as the user checks/unchecks boxes,
+// without requiring an Apply click first.
+(function () {
+    document.querySelectorAll('.filter-bar .dropdown').forEach(function (dd) {
+        dd.addEventListener('change', function (e) {
+            if (!e.target.matches('input[type="checkbox"]')) return;
+            const btn = dd.querySelector('.dropdown-toggle');
+            const lbl = btn && btn.querySelector('.filter-label');
+            if (!lbl || !btn.dataset.singular) return;
+            const checked = dd.querySelectorAll('.dropdown-menu input[type="checkbox"]:checked').length;
+            lbl.textContent = checked === 0 ? btn.dataset.all
+                : checked === 1 ? '1 ' + btn.dataset.singular
+                : checked + ' ' + btn.dataset.plural;
+            btn.classList.toggle('active', checked > 0);
+        });
+    });
+})();
+
+// Reload page on browser back/forward so filter bar stays in sync
+window.addEventListener('popstate', function () { location.reload(); });
+
+// Intercept sort and pagination link clicks inside the table container
+document.addEventListener('click', function (e) {
+    const link = e.target.closest('.tbl-nav');
+    if (!link || !link.closest('#ticketsTableContainer')) return;
+    e.preventDefault();
+    loadTable(link.href);
+});
+</script>
+
+<script>
+// ── Multi-select filter apply ──────────────────────────────────────────────
+function applyFilters() {
+    // Use current URL params for sort/page state (updated by pushState after AJAX loads)
+    const urlParams = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams();
+    params.set('sortBy',   urlParams.get('sortBy')   || 'id');
+    params.set('sortDir',  urlParams.get('sortDir')  || 'desc');
+    params.set('pageSize', urlParams.get('pageSize') || '25');
+    params.set('page', '1');
+    document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
+    document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb => params.append('priorities',  cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
+    if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
+    if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
+    loadTable('/Tickets?' + params.toString());
+}
+document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+});
+</script>
+
+<script>
+// ── Saved Views ────────────────────────────────────────────────────────────
+(function () {
+    const aft = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    // ---- Load views into dropdown and manage list -------------------------
+    async function loadViews() {
+        const resp = await fetch('@Url.Action("GetSavedViews", "Tickets")', { credentials: 'same-origin' });
+        if (!resp.ok) return [];
+        return await resp.json();
+    }
+
+    async function renderDropdown() {
+        const views = await loadViews();
+        const menu  = document.getElementById('viewsDropdownMenu');
+        if (!menu) return;
+        if (views.length === 0) {
+            menu.innerHTML = '<li><span class="dropdown-item-text text-muted small px-3 py-2">No saved views yet.<br>Click <strong>Save as View</strong> to create one.</span></li>';
+            return;
+        }
+        const owned  = views.filter(v => v.isOwner && !v.isShared);
+        const shared = views.filter(v => v.isShared);
+
+        let html = '';
+        if (owned.length) {
+            html += '<li><h6 class="dropdown-header">My Views</h6></li>';
+            owned.forEach(v => html += viewItem(v));
+        }
+        if (shared.length) {
+            html += '<li><h6 class="dropdown-header mt-1">Shared Views</h6></li>';
+            shared.forEach(v => html += viewItem(v));
+        }
+        html += '<li><hr class="dropdown-divider" /></li>';
+        html += '<li><a class="dropdown-item small" href="#" onclick="openManageViews(event)"><i class="bi bi-gear me-1"></i>Manage Views…</a></li>';
+        menu.innerHTML = html;
+    }
+
+    const pageState = JSON.parse(document.getElementById('pageStateData').textContent);
+
+    function viewItem(v) {
+        const active = v.id === pageState.activeViewId;
+        const starCls = v.isDefault ? 'bi-star-fill text-warning' : 'bi-star text-muted';
+        return `<li>
+          <div class="dropdown-item d-flex align-items-center gap-1 pe-2 ${active ? 'active' : ''}">
+            <a href="?viewId=${v.id}" class="flex-grow-1 text-decoration-none ${active ? 'text-white' : ''}" style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${escHtml(v.name)}">
+              ${escHtml(v.name)}
+            </a>
+            <button class="btn btn-link btn-sm p-0 ms-1" title="${v.isDefault ? 'Remove default' : 'Set as default'}" onclick="toggleDefault(event,${v.id},${v.isDefault})">
+              <i class="bi ${starCls}"></i>
+            </button>
+            ${v.isOwner ? `<button class="btn btn-link btn-sm p-0" title="Edit" onclick="editView(event,${v.id})"><i class="bi bi-pencil text-muted"></i></button>
+            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})"><i class="bi bi-trash text-danger"></i></button>` : ''}
+          </div></li>`;
+    }
+
+    function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // Trigger dropdown load when shown
+    document.getElementById('viewsDropdownBtn')?.addEventListener('show.bs.dropdown', renderDropdown);
+
+    // ---- Manage Views modal ----------------------------------------------
+    window.openManageViews = async function(e) {
+        if (e) e.preventDefault();
+        const views = await loadViews();
+        const list  = document.getElementById('manageViewsList');
+        if (!list) return;
+        if (views.length === 0) {
+            list.innerHTML = '<div class="list-group-item text-muted text-center py-3">No saved views yet.</div>';
+        } else {
+            list.innerHTML = views.map(v => `
+              <div class="list-group-item d-flex align-items-center gap-2">
+                <i class="bi ${v.isDefault ? 'bi-star-fill text-warning' : 'bi-star text-muted'}"></i>
+                <div class="flex-grow-1">
+                  <strong>${escHtml(v.name)}</strong>
+                  ${v.isShared ? '<span class="badge bg-info ms-1">Shared</span>' : ''}
+                  <div class="text-muted small">${buildSummary(v)}</div>
+                </div>
+                <div class="d-flex gap-1">
+                  <a href="?viewId=${v.id}" class="btn btn-sm btn-outline-primary" title="Apply view"><i class="bi bi-play-fill"></i></a>
+                  ${v.isOwner ? `<button class="btn btn-sm btn-outline-secondary" onclick="editView(event,${v.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                </div>
+              </div>`).join('');
+        }
+        new bootstrap.Modal(document.getElementById('manageViewsModal')).show();
+    };
+
+    function buildSummary(v) {
+        const parts = [];
+        const statusLabels = ['Open','InProgress','OnHold','Resolved','Closed','Cancelled'];
+        const catLabels    = ['ServiceRequest','HardwareIssue','SoftwareIssue','EmployeeIssue','NetworkIssue','SecurityIncident','Other'];
+        const priLabels    = ['Low','Medium','High','Critical'];
+
+        // Multi-select fields take priority; fall back to legacy single values
+        const statuses = v.filterStatuses   ? v.filterStatuses.split(',').map(s => s.trim())
+                       : v.filterStatus   != null ? [statusLabels[v.filterStatus] ?? String(v.filterStatus)] : [];
+        const cats     = v.filterCategories ? v.filterCategories.split(',').map(c => c.trim())
+                       : v.filterCategory != null ? [catLabels[v.filterCategory] ?? String(v.filterCategory)] : [];
+        const pris     = v.filterPriorities ? v.filterPriorities.split(',').map(p => p.trim())
+                       : v.filterPriority != null ? [priLabels[v.filterPriority] ?? String(v.filterPriority)] : [];
+
+        if (statuses.length) parts.push('Status: ' + statuses.join(', '));
+        if (cats.length)     parts.push('Category: ' + cats.join(', '));
+        if (pris.length)     parts.push('Priority: ' + pris.join(', '));
+        if (v.filterAssignedToMe)   parts.push('Assigned to me');
+        if (v.filterUnassignedOnly) parts.push('Unassigned');
+        if (v.filterUnmatchedOnly)  parts.push('Unmatched requester');
+        if (v.filterDepartment) parts.push('Dept: ' + v.filterDepartment);
+        return parts.length ? parts.join(' · ') : 'No filters — shows all tickets';
+    }
+
+    // ---- Save / Edit modal helpers ----------------------------------------
+    function svSetCheckboxes(cssClass, values) {
+        document.querySelectorAll('.' + cssClass).forEach(cb => {
+            cb.checked = values.includes(cb.value);
+        });
+        svUpdateDropdownLabel(cssClass);
+    }
+
+    function svGetCheckedValues(cssClass) {
+        return Array.from(document.querySelectorAll('.' + cssClass + ':checked')).map(cb => cb.value);
+    }
+
+    function svUpdateDropdownLabel(cssClass) {
+        const checked = svGetCheckedValues(cssClass);
+        const count = checked.length;
+        let btnId, singular, plural;
+        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';   plural = 'Statuses'; }
+        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category'; plural = 'Categories'; }
+        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority'; plural = 'Priorities'; }
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.textContent = count === 0 ? 'All ' + plural : count === 1 ? '1 ' + singular : count + ' ' + plural;
+        btn.classList.toggle('active', count > 0);
+    }
+
+    // Wire up live label updates when checkboxes change
+    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const cls = cb.classList.contains('sv-status-cb')   ? 'sv-status-cb'   :
+                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' : 'sv-priority-cb';
+            svUpdateDropdownLabel(cls);
+        });
+    });
+
+    // ---- Save / Edit modal -----------------------------------------------
+    window.openSaveViewModal = function() {
+        document.getElementById('svEditId').value  = '';
+        document.getElementById('svName').value    = '';
+        document.getElementById('svIsShared').checked = false;
+        // Pre-fill from current active filter bar state
+        svSetCheckboxes('sv-status-cb',   pageState.currentStatuses   ?? []);
+        svSetCheckboxes('sv-category-cb', pageState.currentCategories ?? []);
+        svSetCheckboxes('sv-priority-cb', pageState.currentPriorities ?? []);
+        document.getElementById('svBranch').value  = '';
+        document.getElementById('svDepartment').value = '';
+        document.getElementById('svGroup').value   = '';
+        document.getElementById('svAssignedToMe').checked  = false;
+        document.getElementById('svUnassigned').checked    = pageState.currentUnassigned;
+        document.getElementById('svUnmatched').checked     = pageState.currentUnmatched;
+        document.getElementById('svSortBy').value   = pageState.sortBy;
+        document.getElementById('svSortDir').value  = pageState.sortDir;
+        document.getElementById('svPageSize').value = pageState.pageSize;
+        document.getElementById('svSaveLabel').textContent = 'Save View';
+        document.getElementById('saveViewModalLabel').innerHTML = '<i class="bi bi-bookmark-plus me-2"></i>Save Ticket View';
+        new bootstrap.Modal(document.getElementById('saveViewModal')).show();
+    };
+
+    window.editView = async function(e, id) {
+        if (e) e.preventDefault();
+        const views = await loadViews();
+        const v = views.find(x => x.id === id);
+        if (!v) return;
+
+        document.getElementById('svEditId').value  = v.id;
+        document.getElementById('svName').value    = v.name;
+        document.getElementById('svIsShared').checked = v.isShared;
+
+        // Populate multi-select checkboxes: prefer new FilterStatuses/Categories/Priorities fields,
+        // fall back to legacy single-value enum-int fields
+        const statusMap  = ['Open','InProgress','OnHold','Resolved','Closed','Cancelled'];
+        const catMap     = ['ServiceRequest','HardwareIssue','SoftwareIssue','EmployeeIssue','NetworkIssue','SecurityIncident','Other'];
+        const priMap     = ['Low','Medium','High','Critical'];
+        const statuses   = v.filterStatuses   ? v.filterStatuses.split(',').map(s => s.trim())
+                         : v.filterStatus   != null ? [statusMap[v.filterStatus] ?? ''] : [];
+        const cats       = v.filterCategories ? v.filterCategories.split(',').map(c => c.trim())
+                         : v.filterCategory != null ? [catMap[v.filterCategory] ?? ''] : [];
+        const pris       = v.filterPriorities ? v.filterPriorities.split(',').map(p => p.trim())
+                         : v.filterPriority != null ? [priMap[v.filterPriority] ?? ''] : [];
+
+        svSetCheckboxes('sv-status-cb',   statuses);
+        svSetCheckboxes('sv-category-cb', cats);
+        svSetCheckboxes('sv-priority-cb', pris);
+
+        document.getElementById('svBranch').value  = v.filterBranchId ?? '';
+        document.getElementById('svDepartment').value = v.filterDepartment ?? '';
+        document.getElementById('svGroup').value   = v.filterGroupId  ?? '';
+        document.getElementById('svAssignedToMe').checked  = v.filterAssignedToMe;
+        document.getElementById('svUnassigned').checked    = v.filterUnassignedOnly;
+        document.getElementById('svUnmatched').checked     = v.filterUnmatchedOnly;
+        document.getElementById('svSortBy').value  = v.sortBy;
+        document.getElementById('svSortDir').value = v.sortDir;
+        document.getElementById('svPageSize').value = v.pageSize;
+        document.getElementById('svSaveLabel').textContent = 'Update View';
+        document.getElementById('saveViewModalLabel').innerHTML = '<i class="bi bi-pencil me-2"></i>Edit View';
+        // Close manage modal if open, then open save modal
+        bootstrap.Modal.getInstance(document.getElementById('manageViewsModal'))?.hide();
+        setTimeout(() => new bootstrap.Modal(document.getElementById('saveViewModal')).show(), 200);
+    };
+
+    window.submitSaveView = async function() {
+        const editId = document.getElementById('svEditId').value;
+        const name   = document.getElementById('svName').value.trim();
+        if (!name) { alert('Please enter a view name.'); return; }
+
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('name',     name);
+        body.append('isShared', document.getElementById('svIsShared').checked);
+
+        // Multi-select: append each checked value as a separate form field
+        svGetCheckedValues('sv-status-cb').forEach(v   => body.append('filterStatuses',   v));
+        svGetCheckedValues('sv-category-cb').forEach(v => body.append('filterCategories', v));
+        svGetCheckedValues('sv-priority-cb').forEach(v => body.append('filterPriorities', v));
+
+        const branch = document.getElementById('svBranch').value;
+        const dept   = document.getElementById('svDepartment').value;
+        const group  = document.getElementById('svGroup').value;
+        if (branch) body.append('filterBranchId',   branch);
+        if (dept)   body.append('filterDepartment', dept);
+        if (group)  body.append('filterGroupId',    group);
+        body.append('filterAssignedToMe',   document.getElementById('svAssignedToMe').checked);
+        body.append('filterUnassignedOnly', document.getElementById('svUnassigned').checked);
+        body.append('filterUnmatchedOnly',  document.getElementById('svUnmatched').checked);
+        body.append('sortBy',   document.getElementById('svSortBy').value);
+        body.append('sortDir',  document.getElementById('svSortDir').value);
+        body.append('pageSize', document.getElementById('svPageSize').value);
+        if (editId) body.append('id', editId);
+
+        const url = editId
+            ? '@Url.Action("UpdateView", "Tickets")'
+            : '@Url.Action("SaveView",   "Tickets")';
+        const resp = await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+        const result = await resp.json();
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('saveViewModal'))?.hide();
+            renderDropdown();
+            if (!editId && result.id) window.location.href = '?viewId=' + result.id;
+        }
+    };
+
+    window.deleteView = async function(e, id, name) {
+        if (e) e.preventDefault();
+        if (!confirm(`Delete the view "${name}"?`)) return;
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('id', id);
+        const resp = await fetch('@Url.Action("DeleteView", "Tickets")', { method: 'POST', body, credentials: 'same-origin' });
+        const result = await resp.json();
+        if (result.success) {
+            renderDropdown();
+            openManageViews(null);
+            if (window.location.search.includes('viewId=' + id))
+                window.location.href = '@Url.Action("Index", "Tickets")';
+        }
+    };
+
+    window.toggleDefault = async function(e, id, isCurrentlyDefault) {
+        if (e) e.preventDefault();
+        const body = new FormData();
+        body.append('__RequestVerificationToken', aft);
+        body.append('id', id);
+        const url = isCurrentlyDefault
+            ? '@Url.Action("ClearDefaultView", "Tickets")'
+            : '@Url.Action("SetDefaultView",  "Tickets")';
+        await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+        renderDropdown();
+    };
+})();
+</script>
+}
+

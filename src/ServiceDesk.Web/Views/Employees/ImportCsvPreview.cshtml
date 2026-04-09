@@ -1,0 +1,171 @@
+@model List<ServiceDesk.Web.Models.ImportEmployeeRow>
+@{
+    ViewData["Title"] = "Employee Import Preview";
+    var canImport = Model.Where(r => r.CanImport).ToList();
+    var skipped   = Model.Where(r => !r.CanImport).ToList();
+    var withLogin = canImport.Where(r => r.WillCreateLogin).ToList();
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Employees</a></li>
+        <li class="breadcrumb-item"><a asp-action="ImportCsv">Import</a></li>
+        <li class="breadcrumb-item active">Preview</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="mb-0"><i class="bi bi-list-check text-primary me-2"></i>Import Preview</h1>
+    <div class="d-flex gap-2">
+        <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Upload Different File
+        </a>
+        @if (canImport.Any())
+        {
+            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirm">
+                @Html.AntiForgeryToken()
+                <button type="submit" id="btnConfirm" class="btn btn-success btn-sm">
+                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Employee(s)
+                </button>
+            </form>
+        }
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-primary">@Model.Count</div>
+            <div class="text-muted small">Total rows</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-success">@canImport.Count</div>
+            <div class="text-muted small">Employees to create</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-info">@withLogin.Count</div>
+            <div class="text-muted small">Login accounts to create</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-warning">@skipped.Count</div>
+            <div class="text-muted small">Skipped</div>
+        </div>
+    </div>
+</div>
+
+@if (withLogin.Any())
+{
+    <div class="alert alert-info alert-dismissible fade show py-2 small" role="alert">
+        <i class="bi bi-key-fill me-1"></i>
+        <strong>@withLogin.Count login account(s)</strong> will be created with default password <code>Welcome@@1</code>.
+        Users should be asked to change their password on first login.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (skipped.Any())
+{
+    <div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>@skipped.Count row(s) will be skipped.</strong> Hover the <span class="badge bg-warning text-dark">Skip</span> badge to see why.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom py-3">
+        <h5 class="mb-0">All Rows (@Model.Count)</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:.82rem;">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Job Title</th>
+                    <th>Site</th>
+                    <th>Role</th>
+                    <th>Active</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model)
+                {
+                    <tr class="@(row.CanImport ? "" : "table-warning opacity-75")">
+                        <td class="text-muted">@row.RowNumber</td>
+                        <td>@row.FirstName @row.LastName</td>
+                        <td class="text-muted">@row.Email</td>
+                        <td>
+                            @if (string.IsNullOrEmpty(row.Department)) { <span class="text-muted">—</span> }
+                            else { @row.Department }
+                        </td>
+                        <td class="text-muted">@(string.IsNullOrEmpty(row.JobTitle) ? "—" : row.JobTitle)</td>
+                        <td>
+                            @if (row.BranchId.HasValue) { @row.SiteRaw }
+                            else { <span class="text-muted">—</span> }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(row.RoleName))
+                            {
+                                if (row.RoleId.HasValue)
+                                {
+                                    <span class="badge bg-primary">@row.RoleName</span>
+                                    <small class="text-muted ms-1">+ login</small>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">@row.RoleName ?</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted small">No login</span>
+                            }
+                        </td>
+                        <td>
+                            @if (row.IsActive)
+                            {
+                                <span class="badge bg-success">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (row.CanImport)
+                            {
+                                <span class="badge bg-success">Import</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark" title="@row.SkipReason"
+                                      data-bs-toggle="tooltip" data-bs-placement="left">Skip</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (canImport.Any())
+    {
+        <div class="card-footer bg-white text-end py-3">
+            <form asp-action="ImportCsvConfirm" method="post" data-loading-btn="btnConfirmBottom">
+                @Html.AntiForgeryToken()
+                <button type="submit" id="btnConfirmBottom" class="btn btn-success">
+                    <i class="bi bi-check-lg me-1"></i> Confirm — Import @canImport.Count Employee(s)
+                </button>
+            </form>
+        </div>
+    }
+</div>

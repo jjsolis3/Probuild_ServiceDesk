@@ -1,0 +1,118 @@
+@{
+    ViewData["Title"] = "Import Tickets";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
+        <li class="breadcrumb-item active">Import Tickets</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="bi bi-upload text-primary me-2"></i>Import Tickets</h1>
+
+<div class="row g-4">
+
+    <!-- LEFT: Upload card (compact, always above fold) -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+
+                <!-- Download row -->
+                <div class="d-flex align-items-start gap-3 pb-3 mb-3 border-bottom">
+                    <div class="bg-success bg-opacity-10 rounded p-2 flex-shrink-0">
+                        <i class="bi bi-file-earmark-arrow-down fs-4 text-success"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1">Step 1 — Download the Template</div>
+                        <div class="text-muted small mb-2">Fill in your ticket data, then upload below. Delete the first two example rows before importing.</div>
+                        <a href="/templates/tickets-import-template.csv" download="tickets-import-template.csv" class="btn btn-success btn-sm">
+                            <i class="bi bi-download me-1"></i> Download Template (.csv)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Upload row -->
+                <div class="d-flex align-items-start gap-3">
+                    <div class="bg-primary bg-opacity-10 rounded p-2 flex-shrink-0">
+                        <i class="bi bi-cloud-upload fs-4 text-primary"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1">Step 2 — Upload &amp; Preview</div>
+                        <div class="text-muted small mb-2">Select your completed CSV file. You will see a preview before anything is saved.</div>
+                        <div asp-validation-summary="All" class="alert alert-danger py-2 small mb-2"></div>
+                        <form asp-action="ImportCsv" method="post" enctype="multipart/form-data" data-loading-btn="btnUpload">
+                            @Html.AntiForgeryToken()
+                            <div class="input-group">
+                                <input type="file" name="file" class="form-control form-control-sm" accept=".csv,.tsv,.txt" required />
+                                <button type="submit" id="btnUpload" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-search me-1"></i> Parse &amp; Preview
+                                </button>
+                            </div>
+                            <div class="form-text">Works with the ServiceSphere template or a SolarWinds export (.csv / .tsv).</div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Collapsible field rules -->
+            <div class="card-footer bg-white border-top-0 pt-0">
+                <button class="btn btn-link btn-sm text-muted text-decoration-none px-0 py-1 d-flex align-items-center gap-1"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#importRules">
+                    <i class="bi bi-chevron-down small"></i> Field rules &amp; valid values
+                </button>
+                <div class="collapse" id="importRules">
+                    <ul class="small text-muted ps-3 mb-2 mt-1">
+                        <li class="mb-1"><strong>Requester</strong> — employee email (e.g. <code>jim@@seamlessflooring.com</code>). Row skipped if not found.</li>
+                        <li class="mb-1"><strong>State</strong> — <code>Open</code> | <code>In Progress</code> | <code>On Hold</code> | <code>Resolved</code> | <code>Closed</code> | <code>Cancelled</code></li>
+                        <li class="mb-1"><strong>Priority</strong> — <code>Low</code> | <code>Medium</code> | <code>High</code> | <code>Critical</code></li>
+                        <li class="mb-1"><strong>Category</strong> — <code>Hardware</code> | <code>Applications</code> | <code>Network</code> | <code>Employee</code> | <code>Security</code> | <code>Service Request</code></li>
+                        <li class="mb-1"><strong>Site</strong> — Branch name or city. Leave blank if unknown.</li>
+                        <li><strong>Dates</strong> — <code>M/D/YYYY</code> format (e.g. <code>3/24/2026</code>).</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT: Column reference (scrollable, never stretches left) -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom py-2">
+                <h6 class="mb-0"><i class="bi bi-table me-2 text-muted"></i>Template Columns</h6>
+            </div>
+            <div class="card-body p-0" style="max-height:420px;overflow-y:auto;">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th class="ps-3">Column</th>
+                            <th>Required</th>
+                            <th class="pe-3">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="ps-3"><code>Title</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Max 200 characters</td></tr>
+                        <tr><td class="ps-3"><code>Description</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Max 2000 characters</td></tr>
+                        <tr><td class="ps-3"><code>State</code></td><td>No</td><td class="pe-3 text-muted">Defaults to Open</td></tr>
+                        <tr><td class="ps-3"><code>Priority</code></td><td>No</td><td class="pe-3 text-muted">Defaults to Medium</td></tr>
+                        <tr><td class="ps-3"><code>Category</code></td><td>No</td><td class="pe-3 text-muted">Defaults to Other</td></tr>
+                        <tr><td class="ps-3"><code>Subcategory</code></td><td>No</td><td class="pe-3 text-muted">Must match existing sub-category name</td></tr>
+                        <tr class="table-warning"><td class="ps-3"><code>Requester</code></td><td><span class="text-danger fw-semibold">Yes</span></td><td class="pe-3 text-muted">Employee email — row skipped if not found</td></tr>
+                        <tr><td class="ps-3"><code>Assignee Email</code></td><td>No</td><td class="pe-3 text-muted">Employee email, leave blank if none</td></tr>
+                        <tr><td class="ps-3"><code>Site</code></td><td>No</td><td class="pe-3 text-muted">Branch name or city</td></tr>
+                        <tr><td class="ps-3"><code>Created At</code></td><td>No</td><td class="pe-3 text-muted">Defaults to today if blank</td></tr>
+                        <tr><td class="ps-3"><code>Due Date</code></td><td>No</td><td class="pe-3 text-muted">M/D/YYYY</td></tr>
+                        <tr><td class="ps-3"><code>Resolved At</code></td><td>No</td><td class="pe-3 text-muted">M/D/YYYY</td></tr>
+                        <tr><td class="ps-3"><code>Resolution</code></td><td>No</td><td class="pe-3 text-muted">Resolution notes text</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light py-2 small text-muted">
+                <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+                <strong>Requester</strong> is the only field that causes rows to be skipped — add employees first.
+            </div>
+        </div>
+    </div>
+
+</div>

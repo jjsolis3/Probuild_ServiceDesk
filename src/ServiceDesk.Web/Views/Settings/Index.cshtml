@@ -9,10 +9,11 @@
     </div>
 </div>
 
-<div class="row g-4">
-
+<!-- ADMIN & COMPANY SETTINGs -->
+<div class="row g-4 mb-4">
+    
     <!-- Account Settings -->
-    <div class="col-lg-4 col-md-6">
+    <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
                 <div class="d-flex align-items-start">
@@ -31,32 +32,10 @@
                 </a>
             </div>
         </div>
-    </div>
-
-    <!-- Roles & Permissions -->
-    <div class="col-lg-4 col-md-6">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body">
-                <div class="d-flex align-items-start">
-                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
-                        <i class="bi bi-shield-lock display-6" style="color: #6f42c1;"></i>
-                    </div>
-                    <div>
-                        <h5 class="card-title mb-1">Roles &amp; Permissions</h5>
-                        <p class="card-text text-muted small">Define roles and assign permissions for IT staff</p>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0 pt-0">
-                <a asp-action="Roles" class="btn btn-sm" style="background-color: #6f42c1; color: #fff;">
-                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
-                </a>
-            </div>
-        </div>
-    </div>
+    </div>    
 
     <!-- Branches & Sites -->
-    <div class="col-lg-4 col-md-6">
+    <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
                 <div class="d-flex align-items-start">
@@ -77,8 +56,154 @@
         </div>
     </div>
 
+    <!-- Email Integration -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(220, 53, 69, 0.1);">
+                        <i class="bi bi-envelope display-6 text-danger"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Integration</h5>
+                        <p class="card-text text-muted small">Configure email-to-ticket and notifications</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailIntegration" class="btn btn-sm btn-danger">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- USER & ROLES MANAGEMENT-->
+<div class="row g-4 mb-4">
+
+    <!-- Portal Users -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-people display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Portal Users</h5>
+                        <p class="card-text text-muted small">Manage portal user accounts, passwords, and role assignments</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Users" class="btn btn-sm btn-info text-white">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage Users
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Groups / Teams -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.15);">
+                        <i class="bi bi-people-fill display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">User Groups &amp; Teams</h5>
+                        <p class="card-text text-muted small">Create and manage IT teams for ticket group assignments</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Groups" class="btn btn-sm btn-info text-white">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage Groups
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roles & Permissions -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
+                        <i class="bi bi-shield-lock display-6" style="color: #6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Roles &amp; Permissions</h5>
+                        <p class="card-text text-muted small">Define roles and assign permissions for IT staff</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Roles" class="btn btn-sm" style="background-color: #6f42c1; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+
+<!-- TICKET CREATION / MANAGEMENT -->
+<div class="row g-4 mb-4">
+    
+    <!-- Categories & Sub-Categories -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(102, 16, 242, 0.1);">
+                        <i class="bi bi-tags display-6" style="color: #6610f2;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Categories &amp; Sub-Categories</h5>
+                        <p class="card-text text-muted small">Customise ticket categories and define sub-categories for your IT department</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Categories" class="btn btn-sm" style="background-color: #6610f2; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assignment Rules -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(255, 193, 7, 0.15);">
+                        <i class="bi bi-signpost-split display-6 text-warning"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Assignment Rules</h5>
+                        <p class="card-text text-muted small">Auto-assign new tickets to agents based on branch/location, category, and sub-category</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="AssignmentRules" class="btn btn-sm btn-warning text-dark">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TICKET STATUS AND RESOLUTIONS -->
+<div class="row g-4 mb-4">
+
     <!-- Custom Ticket States -->
-    <div class="col-lg-4 col-md-6">
+    <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
                 <div class="d-flex align-items-start">
@@ -100,7 +225,7 @@
     </div>
 
     <!-- Resolution Codes -->
-    <div class="col-lg-4 col-md-6">
+    <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
                 <div class="d-flex align-items-start">
@@ -121,74 +246,8 @@
         </div>
     </div>
 
-    <!-- Users & Groups -->
-    <div class="col-lg-4 col-md-6">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body">
-                <div class="d-flex align-items-start">
-                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
-                        <i class="bi bi-people display-6 text-info"></i>
-                    </div>
-                    <div>
-                        <h5 class="card-title mb-1">Users &amp; Groups</h5>
-                        <p class="card-text text-muted small">Manage portal users and team groups</p>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0 pt-0">
-                <a asp-action="Users" class="btn btn-sm btn-info text-white">
-                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Email Integration -->
-    <div class="col-lg-4 col-md-6">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body">
-                <div class="d-flex align-items-start">
-                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(220, 53, 69, 0.1);">
-                        <i class="bi bi-envelope display-6 text-danger"></i>
-                    </div>
-                    <div>
-                        <h5 class="card-title mb-1">Email Integration</h5>
-                        <p class="card-text text-muted small">Configure email-to-ticket and notifications</p>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0 pt-0">
-                <a asp-action="EmailIntegration" class="btn btn-sm btn-danger">
-                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Categories & Sub-Categories -->
-    <div class="col-lg-4 col-md-6">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body">
-                <div class="d-flex align-items-start">
-                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(102, 16, 242, 0.1);">
-                        <i class="bi bi-tags display-6" style="color: #6610f2;"></i>
-                    </div>
-                    <div>
-                        <h5 class="card-title mb-1">Categories &amp; Sub-Categories</h5>
-                        <p class="card-text text-muted small">Customise ticket categories and define sub-categories for your IT department</p>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0 pt-0">
-                <a asp-action="Categories" class="btn btn-sm" style="background-color: #6610f2; color: #fff;">
-                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
-                </a>
-            </div>
-        </div>
-    </div>
-
     <!-- Canned Responses -->
-    <div class="col-lg-4 col-md-6">
+    <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
                 <div class="d-flex align-items-start">

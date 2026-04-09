@@ -1,0 +1,7 @@
+FirstName,LastName,Email,Phone,Department,JobTitle,HireDate,IsActive,Site,Role
+[INSTRUCTIONS] Role options: Admin | IT Agent | (leave blank for no login account)  |  IsActive: Yes or No  |  Site: must match a Branch name or city  |  HireDate: M/D/YYYY  |  DELETE THIS ROW before importing,,,,,,,,,
+John,Smith,john.smith@company.com,702-555-0101,IT,IT Support Specialist,1/15/2022,Yes,Las Vegas,IT Agent
+Angela,Gosnell,angela.gosnell@company.com,702-555-0102,Human Resources,HR Manager,3/1/2021,Yes,Las Vegas,
+Maria,Lopez,maria.lopez@company.com,909-555-0103,Operations,Operations Coordinator,6/10/2023,Yes,Chino,
+David,Kim,david.kim@company.com,602-555-0104,IT,Systems Administrator,8/1/2020,Yes,Phoenix,IT Agent
+Sarah,Johnson,sarah.johnson@company.com,,Sales,Sales Representative,11/5/2024,Yes,San Diego,

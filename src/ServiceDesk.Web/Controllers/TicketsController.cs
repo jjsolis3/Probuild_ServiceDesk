@@ -7,6 +7,8 @@ using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -14,42 +16,215 @@ namespace ServiceDesk.Web.Controllers;
 public class TicketsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly AssignmentResolverService _assignmentResolver;
 
-    public TicketsController(ServiceDeskDbContext context)
+    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver)
     {
         _context = context;
+        _assignmentResolver = assignmentResolver;
     }
 
-    public async Task<IActionResult> Index(TicketStatus? status, TicketCategory? category, TicketPriority? priority)
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> Index(
+        TicketStatus[]?  statuses,    TicketCategory[]? categories,
+        TicketPriority[]? priorities, int[]? assigneeIds,
+        int[]? requesterIds,
+        bool? unmatched, bool? unassigned,
+        string? q,
+        string sortBy = "id", string sortDir = "desc",
+        int page = 1, int pageSize = 25,
+        int? viewId = null, bool partial = false)
     {
+        var userId = CurrentPortalUserId();
+
+        bool noFilters = (statuses     == null || statuses.Length     == 0)
+                      && (categories  == null || categories.Length  == 0)
+                      && (priorities  == null || priorities.Length  == 0)
+                      && (assigneeIds == null || assigneeIds.Length == 0)
+                      && (requesterIds == null || requesterIds.Length == 0)
+                      && unmatched == null && unassigned == null && viewId == null
+                      && string.IsNullOrWhiteSpace(q)
+                      && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
+
+        if (noFilters && userId != null)
+        {
+            // 1. Personal default takes priority
+            var def = await _context.SavedTicketViews
+                .FirstOrDefaultAsync(v => v.IsDefault && v.OwnerPortalUserId == userId);
+
+            // 2. Fall back to the system default (OwnerPortalUserId == null, IsDefault, IsShared)
+            def ??= await _context.SavedTicketViews
+                .FirstOrDefaultAsync(v => v.IsDefault && v.OwnerPortalUserId == null && v.IsShared);
+
+            if (def != null)
+                return Redirect(BuildViewUrl(def));
+        }
+
+        // Load saved view criteria when viewId supplied
+        SavedTicketView? activeView = null;
+        if (viewId != null)
+        {
+            activeView = await _context.SavedTicketViews
+                .Include(v => v.FilterBranch).Include(v => v.FilterGroup)
+                .FirstOrDefaultAsync(v => v.Id == viewId
+                    && (v.OwnerPortalUserId == userId || v.IsShared));
+            if (activeView != null)
+            {
+                if (statuses == null || statuses.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterStatuses))
+                        statuses = activeView.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => Enum.TryParse<TicketStatus>(s.Trim(), out var v) ? v : (TicketStatus?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterStatus != null)
+                        statuses = [activeView.FilterStatus.Value];
+                }
+                if (categories == null || categories.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterCategories))
+                        categories = activeView.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(c => Enum.TryParse<TicketCategory>(c.Trim(), out var v) ? v : (TicketCategory?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterCategory != null)
+                        categories = [activeView.FilterCategory.Value];
+                }
+                if (priorities == null || priorities.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterPriorities))
+                        priorities = activeView.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(p => Enum.TryParse<TicketPriority>(p.Trim(), out var v) ? v : (TicketPriority?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterPriority != null)
+                        priorities = [activeView.FilterPriority.Value];
+                }
+                unmatched  ??= activeView.FilterUnmatchedOnly  ? true : null;
+                unassigned ??= activeView.FilterUnassignedOnly ? true : null;
+                sortBy   = sortBy   == "id"   ? activeView.SortBy   : sortBy;
+                sortDir  = sortDir  == "desc" ? activeView.SortDir  : sortDir;
+                pageSize = pageSize == 25     ? activeView.PageSize : pageSize;
+            }
+        }
+
         var query = _context.Tickets
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
-            .Include(t => t.CompanyService)
             .AsQueryable();
 
-        if (status.HasValue)
-            query = query.Where(t => t.Status == status.Value);
-        if (category.HasValue)
-            query = query.Where(t => t.Category == category.Value);
-        if (priority.HasValue)
-            query = query.Where(t => t.Priority == priority.Value);
+        if (statuses?.Length     > 0) query = query.Where(t => statuses.Contains(t.Status));
+        if (categories?.Length   > 0) query = query.Where(t => categories.Contains(t.Category));
+        if (priorities?.Length   > 0) query = query.Where(t => priorities.Contains(t.Priority));
+        if (assigneeIds?.Length  > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
+        if (requesterIds?.Length > 0) query = query.Where(t => requesterIds.Contains(t.SubmittedById));
+        if (unmatched  == true)       query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
+        if (unassigned == true)       query = query.Where(t => t.AssignedToId == null);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            q = q.Trim();
+            query = query.Where(t =>
+                t.Title.Contains(q) ||
+                (t.Description != null && t.Description.Contains(q)) ||
+                (t.ResolutionNotes != null && t.ResolutionNotes.Contains(q)));
+        }
 
-        ViewBag.CurrentStatus = status;
-        ViewBag.CurrentCategory = category;
-        ViewBag.CurrentPriority = priority;
+        // Sort
+        query = (sortBy, sortDir) switch
+        {
+            ("id",       "asc")  => query.OrderBy(t => t.Id),
+            ("id",          _)   => query.OrderByDescending(t => t.Id),
+            ("title",    "asc")  => query.OrderBy(t => t.Title),
+            ("title",       _)   => query.OrderByDescending(t => t.Title),
+            ("category", "asc")  => query.OrderBy(t => t.Category),
+            ("category",    _)   => query.OrderByDescending(t => t.Category),
+            ("priority", "asc")  => query.OrderBy(t => t.Priority),
+            ("priority",    _)   => query.OrderByDescending(t => t.Priority),
+            ("status",   "asc")  => query.OrderBy(t => t.Status),
+            ("status",      _)   => query.OrderByDescending(t => t.Status),
+            ("due",      "asc")  => query.OrderBy(t => t.DueDate),
+            ("due",         _)   => query.OrderByDescending(t => t.DueDate),
+            ("created",  "asc")  => query.OrderBy(t => t.CreatedDate),
+            _                    => query.OrderByDescending(t => t.CreatedDate),
+        };
 
+        // Count before paginating (single fast COUNT query)
+        var totalCount = await query.CountAsync();
+
+        // Clamp page size to allowed values
+        pageSize = pageSize is 15 or 25 or 50 or 100 ? pageSize : 25;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize));
+        page = Math.Clamp(page, 1, totalPages);
+
+        var tickets = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        ViewBag.SelectedStatuses     = statuses     ?? Array.Empty<TicketStatus>();
+        ViewBag.SelectedCategories   = categories   ?? Array.Empty<TicketCategory>();
+        ViewBag.SelectedPriorities   = priorities   ?? Array.Empty<TicketPriority>();
+        ViewBag.SelectedAssigneeIds  = assigneeIds  ?? Array.Empty<int>();
+        ViewBag.SelectedRequesterIds = requesterIds ?? Array.Empty<int>();
+        ViewBag.CurrentUnmatched  = unmatched;
+        ViewBag.CurrentUnassigned = unassigned;
+        ViewBag.CurrentQuery = q ?? "";
+        ViewBag.SortBy    = sortBy;
+        ViewBag.SortDir   = sortDir;
+        ViewBag.Page      = page;
+        ViewBag.PageSize  = pageSize;
+        ViewBag.TotalCount = totalCount;
+        ViewBag.TotalPages = totalPages;
+
+        ViewBag.ActiveViewId   = activeView?.Id;
+        ViewBag.ActiveViewName = activeView?.Name;
+
+        // When serving only the table partial, skip dropdown data (saves 3 DB queries)
+        if (partial)
+            return PartialView("_TicketsTable", tickets);
+
+        // Data for filter bar assignee dropdown + bulk reassign dropdown (full-page load only).
+        // Use portal-user role membership (not department) so that any IT admin/agent with
+        // a portal account appears, regardless of their employee Department field.
+        var itRoleIds = await _context.Roles
+            .Where(r => r.Name != "End User")
+            .Select(r => r.Id).ToListAsync();
+        var assignableEmpIds = await _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct().ToListAsync();
+        var assignableStaff = await _context.Employees
+            .Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+
+        ViewBag.AssignableStaff = assignableStaff;
+        // ITStaffJson is used by the bulk-reassign JS dropdown — same list, serialised
         ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
-            await _context.Employees
-                .Where(e => e.IsActive && e.Department == "IT")
-                .OrderBy(e => e.LastName)
-                .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
-                .ToListAsync());
+            assignableStaff.Select(e => new { id = e.Id, name = e.Name }));
 
-        var tickets = await query.OrderByDescending(t => t.CreatedDate).ToListAsync();
+        // Distinct set of employees who have submitted at least one ticket (for Requester filter)
+        var requesterEmpIds = await _context.Tickets
+            .Select(t => t.SubmittedById).Distinct().ToListAsync();
+        ViewBag.Requesters = await _context.Employees
+            .Where(e => requesterEmpIds.Contains(e.Id))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+
+        ViewBag.Branches = await _context.Branches
+            .Where(b => b.IsActive).OrderBy(b => b.Name)
+            .Select(b => new { b.Id, b.Name }).ToListAsync();
+        ViewBag.Groups = await _context.UserGroups
+            .Where(g => g.IsActive).OrderBy(g => g.Name)
+            .Select(g => new { g.Id, g.Name }).ToListAsync();
+        ViewBag.Departments = await _context.Employees
+            .Where(e => e.Department != null && e.Department != "")
+            .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
+
         return View(tickets);
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();
@@ -70,6 +245,23 @@ public class TicketsController : Controller
         return View(ticket);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> DetailsModal(int? id)
+    {
+        if (id == null) return NotFound();
+
+        var ticket = await _context.Tickets
+            .Include(t => t.SubmittedBy)
+            .Include(t => t.AssignedTo)
+            .Include(t => t.CompanyService)
+            .Include(t => t.SubCategory)
+            .Include(t => t.Branch)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (ticket == null) return NotFound();
+        return PartialView("_TicketDetailsModalContent", ticket);
+    }
+
     public IActionResult Create()
     {
         PopulateDropdowns();
@@ -83,8 +275,16 @@ public class TicketsController : Controller
         if (ModelState.IsValid)
         {
             ticket.CreatedDate = DateTime.UtcNow;
-            // Auto-set SLA due date based on priority
             ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
+
+            // Auto-assign via assignment rules when no assignee was explicitly chosen.
+            if (ticket.AssignedToId == null)
+            {
+                var submitter = await _context.Employees.FindAsync(ticket.SubmittedById);
+                ticket.AssignedToId = await _assignmentResolver.ResolveAsync(
+                    ticket.Category, submitter?.BranchId, defaultAssigneeId: null);
+            }
+
             _context.Add(ticket);
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
@@ -147,6 +347,12 @@ public class TicketsController : Controller
                     var oldAgent = existing.AssignedToId.HasValue ? (await _context.Employees.FindAsync(existing.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
                     var newAgent = ticket.AssignedToId.HasValue ? (await _context.Employees.FindAsync(ticket.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Assigned To", OldValue = oldAgent, NewValue = newAgent });
+                }
+                if (existing.UserGroupId != ticket.UserGroupId)
+                {
+                    var oldGroup = existing.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(existing.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    var newGroup = ticket.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(ticket.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Group Assignment", OldValue = oldGroup, NewValue = newGroup });
                 }
                 if (existing.Category != ticket.Category)
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Category", OldValue = existing.Category.ToString(), NewValue = ticket.Category.ToString() });
@@ -325,13 +531,128 @@ public class TicketsController : Controller
                 if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
                     ticket.ClosedDate = DateTime.UtcNow;
             }
+            else if (bulkAction == "delete")
+            {
+                _context.Tickets.Remove(ticket);
+            }
         }
 
         if (histories.Any()) _context.TicketHistory.AddRange(histories);
         await _context.SaveChangesAsync();
 
-        TempData["Success"] = $"{tickets.Count} ticket(s) updated.";
+        TempData["Success"] = bulkAction == "delete"
+            ? $"{tickets.Count} ticket(s) deleted."
+            : $"{tickets.Count} ticket(s) updated.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // POST: Tickets/MergeTickets — merge tickets together. By default the lowest ID becomes the
+    // primary; pass primaryId explicitly when merging a single selected ticket into a chosen target.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MergeTickets(int[] selectedIds, int? primaryId = null)
+    {
+        if (selectedIds == null || selectedIds.Length == 0)
+        {
+            TempData["Error"] = "Select at least 1 ticket to merge.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Build the full id list. If a primaryId was supplied (e.g. single-selection merge),
+        // include it so the union has at least 2 distinct ids.
+        var idSet = new HashSet<int>(selectedIds);
+        if (primaryId.HasValue) idSet.Add(primaryId.Value);
+
+        if (idSet.Count < 2)
+        {
+            TempData["Error"] = "Select at least 2 tickets to merge, or specify a target ticket ID.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Determine primary: explicit primaryId wins, otherwise lowest id.
+        int resolvedPrimaryId = primaryId ?? idSet.Min();
+        if (!idSet.Contains(resolvedPrimaryId))
+        {
+            TempData["Error"] = "Target ticket is not part of the selection.";
+            return RedirectToAction(nameof(Index));
+        }
+        var secondaryIds = idSet.Where(id => id != resolvedPrimaryId).ToArray();
+        var changedBy   = User.Identity?.Name ?? "Agent";
+        var now         = DateTime.UtcNow;
+
+        var primary = await _context.Tickets.FindAsync(resolvedPrimaryId);
+        if (primary == null)
+        {
+            TempData["Error"] = "Primary ticket not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaries = await _context.Tickets
+            .Include(t => t.Notes)
+            .Where(t => secondaryIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (!secondaries.Any())
+        {
+            TempData["Error"] = "Secondary tickets not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaryList = string.Join(", #", secondaries.Select(t => t.Id));
+
+        // Merge summary note on the primary ticket
+        _context.TicketNotes.Add(new TicketNote
+        {
+            TicketId   = resolvedPrimaryId,
+            AuthorName = changedBy,
+            Content    = $"Tickets #{secondaryList} were merged into this ticket by {changedBy}.",
+            CreatedDate = now, Source = "Agent", IsInternal = true
+        });
+
+        foreach (var secondary in secondaries)
+        {
+            // Copy all public notes from secondary → primary (prefixed for traceability)
+            foreach (var note in secondary.Notes.Where(n => !n.IsInternal))
+            {
+                _context.TicketNotes.Add(new TicketNote
+                {
+                    TicketId    = resolvedPrimaryId,
+                    AuthorName  = note.AuthorName,
+                    AuthorEmail = note.AuthorEmail,
+                    Content     = $"[Merged from #{secondary.Id}] {note.Content}",
+                    CreatedDate = note.CreatedDate,
+                    Source      = note.Source,
+                    IsInternal  = false
+                });
+            }
+
+            // Internal merge note on the secondary ticket
+            _context.TicketNotes.Add(new TicketNote
+            {
+                TicketId   = secondary.Id,
+                AuthorName = changedBy,
+                Content    = $"This ticket was merged into #{resolvedPrimaryId} by {changedBy}. Refer to #{resolvedPrimaryId} for all further updates.",
+                CreatedDate = now, Source = "Agent", IsInternal = true
+            });
+
+            _context.TicketHistory.Add(new TicketHistory
+            {
+                TicketId = secondary.Id, ChangedBy = changedBy,
+                FieldName = "Status",
+                OldValue  = secondary.Status.ToString(),
+                NewValue  = $"Closed (Merged into #{resolvedPrimaryId})"
+            });
+
+            secondary.Status     = TicketStatus.Closed;
+            secondary.ClosedDate ??= now;
+            secondary.UpdatedDate = now;
+        }
+
+        primary.UpdatedDate = now;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"{secondaries.Count} ticket(s) merged into #{resolvedPrimaryId}.";
+        return RedirectToAction(nameof(Edit), new { id = resolvedPrimaryId });
     }
 
     // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
@@ -385,6 +706,523 @@ public class TicketsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    // ── CSV / TSV Import ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin")]
+    public IActionResult ImportCsv() => View();
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> ImportCsv(IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            ModelState.AddModelError("", "Please select a file to upload.");
+            return View();
+        }
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".csv" && ext != ".tsv" && ext != ".txt")
+        {
+            ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
+            return View();
+        }
+
+        // Save uploaded file to a server temp path — avoids TempData cookie overflow
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ss_ticket_{Guid.NewGuid():N}.dat");
+        await using (var fs = System.IO.File.Create(tempPath))
+            await file.CopyToAsync(fs);
+
+        TempData["ImportTempPath"] = tempPath;
+
+        var preview = await ParseTicketImportAsync(tempPath);
+        return View("ImportCsvPreview", preview);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportCsvConfirm()
+    {
+        var tempPath = TempData["ImportTempPath"] as string;
+        if (string.IsNullOrEmpty(tempPath) || !System.IO.File.Exists(tempPath))
+        {
+            TempData["Error"] = "Import session expired. Please upload the file again.";
+            return RedirectToAction(nameof(ImportCsv));
+        }
+
+        var rows = await ParseTicketImportAsync(tempPath);
+        System.IO.File.Delete(tempPath);
+
+        // Get or create a placeholder employee for tickets whose requester couldn't be matched
+        int? placeholderEmpId = null;
+        if (rows.Any(r => !r.RequesterMatched))
+        {
+            const string placeholderEmail = "imported.ticket@servicesphere.local";
+            var placeholder = await _context.Employees
+                .FirstOrDefaultAsync(e => e.Email == placeholderEmail);
+            if (placeholder == null)
+            {
+                placeholder = new Employee
+                {
+                    FirstName  = "Imported",
+                    LastName   = "Ticket",
+                    Email      = placeholderEmail,
+                    Department = "System",
+                    IsActive   = false,
+                    HireDate   = DateTime.Today,
+                };
+                _context.Employees.Add(placeholder);
+                await _context.SaveChangesAsync();
+            }
+            placeholderEmpId = placeholder.Id;
+        }
+
+        var tickets = rows.Select(r =>
+        {
+            // Build description — for unmatched requesters prepend the original name
+            var desc = r.RequesterMatched
+                ? r.Description
+                : $"[Original Requester: {r.RequesterRaw}]\n{r.Description}";
+
+            return new Ticket
+            {
+                Title           = Trunc(r.Title, 200),
+                Description     = Trunc(desc, 2000),
+                Status          = r.Status,
+                Priority        = r.Priority,
+                Category        = r.Category,
+                SubCategoryId   = r.SubCategoryId,
+                SubmittedById   = r.SubmittedById ?? placeholderEmpId!.Value,
+                AssignedToId    = r.AssignedToId,
+                BranchId        = r.BranchId,
+                CreatedDate     = r.CreatedDate,
+                UpdatedDate     = r.UpdatedDate,
+                DueDate         = r.DueDate,
+                ResolvedDate    = r.ResolvedDate,
+                ClosedDate      = r.ClosedDate,
+                ResolutionNotes = r.ResolutionNotes == null ? null : Trunc(r.ResolutionNotes, 2000),
+            };
+        }).ToList();
+
+        await _context.Tickets.AddRangeAsync(tickets);
+        await _context.SaveChangesAsync();
+
+        int unmatched = rows.Count(r => !r.RequesterMatched);
+        TempData["Success"] = $"Import complete: {tickets.Count} ticket(s) imported" +
+            (unmatched > 0 ? $" ({unmatched} with unmatched requester — original name saved in description)" : "") + ".";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // ── Import helpers ────────────────────────────────────────────────────────
+
+    private static string Trunc(string? s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max];
+
+    private async Task<List<ImportTicketRow>> ParseTicketImportAsync(string filePath)
+    {
+        using var reader = new System.IO.StreamReader(filePath, System.Text.Encoding.UTF8);
+        var headerLine = await reader.ReadLineAsync();
+        if (string.IsNullOrWhiteSpace(headerLine)) return new List<ImportTicketRow>();
+
+        var delimiter = headerLine.Count(c => c == '\t') > 10 ? '\t' : ',';
+        var headers = SplitCsvLine(headerLine, delimiter);
+        var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < headers.Count; i++)
+            colIndex[headers[i].Trim()] = i;
+
+        // Load all employees (active or not) for matching during import
+        var employees = await _context.Employees
+            .Select(e => new { e.Id, e.Email, FullName = (e.FirstName + " " + e.LastName).Trim() })
+            .ToListAsync();
+        var emailToId = employees
+            .GroupBy(e => e.Email.ToLower())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+        var nameToId = employees
+            .GroupBy(e => e.FullName.ToLower())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
+        var branches = await _context.Branches
+            .Select(b => new { b.Id, b.Name, b.City })
+            .ToListAsync();
+
+        var subCats = await _context.TicketSubCategories
+            .Where(s => s.IsActive)
+            .Select(s => new { s.Id, s.Name, s.Category })
+            .ToListAsync();
+
+        var preview = new List<ImportTicketRow>();
+        int rowNum = 1;
+        string? line;
+
+        while ((line = await reader.ReadLineAsync()) != null)
+        {
+            rowNum++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var cols = SplitCsvLine(line, delimiter);
+            string Get(string name) =>
+                colIndex.TryGetValue(name, out var i) && i < cols.Count ? cols[i].Trim() : "";
+
+            var title = Get("Title");
+            if (string.IsNullOrWhiteSpace(title)) continue;
+
+            var row = new ImportTicketRow { RowNumber = rowNum, OriginalTitle = title };
+            row.Title = title.Length > 200 ? title[..200] : title;
+
+            var desc = Get("Description");
+            if (string.IsNullOrWhiteSpace(desc)) desc = "(No description provided)";
+            row.Description = desc.Length > 2000 ? desc[..2000] : desc;
+
+            row.Status   = MapStatus(Get("State"));
+            row.Priority = MapPriority(Get("Priority"));
+            row.Category = MapCategory(Get("Category"));
+
+            var subCatName = Get("Subcategory");
+            if (!string.IsNullOrWhiteSpace(subCatName))
+            {
+                var match = subCats.FirstOrDefault(s =>
+                    s.Category == row.Category &&
+                    s.Name.Equals(subCatName, StringComparison.OrdinalIgnoreCase));
+                row.SubCategoryId = match?.Id;
+            }
+
+            var requester = Get("Requester");
+            row.RequesterRaw = requester;
+            var reqEmail = ExtractEmail(requester);
+            if (!string.IsNullOrEmpty(reqEmail) && emailToId.TryGetValue(reqEmail.ToLower(), out var subId))
+                row.SubmittedById = subId;
+            else if (!string.IsNullOrEmpty(requester) && nameToId.TryGetValue(requester.Trim().ToLower(), out var subIdByName))
+                row.SubmittedById = subIdByName;
+
+            var assigneeRaw = Get("Assignee Email");
+            row.AssigneeEmailRaw = assigneeRaw;
+            var asnEmail = ExtractEmail(assigneeRaw);
+            if (!string.IsNullOrEmpty(asnEmail) && emailToId.TryGetValue(asnEmail.ToLower(), out var asnId))
+                row.AssignedToId = asnId;
+            else if (!string.IsNullOrEmpty(assigneeRaw) && nameToId.TryGetValue(assigneeRaw.Trim().ToLower(), out var asnIdByName))
+                row.AssignedToId = asnIdByName;
+
+            var site = Get("Site");
+            if (!string.IsNullOrWhiteSpace(site))
+            {
+                var branch = branches.FirstOrDefault(b =>
+                    b.Name.Contains(site, StringComparison.OrdinalIgnoreCase) ||
+                    (b.City != null && b.City.Contains(site, StringComparison.OrdinalIgnoreCase)) ||
+                    site.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
+                row.BranchId = branch?.Id;
+                row.SiteRaw  = site;
+            }
+
+            row.CreatedDate  = ParseDate(Get("Created At")) ?? DateTime.UtcNow;
+            row.UpdatedDate  = ParseDate(Get("Updated At"));
+            row.DueDate      = ParseDate(Get("Due Date"));
+            row.ResolvedDate = ParseDate(Get("Resolved At"));
+            row.ClosedDate   = ParseDate(Get("Closed At"));
+
+            var resolution = Get("Resolution");
+            if (!string.IsNullOrWhiteSpace(resolution))
+                row.ResolutionNotes = resolution.Length > 2000 ? resolution[..2000] : resolution;
+
+            row.RequesterMatched = row.SubmittedById.HasValue;
+            row.CanImport  = true; // all tickets import — unmatched use a placeholder employee
+            row.SkipReason = row.RequesterMatched ? null : $"Requester '{requester}' not matched — original name will be saved in ticket description";
+
+            preview.Add(row);
+        }
+
+        return preview;
+    }
+
+    private static List<string> SplitCsvLine(string line, char delimiter)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (c == delimiter && !inQuotes)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        result.Add(current.ToString());
+        return result;
+    }
+
+    private static string ExtractEmail(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        // "Name <email>" format
+        var start = raw.LastIndexOf('<');
+        var end   = raw.LastIndexOf('>');
+        if (start >= 0 && end > start)
+            return raw[(start + 1)..end].Trim();
+        // plain email
+        return raw.Contains('@') ? raw.Trim() : "";
+    }
+
+    private static DateTime? ParseDate(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        return DateTime.TryParse(raw, out var dt) ? dt.ToUniversalTime() : null;
+    }
+
+    private static TicketStatus MapStatus(string raw) => raw.ToLower().Replace(" ", "") switch
+    {
+        "inprogress" or "open(inprogress)" => TicketStatus.InProgress,
+        "resolved"   or "solved"           => TicketStatus.Resolved,
+        "closed"                           => TicketStatus.Closed,
+        "cancelled"  or "canceled"         => TicketStatus.Cancelled,
+        "onhold"     or "pending"          => TicketStatus.OnHold,
+        _                                  => TicketStatus.Open
+    };
+
+    private static TicketPriority MapPriority(string raw) => raw.ToLower() switch
+    {
+        "low"                        => TicketPriority.Low,
+        "high" or "urgent"           => TicketPriority.High,
+        "critical" or "emergency"    => TicketPriority.Critical,
+        _                            => TicketPriority.Medium
+    };
+
+    private static TicketCategory MapCategory(string raw) =>
+        raw.ToLower().Replace(" ", "").Replace("-", "") switch
+        {
+            "hardware"                       => TicketCategory.HardwareIssue,
+            "software" or "applications"
+                or "application"             => TicketCategory.SoftwareIssue,
+            "network" or "networkissue"      => TicketCategory.NetworkIssue,
+            "employee" or "hr" or "people"   => TicketCategory.EmployeeIssue,
+            "security" or "securityincident" => TicketCategory.SecurityIncident,
+            "servicerequest" or "service"    => TicketCategory.ServiceRequest,
+            _                                => TicketCategory.Other
+        };
+
+    // ── Saved Views ──────────────────────────────────────────────────────────
+
+    /// <summary>Returns the current user's saved views + all shared views as JSON.</summary>
+    [HttpGet]
+    public async Task<IActionResult> GetSavedViews()
+    {
+        var userId = CurrentPortalUserId();
+        var views = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId || v.IsShared)
+            // System views (null owner) first, then personal, both sorted by name
+            .OrderBy(v => v.OwnerPortalUserId == null ? 0 : 1)
+            .ThenBy(v => v.Name)
+            .Select(v => new {
+                v.Id, v.Name, v.IsDefault, v.IsShared,
+                v.FilterStatuses, v.FilterCategories, v.FilterPriorities,
+                v.FilterStatus, v.FilterCategory, v.FilterPriority,
+                v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
+                v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
+                v.SortBy, v.SortDir, v.PageSize,
+                isOwner      = v.OwnerPortalUserId == userId,
+                isSystemView = v.OwnerPortalUserId == null
+            })
+            .ToListAsync();
+        return Json(views);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveView(
+        string name, bool isShared,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
+        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
+        string sortBy = "id", string sortDir = "desc", int pageSize = 25)
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        var view = new SavedTicketView
+        {
+            Name                 = name.Trim(),
+            OwnerPortalUserId    = userId,
+            IsShared             = isShared,
+            FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null,
+            FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null,
+            FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null,
+            FilterBranchId       = filterBranchId,
+            FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim(),
+            FilterGroupId        = filterGroupId,
+            FilterAssignedToMe   = filterAssignedToMe,
+            FilterUnassignedOnly = filterUnassignedOnly,
+            FilterUnmatchedOnly  = filterUnmatchedOnly,
+            SortBy               = sortBy,
+            SortDir              = sortDir,
+            PageSize             = pageSize,
+            CreatedDate          = DateTime.UtcNow
+        };
+        _context.SavedTicketViews.Add(view);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true, id = view.Id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateView(
+        int id, string name, bool isShared,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
+        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
+        string sortBy = "id", string sortDir = "desc", int pageSize = 25)
+    {
+        var userId = CurrentPortalUserId();
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && v.OwnerPortalUserId == userId);
+        if (view == null) return NotFound();
+
+        view.Name                 = name.Trim();
+        view.IsShared             = isShared;
+        view.FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null;
+        view.FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null;
+        view.FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null;
+        // Clear legacy single-value fields when multi-select values are stored
+        view.FilterStatus         = null;
+        view.FilterCategory       = null;
+        view.FilterPriority       = null;
+        view.FilterBranchId       = filterBranchId;
+        view.FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim();
+        view.FilterGroupId        = filterGroupId;
+        view.FilterAssignedToMe   = filterAssignedToMe;
+        view.FilterUnassignedOnly = filterUnassignedOnly;
+        view.FilterUnmatchedOnly  = filterUnmatchedOnly;
+        view.SortBy               = sortBy;
+        view.SortDir              = sortDir;
+        view.PageSize             = pageSize;
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteView(int id)
+    {
+        var userId = CurrentPortalUserId();
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && v.OwnerPortalUserId == userId);
+        if (view == null) return NotFound();
+
+        _context.SavedTicketViews.Remove(view);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetDefaultView(int id)
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        // Clear any existing default for this user
+        var existing = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId && v.IsDefault)
+            .ToListAsync();
+        existing.ForEach(v => v.IsDefault = false);
+
+        // Set the new default (must belong to this user or be shared)
+        var view = await _context.SavedTicketViews
+            .FirstOrDefaultAsync(v => v.Id == id && (v.OwnerPortalUserId == userId || v.IsShared));
+        if (view != null) view.IsDefault = true;
+
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ClearDefaultView()
+    {
+        var userId = CurrentPortalUserId();
+        if (userId == null) return Unauthorized();
+
+        var existing = await _context.SavedTicketViews
+            .Where(v => v.OwnerPortalUserId == userId && v.IsDefault)
+            .ToListAsync();
+        existing.ForEach(v => v.IsDefault = false);
+        await _context.SaveChangesAsync();
+        return Json(new { success = true });
+    }
+
+    private int? CurrentPortalUserId()
+    {
+        var raw = User.FindFirstValue("UserId");
+        return int.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// Builds a redirect URL for a saved view, handling multi-select for status, category, and priority.
+    /// </summary>
+    private static string BuildViewUrl(SavedTicketView v)
+    {
+        var sb = new System.Text.StringBuilder(
+            $"/Tickets?viewId={v.Id}&sortBy={Uri.EscapeDataString(v.SortBy)}&sortDir={v.SortDir}&pageSize={v.PageSize}");
+
+        // Multi-status (FilterStatuses takes priority over legacy FilterStatus)
+        if (!string.IsNullOrEmpty(v.FilterStatuses))
+        {
+            foreach (var s in v.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&statuses={Uri.EscapeDataString(s.Trim())}");
+        }
+        else if (v.FilterStatus != null)
+        {
+            sb.Append($"&statuses={v.FilterStatus}");
+        }
+
+        // Multi-category (FilterCategories takes priority over legacy FilterCategory)
+        if (!string.IsNullOrEmpty(v.FilterCategories))
+        {
+            foreach (var c in v.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&categories={Uri.EscapeDataString(c.Trim())}");
+        }
+        else if (v.FilterCategory != null)
+        {
+            sb.Append($"&categories={v.FilterCategory}");
+        }
+
+        // Multi-priority (FilterPriorities takes priority over legacy FilterPriority)
+        if (!string.IsNullOrEmpty(v.FilterPriorities))
+        {
+            foreach (var p in v.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&priorities={Uri.EscapeDataString(p.Trim())}");
+        }
+        else if (v.FilterPriority != null)
+        {
+            sb.Append($"&priorities={v.FilterPriority}");
+        }
+
+        if (v.FilterUnmatchedOnly)    sb.Append("&unmatched=true");
+        if (v.FilterUnassignedOnly)   sb.Append("&unassigned=true");
+        return sb.ToString();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     private void PopulateDropdowns(Ticket? ticket = null)
     {
         ViewBag.Employees = new SelectList(
@@ -392,10 +1230,27 @@ public class TicketsController : Controller
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.SubmittedById);
 
+        // Assignable IT staff = employees linked to a portal user whose role is NOT "End User".
+        // (Department-based filtering excluded admins like Jose/Admin who aren't in the IT dept,
+        // and incorrectly included end users like Kolby/Chris whose dept is IT.)
+        var itRoleIds = _context.Roles
+            .Where(r => r.Name != "End User")
+            .Select(r => r.Id).ToList();
+        var assignableEmpIds = _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct().ToList();
         ViewBag.ITStaff = new SelectList(
-            _context.Employees.Where(e => e.IsActive && e.Department == "IT").OrderBy(e => e.LastName)
+            _context.Employees.Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+                .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.AssignedToId);
+
+        ViewBag.UserGroups = new SelectList(
+            _context.UserGroups.Where(g => g.IsActive).OrderBy(g => g.Name)
+                .Select(g => new { g.Id, g.Name }),
+            "Id", "Name", ticket?.UserGroupId);
 
         ViewBag.Services = new SelectList(
             _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name),

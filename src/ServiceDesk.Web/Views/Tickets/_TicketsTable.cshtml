@@ -1,0 +1,220 @@
+@model IEnumerable<Ticket>
+@using Microsoft.AspNetCore.Html
+@using ServiceDesk.Core.Enums
+@using ServiceDesk.Core.Models
+
+@{
+    var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
+    var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
+    var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
+    var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
+}
+
+<!-- Table toolbar: count + page size -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small" id="ticketCountLabel">
+        @if ((int)ViewBag.TotalCount == 0)
+        {
+            <span>No tickets found</span>
+        }
+        else
+        {
+            <span>
+                Showing @((ViewBag.Page - 1) * ViewBag.PageSize + 1)–@(Math.Min((int)ViewBag.Page * (int)ViewBag.PageSize, (int)ViewBag.TotalCount))
+                of <strong>@ViewBag.TotalCount</strong> ticket(s)
+            </span>
+        }
+    </span>
+    <div class="d-flex align-items-center gap-2">
+        <label class="form-label small mb-0 me-1">Show</label>
+        <select class="form-select form-select-sm" style="width:auto;"
+                onchange="changePageSize(this.value)">
+            @foreach (var sz in new[] { 15, 25, 50, 100 })
+            {
+                <option value="@sz" selected="@((int)ViewBag.PageSize == sz ? "selected" : null)">@sz</option>
+            }
+        </select>
+        <label class="form-label small mb-0 ms-1">per page</label>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+        <thead class="table-dark">
+            <tr>
+                <th class="text-center" style="width:36px;">
+                    <input type="checkbox" id="chkSelectAll" class="form-check-input" title="Select all">
+                </th>
+                <th>@SortHeader("id",       "ID")</th>
+                <th>@SortHeader("title",    "Title")</th>
+                <th>@SortHeader("category", "Category")</th>
+                <th>@SortHeader("priority", "Priority")</th>
+                <th>@SortHeader("status",   "Status")</th>
+                <th>Submitted By</th>
+                <th>Assigned To</th>
+                <th>@SortHeader("created",  "Created")</th>
+                <th>@SortHeader("due",      "Due Date")</th>
+                <th style="width:90px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var ticket in Model)
+            {
+                <tr>
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input ticket-chk" name="selectedIds" value="@ticket.Id">
+                    </td>
+                    <td>@ticket.Id</td>
+                    <td style="max-width:340px;">
+                        <a href="/Tickets/Details/@ticket.Id"
+                           class="text-truncate d-block ticket-details-link"
+                           style="max-width:320px;"
+                           data-ticket-id="@ticket.Id"
+                           title="@ticket.Title">@ticket.Title</a>
+                        @if (ticket.IsOverdue)
+                        {
+                            <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
+                                <i class="bi bi-exclamation-circle me-1"></i>Overdue
+                            </span>
+                        }
+                    </td>
+                    <td>@ticket.Category</td>
+                    <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
+                    <td>
+                        <div class="dropdown inline-edit-dropdown">
+                            <span class="badge badge-@ticket.Status.ToString().ToLower() inline-edit-badge"
+                                  data-ticket-id="@ticket.Id" data-field="status" data-current="@ticket.Status"
+                                  title="Click to change status" role="button"
+                                  data-bs-toggle="dropdown" aria-expanded="false">
+                                @ticket.Status <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>
+                            </span>
+                            <ul class="dropdown-menu dropdown-menu-sm shadow-sm status-dropdown" data-ticket-id="@ticket.Id">
+                                @foreach (var s in Enum.GetValues<TicketStatus>())
+                                {
+                                    <li>
+                                        <a class="dropdown-item status-option @(ticket.Status == s ? "active" : "")"
+                                           data-value="@s" href="#">
+                                            <span class="badge badge-@s.ToString().ToLower() me-2">@s</span>
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </td>
+                    <td>@ticket.SubmittedBy?.FullName</td>
+                    <td>
+                        <div class="dropdown inline-edit-dropdown">
+                            <span class="inline-edit-assignee text-nowrap"
+                                  data-ticket-id="@ticket.Id" data-field="assignee"
+                                  data-current="@(ticket.AssignedToId?.ToString() ?? "0")"
+                                  title="Click to change assignee" role="button"
+                                  data-bs-toggle="dropdown" aria-expanded="false">
+                                @if (ticket.AssignedTo != null)
+                                {
+                                    <span>@ticket.AssignedTo.FullName <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:0.7em;"></i></span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted fst-italic">Unassigned <i class="bi bi-chevron-down ms-1" style="font-size:0.7em;"></i></span>
+                                }
+                            </span>
+                            <div class="dropdown-menu p-2 shadow-sm assignee-dropdown" style="min-width:220px;" data-ticket-id="@ticket.Id">
+                                <input type="text" class="form-control form-control-sm mb-2 assignee-search" placeholder="Search agent..." autocomplete="off" />
+                                <ul class="list-unstyled mb-0 assignee-list" style="max-height:200px;overflow-y:auto;">
+                                    <li><a class="dropdown-item assignee-option @(ticket.AssignedToId == null ? "active" : "")" data-value="0" href="#">— Unassigned —</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-nowrap">@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
+                    <td class="text-nowrap">
+                        @if (ticket.DueDate.HasValue)
+                        {
+                            <span class="@(ticket.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
+                                @ticket.DueDate.Value.ToString("MMM dd, yyyy")
+                            </span>
+                        }
+                        else { <span class="text-muted">—</span> }
+                    </td>
+                    <td>
+                        <a href="/Tickets/Edit/@ticket.Id"   class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-inbox display-1"></i>
+        <p class="mt-3 mb-3">No tickets found matching the current filters.</p>
+        <a href="/Tickets/Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> New Ticket</a>
+        <a href="/Tickets"        class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
+    </div>
+}
+
+<!-- Pagination -->
+@if ((int)ViewBag.TotalPages > 1)
+{
+    <nav class="mt-3" aria-label="Ticket pages">
+        <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+            <li class="page-item @((int)ViewBag.Page == 1 ? "disabled" : "")">
+                <a class="page-link tbl-nav" href="@PageUrl((int)ViewBag.Page - 1)">&#8249; Prev</a>
+            </li>
+            @{
+                int tp = (int)ViewBag.TotalPages, cp = (int)ViewBag.Page;
+                var pages = Enumerable.Range(1, tp)
+                    .Where(p => p == 1 || p == tp || Math.Abs(p - cp) <= 2)
+                    .ToList();
+                int? prev = null;
+                foreach (var p in pages)
+                {
+                    if (prev.HasValue && p - prev.Value > 1)
+                    { <li class="page-item disabled"><span class="page-link">…</span></li> }
+                    <li class="page-item @(p == cp ? "active" : "")">
+                        <a class="page-link tbl-nav" href="@PageUrl(p)">@p</a>
+                    </li>
+                    prev = p;
+                }
+            }
+            <li class="page-item @((int)ViewBag.Page == (int)ViewBag.TotalPages ? "disabled" : "")">
+                <a class="page-link tbl-nav" href="@PageUrl((int)ViewBag.Page + 1)">Next &#8250;</a>
+            </li>
+        </ul>
+    </nav>
+}
+
+@functions {
+    IHtmlContent SortHeader(string col, string label) {
+        var sb = (string?)ViewBag.SortBy ?? "id";
+        var sd = (string?)ViewBag.SortDir ?? "desc";
+        var naturalDir = col is "created" or "due" ? "desc" : "asc";
+        var newDir = sb == col ? (sd == "asc" ? "desc" : "asc") : naturalDir;
+        var icon = sb == col ? (sd == "asc" ? " ↑" : " ↓") : "";
+        var url = PageUrl(1, col, newDir);
+        return new HtmlString(
+            $"<a href=\"{url}\" class=\"text-white text-decoration-none tbl-nav\">{label}{icon}</a>");
+    }
+
+    string PageUrl(int p, string? sb = null, string? sd = null) {
+        var sortBy  = sb ?? (string?)ViewBag.SortBy  ?? "id";
+        var sortDir = sd ?? (string?)ViewBag.SortDir ?? "desc";
+        var ps = (int)ViewBag.PageSize;
+        var qs = $"?page={p}&pageSize={ps}&sortBy={sortBy}&sortDir={sortDir}";
+        var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
+        var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
+        var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
+        var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
+        foreach (var s in selSt) qs += $"&statuses={s}";
+        foreach (var c in selCa) qs += $"&categories={c}";
+        foreach (var r in selPr) qs += $"&priorities={r}";
+        foreach (var i in selAi) qs += $"&assigneeIds={i}";
+        if (ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched)  qs += "&unmatched=true";
+        if (ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) qs += "&unassigned=true";
+        if (!string.IsNullOrWhiteSpace((string?)ViewBag.CurrentQuery)) qs += $"&q={Uri.EscapeDataString((string)ViewBag.CurrentQuery)}";
+        if (ViewBag.ActiveViewId != null) qs += $"&viewId={ViewBag.ActiveViewId}";
+        return qs;
+    }
+}

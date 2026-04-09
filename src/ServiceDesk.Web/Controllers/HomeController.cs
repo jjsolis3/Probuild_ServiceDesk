@@ -9,7 +9,7 @@ using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
-[Authorize(Roles = "Admin,IT Agent")]
+[Authorize(Roles = "Admin,IT Agent,Viewer")]
 public class HomeController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -43,7 +43,10 @@ public class HomeController : Controller
                 && t.Status != TicketStatus.Cancelled);
 
         var criticalTickets = await _context.Tickets
-            .Where(t => t.Priority == TicketPriority.Critical && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
+            .Where(t => t.Priority == TicketPriority.Critical
+                     && t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .OrderByDescending(t => t.CreatedDate)

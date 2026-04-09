@@ -291,17 +291,21 @@
 
 @section Scripts {
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
+<script type="application/json" id="volCountsData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeCounts))</script>
+<script type="application/json" id="volDatesData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeDates))</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // ---- Ticket Volume Bar Chart ----
     var volEl = document.getElementById('chartTicketVolume');
     if (volEl) {
+        var volCounts = JSON.parse(document.getElementById('volCountsData').textContent);
+        var volDates  = JSON.parse(document.getElementById('volDatesData').textContent);
         new ApexCharts(volEl, {
-            series: [{ name: 'Tickets', data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeCounts)) }],
+            series: [{ name: 'Tickets', data: volCounts }],
             chart: { type: 'bar', height: 200, toolbar: { show: false } },
             plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
             dataLabels: { enabled: false },
-            xaxis: { categories: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TicketVolumeDates)), labels: { style: { fontSize: '11px' } } },
+            xaxis: { categories: volDates, labels: { style: { fontSize: '11px' } } },
             yaxis: { min: 0, tickAmount: 3, labels: { style: { fontSize: '11px' } } },
             colors: ['#2f4cdd'],
             grid: { borderColor: '#f1f1f1' },
