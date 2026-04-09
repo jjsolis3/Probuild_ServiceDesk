@@ -142,8 +142,7 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="text" id="employeeKeywordSearch" class="form-control" placeholder="Search employees..."
-                       value="@((string?)ViewBag.CurrentQuery ?? "")"
-                       onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                       value="@((string?)ViewBag.CurrentQuery ?? "")">
                 <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
             </div>
         </div>
@@ -152,6 +151,10 @@
 
 @section Scripts {
 <script>
+document.getElementById('employeeKeywordSearch').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+});
+
 document.addEventListener('click', function (e) {
     const opt = e.target.closest('.single-filter-option');
     if (!opt) return;
