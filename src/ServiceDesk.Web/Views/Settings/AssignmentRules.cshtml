@@ -90,7 +90,7 @@
                                         <td>
                                             @if (rule.Category.HasValue)
                                             {
-                                                <span class="badge bg-info text-dark">@rule.Category.Value</span>
+                                                <span class="badge bg-info text-dark">@rule.Category.Value.GetDisplayName()</span>
                                             }
                                             else
                                             {

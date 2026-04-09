@@ -210,7 +210,7 @@
                                         @ticket.Title
                                     </a>
                                 </td>
-                                <td>@ticket.Category</td>
+                                <td>@ticket.Category.GetDisplayName()</td>
                                 <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
                                 <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
                                 <td>@ticket.CreatedDate.ToString("MMM dd")</td>

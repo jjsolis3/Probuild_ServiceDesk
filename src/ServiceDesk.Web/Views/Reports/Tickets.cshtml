@@ -100,9 +100,9 @@
                     @foreach (var item in Model.ByCategory)
                     {
                         var percent = maxCategory > 0 ? (int)((double)item.Value / maxCategory * 100) : 0;
-                        <div class="mb-3 row-clickable" data-category="@item.Key" role="button" title="View @item.Key tickets">
+                        <div class="mb-3 row-clickable" data-category="@item.Key" data-category-label="@item.Key.GetDisplayName()" role="button" title="View @item.Key.GetDisplayName() tickets">
                             <div class="d-flex justify-content-between mb-1">
-                                <span>@item.Key</span>
+                                <span>@item.Key.GetDisplayName()</span>
                                 <span class="fw-bold">@item.Value</span>
                             </div>
                             <div class="progress" style="height: 8px;">
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Category Donut
     var donutEl = document.getElementById('chartCategoryDonut');
     if (donutEl) {
-        var catLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
+        var catLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.GetDisplayName()).ToList()));
         var catCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
         var hasData = catCounts.some(function(v) { return v > 0; });
         if (hasData) {
@@ -439,8 +439,9 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.row-clickable[data-category]').forEach(function (row) {
         row.addEventListener('click', function () {
             var category = this.getAttribute('data-category');
+            var categoryLabel = this.getAttribute('data-category-label') || category;
             showModal(
-                category + ' Tickets',
+                categoryLabel + ' Tickets',
                 '/Reports/TicketsByCategory?category=' + encodeURIComponent(category),
                 '/Tickets?category=' + encodeURIComponent(category)
             );

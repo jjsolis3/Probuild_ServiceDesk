@@ -145,7 +145,7 @@
                                 </div>
                                 <div class="fw-semibold mb-1">@ticket.Title</div>
                                 <div class="text-muted small">
-                                    <i class="fas fa-tag me-1"></i>@ticket.Category
+                                    <i class="fas fa-tag me-1"></i>@ticket.Category.GetDisplayName()
                                     &nbsp;·&nbsp;
                                     <i class="fas fa-flag me-1"></i>@ticket.Priority
                                     @if (ticket.AssignedTo != null)

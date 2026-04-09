@@ -38,7 +38,7 @@
     {
         <a asp-controller="Portal" asp-action="KnowledgeBase" asp-route-q="@q" asp-route-category="@((int)cat)"
            class="badge @(selectedCat == (int)cat ? "bg-primary" : "bg-light text-dark border") text-decoration-none" style="font-size:0.85rem;padding:.35em .7em;">
-            @cat
+            @cat.GetDisplayName()
         </a>
     }
 </div>

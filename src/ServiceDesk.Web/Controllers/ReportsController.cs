@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
@@ -144,12 +145,24 @@ public class ReportsController : Controller
             _ => query
         };
 
-        var data = await query
+        // Materialize with raw enum values first, then apply display names in memory
+        var raw = await query
             .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName, AssignedTo = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
             .ToListAsync();
 
-        return Json(data);
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = t.Category.GetDisplayName(),
+            Priority = t.Priority.GetDisplayName(),
+            Status = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
     }
 
     // API: Get tickets by category for report table modals
@@ -163,7 +176,15 @@ public class ReportsController : Controller
         var filtered = tickets
             .Where(t => t.Category.ToString() == category)
             .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = t.Category.GetDisplayName(),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
             .ToList();
 
         return Json(filtered);
@@ -180,7 +201,15 @@ public class ReportsController : Controller
         var filtered = tickets
             .Where(t => t.Priority.ToString() == priority)
             .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = t.Category.GetDisplayName(),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
             .ToList();
 
         return Json(filtered);

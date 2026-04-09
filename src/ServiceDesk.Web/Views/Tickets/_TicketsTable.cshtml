@@ -78,7 +78,7 @@
                             </span>
                         }
                     </td>
-                    <td>@ticket.Category</td>
+                    <td>@ticket.Category.GetDisplayName()</td>
                     <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
                     <td>
                         <div class="dropdown inline-edit-dropdown">

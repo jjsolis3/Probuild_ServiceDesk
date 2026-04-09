@@ -196,7 +196,7 @@
                     <dd class="col-7"><span class="badge @priorityClass">@ticket.Priority</span></dd>
 
                     <dt class="col-5 text-muted">Category</dt>
-                    <dd class="col-7">@ticket.Category</dd>
+                    <dd class="col-7">@ticket.Category.GetDisplayName()</dd>
 
                     @if (ticket.CompanyService != null)
                     {

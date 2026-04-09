@@ -83,7 +83,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="statuses"
                                    value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
-                            <label class="form-check-label small" for="fs_@s">@s</label>
+                            <label class="form-check-label small" for="fs_@s">@s.GetDisplayName()</label>
                         </div>
                     }
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
@@ -106,7 +106,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="categories"
                                    value="@c" id="fc_@c" @(selCategories.Contains(c) ? "checked" : "")>
-                            <label class="form-check-label small" for="fc_@c">@c</label>
+                            <label class="form-check-label small" for="fc_@c">@c.GetDisplayName()</label>
                         </div>
                     }
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
+using ServiceDesk.Core.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -917,7 +918,7 @@ public class SettingsController : Controller
             .ToListAsync();
 
         ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new { Value = (int)c, Text = c.ToString() })
+            .Select(c => new { Value = (int)c, Text = c.GetDisplayName() })
             .ToList();
 
         ViewBag.SubCategories = await _context.TicketSubCategories

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 
@@ -155,7 +156,7 @@ public class EmailNotificationService
                 </tr>
                 <tr>
                     <td style='padding: 8px; font-weight: bold;'>Category</td>
-                    <td style='padding: 8px;'>{ticket.Category}</td>
+                    <td style='padding: 8px;'>{ticket.Category.GetDisplayName()}</td>
                 </tr>
             </table>
             <p><strong>Description:</strong></p>

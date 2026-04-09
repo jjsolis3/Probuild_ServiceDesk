@@ -35,7 +35,7 @@
         <div class="col-lg-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold"><i class="bi bi-folder me-1"></i> @cat</span>
+                    <span class="fw-semibold"><i class="bi bi-folder me-1"></i> @cat.GetDisplayName()</span>
                     <a asp-action="CreateSubCategory" asp-route-category="@((int)cat)" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-plus"></i> Add
                     </a>
