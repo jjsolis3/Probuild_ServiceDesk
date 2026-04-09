@@ -17,14 +17,20 @@ public class ServicesController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(ServiceStatus? status)
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> Index(ServiceStatus[]? statuses, string? q)
     {
         var query = _context.CompanyServices.AsQueryable();
 
-        if (status.HasValue)
-            query = query.Where(s => s.Status == status.Value);
+        if (statuses is { Length: > 0 })
+            query = query.Where(s => statuses.Contains(s.Status));
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(s => s.Name.Contains(q)
+                || (s.Category != null && s.Category.Contains(q))
+                || (s.ServiceOwner != null && s.ServiceOwner.Contains(q)));
 
-        ViewBag.CurrentStatus = status;
+        ViewBag.SelectedStatuses = statuses ?? Array.Empty<ServiceStatus>();
+        ViewBag.CurrentQuery     = q;
 
         var services = await query.OrderBy(s => s.Name).ToListAsync();
         return View(services);

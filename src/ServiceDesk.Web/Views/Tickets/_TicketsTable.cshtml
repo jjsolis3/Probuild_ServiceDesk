@@ -66,7 +66,11 @@
                     </td>
                     <td>@ticket.Id</td>
                     <td style="max-width:340px;">
-                        <a href="/Tickets/Details/@ticket.Id" class="text-truncate d-block" style="max-width:320px;" title="@ticket.Title">@ticket.Title</a>
+                        <a href="/Tickets/Details/@ticket.Id"
+                           class="text-truncate d-block ticket-details-link"
+                           style="max-width:320px;"
+                           data-ticket-id="@ticket.Id"
+                           title="@ticket.Title">@ticket.Title</a>
                         @if (ticket.IsOverdue)
                         {
                             <span class="badge bg-danger ms-1" title="Overdue since @ticket.DueDate!.Value.ToString("MMM dd, yyyy")">
@@ -134,7 +138,6 @@
                     </td>
                     <td>
                         <a href="/Tickets/Edit/@ticket.Id"   class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
-                        <a href="/Tickets/Delete/@ticket.Id" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
                     </td>
                 </tr>
             }
@@ -210,6 +213,7 @@
         foreach (var i in selAi) qs += $"&assigneeIds={i}";
         if (ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched)  qs += "&unmatched=true";
         if (ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned) qs += "&unassigned=true";
+        if (!string.IsNullOrWhiteSpace((string?)ViewBag.CurrentQuery)) qs += $"&q={Uri.EscapeDataString((string)ViewBag.CurrentQuery)}";
         if (ViewBag.ActiveViewId != null) qs += $"&viewId={ViewBag.ActiveViewId}";
         return qs;
     }

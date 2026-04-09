@@ -24,6 +24,13 @@ public class AssignmentRule
     public TicketCategory? Category { get; set; }
 
     /// <summary>
+    /// When null, this rule matches any sub-category within the selected category.
+    /// Only evaluated when Category is also set.
+    /// </summary>
+    [Display(Name = "Sub-Category (any if blank)")]
+    public int? SubCategoryId { get; set; }
+
+    /// <summary>
     /// When null, this rule matches any branch/location.
     /// </summary>
     [Display(Name = "Branch / Location (any if blank)")]
@@ -52,4 +59,5 @@ public class AssignmentRule
     // Navigation properties
     public Branch? Branch { get; set; }
     public Employee? Assignee { get; set; }
+    public TicketSubCategory? SubCategory { get; set; }
 }

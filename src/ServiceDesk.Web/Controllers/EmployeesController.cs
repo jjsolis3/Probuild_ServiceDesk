@@ -18,16 +18,16 @@ public class EmployeesController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(string? department, bool? active, int? branchId, bool? hasLogin)
+    public async Task<IActionResult> Index(string[]? departments, bool? active, int[]? branchIds, bool? hasLogin, string? q)
     {
         var query = _context.Employees.AsQueryable();
 
-        if (!string.IsNullOrEmpty(department))
-            query = query.Where(e => e.Department == department);
+        if (departments is { Length: > 0 })
+            query = query.Where(e => departments.Contains(e.Department));
         if (active.HasValue)
             query = query.Where(e => e.IsActive == active.Value);
-        if (branchId.HasValue)
-            query = query.Where(e => e.BranchId == branchId.Value);
+        if (branchIds is { Length: > 0 })
+            query = query.Where(e => e.BranchId != null && branchIds.Contains(e.BranchId.Value));
         if (hasLogin.HasValue)
         {
             var linkedIds = _context.PortalUsers
@@ -37,15 +37,21 @@ public class EmployeesController : Controller
                 ? query.Where(e => linkedIds.Contains(e.Id))
                 : query.Where(e => !linkedIds.Contains(e.Id));
         }
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(e => e.FirstName.Contains(q) || e.LastName.Contains(q)
+                || (e.Email != null && e.Email.Contains(q))
+                || (e.Department != null && e.Department.Contains(q))
+                || (e.JobTitle != null && e.JobTitle.Contains(q)));
 
-        ViewBag.CurrentDepartment = department;
-        ViewBag.CurrentActive     = active;
-        ViewBag.CurrentBranchId   = branchId;
-        ViewBag.CurrentHasLogin   = hasLogin;
-        ViewBag.Departments       = await _context.Employees
+        ViewBag.SelectedDepartments = departments ?? Array.Empty<string>();
+        ViewBag.CurrentActive       = active;
+        ViewBag.SelectedBranchIds   = branchIds ?? Array.Empty<int>();
+        ViewBag.CurrentHasLogin     = hasLogin;
+        ViewBag.CurrentQuery        = q;
+        ViewBag.Departments         = await _context.Employees
             .Where(e => e.Department != null && e.Department != "")
             .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
-        ViewBag.Branches          = await _context.Branches
+        ViewBag.Branches            = await _context.Branches
             .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
 
         var employees = await query.OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();

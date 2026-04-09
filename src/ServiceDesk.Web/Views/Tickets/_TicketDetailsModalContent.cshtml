@@ -1,0 +1,52 @@
+@model Ticket
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h5 class="mb-1">#@Model.Id - @Model.Title</h5>
+        <div class="text-muted small">Created @Model.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</div>
+    </div>
+    <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-primary">
+        <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">Description</div>
+            <div class="card-body">
+                <p class="mb-0" style="white-space:pre-wrap; word-break:break-word;">@Model.Description</p>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Model.ResolutionNotes))
+        {
+            <div class="card mt-3">
+                <div class="card-header bg-success text-white">Resolution Notes</div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space:pre-wrap; word-break:break-word;">@Model.ResolutionNotes</p>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">Details</div>
+            <div class="card-body">
+                <dl class="mb-0">
+                    <dt>Status</dt>
+                    <dd><span class="badge badge-@Model.Status.ToString().ToLower()">@Model.Status</span></dd>
+                    <dt>Priority</dt>
+                    <dd><span class="badge badge-@Model.Priority.ToString().ToLower()">@Model.Priority</span></dd>
+                    <dt>Category</dt>
+                    <dd>@Model.Category</dd>
+                    <dt>Submitted By</dt>
+                    <dd>@(Model.SubmittedBy?.FullName ?? "—")</dd>
+                    <dt>Assigned To</dt>
+                    <dd>@(Model.AssignedTo?.FullName ?? "Unassigned")</dd>
+                    <dt>Due Date</dt>
+                    <dd>@(Model.DueDate?.ToString("MMM dd, yyyy") ?? "—")</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

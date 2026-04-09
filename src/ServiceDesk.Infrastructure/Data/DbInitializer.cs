@@ -49,23 +49,42 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssignmentRules')
                 BEGIN
                     CREATE TABLE dbo.AssignmentRules (
-                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
-                        Name        NVARCHAR(200)   NOT NULL,
-                        Category    INT             NULL,
-                        BranchId    INT             NULL
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name            NVARCHAR(200)   NOT NULL,
+                        Category        INT             NULL,
+                        SubCategoryId   INT             NULL
+                            CONSTRAINT FK_AssignmentRules_SubCategories
+                            REFERENCES dbo.TicketSubCategories(Id)
+                            ON DELETE SET NULL,
+                        BranchId        INT             NULL
                             CONSTRAINT FK_AssignmentRules_Branches
                             REFERENCES dbo.Branches(Id)
                             ON DELETE SET NULL,
-                        AssigneeId  INT             NOT NULL
+                        AssigneeId      INT             NOT NULL
                             CONSTRAINT FK_AssignmentRules_Employees
                             REFERENCES dbo.Employees(Id),
-                        SortOrder   INT             NOT NULL DEFAULT 100,
-                        IsActive    BIT             NOT NULL DEFAULT 1,
-                        CreatedDate DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                        SortOrder       INT             NOT NULL DEFAULT 100,
+                        IsActive        BIT             NOT NULL DEFAULT 1,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
                     );
 
                     CREATE INDEX IX_AssignmentRules_Active_Sort
                         ON dbo.AssignmentRules (IsActive, SortOrder);
+                END
+                ELSE
+                BEGIN
+                    -- Upgrade: add SubCategoryId if table already exists
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.AssignmentRules') AND name = 'SubCategoryId'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.AssignmentRules
+                            ADD SubCategoryId INT NULL
+                            CONSTRAINT FK_AssignmentRules_SubCategories
+                            REFERENCES dbo.TicketSubCategories(Id)
+                            ON DELETE SET NULL;
+                    END
                 END");
 
             // 4. Add DueDate to Tickets (SLA upgrade)
@@ -280,6 +299,20 @@ public static class DbInitializer
                     ALTER TABLE dbo.Tickets ADD DescriptionHtml NVARCHAR(MAX) NULL;
                 END");
 
+            // 14b. Add UserGroupId column to Tickets (group assignment)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'UserGroupId'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets
+                        ADD UserGroupId INT NULL
+                        CONSTRAINT FK_Tickets_UserGroups
+                        REFERENCES dbo.UserGroups(Id)
+                        ON DELETE SET NULL;
+                END");
+
             // 15. Create SavedTicketViews table (user filter presets)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SavedTicketViews')
@@ -327,6 +360,22 @@ public static class DbInitializer
                     )
                     BEGIN
                         ALTER TABLE dbo.SavedTicketViews ADD FilterStatuses NVARCHAR(200) NULL;
+                    END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.SavedTicketViews') AND name = 'FilterCategories'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.SavedTicketViews ADD FilterCategories NVARCHAR(300) NULL;
+                    END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.SavedTicketViews') AND name = 'FilterPriorities'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.SavedTicketViews ADD FilterPriorities NVARCHAR(200) NULL;
                     END
                 END");
 
@@ -400,6 +449,8 @@ public static class DbInitializer
                          "ManageTickets,ManageAssets,ManageEmployees,ManageSubscriptions,ManageServices,ViewReports", true),
             ("End User", "Non-IT employee — portal access only (submit and view own tickets).",
                          "Portal", true),
+            ("Viewer",   "Read-only access to the web app (dashboard, tickets, assets, subscriptions, services, reports). Can also use the portal for own tickets.",
+                         "ViewReports,ViewDashboard,ViewTickets,ViewAssets,ViewSubscriptions,ViewServices", true),
         };
 
         foreach (var (name, desc, perms, isSystem) in roleNames)

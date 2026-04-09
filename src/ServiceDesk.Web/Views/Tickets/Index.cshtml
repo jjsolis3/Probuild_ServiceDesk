@@ -44,12 +44,13 @@
 
 <!-- Filters -->
 @{
-    var selStatuses   = (TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>());
-    var selCategories = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
-    var selPriorities = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
-    var selAssignees  = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>());
-    var curUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
-    var curUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
+    var selStatuses    = (TicketStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<TicketStatus>());
+    var selCategories  = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selPriorities  = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
+    var selAssignees   = (int[])(ViewBag.SelectedAssigneeIds  ?? Array.Empty<int>());
+    var selRequesters  = (int[])(ViewBag.SelectedRequesterIds ?? Array.Empty<int>());
+    var curUnmatched   = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
+    var curUnassigned  = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
 
     string FilterLabel(string singular, string plural, int count) =>
         count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
@@ -57,6 +58,11 @@
     string AssigneeLabel() {
         var cnt = selAssignees.Length + (curUnassigned ? 1 : 0);
         return cnt == 0 ? "All Assignees" : cnt == 1 ? "1 Assignee" : $"{cnt} Assignees";
+    }
+
+    string RequesterLabel() {
+        var cnt = selRequesters.Length + (curUnmatched ? 1 : 0);
+        return cnt == 0 ? "All Requesters" : cnt == 1 ? "1 Requester" : $"{cnt} Requesters";
     }
 }
 <div class="filter-bar">
@@ -67,8 +73,9 @@
             <div class="form-label small mb-1">Status</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Status", "Statuses", selStatuses.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Status" data-plural="Statuses" data-all="All Statuses">
+                    <span class="filter-label">@FilterLabel("Status", "Statuses", selStatuses.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
                     @foreach (var s in Enum.GetValues<TicketStatus>())
@@ -89,8 +96,9 @@
             <div class="form-label small mb-1">Category</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selCategories.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Category", "Categories", selCategories.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Category" data-plural="Categories" data-all="All Categories">
+                    <span class="filter-label">@FilterLabel("Category", "Categories", selCategories.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
                     @foreach (var c in Enum.GetValues<TicketCategory>())
@@ -111,8 +119,9 @@
             <div class="form-label small mb-1">Priority</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selPriorities.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Priority", "Priorities", selPriorities.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Priority" data-plural="Priorities" data-all="All Priorities">
+                    <span class="filter-label">@FilterLabel("Priority", "Priorities", selPriorities.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
                     @foreach (var p in Enum.GetValues<TicketPriority>())
@@ -133,8 +142,9 @@
             <div class="form-label small mb-1">Assignee</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selAssignees.Length > 0 || curUnassigned ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @AssigneeLabel()
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Assignee" data-plural="Assignees" data-all="All Assignees">
+                    <span class="filter-label">@AssigneeLabel()</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:200px; max-height:280px; overflow-y:auto;">
                     <div class="form-check">
@@ -159,19 +169,36 @@
             </div>
         </div>
 
-        <!-- Requester -->
+        <!-- Requester (employees who submitted tickets + Unmatched flag) -->
         <div>
             <div class="form-label small mb-1">Requester</div>
             <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curUnmatched ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curUnmatched ? "Unmatched only" : "All Requesters")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selRequesters.Length > 0 || curUnmatched ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Requester" data-plural="Requesters" data-all="All Requesters">
+                    <span class="filter-label">@RequesterLabel()</span>
                 </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
+                <div class="dropdown-menu p-2 shadow" style="min-width:230px;">
+                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Search requester…" id="requesterSearchInput"
+                           oninput="filterRequesterList(this.value)">
+                    <div id="requesterCheckList" style="max-height:200px; overflow-y:auto;">
+                        @foreach (var req in (ViewBag.Requesters as IEnumerable<dynamic> ?? []))
+                        {
+                            <div class="form-check requester-option" data-name="@req.Name.ToLower()">
+                                <input class="form-check-input" type="checkbox" name="requesterIds"
+                                       value="@req.Id" id="fr_@req.Id"
+                                       @(selRequesters.Contains((int)req.Id) ? "checked" : "")>
+                                <label class="form-check-label small" for="fr_@req.Id">@req.Name</label>
+                            </div>
+                        }
+                    </div>
+                    <hr class="my-1">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="unmatched"
                                value="true" id="fr_unmatched" @(curUnmatched ? "checked" : "")>
-                        <label class="form-check-label small" for="fr_unmatched">Unmatched (needs update)</label>
+                        <label class="form-check-label small text-muted" for="fr_unmatched">
+                            <i class="bi bi-question-circle me-1"></i>External / Unmatched only
+                        </label>
                     </div>
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
@@ -182,6 +209,15 @@
             <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-x-circle me-1"></i>Clear Filters
             </a>
+        </div>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="ticketKeywordSearch" class="form-control" placeholder="Search tickets..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
         </div>
     </div>
 </div>
@@ -197,6 +233,7 @@
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
             <option value="assign">Reassign</option>
+            <option value="delete">Delete Selected</option>
         </select>
         <div id="bulkStatusGroup" class="d-none">
             <select name="bulkStatus" class="form-select form-select-sm" style="width:auto;">
@@ -213,12 +250,53 @@
         </div>
         <button type="submit" class="btn btn-sm btn-primary" id="btnBulkApply">Apply</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnBulkClear">Clear</button>
+        <button type="button" class="btn btn-sm btn-warning ms-auto" id="btnBulkMerge" title="Merge selected ticket(s)">
+            <i class="bi bi-arrow-left-right me-1"></i> Merge Tickets
+        </button>
     </form>
+</div>
+
+<!-- Merge Target Modal: prompts for target ticket ID when only 1 ticket is selected -->
+<div class="modal fade" id="mergeTargetModal" tabindex="-1" aria-labelledby="mergeTargetModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mergeTargetModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Merge Ticket</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Enter the <strong>target ticket ID</strong> to merge ticket <strong id="mergeSourceLabel">#</strong> into:</p>
+        <input type="number" min="1" id="mergeTargetIdInput" class="form-control" placeholder="e.g. 1042" />
+        <div class="form-text">All public comments from ticket <span id="mergeSourceLabel2">#</span> will be moved to the target, and ticket <span id="mergeSourceLabel3">#</span> will be closed.</div>
+        <div id="mergeTargetError" class="alert alert-danger mt-2 d-none mb-0"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="btnConfirmMergeTarget">
+          <i class="bi bi-arrow-left-right me-1"></i> Merge
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
 <div id="ticketsTableContainer">
     @await Html.PartialAsync("_TicketsTable", Model)
+</div>
+
+<div class="modal fade" id="ticketDetailsModal" tabindex="-1" aria-labelledby="ticketDetailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ticketDetailsModalLabel"><i class="bi bi-ticket-detailed me-2"></i>Ticket Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="ticketDetailsModalBody">
+        <div class="text-muted">Loading ticket details…</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ── Save / Edit View Modal ──────────────────────────────────────────── -->
@@ -245,27 +323,57 @@
           <div class="col-12"><hr class="my-1" /><p class="text-muted small mb-1">Filter Criteria</p></div>
           <div class="col-md-4">
             <label class="form-label small">Status</label>
-            <select id="svStatus" class="form-select form-select-sm">
-              <option value="">All Statuses</option>
-              @foreach (var s in Enum.GetValues<TicketStatus>())
-              { <option value="@((int)s)">@s</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svStatusBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Statuses
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
+                @foreach (var s in Enum.GetValues<TicketStatus>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-status-cb" type="checkbox" value="@s" id="sv_s_@s">
+                    <label class="form-check-label small" for="sv_s_@s">@s</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Category</label>
-            <select id="svCategory" class="form-select form-select-sm">
-              <option value="">All Categories</option>
-              @foreach (var c in Enum.GetValues<TicketCategory>())
-              { <option value="@((int)c)">@c</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svCategoryBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Categories
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:200px;">
+                @foreach (var c in Enum.GetValues<TicketCategory>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c" id="sv_c_@c">
+                    <label class="form-check-label small" for="sv_c_@c">@c</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Priority</label>
-            <select id="svPriority" class="form-select form-select-sm">
-              <option value="">All Priorities</option>
-              @foreach (var p in Enum.GetValues<TicketPriority>())
-              { <option value="@((int)p)">@p</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svPriorityBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Priorities
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
+                @foreach (var p in Enum.GetValues<TicketPriority>())
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-priority-cb" type="checkbox" value="@p" id="sv_p_@p">
+                    <label class="form-check-label small" for="sv_p_@p">@p</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Branch / Location</label>
@@ -384,9 +492,13 @@
     activeViewId      = (int?)ViewBag.ActiveViewId,
     currentUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched,
     currentUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned,
+    currentQuery = (string?)ViewBag.CurrentQuery ?? "",
     sortBy   = (string?)ViewBag.SortBy  ?? "id",
     sortDir  = (string?)ViewBag.SortDir ?? "desc",
-    pageSize = (int)(ViewBag.PageSize ?? 25)
+    pageSize = (int)(ViewBag.PageSize ?? 25),
+    currentStatuses    = ((TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>())).Select(s => s.ToString()).ToArray(),
+    currentCategories  = ((TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>())).Select(c => c.ToString()).ToArray(),
+    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray()
 }))</script>
 <script>
 (function () {
@@ -524,7 +636,7 @@
             }
         });
         actionSelect?.addEventListener('change', function () {
-            statusGroup.classList.toggle('d-none', this.value !== 'status');
+            statusGroup.classList.toggle('d-none',  this.value !== 'status');
             assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
         });
         document.getElementById('btnBulkClear')?.addEventListener('click', function () {
@@ -535,17 +647,115 @@
             bar?.classList.add('d-none');
         });
         form?.addEventListener('submit', function (e) {
-            const checked = document.getElementById('ticketsTableContainer')
-                ?.querySelectorAll('.ticket-chk:checked') ?? [];
+            // Skip default validation when this submit was triggered by the Merge button —
+            // the Merge button handler injects its own selectedIds and posts to MergeTickets.
+            if (form.dataset.mergeSubmit === '1') {
+                form.dataset.mergeSubmit = '';
+                return;
+            }
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
             if (checked.length === 0) { e.preventDefault(); return; }
             if (!actionSelect.value) { e.preventDefault(); actionSelect.focus(); return; }
+            if (actionSelect.value === 'delete' && !confirm(`Delete ${checked.length} selected ticket(s)? This cannot be undone.`)) {
+                e.preventDefault(); return;
+            }
             checked.forEach(c => {
                 const inp = document.createElement('input');
                 inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = c.value;
                 form.appendChild(inp);
             });
         });
+
+        // ── Merge Tickets dedicated button ───────────────────────────────
+        const btnBulkMerge   = document.getElementById('btnBulkMerge');
+        const mergeTargetEl  = document.getElementById('mergeTargetModal');
+        const mergeTargetModal = mergeTargetEl ? new bootstrap.Modal(mergeTargetEl) : null;
+        const mergeTargetIdInput = document.getElementById('mergeTargetIdInput');
+        const mergeTargetError   = document.getElementById('mergeTargetError');
+        const mergeSourceLabels  = ['mergeSourceLabel','mergeSourceLabel2','mergeSourceLabel3']
+            .map(id => document.getElementById(id));
+        let pendingMergeSourceId = null;
+
+        function submitMergeForm(idsArray) {
+            // Strip any prior selectedIds hidden inputs from earlier submits
+            form.querySelectorAll('input[name="selectedIds"]').forEach(n => n.remove());
+            idsArray.forEach(v => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = v;
+                form.appendChild(inp);
+            });
+            form.action = '@Url.Action("MergeTickets", "Tickets")';
+            form.dataset.mergeSubmit = '1';
+            form.submit();
+        }
+
+        btnBulkMerge?.addEventListener('click', function () {
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
+            if (checked.length === 0) {
+                alert('Select at least 1 ticket to merge.');
+                return;
+            }
+            const ids = checked.map(c => Number(c.value)).sort((a, b) => a - b);
+
+            if (ids.length === 1) {
+                // Prompt for target ticket ID
+                pendingMergeSourceId = ids[0];
+                mergeSourceLabels.forEach(el => { if (el) el.textContent = '#' + pendingMergeSourceId; });
+                if (mergeTargetIdInput) mergeTargetIdInput.value = '';
+                if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+                mergeTargetModal?.show();
+                return;
+            }
+
+            // 2+ tickets: lowest ID becomes primary, others merged into it
+            const primaryId = ids[0];
+            const others = ids.slice(1).join(', #');
+            if (!confirm(`Merge ticket(s) #${others} INTO ticket #${primaryId}?\n\nTicket #${primaryId} will remain open. The other ticket(s) will be closed and their comments moved to #${primaryId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            submitMergeForm(ids);
+        });
+
+        document.getElementById('btnConfirmMergeTarget')?.addEventListener('click', function () {
+            if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+            const targetId = parseInt(mergeTargetIdInput?.value || '', 10);
+            if (!targetId || targetId < 1) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Enter a valid target ticket ID.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (targetId === pendingMergeSourceId) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Source and target cannot be the same ticket.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (!confirm(`Merge ticket #${pendingMergeSourceId} INTO ticket #${targetId}?\n\nTicket #${targetId} will remain open. Ticket #${pendingMergeSourceId} will be closed and its comments moved to #${targetId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            // Append hidden primaryId so server knows the explicit target (not just lowest ID)
+            form.querySelectorAll('input[name="primaryId"]').forEach(n => n.remove());
+            const primaryInput = document.createElement('input');
+            primaryInput.type = 'hidden'; primaryInput.name = 'primaryId'; primaryInput.value = targetId;
+            form.appendChild(primaryInput);
+            submitMergeForm([pendingMergeSourceId, targetId]);
+        });
     })();
+
+    const detailsModalEl = document.getElementById('ticketDetailsModal');
+    const detailsModalBody = document.getElementById('ticketDetailsModalBody');
+    const detailsModal = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('.ticket-details-link');
+        if (!link) return;
+        e.preventDefault();
+        if (!detailsModalBody || !detailsModal) return;
+        detailsModalBody.innerHTML = '<div class="text-muted">Loading ticket details…</div>';
+        detailsModal.show();
+        fetch('/Tickets/DetailsModal/' + link.getAttribute('data-ticket-id'), { credentials: 'same-origin' })
+            .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+            .then(html => detailsModalBody.innerHTML = html)
+            .catch(() => detailsModalBody.innerHTML = '<div class="alert alert-danger mb-0">Unable to load ticket details. Please try again.</div>');
+    });
 })();
 </script>
 
@@ -580,12 +790,41 @@ function changePageSize(value) {
     params.set('page', '1');
     document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
     document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
-    document.querySelectorAll('[name="priorities"]:checked').forEach(cb => params.append('priorities',  cb.value));
-    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb   => params.append('priorities',    cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb  => params.append('assigneeIds',   cb.value));
+    document.querySelectorAll('[name="requesterIds"]:checked').forEach(cb => params.append('requesterIds',  cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
+
+function filterRequesterList(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.requester-option').forEach(function (opt) {
+        opt.style.display = (!q || opt.dataset.name.includes(q)) ? '' : 'none';
+    });
+}
+
+// ── Live filter label update ────────────────────────────────────────────────
+// Updates each dropdown button's label text as the user checks/unchecks boxes,
+// without requiring an Apply click first.
+(function () {
+    document.querySelectorAll('.filter-bar .dropdown').forEach(function (dd) {
+        dd.addEventListener('change', function (e) {
+            if (!e.target.matches('input[type="checkbox"]')) return;
+            const btn = dd.querySelector('.dropdown-toggle');
+            const lbl = btn && btn.querySelector('.filter-label');
+            if (!lbl || !btn.dataset.singular) return;
+            const checked = dd.querySelectorAll('.dropdown-menu input[type="checkbox"]:checked').length;
+            lbl.textContent = checked === 0 ? btn.dataset.all
+                : checked === 1 ? '1 ' + btn.dataset.singular
+                : checked + ' ' + btn.dataset.plural;
+            btn.classList.toggle('active', checked > 0);
+        });
+    });
+})();
 
 // Reload page on browser back/forward so filter bar stays in sync
 window.addEventListener('popstate', function () { location.reload(); });
@@ -615,8 +854,13 @@ function applyFilters() {
     document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
+    const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
+    if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
+document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+});
 </script>
 
 <script>
@@ -711,9 +955,18 @@ function applyFilters() {
         const statusLabels = ['Open','InProgress','OnHold','Resolved','Closed','Cancelled'];
         const catLabels    = ['ServiceRequest','HardwareIssue','SoftwareIssue','EmployeeIssue','NetworkIssue','SecurityIncident','Other'];
         const priLabels    = ['Low','Medium','High','Critical'];
-        if (v.filterStatus   != null) parts.push('Status: ' + (statusLabels[v.filterStatus] ?? v.filterStatus));
-        if (v.filterCategory != null) parts.push('Category: ' + (catLabels[v.filterCategory] ?? v.filterCategory));
-        if (v.filterPriority != null) parts.push('Priority: ' + (priLabels[v.filterPriority] ?? v.filterPriority));
+
+        // Multi-select fields take priority; fall back to legacy single values
+        const statuses = v.filterStatuses   ? v.filterStatuses.split(',').map(s => s.trim())
+                       : v.filterStatus   != null ? [statusLabels[v.filterStatus] ?? String(v.filterStatus)] : [];
+        const cats     = v.filterCategories ? v.filterCategories.split(',').map(c => c.trim())
+                       : v.filterCategory != null ? [catLabels[v.filterCategory] ?? String(v.filterCategory)] : [];
+        const pris     = v.filterPriorities ? v.filterPriorities.split(',').map(p => p.trim())
+                       : v.filterPriority != null ? [priLabels[v.filterPriority] ?? String(v.filterPriority)] : [];
+
+        if (statuses.length) parts.push('Status: ' + statuses.join(', '));
+        if (cats.length)     parts.push('Category: ' + cats.join(', '));
+        if (pris.length)     parts.push('Priority: ' + pris.join(', '));
         if (v.filterAssignedToMe)   parts.push('Assigned to me');
         if (v.filterUnassignedOnly) parts.push('Unassigned');
         if (v.filterUnmatchedOnly)  parts.push('Unmatched requester');
@@ -721,34 +974,58 @@ function applyFilters() {
         return parts.length ? parts.join(' · ') : 'No filters — shows all tickets';
     }
 
+    // ---- Save / Edit modal helpers ----------------------------------------
+    function svSetCheckboxes(cssClass, values) {
+        document.querySelectorAll('.' + cssClass).forEach(cb => {
+            cb.checked = values.includes(cb.value);
+        });
+        svUpdateDropdownLabel(cssClass);
+    }
+
+    function svGetCheckedValues(cssClass) {
+        return Array.from(document.querySelectorAll('.' + cssClass + ':checked')).map(cb => cb.value);
+    }
+
+    function svUpdateDropdownLabel(cssClass) {
+        const checked = svGetCheckedValues(cssClass);
+        const count = checked.length;
+        let btnId, singular, plural;
+        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';   plural = 'Statuses'; }
+        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category'; plural = 'Categories'; }
+        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority'; plural = 'Priorities'; }
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.textContent = count === 0 ? 'All ' + plural : count === 1 ? '1 ' + singular : count + ' ' + plural;
+        btn.classList.toggle('active', count > 0);
+    }
+
+    // Wire up live label updates when checkboxes change
+    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const cls = cb.classList.contains('sv-status-cb')   ? 'sv-status-cb'   :
+                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' : 'sv-priority-cb';
+            svUpdateDropdownLabel(cls);
+        });
+    });
+
     // ---- Save / Edit modal -----------------------------------------------
     window.openSaveViewModal = function() {
         document.getElementById('svEditId').value  = '';
         document.getElementById('svName').value    = '';
         document.getElementById('svIsShared').checked = false;
-        document.getElementById('svStatus').value  = '';
-        document.getElementById('svCategory').value = '';
-        document.getElementById('svPriority').value = '';
+        // Pre-fill from current active filter bar state
+        svSetCheckboxes('sv-status-cb',   pageState.currentStatuses   ?? []);
+        svSetCheckboxes('sv-category-cb', pageState.currentCategories ?? []);
+        svSetCheckboxes('sv-priority-cb', pageState.currentPriorities ?? []);
         document.getElementById('svBranch').value  = '';
         document.getElementById('svDepartment').value = '';
         document.getElementById('svGroup').value   = '';
         document.getElementById('svAssignedToMe').checked  = false;
-        document.getElementById('svUnassigned').checked    = false;
-        document.getElementById('svUnmatched').checked     = false;
+        document.getElementById('svUnassigned').checked    = pageState.currentUnassigned;
+        document.getElementById('svUnmatched').checked     = pageState.currentUnmatched;
         document.getElementById('svSortBy').value   = pageState.sortBy;
         document.getElementById('svSortDir').value  = pageState.sortDir;
         document.getElementById('svPageSize').value = pageState.pageSize;
-        // Pre-fill current active filters
-        const curStatus     = pageState.currentStatus   ?? '';
-        const curCategory   = pageState.currentCategory ?? '';
-        const curPriority   = pageState.currentPriority ?? '';
-        const curUnmatched  = pageState.currentUnmatched;
-        const curUnassigned = pageState.currentUnassigned;
-        if (curStatus)   { const opts = document.getElementById('svStatus').options; for (let o of opts) if (o.text === curStatus) { o.selected=true; break; } }
-        if (curCategory) { const opts = document.getElementById('svCategory').options; for (let o of opts) if (o.text === curCategory) { o.selected=true; break; } }
-        if (curPriority) { const opts = document.getElementById('svPriority').options; for (let o of opts) if (o.text === curPriority) { o.selected=true; break; } }
-        document.getElementById('svUnmatched').checked  = curUnmatched;
-        document.getElementById('svUnassigned').checked = curUnassigned;
         document.getElementById('svSaveLabel').textContent = 'Save View';
         document.getElementById('saveViewModalLabel').innerHTML = '<i class="bi bi-bookmark-plus me-2"></i>Save Ticket View';
         new bootstrap.Modal(document.getElementById('saveViewModal')).show();
@@ -759,13 +1036,27 @@ function applyFilters() {
         const views = await loadViews();
         const v = views.find(x => x.id === id);
         if (!v) return;
-        const statusValues = [0,1,2,3,4,5];
+
         document.getElementById('svEditId').value  = v.id;
         document.getElementById('svName').value    = v.name;
         document.getElementById('svIsShared').checked = v.isShared;
-        document.getElementById('svStatus').value  = v.filterStatus   != null ? v.filterStatus   : '';
-        document.getElementById('svCategory').value = v.filterCategory != null ? v.filterCategory : '';
-        document.getElementById('svPriority').value = v.filterPriority != null ? v.filterPriority : '';
+
+        // Populate multi-select checkboxes: prefer new FilterStatuses/Categories/Priorities fields,
+        // fall back to legacy single-value enum-int fields
+        const statusMap  = ['Open','InProgress','OnHold','Resolved','Closed','Cancelled'];
+        const catMap     = ['ServiceRequest','HardwareIssue','SoftwareIssue','EmployeeIssue','NetworkIssue','SecurityIncident','Other'];
+        const priMap     = ['Low','Medium','High','Critical'];
+        const statuses   = v.filterStatuses   ? v.filterStatuses.split(',').map(s => s.trim())
+                         : v.filterStatus   != null ? [statusMap[v.filterStatus] ?? ''] : [];
+        const cats       = v.filterCategories ? v.filterCategories.split(',').map(c => c.trim())
+                         : v.filterCategory != null ? [catMap[v.filterCategory] ?? ''] : [];
+        const pris       = v.filterPriorities ? v.filterPriorities.split(',').map(p => p.trim())
+                         : v.filterPriority != null ? [priMap[v.filterPriority] ?? ''] : [];
+
+        svSetCheckboxes('sv-status-cb',   statuses);
+        svSetCheckboxes('sv-category-cb', cats);
+        svSetCheckboxes('sv-priority-cb', pris);
+
         document.getElementById('svBranch').value  = v.filterBranchId ?? '';
         document.getElementById('svDepartment').value = v.filterDepartment ?? '';
         document.getElementById('svGroup').value   = v.filterGroupId  ?? '';
@@ -791,18 +1082,18 @@ function applyFilters() {
         body.append('__RequestVerificationToken', aft);
         body.append('name',     name);
         body.append('isShared', document.getElementById('svIsShared').checked);
-        const status   = document.getElementById('svStatus').value;
-        const category = document.getElementById('svCategory').value;
-        const priority = document.getElementById('svPriority').value;
-        const branch   = document.getElementById('svBranch').value;
-        const dept     = document.getElementById('svDepartment').value;
-        const group    = document.getElementById('svGroup').value;
-        if (status)   body.append('filterStatus',   status);
-        if (category) body.append('filterCategory', category);
-        if (priority) body.append('filterPriority', priority);
-        if (branch)   body.append('filterBranchId', branch);
-        if (dept)     body.append('filterDepartment', dept);
-        if (group)    body.append('filterGroupId',  group);
+
+        // Multi-select: append each checked value as a separate form field
+        svGetCheckedValues('sv-status-cb').forEach(v   => body.append('filterStatuses',   v));
+        svGetCheckedValues('sv-category-cb').forEach(v => body.append('filterCategories', v));
+        svGetCheckedValues('sv-priority-cb').forEach(v => body.append('filterPriorities', v));
+
+        const branch = document.getElementById('svBranch').value;
+        const dept   = document.getElementById('svDepartment').value;
+        const group  = document.getElementById('svGroup').value;
+        if (branch) body.append('filterBranchId',   branch);
+        if (dept)   body.append('filterDepartment', dept);
+        if (group)  body.append('filterGroupId',    group);
         body.append('filterAssignedToMe',   document.getElementById('svAssignedToMe').checked);
         body.append('filterUnassignedOnly', document.getElementById('svUnassigned').checked);
         body.append('filterUnmatchedOnly',  document.getElementById('svUnmatched').checked);
@@ -853,5 +1144,4 @@ function applyFilters() {
 })();
 </script>
 }
-
 

@@ -24,7 +24,7 @@ public class PortalController : Controller
     }
 
     // GET: /Portal
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(string? status = null, int page = 1)
     {
         var portalUser = await GetCurrentPortalUserAsync();
         if (portalUser == null) return RedirectToAction("Login", "Account");
@@ -35,20 +35,51 @@ public class PortalController : Controller
             return View("NoEmployee");
         }
 
-        var myTickets = await _context.Tickets
+        const int pageSize = 10;
+
+        // KPI counts always from all tickets (unfiltered)
+        var allTickets = await _context.Tickets
+            .Where(t => t.SubmittedById == portalUser.EmployeeId)
+            .ToListAsync();
+
+        // Build filtered query
+        var filteredQuery = _context.Tickets
             .Where(t => t.SubmittedById == portalUser.EmployeeId)
             .Include(t => t.AssignedTo)
             .Include(t => t.Notes)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            filteredQuery = status.ToLower() switch
+            {
+                "open"       => filteredQuery.Where(t => t.Status == TicketStatus.Open),
+                "inprogress" => filteredQuery.Where(t => t.Status == TicketStatus.InProgress),
+                "resolved"   => filteredQuery.Where(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed),
+                _            => filteredQuery
+            };
+        }
+
+        var totalFiltered = await filteredQuery.CountAsync();
+        page = Math.Max(1, page);
+
+        var myTickets = await filteredQuery
             .OrderByDescending(t => t.CreatedDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
         var model = new PortalDashboardViewModel
         {
-            CurrentUser = portalUser,
-            MyTickets = myTickets,
-            OpenCount = myTickets.Count(t => t.Status == TicketStatus.Open),
-            InProgressCount = myTickets.Count(t => t.Status == TicketStatus.InProgress),
-            ResolvedCount = myTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+            CurrentUser    = portalUser,
+            MyTickets      = myTickets,
+            OpenCount      = allTickets.Count(t => t.Status == TicketStatus.Open),
+            InProgressCount= allTickets.Count(t => t.Status == TicketStatus.InProgress),
+            ResolvedCount  = allTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed),
+            StatusFilter   = status,
+            TotalFiltered  = totalFiltered,
+            Page           = page,
+            PageSize       = pageSize
         };
 
         ViewData["ActivePage"] = "MyTickets";
