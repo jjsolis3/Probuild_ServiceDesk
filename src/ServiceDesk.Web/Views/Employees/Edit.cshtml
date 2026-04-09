@@ -39,9 +39,36 @@
                     <span asp-validation-for="Email" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="Phone" class="form-label"></label>
-                    <input asp-for="Phone" class="form-control" />
+                    <label asp-for="BranchId" class="form-label">Branch / Location</label>
+                    <select asp-for="BranchId" class="form-select">
+                        <option value="">— None —</option>
+                        @if (ViewBag.Branches != null)
+                        {
+                            foreach (var b in (IEnumerable<ServiceDesk.Core.Models.Branch>)ViewBag.Branches)
+                            {
+                                <option value="@b.Id" @(Model.BranchId == b.Id ? "selected" : "")>@b.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-5">
+                    <label asp-for="Phone" class="form-label">Direct Phone</label>
+                    <input asp-for="Phone" class="form-control" placeholder="Direct phone number" />
                     <span asp-validation-for="Phone" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Extension" class="form-label">Extension</label>
+                    <input asp-for="Extension" class="form-control" placeholder="e.g. 101" />
+                    <span asp-validation-for="Extension" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label text-muted">Company Phone</label>
+                    <p class="form-control-plaintext text-muted small">
+                        @(Model.Branch?.Phone ?? "Pulled from Branch record")
+                    </p>
                 </div>
             </div>
 

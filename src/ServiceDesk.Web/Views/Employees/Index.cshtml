@@ -174,7 +174,10 @@ document.addEventListener('click', function (e) {
             <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Phone</th>
+                <th>Branch / Location</th>
+                <th>Company Phone</th>
+                <th>Direct Phone</th>
+                <th>Ext.</th>
                 <th>Department</th>
                 <th>Job Title</th>
                 <th>Status</th>
@@ -190,7 +193,10 @@ document.addEventListener('click', function (e) {
                         <a asp-action="Details" asp-route-id="@employee.Id">@employee.FullName</a>
                     </td>
                     <td>@employee.Email</td>
-                    <td>@employee.Phone</td>
+                    <td>@(employee.Branch?.Name ?? "—")</td>
+                    <td>@(employee.Branch?.Phone ?? "—")</td>
+                    <td>@(employee.Phone ?? "—")</td>
+                    <td>@(employee.Extension ?? "—")</td>
                     <td>@employee.Department</td>
                     <td>@employee.JobTitle</td>
                     <td>

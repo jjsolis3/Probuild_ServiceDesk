@@ -396,7 +396,17 @@ public static class DbInitializer
                          N'Open,InProgress,OnHold', 'id', 'desc', 25, SYSUTCDATETIME());
                 END");
 
-            // 16. Create CategoryKeywords table (DB-backed keyword detection for auto-categorisation)
+            // 16b. Add Extension column to Employees
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'Extension'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Employees ADD Extension NVARCHAR(10) NULL;
+                END");
+
+            // 17. Create CategoryKeywords table (DB-backed keyword detection for auto-categorisation)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CategoryKeywords')
                 BEGIN
@@ -473,7 +483,7 @@ public static class DbInitializer
                     (0, N'question'), (0, N'help'), (0, N'how to'), (0, N'assistance');
                 END");
 
-            // 11. Seed additional Company Branding AppSettings keys if not present
+            // 18. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)

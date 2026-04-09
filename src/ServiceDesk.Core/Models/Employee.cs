@@ -22,7 +22,12 @@ public class Employee
     public string Email { get; set; } = string.Empty;
 
     [StringLength(20)]
+    [Display(Name = "Direct Phone")]
     public string? Phone { get; set; }
+
+    [StringLength(10)]
+    [Display(Name = "Extension")]
+    public string? Extension { get; set; }
 
     [Required]
     [StringLength(100)]

@@ -341,6 +341,28 @@ public class GmailApiService : BackgroundService
                 }
             }
 
+            // Notify assigned agent about the new ticket
+            if (resolvedAssigneeId.HasValue)
+            {
+                try
+                {
+                    var ticketWithAssignee = await context.Tickets
+                        .Include(t => t.AssignedTo)
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.Id == ticket.Id, stoppingToken);
+                    if (ticketWithAssignee?.AssignedTo != null)
+                    {
+                        var notifySvc = _serviceProvider.CreateScope().ServiceProvider
+                            .GetRequiredService<EmailNotificationService>();
+                        await notifySvc.NotifyTicketAssigned(ticketWithAssignee);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send assignment notification for Ticket #{TicketId}", ticket.Id);
+                }
+            }
+
             existingTicketId = ticket.Id;
         }
 

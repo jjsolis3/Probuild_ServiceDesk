@@ -54,7 +54,9 @@ public class EmployeesController : Controller
         ViewBag.Branches            = await _context.Branches
             .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
 
-        var employees = await query.OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
+        var employees = await query
+            .Include(e => e.Branch)
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
         return View(employees);
     }
 
@@ -72,8 +74,9 @@ public class EmployeesController : Controller
         return View(employee);
     }
 
-    public IActionResult Create()
+    public async Task<IActionResult> Create()
     {
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View();
     }
 
@@ -87,6 +90,7 @@ public class EmployeesController : Controller
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 
@@ -94,8 +98,11 @@ public class EmployeesController : Controller
     {
         if (id == null) return NotFound();
 
-        var employee = await _context.Employees.FindAsync(id);
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
         if (employee == null) return NotFound();
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 
@@ -111,6 +118,7 @@ public class EmployeesController : Controller
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 

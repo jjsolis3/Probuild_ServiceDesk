@@ -17,11 +17,13 @@ public class TicketsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly AssignmentResolverService _assignmentResolver;
+    private readonly EmailNotificationService _emailService;
 
-    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver)
+    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver, EmailNotificationService emailService)
     {
         _context = context;
         _assignmentResolver = assignmentResolver;
+        _emailService = emailService;
     }
 
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
@@ -322,6 +324,19 @@ public class TicketsController : Controller
 
             _context.Add(ticket);
             await _context.SaveChangesAsync();
+
+            // Notify assigned agent (fire-and-forget)
+            if (ticket.AssignedToId != null)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == ticket.Id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                    }
+                    catch { /* email errors must not break ticket creation */ }
+                });
+
             return RedirectToAction(nameof(Index));
         }
         PopulateDropdowns(ticket);
@@ -395,8 +410,22 @@ public class TicketsController : Controller
                     _context.TicketHistory.AddRange(histories);
             }
 
+            var prevAssigneeId = existing?.AssignedToId;
             _context.Update(ticket);
             await _context.SaveChangesAsync();
+
+            // Notify new assignee if assignment changed
+            if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                    }
+                    catch { }
+                });
+
             return RedirectToAction(nameof(Index));
         }
         PopulateDropdowns(ticket);
@@ -410,6 +439,8 @@ public class TicketsController : Controller
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
 
+        var notifyAssignment = false;
+
         if (field == "status")
         {
             if (!Enum.TryParse<TicketStatus>(value, out var newStatus)) return BadRequest();
@@ -421,7 +452,10 @@ public class TicketsController : Controller
         }
         else if (field == "assignee")
         {
+            var prevAssigneeId = ticket.AssignedToId;
             ticket.AssignedToId = string.IsNullOrEmpty(value) || value == "0" ? null : int.TryParse(value, out var empId) ? empId : (int?)null;
+            if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
+                notifyAssignment = true;
         }
         else
         {
@@ -437,6 +471,17 @@ public class TicketsController : Controller
             var emp = await _context.Employees.FindAsync(ticket.AssignedToId.Value);
             assigneeName = emp != null ? emp.FirstName + " " + emp.LastName : null;
         }
+
+        if (notifyAssignment)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                    if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                }
+                catch { }
+            });
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
     }
