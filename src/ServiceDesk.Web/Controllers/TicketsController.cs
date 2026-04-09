@@ -8,6 +8,7 @@ using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -15,15 +16,19 @@ namespace ServiceDesk.Web.Controllers;
 public class TicketsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly AssignmentResolverService _assignmentResolver;
 
-    public TicketsController(ServiceDeskDbContext context)
+    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver)
     {
         _context = context;
+        _assignmentResolver = assignmentResolver;
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(
         TicketStatus[]?  statuses,    TicketCategory[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
+        int[]? requesterIds,
         bool? unmatched, bool? unassigned,
         string? q,
         string sortBy = "id", string sortDir = "desc",
@@ -32,10 +37,11 @@ public class TicketsController : Controller
     {
         var userId = CurrentPortalUserId();
 
-        bool noFilters = (statuses    == null || statuses.Length    == 0)
+        bool noFilters = (statuses     == null || statuses.Length     == 0)
                       && (categories  == null || categories.Length  == 0)
                       && (priorities  == null || priorities.Length  == 0)
                       && (assigneeIds == null || assigneeIds.Length == 0)
+                      && (requesterIds == null || requesterIds.Length == 0)
                       && unmatched == null && unassigned == null && viewId == null
                       && string.IsNullOrWhiteSpace(q)
                       && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
@@ -64,12 +70,33 @@ public class TicketsController : Controller
                     && (v.OwnerPortalUserId == userId || v.IsShared));
             if (activeView != null)
             {
-                if ((statuses    == null || statuses.Length    == 0) && activeView.FilterStatus   != null)
-                    statuses    = [activeView.FilterStatus.Value];
-                if ((categories  == null || categories.Length  == 0) && activeView.FilterCategory != null)
-                    categories  = [activeView.FilterCategory.Value];
-                if ((priorities  == null || priorities.Length  == 0) && activeView.FilterPriority != null)
-                    priorities  = [activeView.FilterPriority.Value];
+                if (statuses == null || statuses.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterStatuses))
+                        statuses = activeView.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => Enum.TryParse<TicketStatus>(s.Trim(), out var v) ? v : (TicketStatus?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterStatus != null)
+                        statuses = [activeView.FilterStatus.Value];
+                }
+                if (categories == null || categories.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterCategories))
+                        categories = activeView.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(c => Enum.TryParse<TicketCategory>(c.Trim(), out var v) ? v : (TicketCategory?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterCategory != null)
+                        categories = [activeView.FilterCategory.Value];
+                }
+                if (priorities == null || priorities.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterPriorities))
+                        priorities = activeView.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(p => Enum.TryParse<TicketPriority>(p.Trim(), out var v) ? v : (TicketPriority?)null)
+                            .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+                    else if (activeView.FilterPriority != null)
+                        priorities = [activeView.FilterPriority.Value];
+                }
                 unmatched  ??= activeView.FilterUnmatchedOnly  ? true : null;
                 unassigned ??= activeView.FilterUnassignedOnly ? true : null;
                 sortBy   = sortBy   == "id"   ? activeView.SortBy   : sortBy;
@@ -83,12 +110,13 @@ public class TicketsController : Controller
             .Include(t => t.AssignedTo)
             .AsQueryable();
 
-        if (statuses?.Length    > 0) query = query.Where(t => statuses.Contains(t.Status));
-        if (categories?.Length  > 0) query = query.Where(t => categories.Contains(t.Category));
-        if (priorities?.Length  > 0) query = query.Where(t => priorities.Contains(t.Priority));
-        if (assigneeIds?.Length > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
-        if (unmatched  == true)      query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
-        if (unassigned == true)      query = query.Where(t => t.AssignedToId == null);
+        if (statuses?.Length     > 0) query = query.Where(t => statuses.Contains(t.Status));
+        if (categories?.Length   > 0) query = query.Where(t => categories.Contains(t.Category));
+        if (priorities?.Length   > 0) query = query.Where(t => priorities.Contains(t.Priority));
+        if (assigneeIds?.Length  > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
+        if (requesterIds?.Length > 0) query = query.Where(t => requesterIds.Contains(t.SubmittedById));
+        if (unmatched  == true)       query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
+        if (unassigned == true)       query = query.Where(t => t.AssignedToId == null);
         if (!string.IsNullOrWhiteSpace(q))
         {
             q = q.Trim();
@@ -130,10 +158,11 @@ public class TicketsController : Controller
             .Take(pageSize)
             .ToListAsync();
 
-        ViewBag.SelectedStatuses    = statuses    ?? Array.Empty<TicketStatus>();
-        ViewBag.SelectedCategories  = categories  ?? Array.Empty<TicketCategory>();
-        ViewBag.SelectedPriorities  = priorities  ?? Array.Empty<TicketPriority>();
-        ViewBag.SelectedAssigneeIds = assigneeIds ?? Array.Empty<int>();
+        ViewBag.SelectedStatuses     = statuses     ?? Array.Empty<TicketStatus>();
+        ViewBag.SelectedCategories   = categories   ?? Array.Empty<TicketCategory>();
+        ViewBag.SelectedPriorities   = priorities   ?? Array.Empty<TicketPriority>();
+        ViewBag.SelectedAssigneeIds  = assigneeIds  ?? Array.Empty<int>();
+        ViewBag.SelectedRequesterIds = requesterIds ?? Array.Empty<int>();
         ViewBag.CurrentUnmatched  = unmatched;
         ViewBag.CurrentUnassigned = unassigned;
         ViewBag.CurrentQuery = q ?? "";
@@ -151,14 +180,9 @@ public class TicketsController : Controller
         if (partial)
             return PartialView("_TicketsTable", tickets);
 
-        // Data for the Save View modal dropdowns (full-page load only)
-        ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
-            await _context.Employees
-                .Where(e => e.IsActive && e.Department == "IT")
-                .OrderBy(e => e.LastName)
-                .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
-                .ToListAsync());
-
+        // Data for filter bar assignee dropdown + bulk reassign dropdown (full-page load only).
+        // Use portal-user role membership (not department) so that any IT admin/agent with
+        // a portal account appears, regardless of their employee Department field.
         var itRoleIds = await _context.Roles
             .Where(r => r.Name != "End User")
             .Select(r => r.Id).ToListAsync();
@@ -167,8 +191,22 @@ public class TicketsController : Controller
                      && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
             .Select(u => u.EmployeeId!.Value)
             .Distinct().ToListAsync();
-        ViewBag.AssignableStaff = await _context.Employees
+        var assignableStaff = await _context.Employees
             .Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+
+        ViewBag.AssignableStaff = assignableStaff;
+        // ITStaffJson is used by the bulk-reassign JS dropdown — same list, serialised
+        ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
+            assignableStaff.Select(e => new { id = e.Id, name = e.Name }));
+
+        // Distinct set of employees who have submitted at least one ticket (for Requester filter)
+        var requesterEmpIds = await _context.Tickets
+            .Select(t => t.SubmittedById).Distinct().ToListAsync();
+        ViewBag.Requesters = await _context.Employees
+            .Where(e => requesterEmpIds.Contains(e.Id))
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
@@ -186,6 +224,7 @@ public class TicketsController : Controller
         return View(tickets);
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();
@@ -236,8 +275,16 @@ public class TicketsController : Controller
         if (ModelState.IsValid)
         {
             ticket.CreatedDate = DateTime.UtcNow;
-            // Auto-set SLA due date based on priority
             ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
+
+            // Auto-assign via assignment rules when no assignee was explicitly chosen.
+            if (ticket.AssignedToId == null)
+            {
+                var submitter = await _context.Employees.FindAsync(ticket.SubmittedById);
+                ticket.AssignedToId = await _assignmentResolver.ResolveAsync(
+                    ticket.Category, submitter?.BranchId, defaultAssigneeId: null);
+            }
+
             _context.Add(ticket);
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
@@ -300,6 +347,12 @@ public class TicketsController : Controller
                     var oldAgent = existing.AssignedToId.HasValue ? (await _context.Employees.FindAsync(existing.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
                     var newAgent = ticket.AssignedToId.HasValue ? (await _context.Employees.FindAsync(ticket.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Assigned To", OldValue = oldAgent, NewValue = newAgent });
+                }
+                if (existing.UserGroupId != ticket.UserGroupId)
+                {
+                    var oldGroup = existing.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(existing.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    var newGroup = ticket.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(ticket.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Group Assignment", OldValue = oldGroup, NewValue = newGroup });
                 }
                 if (existing.Category != ticket.Category)
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Category", OldValue = existing.Category.ToString(), NewValue = ticket.Category.ToString() });
@@ -491,6 +544,115 @@ public class TicketsController : Controller
             ? $"{tickets.Count} ticket(s) deleted."
             : $"{tickets.Count} ticket(s) updated.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // POST: Tickets/MergeTickets — merge tickets together. By default the lowest ID becomes the
+    // primary; pass primaryId explicitly when merging a single selected ticket into a chosen target.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MergeTickets(int[] selectedIds, int? primaryId = null)
+    {
+        if (selectedIds == null || selectedIds.Length == 0)
+        {
+            TempData["Error"] = "Select at least 1 ticket to merge.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Build the full id list. If a primaryId was supplied (e.g. single-selection merge),
+        // include it so the union has at least 2 distinct ids.
+        var idSet = new HashSet<int>(selectedIds);
+        if (primaryId.HasValue) idSet.Add(primaryId.Value);
+
+        if (idSet.Count < 2)
+        {
+            TempData["Error"] = "Select at least 2 tickets to merge, or specify a target ticket ID.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Determine primary: explicit primaryId wins, otherwise lowest id.
+        int resolvedPrimaryId = primaryId ?? idSet.Min();
+        if (!idSet.Contains(resolvedPrimaryId))
+        {
+            TempData["Error"] = "Target ticket is not part of the selection.";
+            return RedirectToAction(nameof(Index));
+        }
+        var secondaryIds = idSet.Where(id => id != resolvedPrimaryId).ToArray();
+        var changedBy   = User.Identity?.Name ?? "Agent";
+        var now         = DateTime.UtcNow;
+
+        var primary = await _context.Tickets.FindAsync(resolvedPrimaryId);
+        if (primary == null)
+        {
+            TempData["Error"] = "Primary ticket not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaries = await _context.Tickets
+            .Include(t => t.Notes)
+            .Where(t => secondaryIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (!secondaries.Any())
+        {
+            TempData["Error"] = "Secondary tickets not found.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var secondaryList = string.Join(", #", secondaries.Select(t => t.Id));
+
+        // Merge summary note on the primary ticket
+        _context.TicketNotes.Add(new TicketNote
+        {
+            TicketId   = resolvedPrimaryId,
+            AuthorName = changedBy,
+            Content    = $"Tickets #{secondaryList} were merged into this ticket by {changedBy}.",
+            CreatedDate = now, Source = "Agent", IsInternal = true
+        });
+
+        foreach (var secondary in secondaries)
+        {
+            // Copy all public notes from secondary → primary (prefixed for traceability)
+            foreach (var note in secondary.Notes.Where(n => !n.IsInternal))
+            {
+                _context.TicketNotes.Add(new TicketNote
+                {
+                    TicketId    = resolvedPrimaryId,
+                    AuthorName  = note.AuthorName,
+                    AuthorEmail = note.AuthorEmail,
+                    Content     = $"[Merged from #{secondary.Id}] {note.Content}",
+                    CreatedDate = note.CreatedDate,
+                    Source      = note.Source,
+                    IsInternal  = false
+                });
+            }
+
+            // Internal merge note on the secondary ticket
+            _context.TicketNotes.Add(new TicketNote
+            {
+                TicketId   = secondary.Id,
+                AuthorName = changedBy,
+                Content    = $"This ticket was merged into #{resolvedPrimaryId} by {changedBy}. Refer to #{resolvedPrimaryId} for all further updates.",
+                CreatedDate = now, Source = "Agent", IsInternal = true
+            });
+
+            _context.TicketHistory.Add(new TicketHistory
+            {
+                TicketId = secondary.Id, ChangedBy = changedBy,
+                FieldName = "Status",
+                OldValue  = secondary.Status.ToString(),
+                NewValue  = $"Closed (Merged into #{resolvedPrimaryId})"
+            });
+
+            secondary.Status     = TicketStatus.Closed;
+            secondary.ClosedDate ??= now;
+            secondary.UpdatedDate = now;
+        }
+
+        primary.UpdatedDate = now;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"{secondaries.Count} ticket(s) merged into #{resolvedPrimaryId}.";
+        return RedirectToAction(nameof(Edit), new { id = resolvedPrimaryId });
     }
 
     // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
@@ -872,7 +1034,8 @@ public class TicketsController : Controller
             .ThenBy(v => v.Name)
             .Select(v => new {
                 v.Id, v.Name, v.IsDefault, v.IsShared,
-                v.FilterStatuses, v.FilterStatus, v.FilterCategory, v.FilterPriority,
+                v.FilterStatuses, v.FilterCategories, v.FilterPriorities,
+                v.FilterStatus, v.FilterCategory, v.FilterPriority,
                 v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
                 v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
                 v.SortBy, v.SortDir, v.PageSize,
@@ -887,7 +1050,7 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveView(
         string name, bool isShared,
-        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
         int? filterBranchId, string? filterDepartment, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
@@ -900,9 +1063,9 @@ public class TicketsController : Controller
             Name                 = name.Trim(),
             OwnerPortalUserId    = userId,
             IsShared             = isShared,
-            FilterStatus         = filterStatus,
-            FilterCategory       = filterCategory,
-            FilterPriority       = filterPriority,
+            FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null,
+            FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null,
+            FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null,
             FilterBranchId       = filterBranchId,
             FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim(),
             FilterGroupId        = filterGroupId,
@@ -923,7 +1086,7 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateView(
         int id, string name, bool isShared,
-        TicketStatus? filterStatus, TicketCategory? filterCategory, TicketPriority? filterPriority,
+        string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
         int? filterBranchId, string? filterDepartment, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
@@ -935,9 +1098,13 @@ public class TicketsController : Controller
 
         view.Name                 = name.Trim();
         view.IsShared             = isShared;
-        view.FilterStatus         = filterStatus;
-        view.FilterCategory       = filterCategory;
-        view.FilterPriority       = filterPriority;
+        view.FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null;
+        view.FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null;
+        view.FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null;
+        // Clear legacy single-value fields when multi-select values are stored
+        view.FilterStatus         = null;
+        view.FilterCategory       = null;
+        view.FilterPriority       = null;
         view.FilterBranchId       = filterBranchId;
         view.FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim();
         view.FilterGroupId        = filterGroupId;
@@ -1009,15 +1176,14 @@ public class TicketsController : Controller
     }
 
     /// <summary>
-    /// Builds a redirect URL for a saved view, correctly handling multi-status
-    /// via the FilterStatuses comma-separated field.
+    /// Builds a redirect URL for a saved view, handling multi-select for status, category, and priority.
     /// </summary>
     private static string BuildViewUrl(SavedTicketView v)
     {
         var sb = new System.Text.StringBuilder(
             $"/Tickets?viewId={v.Id}&sortBy={Uri.EscapeDataString(v.SortBy)}&sortDir={v.SortDir}&pageSize={v.PageSize}");
 
-        // Multi-status (FilterStatuses takes priority over FilterStatus)
+        // Multi-status (FilterStatuses takes priority over legacy FilterStatus)
         if (!string.IsNullOrEmpty(v.FilterStatuses))
         {
             foreach (var s in v.FilterStatuses.Split(',', StringSplitOptions.RemoveEmptyEntries))
@@ -1028,8 +1194,28 @@ public class TicketsController : Controller
             sb.Append($"&statuses={v.FilterStatus}");
         }
 
-        if (v.FilterCategory != null) sb.Append($"&categories={v.FilterCategory}");
-        if (v.FilterPriority != null) sb.Append($"&priorities={v.FilterPriority}");
+        // Multi-category (FilterCategories takes priority over legacy FilterCategory)
+        if (!string.IsNullOrEmpty(v.FilterCategories))
+        {
+            foreach (var c in v.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&categories={Uri.EscapeDataString(c.Trim())}");
+        }
+        else if (v.FilterCategory != null)
+        {
+            sb.Append($"&categories={v.FilterCategory}");
+        }
+
+        // Multi-priority (FilterPriorities takes priority over legacy FilterPriority)
+        if (!string.IsNullOrEmpty(v.FilterPriorities))
+        {
+            foreach (var p in v.FilterPriorities.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&priorities={Uri.EscapeDataString(p.Trim())}");
+        }
+        else if (v.FilterPriority != null)
+        {
+            sb.Append($"&priorities={v.FilterPriority}");
+        }
+
         if (v.FilterUnmatchedOnly)    sb.Append("&unmatched=true");
         if (v.FilterUnassignedOnly)   sb.Append("&unassigned=true");
         return sb.ToString();
@@ -1044,10 +1230,27 @@ public class TicketsController : Controller
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.SubmittedById);
 
+        // Assignable IT staff = employees linked to a portal user whose role is NOT "End User".
+        // (Department-based filtering excluded admins like Jose/Admin who aren't in the IT dept,
+        // and incorrectly included end users like Kolby/Chris whose dept is IT.)
+        var itRoleIds = _context.Roles
+            .Where(r => r.Name != "End User")
+            .Select(r => r.Id).ToList();
+        var assignableEmpIds = _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct().ToList();
         ViewBag.ITStaff = new SelectList(
-            _context.Employees.Where(e => e.IsActive && e.Department == "IT").OrderBy(e => e.LastName)
+            _context.Employees.Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+                .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.AssignedToId);
+
+        ViewBag.UserGroups = new SelectList(
+            _context.UserGroups.Where(g => g.IsActive).OrderBy(g => g.Name)
+                .Select(g => new { g.Id, g.Name }),
+            "Id", "Name", ticket?.UserGroupId);
 
         ViewBag.Services = new SelectList(
             _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name),

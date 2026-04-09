@@ -1,9 +1,11 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
+using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
 
@@ -14,11 +16,13 @@ public class SettingsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly GmailApiService _gmailApiService;
+    private readonly EmailNotificationService _emailService;
 
-    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService)
     {
         _context = context;
         _gmailApiService = gmailApiService;
+        _emailService = emailService;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -378,13 +382,20 @@ public class SettingsController : Controller
     // POST: Settings/CreateUser
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateUser(PortalUser user)
+    public async Task<IActionResult> CreateUser(PortalUser user, string? initialPassword)
     {
+        ModelState.Remove("PasswordHash");
         if (ModelState.IsValid)
         {
+            if (!string.IsNullOrWhiteSpace(initialPassword))
+                user.PasswordHash = PasswordService.HashPassword(initialPassword);
+            user.CreatedDate = DateTime.UtcNow;
             _context.PortalUsers.Add(user);
             await _context.SaveChangesAsync();
-            TempData["Success"] = "User created successfully.";
+            TempData["Success"] = "User created successfully." +
+                (string.IsNullOrWhiteSpace(initialPassword)
+                    ? " No password was set — use Send Password Reset to let them set their own."
+                    : "");
             return RedirectToAction(nameof(Users));
         }
         ViewBag.Roles = await _context.Roles.ToListAsync();
@@ -406,19 +417,68 @@ public class SettingsController : Controller
     // POST: Settings/EditUser/5
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditUser(int id, PortalUser user)
+    public async Task<IActionResult> EditUser(int id, PortalUser updated)
     {
-        if (id != user.Id) return NotFound();
+        if (id != updated.Id) return NotFound();
+        ModelState.Remove("PasswordHash");
         if (ModelState.IsValid)
         {
-            _context.Update(user);
+            var existing = await _context.PortalUsers.FindAsync(id);
+            if (existing == null) return NotFound();
+            // Only update profile fields — never touch PasswordHash here
+            existing.FirstName   = updated.FirstName;
+            existing.LastName    = updated.LastName;
+            existing.Email       = updated.Email;
+            existing.RoleId      = updated.RoleId;
+            existing.EmployeeId  = updated.EmployeeId;
+            existing.IsActive    = updated.IsActive;
             await _context.SaveChangesAsync();
             TempData["Success"] = "User updated.";
             return RedirectToAction(nameof(Users));
         }
         ViewBag.Roles = await _context.Roles.ToListAsync();
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
-        return View(user);
+        return View(updated);
+    }
+
+    // POST: Settings/AdminResetPassword
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdminResetPassword(int id, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+        {
+            TempData["Error"] = "Password must be at least 8 characters.";
+            return RedirectToAction(nameof(EditUser), new { id });
+        }
+        var user = await _context.PortalUsers.FindAsync(id);
+        if (user == null) return NotFound();
+        user.PasswordHash = PasswordService.HashPassword(newPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiry = null;
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Password for {user.FullName} has been reset.";
+        return RedirectToAction(nameof(EditUser), new { id });
+    }
+
+    // POST: Settings/AdminSendPasswordReset
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdminSendPasswordReset(int id)
+    {
+        var user = await _context.PortalUsers.FindAsync(id);
+        if (user == null) return NotFound();
+        var tokenBytes = RandomNumberGenerator.GetBytes(32);
+        var token = Convert.ToBase64String(tokenBytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        user.PasswordResetToken = token;
+        user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24);
+        await _context.SaveChangesAsync();
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
+        _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
+        TempData["Success"] = $"Password reset email sent to {user.Email}.";
+        return RedirectToAction(nameof(EditUser), new { id });
     }
 
     // POST: Settings/DeleteUser/5
@@ -760,6 +820,7 @@ public class SettingsController : Controller
         var rules = await _context.AssignmentRules
             .Include(r => r.Branch)
             .Include(r => r.Assignee)
+            .Include(r => r.SubCategory)
             .OrderBy(r => r.SortOrder)
             .ThenBy(r => r.Name)
             .ToListAsync();
@@ -838,14 +899,32 @@ public class SettingsController : Controller
             .OrderBy(b => b.Name)
             .ToListAsync();
 
+        // Only show employees who can actually be assigned tickets:
+        // those with an active portal account whose role has ManageTickets permission.
+        var staffRoleIds = await _context.Roles
+            .Where(r => r.Permissions.Contains("ManageTickets"))
+            .Select(r => r.Id)
+            .ToListAsync();
+        var staffEmpIds = await _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && staffRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct()
+            .ToListAsync();
         ViewBag.Employees = await _context.Employees
-            .Where(e => e.IsActive)
+            .Where(e => e.IsActive && staffEmpIds.Contains(e.Id))
             .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .ToListAsync();
 
         ViewBag.Categories = Enum.GetValues<TicketCategory>()
             .Select(c => new { Value = (int)c, Text = c.ToString() })
             .ToList();
+
+        ViewBag.SubCategories = await _context.TicketSubCategories
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name, s.Category })
+            .ToListAsync();
     }
 
     // ── Canned Responses ─────────────────────────────────────────────────────

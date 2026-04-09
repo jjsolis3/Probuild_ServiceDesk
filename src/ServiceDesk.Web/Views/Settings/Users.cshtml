@@ -20,6 +20,7 @@
                 <th>Linked Employee</th>
                 <th>Groups</th>
                 <th>Active</th>
+                <th>Password</th>
                 <th>Last Login</th>
                 <th class="no-sort no-export">Actions</th>
             </tr>
@@ -59,6 +60,16 @@
                         else
                         {
                             <span class="badge bg-secondary">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(user.PasswordHash))
+                        {
+                            <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Set</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Not Set</span>
                         }
                     </td>
                     <td>

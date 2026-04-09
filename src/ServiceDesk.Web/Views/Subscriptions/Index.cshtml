@@ -1,7 +1,10 @@
 @model IEnumerable<Subscription>
 @{
     ViewData["Title"] = "Subscriptions";
-    var currentStatus = ViewBag.CurrentStatus as SubscriptionStatus?;
+    var selStatuses = (SubscriptionStatus[])(ViewBag.SelectedStatuses ?? Array.Empty<SubscriptionStatus>());
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,29 +16,46 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Status -->
         <div>
             <div class="form-label small mb-1">Status</div>
-            <input type="hidden" id="subStatusInput" name="status" value="@(currentStatus?.ToString() ?? "")" />
             <div class="dropdown">
-                <button type="button" id="subStatusBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(currentStatus != null ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(currentStatus?.ToString() ?? "All Statuses")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Status", "Statuses", selStatuses.Length)
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:180px;">
-                    <button type="button" class="dropdown-item small single-filter-option @(currentStatus == null ? "active" : "")" data-input-id="subStatusInput" data-button-id="subStatusBtn" data-value="" data-label="All Statuses">All Statuses</button>
                     @foreach (var s in Enum.GetValues<SubscriptionStatus>())
                     {
-                        <button type="button" class="dropdown-item small single-filter-option @(currentStatus == s ? "active" : "")"
-                                data-input-id="subStatusInput" data-button-id="subStatusBtn" data-value="@s" data-label="@s">@s</button>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="statuses"
+                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                            <label class="form-check-label small" for="fs_@s">@s</label>
+                        </div>
                     }
-                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
         </div>
+
         <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
         </div>
-    </form>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="subscriptionKeywordSearch" class="form-control" placeholder="Search subscriptions..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
@@ -143,3 +163,13 @@ document.addEventListener('click', function (e) {
         <p class="mt-3">No subscriptions found matching the current filters.</p>
     </div>
 }
+
+<script>
+function applyFilters() {
+    const params = new URLSearchParams();
+    document.querySelectorAll('input[name="statuses"]:checked').forEach(cb => params.append('statuses', cb.value));
+    const q = document.getElementById('subscriptionKeywordSearch').value.trim();
+    if (q) params.set('q', q);
+    window.location.href = '@Url.Action("Index", "Subscriptions")?' + params.toString();
+}
+</script>

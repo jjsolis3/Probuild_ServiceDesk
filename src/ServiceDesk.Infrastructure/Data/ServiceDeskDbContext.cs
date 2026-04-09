@@ -217,6 +217,13 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(r => r.AssigneeId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // AssignmentRule -> SubCategory (optional)
+        modelBuilder.Entity<AssignmentRule>()
+            .HasOne(r => r.SubCategory)
+            .WithMany()
+            .HasForeignKey(r => r.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Index for fast rule lookup
         modelBuilder.Entity<AssignmentRule>()
             .HasIndex(r => new { r.IsActive, r.SortOrder });
@@ -280,6 +287,13 @@ public class ServiceDeskDbContext : DbContext
             .HasOne(t => t.SubCategory)
             .WithMany()
             .HasForeignKey(t => t.SubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Ticket -> UserGroup (group assignment, optional)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.UserGroup)
+            .WithMany()
+            .HasForeignKey(t => t.UserGroupId)
             .OnDelete(DeleteBehavior.SetNull);
 
         // Index on SubCategory for fast lookup by parent category

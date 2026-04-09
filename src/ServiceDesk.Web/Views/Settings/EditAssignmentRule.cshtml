@@ -1,9 +1,10 @@
 @model ServiceDesk.Core.Models.AssignmentRule
 @{
     ViewData["Title"] = "Edit Assignment Rule";
-    var branches  = ViewBag.Branches  as IEnumerable<ServiceDesk.Core.Models.Branch>   ?? Enumerable.Empty<ServiceDesk.Core.Models.Branch>();
-    var employees = ViewBag.Employees as IEnumerable<ServiceDesk.Core.Models.Employee> ?? Enumerable.Empty<ServiceDesk.Core.Models.Employee>();
-    var categories = ViewBag.Categories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var branches     = ViewBag.Branches     as IEnumerable<ServiceDesk.Core.Models.Branch>   ?? Enumerable.Empty<ServiceDesk.Core.Models.Branch>();
+    var employees    = ViewBag.Employees    as IEnumerable<ServiceDesk.Core.Models.Employee> ?? Enumerable.Empty<ServiceDesk.Core.Models.Employee>();
+    var categories   = ViewBag.Categories   as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var subCategories = ViewBag.SubCategories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
 }
 
 <div class="row justify-content-center">
@@ -35,13 +36,24 @@
                     <div class="row g-3 mb-3">
                         <div class="col-sm-6">
                             <label asp-for="Category" class="form-label fw-semibold"></label>
-                            <select asp-for="Category" class="form-select">
+                            <select asp-for="Category" class="form-select" id="ruleCategory" onchange="filterSubCategories(this.value)">
                                 <option value="">— Any Category —</option>
                                 @foreach (var cat in categories)
                                 {
                                     <option value="@cat.Value">@cat.Text</option>
                                 }
                             </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label asp-for="SubCategoryId" class="form-label fw-semibold"></label>
+                            <select asp-for="SubCategoryId" class="form-select" id="ruleSubCategory">
+                                <option value="">— Any Sub-Category —</option>
+                                @foreach (var sc in subCategories)
+                                {
+                                    <option value="@sc.Id" data-category="@sc.Category">@sc.Name</option>
+                                }
+                            </select>
+                            <div class="form-text">Requires Category to be set.</div>
                         </div>
                         <div class="col-sm-6">
                             <label asp-for="BranchId" class="form-label fw-semibold"></label>
@@ -98,3 +110,18 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+<script>
+function filterSubCategories(categoryValue) {
+    const sub = document.getElementById('ruleSubCategory');
+    if (!sub) return;
+    Array.from(sub.options).forEach(function (opt) {
+        if (!opt.value) return;
+        opt.hidden = categoryValue && opt.dataset.category !== categoryValue;
+    });
+    if (sub.selectedOptions.length && sub.selectedOptions[0].hidden) sub.value = '';
+}
+filterSubCategories(document.getElementById('ruleCategory')?.value || '');
+</script>
+}

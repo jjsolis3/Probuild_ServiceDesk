@@ -1,10 +1,13 @@
 @model IEnumerable<Asset>
 @{
     ViewData["Title"] = "Assets";
-    var curType = ViewBag.CurrentType as AssetType?;
-    var curStatus = ViewBag.CurrentStatus as AssetStatus?;
-    var curManufacturer = ViewBag.CurrentManufacturer as string;
-    var curAssigned = ViewBag.CurrentAssigned as bool?;
+    var selTypes         = (AssetType[])(ViewBag.SelectedTypes         ?? Array.Empty<AssetType>());
+    var selStatuses      = (AssetStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<AssetStatus>());
+    var selManufacturers = (string[])(ViewBag.SelectedManufacturers    ?? Array.Empty<string>());
+    var curAssigned      = ViewBag.CurrentAssigned as bool?;
+
+    string FilterLabel(string singular, string plural, int count) =>
+        count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -16,83 +19,118 @@
 
 <!-- Filters -->
 <div class="filter-bar">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+
+        <!-- Asset Type -->
         <div>
             <div class="form-label small mb-1">Asset Type</div>
-            <input type="hidden" id="assetTypeInput" name="type" value="@(curType?.ToString() ?? "")" />
             <div class="dropdown">
-                <button type="button" id="assetTypeBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curType != null ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curType?.ToString() ?? "All Types")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selTypes.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Type", "Types", selTypes.Length)
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
-                    <button type="button" class="dropdown-item small single-filter-option @(curType == null ? "active" : "")" data-input-id="assetTypeInput" data-button-id="assetTypeBtn" data-value="" data-label="All Types">All Types</button>
                     @foreach (var t in Enum.GetValues<AssetType>())
                     {
-                        <button type="button" class="dropdown-item small single-filter-option @(curType == t ? "active" : "")"
-                                data-input-id="assetTypeInput" data-button-id="assetTypeBtn" data-value="@t" data-label="@t">@t</button>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="types"
+                                   value="@t" id="ft_@t" @(selTypes.Contains(t) ? "checked" : "")>
+                            <label class="form-check-label small" for="ft_@t">@t</label>
+                        </div>
                     }
-                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
         </div>
+
+        <!-- Status -->
         <div>
             <div class="form-label small mb-1">Status</div>
-            <input type="hidden" id="assetStatusInput" name="status" value="@(curStatus?.ToString() ?? "")" />
             <div class="dropdown">
-                <button type="button" id="assetStatusBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curStatus != null ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curStatus?.ToString() ?? "All Statuses")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Status", "Statuses", selStatuses.Length)
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
-                    <button type="button" class="dropdown-item small single-filter-option @(curStatus == null ? "active" : "")" data-input-id="assetStatusInput" data-button-id="assetStatusBtn" data-value="" data-label="All Statuses">All Statuses</button>
                     @foreach (var s in Enum.GetValues<AssetStatus>())
                     {
-                        <button type="button" class="dropdown-item small single-filter-option @(curStatus == s ? "active" : "")"
-                                data-input-id="assetStatusInput" data-button-id="assetStatusBtn" data-value="@s" data-label="@s">@s</button>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="statuses"
+                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                            <label class="form-check-label small" for="fs_@s">@s</label>
+                        </div>
                     }
-                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
         </div>
+
+        <!-- Manufacturer -->
         <div>
             <div class="form-label small mb-1">Manufacturer</div>
-            <input type="hidden" id="assetManufacturerInput" name="manufacturer" value="@(curManufacturer ?? "")" />
             <div class="dropdown">
-                <button type="button" id="assetManufacturerBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(!string.IsNullOrWhiteSpace(curManufacturer) ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(string.IsNullOrWhiteSpace(curManufacturer) ? "All Manufacturers" : curManufacturer)
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selManufacturers.Length > 0 ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @FilterLabel("Manufacturer", "Manufacturers", selManufacturers.Length)
                 </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:200px;max-height:280px;overflow-y:auto;">
-                    <button type="button" class="dropdown-item small single-filter-option @(string.IsNullOrWhiteSpace(curManufacturer) ? "active" : "")" data-input-id="assetManufacturerInput" data-button-id="assetManufacturerBtn" data-value="" data-label="All Manufacturers">All Manufacturers</button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:190px; max-height:260px; overflow-y:auto;">
                     @if (ViewBag.Manufacturers != null)
                     {
                         foreach (var m in (List<string>)ViewBag.Manufacturers)
                         {
-                            <button type="button" class="dropdown-item small single-filter-option @(curManufacturer == m ? "active" : "")"
-                                    data-input-id="assetManufacturerInput" data-button-id="assetManufacturerBtn" data-value="@m" data-label="@m">@m</button>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="manufacturers"
+                                       value="@m" id="fm_@m" @(selManufacturers.Contains(m) ? "checked" : "")>
+                                <label class="form-check-label small" for="fm_@m">@m</label>
+                            </div>
                         }
                     }
-                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
         </div>
+
+        <!-- Assignment -->
         <div>
             <div class="form-label small mb-1">Assignment</div>
-            <input type="hidden" id="assetAssignedInput" name="assigned" value="@(curAssigned?.ToString().ToLower() ?? "")" />
             <div class="dropdown">
-                <button type="button" id="assetAssignedBtn" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curAssigned != null ? "active" : "")" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curAssigned == null ? "All" : curAssigned.Value ? "Assigned" : "Unassigned")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curAssigned != null ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    @(curAssigned == null ? "All" : curAssigned == true ? "Assigned" : "Unassigned")
                 </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
-                    <button type="button" class="dropdown-item small single-filter-option @(curAssigned == null ? "active" : "")" data-input-id="assetAssignedInput" data-button-id="assetAssignedBtn" data-value="" data-label="All">All</button>
-                    <button type="button" class="dropdown-item small single-filter-option @(curAssigned == true ? "active" : "")" data-input-id="assetAssignedInput" data-button-id="assetAssignedBtn" data-value="true" data-label="Assigned">Assigned</button>
-                    <button type="button" class="dropdown-item small single-filter-option @(curAssigned == false ? "active" : "")" data-input-id="assetAssignedInput" data-button-id="assetAssignedBtn" data-value="false" data-label="Unassigned">Unassigned</button>
-                    <hr class="my-2"><button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned" value="true"
+                               id="fa_assigned" @(curAssigned == true ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fa_unassigned').checked=false;">
+                        <label class="form-check-label small" for="fa_assigned">Assigned</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned" value="false"
+                               id="fa_unassigned" @(curAssigned == false ? "checked" : "")
+                               onchange="if(this.checked) document.getElementById('fa_assigned').checked=false;">
+                        <label class="form-check-label small" for="fa_unassigned">Unassigned</label>
+                    </div>
+                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
         </div>
+
         <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+            </a>
         </div>
-    </form>
+
+        <div class="align-self-end ms-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="assetKeywordSearch" class="form-control" placeholder="Search assets..."
+                       value="@((string?)ViewBag.CurrentQuery ?? "")">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
@@ -163,3 +201,20 @@ document.addEventListener('click', function (e) {
         <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
 }
+
+<script>
+function applyFilters() {
+    const params = new URLSearchParams();
+    document.querySelectorAll('input[name="types"]:checked').forEach(cb => params.append('types', cb.value));
+    document.querySelectorAll('input[name="statuses"]:checked').forEach(cb => params.append('statuses', cb.value));
+    document.querySelectorAll('input[name="manufacturers"]:checked').forEach(cb => params.append('manufacturers', cb.value));
+    const assignedCb = document.querySelector('input[name="assigned"]:checked');
+    if (assignedCb) params.set('assigned', assignedCb.value);
+    const q = document.getElementById('assetKeywordSearch').value.trim();
+    if (q) params.set('q', q);
+    window.location.href = '@Url.Action("Index", "Assets")?' + params.toString();
+}
+document.getElementById('assetKeywordSearch')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+});
+</script>

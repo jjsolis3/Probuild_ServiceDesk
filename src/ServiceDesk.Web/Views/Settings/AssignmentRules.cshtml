@@ -70,6 +70,7 @@
                                     <th style="width:60px">Priority</th>
                                     <th>Rule Name</th>
                                     <th>Category</th>
+                                    <th>Sub-Category</th>
                                     <th>Branch / Location</th>
                                     <th>Assign To</th>
                                     <th>Status</th>
@@ -90,6 +91,16 @@
                                             @if (rule.Category.HasValue)
                                             {
                                                 <span class="badge bg-info text-dark">@rule.Category.Value</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small fst-italic">Any</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (rule.SubCategory != null)
+                                            {
+                                                <span class="badge bg-secondary">@rule.SubCategory.Name</span>
                                             }
                                             else
                                             {
