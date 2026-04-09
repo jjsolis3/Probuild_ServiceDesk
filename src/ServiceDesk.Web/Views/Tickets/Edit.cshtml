@@ -66,9 +66,13 @@
                 </select>
             </div>
 
-            <!-- Submitted By -->
-            <div class="ticket-header-field">
+            <!-- Submitted By (with inline search) -->
+            <div class="ticket-header-field" style="min-width:160px;">
                 <label class="ticket-header-label">Submitted By</label>
+                <input type="text" class="form-control form-control-sm mb-1 requester-search"
+                       placeholder="Search…" data-target="SubmittedById"
+                       oninput="filterSelectOptions(this)"
+                       autocomplete="off" style="max-width:160px;">
                 <select asp-for="SubmittedById" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.Employees">
                     <option value="">— Select —</option>
                 </select>
@@ -266,6 +270,10 @@
                         <div class="row g-3">
                             <div class="col-12">
                                 <label class="form-label fw-semibold">Submitted By</label>
+                                <input type="text" class="form-control form-control-sm mb-1 requester-search"
+                                       placeholder="Search employee…" data-target="SubmittedById"
+                                       oninput="filterSelectOptions(this)"
+                                       autocomplete="off">
                                 <select asp-for="SubmittedById" class="form-select" asp-items="@ViewBag.Employees"></select>
                             </div>
                             <div class="col-12">
@@ -539,6 +547,24 @@
 </div>
 
 @section Scripts {
+<script>
+// ── Searchable select: filters visible <option> elements by text ──────────
+function filterSelectOptions(input) {
+    const q = input.value.trim().toLowerCase();
+    const sel = input.parentElement.querySelector('select');
+    if (!sel) return;
+    let firstMatch = null;
+    Array.from(sel.options).forEach(function (opt) {
+        if (!opt.value) return; // keep the blank placeholder
+        const visible = !q || opt.text.toLowerCase().includes(q);
+        opt.hidden = !visible;
+        if (visible && !firstMatch) firstMatch = opt;
+    });
+    // If the current selection is now hidden, jump to first visible option
+    if (sel.selectedOptions.length && sel.selectedOptions[0].hidden && firstMatch)
+        sel.value = firstMatch.value;
+}
+</script>
 <script>
 (function () {
     const ticketId = @Model.Id;

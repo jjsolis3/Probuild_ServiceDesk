@@ -820,6 +820,7 @@ public class SettingsController : Controller
         var rules = await _context.AssignmentRules
             .Include(r => r.Branch)
             .Include(r => r.Assignee)
+            .Include(r => r.SubCategory)
             .OrderBy(r => r.SortOrder)
             .ThenBy(r => r.Name)
             .ToListAsync();
@@ -906,6 +907,12 @@ public class SettingsController : Controller
         ViewBag.Categories = Enum.GetValues<TicketCategory>()
             .Select(c => new { Value = (int)c, Text = c.ToString() })
             .ToList();
+
+        ViewBag.SubCategories = await _context.TicketSubCategories
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name, s.Category })
+            .ToListAsync();
     }
 
     // ── Canned Responses ─────────────────────────────────────────────────────

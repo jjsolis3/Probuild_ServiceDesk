@@ -44,12 +44,13 @@
 
 <!-- Filters -->
 @{
-    var selStatuses   = (TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>());
-    var selCategories = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
-    var selPriorities = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
-    var selAssignees  = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>());
-    var curUnmatched  = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
-    var curUnassigned = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
+    var selStatuses    = (TicketStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<TicketStatus>());
+    var selCategories  = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selPriorities  = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
+    var selAssignees   = (int[])(ViewBag.SelectedAssigneeIds  ?? Array.Empty<int>());
+    var selRequesters  = (int[])(ViewBag.SelectedRequesterIds ?? Array.Empty<int>());
+    var curUnmatched   = ViewBag.CurrentUnmatched  != null && (bool)ViewBag.CurrentUnmatched;
+    var curUnassigned  = ViewBag.CurrentUnassigned != null && (bool)ViewBag.CurrentUnassigned;
 
     string FilterLabel(string singular, string plural, int count) =>
         count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
@@ -57,6 +58,11 @@
     string AssigneeLabel() {
         var cnt = selAssignees.Length + (curUnassigned ? 1 : 0);
         return cnt == 0 ? "All Assignees" : cnt == 1 ? "1 Assignee" : $"{cnt} Assignees";
+    }
+
+    string RequesterLabel() {
+        var cnt = selRequesters.Length + (curUnmatched ? 1 : 0);
+        return cnt == 0 ? "All Requesters" : cnt == 1 ? "1 Requester" : $"{cnt} Requesters";
     }
 }
 <div class="filter-bar">
@@ -67,8 +73,9 @@
             <div class="form-label small mb-1">Status</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Status", "Statuses", selStatuses.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Status" data-plural="Statuses" data-all="All Statuses">
+                    <span class="filter-label">@FilterLabel("Status", "Statuses", selStatuses.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:170px;">
                     @foreach (var s in Enum.GetValues<TicketStatus>())
@@ -89,8 +96,9 @@
             <div class="form-label small mb-1">Category</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selCategories.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Category", "Categories", selCategories.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Category" data-plural="Categories" data-all="All Categories">
+                    <span class="filter-label">@FilterLabel("Category", "Categories", selCategories.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
                     @foreach (var c in Enum.GetValues<TicketCategory>())
@@ -111,8 +119,9 @@
             <div class="form-label small mb-1">Priority</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selPriorities.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Priority", "Priorities", selPriorities.Length)
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Priority" data-plural="Priorities" data-all="All Priorities">
+                    <span class="filter-label">@FilterLabel("Priority", "Priorities", selPriorities.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
                     @foreach (var p in Enum.GetValues<TicketPriority>())
@@ -133,8 +142,9 @@
             <div class="form-label small mb-1">Assignee</div>
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selAssignees.Length > 0 || curUnassigned ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @AssigneeLabel()
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Assignee" data-plural="Assignees" data-all="All Assignees">
+                    <span class="filter-label">@AssigneeLabel()</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:200px; max-height:280px; overflow-y:auto;">
                     <div class="form-check">
@@ -159,19 +169,36 @@
             </div>
         </div>
 
-        <!-- Requester -->
+        <!-- Requester (employees who submitted tickets + Unmatched flag) -->
         <div>
             <div class="form-label small mb-1">Requester</div>
             <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curUnmatched ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curUnmatched ? "Unmatched only" : "All Requesters")
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selRequesters.Length > 0 || curUnmatched ? "active" : "")"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        data-singular="Requester" data-plural="Requesters" data-all="All Requesters">
+                    <span class="filter-label">@RequesterLabel()</span>
                 </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
+                <div class="dropdown-menu p-2 shadow" style="min-width:230px;">
+                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Search requester…" id="requesterSearchInput"
+                           oninput="filterRequesterList(this.value)">
+                    <div id="requesterCheckList" style="max-height:200px; overflow-y:auto;">
+                        @foreach (var req in (ViewBag.Requesters as IEnumerable<dynamic> ?? []))
+                        {
+                            <div class="form-check requester-option" data-name="@req.Name.ToLower()">
+                                <input class="form-check-input" type="checkbox" name="requesterIds"
+                                       value="@req.Id" id="fr_@req.Id"
+                                       @(selRequesters.Contains((int)req.Id) ? "checked" : "")>
+                                <label class="form-check-label small" for="fr_@req.Id">@req.Name</label>
+                            </div>
+                        }
+                    </div>
+                    <hr class="my-1">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="unmatched"
                                value="true" id="fr_unmatched" @(curUnmatched ? "checked" : "")>
-                        <label class="form-check-label small" for="fr_unmatched">Unmatched (needs update)</label>
+                        <label class="form-check-label small text-muted" for="fr_unmatched">
+                            <i class="bi bi-question-circle me-1"></i>External / Unmatched only
+                        </label>
                     </div>
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
@@ -763,14 +790,41 @@ function changePageSize(value) {
     params.set('page', '1');
     document.querySelectorAll('[name="statuses"]:checked').forEach(cb   => params.append('statuses',    cb.value));
     document.querySelectorAll('[name="categories"]:checked').forEach(cb => params.append('categories',  cb.value));
-    document.querySelectorAll('[name="priorities"]:checked').forEach(cb => params.append('priorities',  cb.value));
-    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb => params.append('assigneeIds', cb.value));
+    document.querySelectorAll('[name="priorities"]:checked').forEach(cb   => params.append('priorities',    cb.value));
+    document.querySelectorAll('[name="assigneeIds"]:checked').forEach(cb  => params.append('assigneeIds',   cb.value));
+    document.querySelectorAll('[name="requesterIds"]:checked').forEach(cb => params.append('requesterIds',  cb.value));
     if (document.querySelector('[name="unassigned"]:checked')) params.set('unassigned', 'true');
     if (document.querySelector('[name="unmatched"]:checked'))  params.set('unmatched',  'true');
     const q = document.getElementById('ticketKeywordSearch')?.value?.trim();
     if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
+
+function filterRequesterList(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.requester-option').forEach(function (opt) {
+        opt.style.display = (!q || opt.dataset.name.includes(q)) ? '' : 'none';
+    });
+}
+
+// ── Live filter label update ────────────────────────────────────────────────
+// Updates each dropdown button's label text as the user checks/unchecks boxes,
+// without requiring an Apply click first.
+(function () {
+    document.querySelectorAll('.filter-bar .dropdown').forEach(function (dd) {
+        dd.addEventListener('change', function (e) {
+            if (!e.target.matches('input[type="checkbox"]')) return;
+            const btn = dd.querySelector('.dropdown-toggle');
+            const lbl = btn && btn.querySelector('.filter-label');
+            if (!lbl || !btn.dataset.singular) return;
+            const checked = dd.querySelectorAll('.dropdown-menu input[type="checkbox"]:checked').length;
+            lbl.textContent = checked === 0 ? btn.dataset.all
+                : checked === 1 ? '1 ' + btn.dataset.singular
+                : checked + ' ' + btn.dataset.plural;
+            btn.classList.toggle('active', checked > 0);
+        });
+    });
+})();
 
 // Reload page on browser back/forward so filter bar stays in sync
 window.addEventListener('popstate', function () { location.reload(); });

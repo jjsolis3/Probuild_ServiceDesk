@@ -8,6 +8,7 @@ using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -15,15 +16,18 @@ namespace ServiceDesk.Web.Controllers;
 public class TicketsController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly AssignmentResolverService _assignmentResolver;
 
-    public TicketsController(ServiceDeskDbContext context)
+    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver)
     {
         _context = context;
+        _assignmentResolver = assignmentResolver;
     }
 
     public async Task<IActionResult> Index(
         TicketStatus[]?  statuses,    TicketCategory[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
+        int[]? requesterIds,
         bool? unmatched, bool? unassigned,
         string? q,
         string sortBy = "id", string sortDir = "desc",
@@ -32,10 +36,11 @@ public class TicketsController : Controller
     {
         var userId = CurrentPortalUserId();
 
-        bool noFilters = (statuses    == null || statuses.Length    == 0)
+        bool noFilters = (statuses     == null || statuses.Length     == 0)
                       && (categories  == null || categories.Length  == 0)
                       && (priorities  == null || priorities.Length  == 0)
                       && (assigneeIds == null || assigneeIds.Length == 0)
+                      && (requesterIds == null || requesterIds.Length == 0)
                       && unmatched == null && unassigned == null && viewId == null
                       && string.IsNullOrWhiteSpace(q)
                       && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
@@ -104,12 +109,13 @@ public class TicketsController : Controller
             .Include(t => t.AssignedTo)
             .AsQueryable();
 
-        if (statuses?.Length    > 0) query = query.Where(t => statuses.Contains(t.Status));
-        if (categories?.Length  > 0) query = query.Where(t => categories.Contains(t.Category));
-        if (priorities?.Length  > 0) query = query.Where(t => priorities.Contains(t.Priority));
-        if (assigneeIds?.Length > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
-        if (unmatched  == true)      query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
-        if (unassigned == true)      query = query.Where(t => t.AssignedToId == null);
+        if (statuses?.Length     > 0) query = query.Where(t => statuses.Contains(t.Status));
+        if (categories?.Length   > 0) query = query.Where(t => categories.Contains(t.Category));
+        if (priorities?.Length   > 0) query = query.Where(t => priorities.Contains(t.Priority));
+        if (assigneeIds?.Length  > 0) query = query.Where(t => t.AssignedToId != null && assigneeIds.Contains(t.AssignedToId.Value));
+        if (requesterIds?.Length > 0) query = query.Where(t => requesterIds.Contains(t.SubmittedById));
+        if (unmatched  == true)       query = query.Where(t => t.SubmittedBy!.Email == "imported.ticket@servicesphere.local");
+        if (unassigned == true)       query = query.Where(t => t.AssignedToId == null);
         if (!string.IsNullOrWhiteSpace(q))
         {
             q = q.Trim();
@@ -151,10 +157,11 @@ public class TicketsController : Controller
             .Take(pageSize)
             .ToListAsync();
 
-        ViewBag.SelectedStatuses    = statuses    ?? Array.Empty<TicketStatus>();
-        ViewBag.SelectedCategories  = categories  ?? Array.Empty<TicketCategory>();
-        ViewBag.SelectedPriorities  = priorities  ?? Array.Empty<TicketPriority>();
-        ViewBag.SelectedAssigneeIds = assigneeIds ?? Array.Empty<int>();
+        ViewBag.SelectedStatuses     = statuses     ?? Array.Empty<TicketStatus>();
+        ViewBag.SelectedCategories   = categories   ?? Array.Empty<TicketCategory>();
+        ViewBag.SelectedPriorities   = priorities   ?? Array.Empty<TicketPriority>();
+        ViewBag.SelectedAssigneeIds  = assigneeIds  ?? Array.Empty<int>();
+        ViewBag.SelectedRequesterIds = requesterIds ?? Array.Empty<int>();
         ViewBag.CurrentUnmatched  = unmatched;
         ViewBag.CurrentUnassigned = unassigned;
         ViewBag.CurrentQuery = q ?? "";
@@ -193,6 +200,15 @@ public class TicketsController : Controller
         // ITStaffJson is used by the bulk-reassign JS dropdown — same list, serialised
         ViewBag.ITStaffJson = System.Text.Json.JsonSerializer.Serialize(
             assignableStaff.Select(e => new { id = e.Id, name = e.Name }));
+
+        // Distinct set of employees who have submitted at least one ticket (for Requester filter)
+        var requesterEmpIds = await _context.Tickets
+            .Select(t => t.SubmittedById).Distinct().ToListAsync();
+        ViewBag.Requesters = await _context.Employees
+            .Where(e => requesterEmpIds.Contains(e.Id))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
 
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
@@ -257,8 +273,16 @@ public class TicketsController : Controller
         if (ModelState.IsValid)
         {
             ticket.CreatedDate = DateTime.UtcNow;
-            // Auto-set SLA due date based on priority
             ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
+
+            // Auto-assign via assignment rules when no assignee was explicitly chosen.
+            if (ticket.AssignedToId == null)
+            {
+                var submitter = await _context.Employees.FindAsync(ticket.SubmittedById);
+                ticket.AssignedToId = await _assignmentResolver.ResolveAsync(
+                    ticket.Category, submitter?.BranchId, defaultAssigneeId: null);
+            }
+
             _context.Add(ticket);
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
