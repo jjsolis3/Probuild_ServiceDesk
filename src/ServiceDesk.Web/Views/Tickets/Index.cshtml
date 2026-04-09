@@ -498,7 +498,9 @@
     pageSize = (int)(ViewBag.PageSize ?? 25),
     currentStatuses    = ((TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>())).Select(s => s.ToString()).ToArray(),
     currentCategories  = ((TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>())).Select(c => c.ToString()).ToArray(),
-    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray()
+    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray(),
+    currentAssigneeIds = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>()),
+    currentEmployeeId  = (int?)ViewBag.CurrentEmployeeId
 }))</script>
 <script>
 (function () {
@@ -1020,7 +1022,10 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         document.getElementById('svBranch').value  = '';
         document.getElementById('svDepartment').value = '';
         document.getElementById('svGroup').value   = '';
-        document.getElementById('svAssignedToMe').checked  = false;
+        // Pre-fill "Assigned to me" if the current user's employee ID is among the active assignee filters
+        const myEmpId = pageState.currentEmployeeId;
+        const isFilteredToMe = myEmpId != null && (pageState.currentAssigneeIds ?? []).includes(myEmpId);
+        document.getElementById('svAssignedToMe').checked  = isFilteredToMe;
         document.getElementById('svUnassigned').checked    = pageState.currentUnassigned;
         document.getElementById('svUnmatched').checked     = pageState.currentUnmatched;
         document.getElementById('svSortBy').value   = pageState.sortBy;
