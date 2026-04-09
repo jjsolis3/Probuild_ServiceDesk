@@ -396,6 +396,83 @@ public static class DbInitializer
                          N'Open,InProgress,OnHold', 'id', 'desc', 25, SYSUTCDATETIME());
                 END");
 
+            // 16. Create CategoryKeywords table (DB-backed keyword detection for auto-categorisation)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CategoryKeywords')
+                BEGIN
+                    CREATE TABLE dbo.CategoryKeywords (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Category    INT             NOT NULL,
+                        Keyword     NVARCHAR(100)   NOT NULL,
+                        IsActive    BIT             NOT NULL DEFAULT 1,
+                        CreatedDate DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_CategoryKeywords_Category_Active
+                        ON dbo.CategoryKeywords (Category, IsActive);
+
+                    -- Seed default keywords (mirrors AssignmentResolverService hardcoded dictionary)
+                    -- HardwareIssue = 1
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (1, N'printer'), (1, N'printing'), (1, N'keyboard'), (1, N'mouse'),
+                    (1, N'monitor'), (1, N'screen'), (1, N'display'), (1, N'laptop'),
+                    (1, N'desktop'), (1, N'computer'), (1, N'pc'), (1, N'hardware'),
+                    (1, N'device'), (1, N'battery'), (1, N'charger'), (1, N'dock'),
+                    (1, N'docking'), (1, N'headset'), (1, N'webcam'), (1, N'scanner'),
+                    (1, N'projector'), (1, N'broken'), (1, N'damaged'), (1, N'physical'),
+                    (1, N'power'), (1, N'overheating'), (1, N'fan noise');
+
+                    -- SoftwareIssue = 2
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (2, N'software'), (2, N'application'), (2, N'app'), (2, N'program'),
+                    (2, N'install'), (2, N'installation'), (2, N'uninstall'), (2, N'update'),
+                    (2, N'upgrade'), (2, N'crash'), (2, N'crashes'), (2, N'error'),
+                    (2, N'errors'), (2, N'bug'), (2, N'license'), (2, N'activation'),
+                    (2, N'office'), (2, N'word'), (2, N'excel'), (2, N'outlook'),
+                    (2, N'teams'), (2, N'zoom'), (2, N'adobe'), (2, N'browser'),
+                    (2, N'chrome'), (2, N'firefox'), (2, N'edge'), (2, N'slow'),
+                    (2, N'freezing'), (2, N'frozen'), (2, N'not responding'),
+                    (2, N'blue screen'), (2, N'bsod'), (2, N'driver'),
+                    (2, N'operating system'), (2, N'windows'), (2, N'macos'), (2, N'patch');
+
+                    -- NetworkIssue = 4
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (4, N'vpn'), (4, N'network'), (4, N'internet'), (4, N'wifi'),
+                    (4, N'wi-fi'), (4, N'wireless'), (4, N'ethernet'), (4, N'connection'),
+                    (4, N'connectivity'), (4, N'firewall'), (4, N'dns'), (4, N'dhcp'),
+                    (4, N'ip address'), (4, N'bandwidth'), (4, N'slow internet'),
+                    (4, N'no internet'), (4, N'network drive'), (4, N'mapped drive'),
+                    (4, N'remote access'), (4, N'remote desktop'), (4, N'rdp'),
+                    (4, N'switch'), (4, N'router'), (4, N'cable');
+
+                    -- SecurityIncident = 5
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (5, N'security'), (5, N'phishing'), (5, N'phish'), (5, N'suspicious'),
+                    (5, N'hack'), (5, N'hacked'), (5, N'virus'), (5, N'malware'),
+                    (5, N'ransomware'), (5, N'spyware'), (5, N'trojan'), (5, N'spam'),
+                    (5, N'unauthorized'), (5, N'breach'), (5, N'password reset'),
+                    (5, N'account locked'), (5, N'compromised'), (5, N'scam'),
+                    (5, N'fraud'), (5, N'social engineering'), (5, N'2fa'), (5, N'mfa');
+
+                    -- EmployeeIssue = 3
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (3, N'onboarding'), (3, N'new employee'), (3, N'new hire'),
+                    (3, N'offboarding'), (3, N'termination'), (3, N'terminated'),
+                    (3, N'access request'), (3, N'new user'), (3, N'user setup'),
+                    (3, N'account setup'), (3, N'leave'), (3, N'absence'),
+                    (3, N'transfer'), (3, N'promotion'), (3, N'department change'),
+                    (3, N'badge'), (3, N'id card'), (3, N'equipment request'),
+                    (3, N'role change');
+
+                    -- ServiceRequest = 0
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (0, N'request'), (0, N'order'), (0, N'setup'), (0, N'configure'),
+                    (0, N'configuration'), (0, N'provision'), (0, N'provisioning'),
+                    (0, N'access'), (0, N'permission'), (0, N'grant'),
+                    (0, N'create account'), (0, N'new account'), (0, N'service'),
+                    (0, N'question'), (0, N'help'), (0, N'how to'), (0, N'assistance');
+                END");
+
             // 11. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')

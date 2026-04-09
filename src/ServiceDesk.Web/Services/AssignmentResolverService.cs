@@ -160,8 +160,44 @@ public class AssignmentResolverService
 
     /// <summary>
     /// Scans the email subject and body for keywords and returns the best-matching
+    /// <see cref="TicketCategory"/>. Loads active keywords from the database; falls
+    /// back to the hardcoded dictionary when the table is empty or unavailable.
+    /// </summary>
+    public async Task<TicketCategory> DetectCategoryAsync(string subject, string body)
+    {
+        try
+        {
+            var dbKeywords = await _context.CategoryKeywords
+                .Where(k => k.IsActive)
+                .Select(k => new { k.Category, k.Keyword })
+                .ToListAsync();
+
+            if (dbKeywords.Count > 0)
+            {
+                var text = $"{subject} {body}".ToLowerInvariant();
+                var scores = dbKeywords
+                    .GroupBy(k => k.Category)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Count(k => text.Contains(k.Keyword)));
+
+                var best = scores.OrderByDescending(kv => kv.Value).First();
+                return best.Value > 0 ? best.Key : TicketCategory.Other;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load keywords from DB; falling back to hardcoded dictionary.");
+        }
+
+        // Fallback: use hardcoded dictionary
+        return DetectCategory(subject, body);
+    }
+
+    /// <summary>
+    /// Scans the email subject and body for keywords and returns the best-matching
     /// <see cref="TicketCategory"/>. Returns <see cref="TicketCategory.Other"/> when
-    /// no keywords match.
+    /// no keywords match. Uses the hardcoded fallback dictionary.
     /// </summary>
     public static TicketCategory DetectCategory(string subject, string body)
     {

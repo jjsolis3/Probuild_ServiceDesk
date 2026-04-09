@@ -1073,4 +1073,72 @@ public class SettingsController : Controller
         }
         return RedirectToAction(nameof(Categories));
     }
+
+    // ==================== CATEGORY KEYWORDS ====================
+
+    public async Task<IActionResult> CategoryKeywords()
+    {
+        var keywords = await _context.CategoryKeywords
+            .OrderBy(k => k.Category).ThenBy(k => k.Keyword)
+            .ToListAsync();
+        return View(keywords);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateCategoryKeyword(TicketCategory category, string keyword)
+    {
+        keyword = keyword?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(keyword) || keyword.Length < 2)
+        {
+            TempData["Error"] = "Keyword must be at least 2 characters.";
+            return RedirectToAction(nameof(CategoryKeywords));
+        }
+
+        var exists = await _context.CategoryKeywords
+            .AnyAsync(k => k.Category == category && k.Keyword == keyword);
+        if (exists)
+        {
+            TempData["Error"] = $"The keyword \"{keyword}\" already exists for that category.";
+            return RedirectToAction(nameof(CategoryKeywords));
+        }
+
+        _context.CategoryKeywords.Add(new CategoryKeyword
+        {
+            Category = category,
+            Keyword = keyword,
+            IsActive = true,
+            CreatedDate = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Keyword \"{keyword}\" added.";
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCategoryKeyword(int id)
+    {
+        var kw = await _context.CategoryKeywords.FindAsync(id);
+        if (kw != null)
+        {
+            _context.CategoryKeywords.Remove(kw);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Keyword deleted.";
+        }
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleCategoryKeyword(int id)
+    {
+        var kw = await _context.CategoryKeywords.FindAsync(id);
+        if (kw != null)
+        {
+            kw.IsActive = !kw.IsActive;
+            await _context.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
 }

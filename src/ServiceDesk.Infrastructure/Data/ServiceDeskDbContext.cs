@@ -48,6 +48,7 @@ public class ServiceDeskDbContext : DbContext
 
     // Ticket categorisation
     public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
+    public DbSet<CategoryKeyword> CategoryKeywords => Set<CategoryKeyword>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -299,5 +300,9 @@ public class ServiceDeskDbContext : DbContext
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()
             .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });
+
+        // Index on CategoryKeyword for fast lookup by category
+        modelBuilder.Entity<CategoryKeyword>()
+            .HasIndex(k => new { k.Category, k.IsActive });
     }
 }

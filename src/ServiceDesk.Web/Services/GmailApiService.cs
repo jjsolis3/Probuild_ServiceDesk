@@ -279,13 +279,14 @@ public class GmailApiService : BackgroundService
             if (cleanSubject.Length > 200)
                 cleanSubject = cleanSubject[..200];
 
-            // Detect category from email content
-            var detectedCategory = AssignmentResolverService.DetectCategory(cleanSubject, body);
-
             // Resolve assignee via rules (category + submitter branch), fallback to config default
             int? submitterBranchId = submitter?.BranchId;
             var resolver = _serviceProvider.CreateScope().ServiceProvider
                 .GetRequiredService<AssignmentResolverService>();
+
+            // Detect category from email content (DB-backed keywords, hardcoded fallback)
+            var detectedCategory = await resolver.DetectCategoryAsync(cleanSubject, body);
+
             var resolvedAssigneeId = await resolver.ResolveAsync(
                 detectedCategory, submitterBranchId, config.DefaultAssigneeId);
 
