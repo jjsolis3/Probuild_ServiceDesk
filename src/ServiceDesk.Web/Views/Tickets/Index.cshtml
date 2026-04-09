@@ -206,7 +206,6 @@
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
             <option value="assign">Reassign</option>
-            <option value="merge">Merge Tickets</option>
             <option value="delete">Delete Selected</option>
         </select>
         <div id="bulkStatusGroup" class="d-none">
@@ -224,7 +223,34 @@
         </div>
         <button type="submit" class="btn btn-sm btn-primary" id="btnBulkApply">Apply</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnBulkClear">Clear</button>
+        <button type="button" class="btn btn-sm btn-warning ms-auto" id="btnBulkMerge" title="Merge selected ticket(s)">
+            <i class="bi bi-arrow-left-right me-1"></i> Merge Tickets
+        </button>
     </form>
+</div>
+
+<!-- Merge Target Modal: prompts for target ticket ID when only 1 ticket is selected -->
+<div class="modal fade" id="mergeTargetModal" tabindex="-1" aria-labelledby="mergeTargetModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mergeTargetModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Merge Ticket</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Enter the <strong>target ticket ID</strong> to merge ticket <strong id="mergeSourceLabel">#</strong> into:</p>
+        <input type="number" min="1" id="mergeTargetIdInput" class="form-control" placeholder="e.g. 1042" />
+        <div class="form-text">All public comments from ticket <span id="mergeSourceLabel2">#</span> will be moved to the target, and ticket <span id="mergeSourceLabel3">#</span> will be closed.</div>
+        <div id="mergeTargetError" class="alert alert-danger mt-2 d-none mb-0"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="btnConfirmMergeTarget">
+          <i class="bi bi-arrow-left-right me-1"></i> Merge
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
@@ -594,6 +620,12 @@
             bar?.classList.add('d-none');
         });
         form?.addEventListener('submit', function (e) {
+            // Skip default validation when this submit was triggered by the Merge button —
+            // the Merge button handler injects its own selectedIds and posts to MergeTickets.
+            if (form.dataset.mergeSubmit === '1') {
+                form.dataset.mergeSubmit = '';
+                return;
+            }
             const checked = [...(document.getElementById('ticketsTableContainer')
                 ?.querySelectorAll('.ticket-chk:checked') ?? [])];
             if (checked.length === 0) { e.preventDefault(); return; }
@@ -601,26 +633,84 @@
             if (actionSelect.value === 'delete' && !confirm(`Delete ${checked.length} selected ticket(s)? This cannot be undone.`)) {
                 e.preventDefault(); return;
             }
-            if (actionSelect.value === 'merge') {
-                if (checked.length < 2) {
-                    e.preventDefault();
-                    alert('Select at least 2 tickets to merge.');
-                    return;
-                }
-                const ids = checked.map(c => c.value).map(Number).sort((a, b) => a - b);
-                const primaryId = ids[0];
-                const others = ids.slice(1).join(', #');
-                if (!confirm(`Merge ticket(s) #${others} INTO ticket #${primaryId}?\n\nTicket #${primaryId} will remain open. The other ticket(s) will be closed and their comments moved to #${primaryId}.\n\nThis cannot be undone.`)) {
-                    e.preventDefault(); return;
-                }
-                // Post to MergeTickets action instead of BulkUpdate
-                form.action = '@Url.Action("MergeTickets", "Tickets")';
-            }
             checked.forEach(c => {
                 const inp = document.createElement('input');
                 inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = c.value;
                 form.appendChild(inp);
             });
+        });
+
+        // ── Merge Tickets dedicated button ───────────────────────────────
+        const btnBulkMerge   = document.getElementById('btnBulkMerge');
+        const mergeTargetEl  = document.getElementById('mergeTargetModal');
+        const mergeTargetModal = mergeTargetEl ? new bootstrap.Modal(mergeTargetEl) : null;
+        const mergeTargetIdInput = document.getElementById('mergeTargetIdInput');
+        const mergeTargetError   = document.getElementById('mergeTargetError');
+        const mergeSourceLabels  = ['mergeSourceLabel','mergeSourceLabel2','mergeSourceLabel3']
+            .map(id => document.getElementById(id));
+        let pendingMergeSourceId = null;
+
+        function submitMergeForm(idsArray) {
+            // Strip any prior selectedIds hidden inputs from earlier submits
+            form.querySelectorAll('input[name="selectedIds"]').forEach(n => n.remove());
+            idsArray.forEach(v => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'selectedIds'; inp.value = v;
+                form.appendChild(inp);
+            });
+            form.action = '@Url.Action("MergeTickets", "Tickets")';
+            form.dataset.mergeSubmit = '1';
+            form.submit();
+        }
+
+        btnBulkMerge?.addEventListener('click', function () {
+            const checked = [...(document.getElementById('ticketsTableContainer')
+                ?.querySelectorAll('.ticket-chk:checked') ?? [])];
+            if (checked.length === 0) {
+                alert('Select at least 1 ticket to merge.');
+                return;
+            }
+            const ids = checked.map(c => Number(c.value)).sort((a, b) => a - b);
+
+            if (ids.length === 1) {
+                // Prompt for target ticket ID
+                pendingMergeSourceId = ids[0];
+                mergeSourceLabels.forEach(el => { if (el) el.textContent = '#' + pendingMergeSourceId; });
+                if (mergeTargetIdInput) mergeTargetIdInput.value = '';
+                if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+                mergeTargetModal?.show();
+                return;
+            }
+
+            // 2+ tickets: lowest ID becomes primary, others merged into it
+            const primaryId = ids[0];
+            const others = ids.slice(1).join(', #');
+            if (!confirm(`Merge ticket(s) #${others} INTO ticket #${primaryId}?\n\nTicket #${primaryId} will remain open. The other ticket(s) will be closed and their comments moved to #${primaryId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            submitMergeForm(ids);
+        });
+
+        document.getElementById('btnConfirmMergeTarget')?.addEventListener('click', function () {
+            if (mergeTargetError) { mergeTargetError.classList.add('d-none'); mergeTargetError.textContent = ''; }
+            const targetId = parseInt(mergeTargetIdInput?.value || '', 10);
+            if (!targetId || targetId < 1) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Enter a valid target ticket ID.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (targetId === pendingMergeSourceId) {
+                if (mergeTargetError) { mergeTargetError.textContent = 'Source and target cannot be the same ticket.'; mergeTargetError.classList.remove('d-none'); }
+                return;
+            }
+            if (!confirm(`Merge ticket #${pendingMergeSourceId} INTO ticket #${targetId}?\n\nTicket #${targetId} will remain open. Ticket #${pendingMergeSourceId} will be closed and its comments moved to #${targetId}.\n\nThis cannot be undone.`)) {
+                return;
+            }
+            // Append hidden primaryId so server knows the explicit target (not just lowest ID)
+            form.querySelectorAll('input[name="primaryId"]').forEach(n => n.remove());
+            const primaryInput = document.createElement('input');
+            primaryInput.type = 'hidden'; primaryInput.name = 'primaryId'; primaryInput.value = targetId;
+            form.appendChild(primaryInput);
+            submitMergeForm([pendingMergeSourceId, targetId]);
         });
     })();
 

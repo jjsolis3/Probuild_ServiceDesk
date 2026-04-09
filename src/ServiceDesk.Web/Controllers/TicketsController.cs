@@ -322,6 +322,12 @@ public class TicketsController : Controller
                     var newAgent = ticket.AssignedToId.HasValue ? (await _context.Employees.FindAsync(ticket.AssignedToId))?.FullName ?? "Unassigned" : "Unassigned";
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Assigned To", OldValue = oldAgent, NewValue = newAgent });
                 }
+                if (existing.UserGroupId != ticket.UserGroupId)
+                {
+                    var oldGroup = existing.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(existing.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    var newGroup = ticket.UserGroupId.HasValue ? (await _context.UserGroups.FindAsync(ticket.UserGroupId))?.Name ?? "Unassigned" : "Unassigned";
+                    histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Group Assignment", OldValue = oldGroup, NewValue = newGroup });
+                }
                 if (existing.Category != ticket.Category)
                     histories.Add(new TicketHistory { TicketId = id, ChangedBy = changedBy, FieldName = "Category", OldValue = existing.Category.ToString(), NewValue = ticket.Category.ToString() });
                 if (histories.Any())
@@ -514,24 +520,41 @@ public class TicketsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // POST: Tickets/MergeTickets — merge 2+ tickets; lowest ID becomes primary, others are closed
+    // POST: Tickets/MergeTickets — merge tickets together. By default the lowest ID becomes the
+    // primary; pass primaryId explicitly when merging a single selected ticket into a chosen target.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MergeTickets(int[] selectedIds)
+    public async Task<IActionResult> MergeTickets(int[] selectedIds, int? primaryId = null)
     {
-        if (selectedIds == null || selectedIds.Length < 2)
+        if (selectedIds == null || selectedIds.Length == 0)
         {
-            TempData["Error"] = "Select at least 2 tickets to merge.";
+            TempData["Error"] = "Select at least 1 ticket to merge.";
             return RedirectToAction(nameof(Index));
         }
 
-        var orderedIds  = selectedIds.OrderBy(id => id).ToArray();
-        var primaryId   = orderedIds[0];
-        var secondaryIds = orderedIds.Skip(1).ToArray();
+        // Build the full id list. If a primaryId was supplied (e.g. single-selection merge),
+        // include it so the union has at least 2 distinct ids.
+        var idSet = new HashSet<int>(selectedIds);
+        if (primaryId.HasValue) idSet.Add(primaryId.Value);
+
+        if (idSet.Count < 2)
+        {
+            TempData["Error"] = "Select at least 2 tickets to merge, or specify a target ticket ID.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Determine primary: explicit primaryId wins, otherwise lowest id.
+        int resolvedPrimaryId = primaryId ?? idSet.Min();
+        if (!idSet.Contains(resolvedPrimaryId))
+        {
+            TempData["Error"] = "Target ticket is not part of the selection.";
+            return RedirectToAction(nameof(Index));
+        }
+        var secondaryIds = idSet.Where(id => id != resolvedPrimaryId).ToArray();
         var changedBy   = User.Identity?.Name ?? "Agent";
         var now         = DateTime.UtcNow;
 
-        var primary = await _context.Tickets.FindAsync(primaryId);
+        var primary = await _context.Tickets.FindAsync(resolvedPrimaryId);
         if (primary == null)
         {
             TempData["Error"] = "Primary ticket not found.";
@@ -554,7 +577,7 @@ public class TicketsController : Controller
         // Merge summary note on the primary ticket
         _context.TicketNotes.Add(new TicketNote
         {
-            TicketId   = primaryId,
+            TicketId   = resolvedPrimaryId,
             AuthorName = changedBy,
             Content    = $"Tickets #{secondaryList} were merged into this ticket by {changedBy}.",
             CreatedDate = now, Source = "Agent", IsInternal = true
@@ -567,7 +590,7 @@ public class TicketsController : Controller
             {
                 _context.TicketNotes.Add(new TicketNote
                 {
-                    TicketId    = primaryId,
+                    TicketId    = resolvedPrimaryId,
                     AuthorName  = note.AuthorName,
                     AuthorEmail = note.AuthorEmail,
                     Content     = $"[Merged from #{secondary.Id}] {note.Content}",
@@ -582,7 +605,7 @@ public class TicketsController : Controller
             {
                 TicketId   = secondary.Id,
                 AuthorName = changedBy,
-                Content    = $"This ticket was merged into #{primaryId} by {changedBy}. Refer to #{primaryId} for all further updates.",
+                Content    = $"This ticket was merged into #{resolvedPrimaryId} by {changedBy}. Refer to #{resolvedPrimaryId} for all further updates.",
                 CreatedDate = now, Source = "Agent", IsInternal = true
             });
 
@@ -591,7 +614,7 @@ public class TicketsController : Controller
                 TicketId = secondary.Id, ChangedBy = changedBy,
                 FieldName = "Status",
                 OldValue  = secondary.Status.ToString(),
-                NewValue  = $"Closed (Merged into #{primaryId})"
+                NewValue  = $"Closed (Merged into #{resolvedPrimaryId})"
             });
 
             secondary.Status     = TicketStatus.Closed;
@@ -602,8 +625,8 @@ public class TicketsController : Controller
         primary.UpdatedDate = now;
         await _context.SaveChangesAsync();
 
-        TempData["Success"] = $"{secondaries.Count} ticket(s) merged into #{primaryId}.";
-        return RedirectToAction(nameof(Edit), new { id = primaryId });
+        TempData["Success"] = $"{secondaries.Count} ticket(s) merged into #{resolvedPrimaryId}.";
+        return RedirectToAction(nameof(Edit), new { id = resolvedPrimaryId });
     }
 
     // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
@@ -1181,10 +1204,27 @@ public class TicketsController : Controller
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.SubmittedById);
 
+        // Assignable IT staff = employees linked to a portal user whose role is NOT "End User".
+        // (Department-based filtering excluded admins like Jose/Admin who aren't in the IT dept,
+        // and incorrectly included end users like Kolby/Chris whose dept is IT.)
+        var itRoleIds = _context.Roles
+            .Where(r => r.Name != "End User")
+            .Select(r => r.Id).ToList();
+        var assignableEmpIds = _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && itRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct().ToList();
         ViewBag.ITStaff = new SelectList(
-            _context.Employees.Where(e => e.IsActive && e.Department == "IT").OrderBy(e => e.LastName)
+            _context.Employees.Where(e => e.IsActive && assignableEmpIds.Contains(e.Id))
+                .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),
             "Id", "Name", ticket?.AssignedToId);
+
+        ViewBag.UserGroups = new SelectList(
+            _context.UserGroups.Where(g => g.IsActive).OrderBy(g => g.Name)
+                .Select(g => new { g.Id, g.Name }),
+            "Id", "Name", ticket?.UserGroupId);
 
         ViewBag.Services = new SelectList(
             _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name),

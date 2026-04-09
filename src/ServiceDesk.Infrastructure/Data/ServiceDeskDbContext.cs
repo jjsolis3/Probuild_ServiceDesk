@@ -282,6 +282,13 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(t => t.SubCategoryId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Ticket -> UserGroup (group assignment, optional)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.UserGroup)
+            .WithMany()
+            .HasForeignKey(t => t.UserGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()
             .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });

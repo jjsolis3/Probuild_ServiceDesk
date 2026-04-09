@@ -30,11 +30,11 @@
                 <select asp-for="Status" asp-items="Html.GetEnumSelectList<TicketStatus>()" class="form-select form-select-sm ticket-header-select status-select" id="statusSelect"></select>
             </div>
 
-            <!-- Group Assignment (placeholder — using AssignedTo as proxy) -->
+            <!-- Group Assignment -->
             <div class="ticket-header-field">
                 <label class="ticket-header-label">Group Assignment</label>
-                <select class="form-select form-select-sm ticket-header-select" disabled>
-                    <option>IT FORCE</option>
+                <select asp-for="UserGroupId" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.UserGroups">
+                    <option value="">— Unassigned —</option>
                 </select>
             </div>
 

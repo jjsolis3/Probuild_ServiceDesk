@@ -280,6 +280,20 @@ public static class DbInitializer
                     ALTER TABLE dbo.Tickets ADD DescriptionHtml NVARCHAR(MAX) NULL;
                 END");
 
+            // 14b. Add UserGroupId column to Tickets (group assignment)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'UserGroupId'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets
+                        ADD UserGroupId INT NULL
+                        CONSTRAINT FK_Tickets_UserGroups
+                        REFERENCES dbo.UserGroups(Id)
+                        ON DELETE SET NULL;
+                END");
+
             // 15. Create SavedTicketViews table (user filter presets)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SavedTicketViews')
