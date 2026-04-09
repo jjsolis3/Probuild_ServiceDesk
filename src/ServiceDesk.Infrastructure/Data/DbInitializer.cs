@@ -449,6 +449,8 @@ public static class DbInitializer
                          "ManageTickets,ManageAssets,ManageEmployees,ManageSubscriptions,ManageServices,ViewReports", true),
             ("End User", "Non-IT employee — portal access only (submit and view own tickets).",
                          "Portal", true),
+            ("Viewer",   "Read-only access to the web app (dashboard, tickets, assets, subscriptions, services, reports). Can also use the portal for own tickets.",
+                         "ViewReports,ViewDashboard,ViewTickets,ViewAssets,ViewSubscriptions,ViewServices", true),
         };
 
         foreach (var (name, desc, perms, isSystem) in roleNames)

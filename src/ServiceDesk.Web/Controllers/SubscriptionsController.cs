@@ -17,6 +17,7 @@ public class SubscriptionsController : Controller
         _context = context;
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(SubscriptionStatus[]? statuses, string? q)
     {
         var query = _context.Subscriptions.AsQueryable();

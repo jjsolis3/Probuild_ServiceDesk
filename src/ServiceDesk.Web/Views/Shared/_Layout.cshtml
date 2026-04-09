@@ -161,12 +161,15 @@
                             <span class="nav-text">Assets</span>
                         </a>
                     </li>
+                    @if (!User.IsInRole("Viewer"))
+                    {
                     <li class="@NavClass("Employees")">
                         <a asp-controller="Employees" asp-action="Index" aria-expanded="false">
                             <i class="fas fa-users"></i>
                             <span class="nav-text">Employees</span>
                         </a>
                     </li>
+                    }
                     <li class="@NavClass("Subscriptions")">
                         <a asp-controller="Subscriptions" asp-action="Index" aria-expanded="false">
                             <i class="fas fa-credit-card"></i>

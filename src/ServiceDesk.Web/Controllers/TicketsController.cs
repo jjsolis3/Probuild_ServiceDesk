@@ -24,6 +24,7 @@ public class TicketsController : Controller
         _assignmentResolver = assignmentResolver;
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(
         TicketStatus[]?  statuses,    TicketCategory[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
@@ -223,6 +224,7 @@ public class TicketsController : Controller
         return View(tickets);
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();

@@ -17,6 +17,7 @@ public class ServicesController : Controller
         _context = context;
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(ServiceStatus[]? statuses, string? q)
     {
         var query = _context.CompanyServices.AsQueryable();

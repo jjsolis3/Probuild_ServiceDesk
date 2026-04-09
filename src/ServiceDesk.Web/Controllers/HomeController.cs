@@ -9,7 +9,7 @@ using ServiceDesk.Web.Models;
 
 namespace ServiceDesk.Web.Controllers;
 
-[Authorize(Roles = "Admin,IT Agent")]
+[Authorize(Roles = "Admin,IT Agent,Viewer")]
 public class HomeController : Controller
 {
     private readonly ServiceDeskDbContext _context;

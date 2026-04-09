@@ -93,7 +93,8 @@ public class AccountController : Controller
         if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
             return Redirect(model.ReturnUrl);
 
-        if (roleName == "End User")
+        // Portal-only roles go to the portal; all others (Admin, IT Agent, Viewer, etc.) go to the dashboard.
+        if (roleName is "End User" or "Employee")
             return RedirectToAction("Index", "Portal");
 
         return RedirectToAction("Index", "Home");
@@ -111,8 +112,8 @@ public class AccountController : Controller
     // GET: /Account/AccessDenied
     public IActionResult AccessDenied()
     {
-        // End Users trying to access IT area → send to portal
-        if (User.IsInRole("End User"))
+        // Portal-only users trying to access the IT area → send to portal
+        if (User.IsInRole("End User") || User.IsInRole("Employee"))
             return RedirectToAction("Index", "Portal");
 
         return View();
@@ -120,7 +121,7 @@ public class AccountController : Controller
 
     private IActionResult RedirectAfterLogin()
     {
-        if (User.IsInRole("End User"))
+        if (User.IsInRole("End User") || User.IsInRole("Employee"))
             return RedirectToAction("Index", "Portal");
         return RedirectToAction("Index", "Home");
     }

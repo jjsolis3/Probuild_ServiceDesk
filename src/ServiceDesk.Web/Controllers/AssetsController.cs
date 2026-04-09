@@ -18,6 +18,7 @@ public class AssetsController : Controller
         _context = context;
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(AssetType[]? types, AssetStatus[]? statuses, string[]? manufacturers, bool? assigned, string? q)
     {
         var query = _context.Assets.Include(a => a.AssignedTo).AsQueryable();
@@ -50,6 +51,7 @@ public class AssetsController : Controller
         return View(assets);
     }
 
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();

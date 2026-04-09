@@ -899,8 +899,20 @@ public class SettingsController : Controller
             .OrderBy(b => b.Name)
             .ToListAsync();
 
+        // Only show employees who can actually be assigned tickets:
+        // those with an active portal account whose role has ManageTickets permission.
+        var staffRoleIds = await _context.Roles
+            .Where(r => r.Permissions.Contains("ManageTickets"))
+            .Select(r => r.Id)
+            .ToListAsync();
+        var staffEmpIds = await _context.PortalUsers
+            .Where(u => u.IsActive && u.EmployeeId != null
+                     && u.RoleId != null && staffRoleIds.Contains(u.RoleId.Value))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct()
+            .ToListAsync();
         ViewBag.Employees = await _context.Employees
-            .Where(e => e.IsActive)
+            .Where(e => e.IsActive && staffEmpIds.Contains(e.Id))
             .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .ToListAsync();
 
