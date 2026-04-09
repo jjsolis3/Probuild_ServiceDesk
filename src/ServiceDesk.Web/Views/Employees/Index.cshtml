@@ -176,8 +176,8 @@ document.addEventListener('click', function (e) {
                 <th>Email</th>
                 <th>Branch / Location</th>
                 <th>Company Phone</th>
-                <th>Direct Phone</th>
                 <th>Ext.</th>
+                <th>Direct Phone</th>
                 <th>Department</th>
                 <th>Job Title</th>
                 <th>Status</th>
@@ -195,8 +195,8 @@ document.addEventListener('click', function (e) {
                     <td>@employee.Email</td>
                     <td>@(employee.Branch?.Name ?? "—")</td>
                     <td>@(employee.Branch?.Phone ?? "—")</td>
-                    <td>@(employee.Phone ?? "—")</td>
                     <td>@(employee.Extension ?? "—")</td>
+                    <td>@(employee.Phone ?? "—")</td>
                     <td>@employee.Department</td>
                     <td>@employee.JobTitle</td>
                     <td>

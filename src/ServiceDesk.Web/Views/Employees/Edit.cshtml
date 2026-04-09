@@ -46,7 +46,12 @@
                         {
                             foreach (var b in (IEnumerable<ServiceDesk.Core.Models.Branch>)ViewBag.Branches)
                             {
-                                <option value="@b.Id" @(Model.BranchId == b.Id ? "selected" : "")>@b.Name</option>
+                                if (Model.BranchId == b.Id) {
+                                    <option value="@b.Id" selected="selected">@b.Name</option>
+                                }
+                                else {
+                                    <option value="@b.Id">@b.Name</option>
+                                }
                             }
                         }
                     </select>
