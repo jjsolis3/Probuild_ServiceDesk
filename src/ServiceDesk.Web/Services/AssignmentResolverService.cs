@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Services;

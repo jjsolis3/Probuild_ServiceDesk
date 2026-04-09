@@ -215,7 +215,7 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="text" id="ticketKeywordSearch" class="form-control" placeholder="Search tickets..."
-                       value="@((string?)ViewBag.CurrentQuery ?? "")" onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                       value="@((string?)ViewBag.CurrentQuery ?? "")">
                 <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
             </div>
         </div>
@@ -858,6 +858,9 @@ function applyFilters() {
     if (q) params.set('q', q);
     loadTable('/Tickets?' + params.toString());
 }
+document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+});
 </script>
 
 <script>
