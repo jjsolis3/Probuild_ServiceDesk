@@ -43,14 +43,15 @@ public class HomeController : Controller
                 && t.Status != TicketStatus.Cancelled);
 
         var criticalTickets = await _context.Tickets
-            .Where(t => t.Priority == TicketPriority.Critical
+            .Where(t => (t.Priority == TicketPriority.Critical || t.Priority == TicketPriority.High)
                      && t.Status != TicketStatus.Resolved
                      && t.Status != TicketStatus.Closed
                      && t.Status != TicketStatus.Cancelled)
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
-            .OrderByDescending(t => t.CreatedDate)
-            .Take(5)
+            .OrderByDescending(t => t.Priority)   // Critical first, then High
+            .ThenByDescending(t => t.CreatedDate)
+            .Take(10)
             .ToListAsync();
 
         var recentTickets = await _context.Tickets
