@@ -203,10 +203,10 @@
                                     @if (note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml))
                                     {
                                         <iframe id="note-frame-@note.Id"
+                                                data-html="@Html.AttributeEncode(note.ContentHtml)"
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
                                                 sandbox="allow-same-origin"
                                                 title="Email comment"></iframe>
-                                        <script type="application/json" id="note-html-@note.Id">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(note.ContentHtml))</script>
                                     }
                                     else if (note.Source == "Email")
                                     {
@@ -556,57 +556,35 @@
 
 @section Scripts {
 <script>
-// ── Email note iframe renderer ────────────────────────────────────────────
-// Data is read from sibling <script type="application/json"> elements so
-// no Razor directives are needed inside this <script> block.
 (function () {
-    var noteBaseStyles =
+    var noteStyles =
         'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}' +
-        'img{max-width:100%;height:auto;}a{color:#0d6efd;}' +
-        '.ss-hidden-quote{display:none!important;}';
+        'img{max-width:100%;height:auto;}a{color:#0d6efd;}.ss-hidden-quote{display:none!important;}';
 
-    function initNoteFrame(frameId, html) {
-        var frame = document.getElementById(frameId);
-        if (!frame) return;
-        var fullDoc = '<!DOCTYPE html>' +
-            '<html><head><meta charset="utf-8"><style>' + noteBaseStyles + '</style></head>' +
-            '<body>' + html + '</body></html>';
+    function initNoteFrame(frame, html) {
+        var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + noteStyles + '</style></head><body>' + html + '</body></html>';
         frame.addEventListener('load', function onLoad() {
             frame.removeEventListener('load', onLoad);
-            var doc = frame.contentDocument;
-            if (!doc) return;
-            collapseNoteQuotes(doc);
-            resizeNoteFrame(frame, doc);
-            doc.querySelectorAll('img').forEach(function(img){
-                img.addEventListener('load', function(){ resizeNoteFrame(frame, doc); });
+            var d = frame.contentDocument;
+            if (!d) return;
+            ['.gmail_quote','.gmail_attr','blockquote','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
+                try { d.querySelectorAll(sel).forEach(function(el){ el.classList.add('ss-hidden-quote'); }); } catch(e){}
             });
+            resizeFrame(frame, d);
+            d.querySelectorAll('img').forEach(function(img){ img.addEventListener('load', function(){ resizeFrame(frame, d); }); });
         });
-        frame.setAttribute('srcdoc', fullDoc);
+        frame.setAttribute('srcdoc', doc);
     }
 
-    function collapseNoteQuotes(doc) {
-        var sels = ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','blockquote',
-                    '#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix','div[id^="Signature"]'];
-        sels.forEach(function(sel){
-            try { doc.querySelectorAll(sel).forEach(function(el){ el.classList.add('ss-hidden-quote'); }); }
-            catch(e){}
-        });
+    function resizeFrame(frame, d) {
+        var h = d.body.scrollHeight;
+        frame.style.height = Math.min(500, Math.max(80, h)) + 'px';
     }
 
-    function resizeNoteFrame(frame, doc) {
-        var h = doc.body.scrollHeight;
-        if (h < 80) h = 80;
-        if (h > 500) h = 500;
-        frame.style.height = h + 'px';
-    }
-
-    // Read HTML data from <script type="application/json" id="note-html-N"> siblings
-    document.querySelectorAll('[id^="note-html-"]').forEach(function(dataEl) {
-        var noteId = dataEl.id.replace('note-html-', '');
-        try {
-            var html = JSON.parse(dataEl.textContent);
-            initNoteFrame('note-frame-' + noteId, html);
-        } catch(e) { /* ignore malformed data */ }
+    document.querySelectorAll('iframe[data-html]').forEach(function(frame) {
+        var html = frame.getAttribute('data-html');
+        frame.removeAttribute('data-html');
+        initNoteFrame(frame, html);
     });
 })();
 </script>
