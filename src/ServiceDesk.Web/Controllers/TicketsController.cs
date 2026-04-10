@@ -31,6 +31,7 @@ public class TicketsController : Controller
         TicketStatus[]?  statuses,    TicketCategory[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
         int[]? requesterIds,
+        int[]? branchIds, string[]? departments,
         bool? unmatched, bool? unassigned, bool? assignedToMe,
         string? q,
         string sortBy = "id", string sortDir = "desc",
@@ -53,6 +54,8 @@ public class TicketsController : Controller
                       && (priorities  == null || priorities.Length  == 0)
                       && (assigneeIds == null || assigneeIds.Length == 0)
                       && (requesterIds == null || requesterIds.Length == 0)
+                      && (branchIds   == null || branchIds.Length   == 0)
+                      && (departments == null || departments.Length == 0)
                       && unmatched == null && unassigned == null && assignedToMe == null && viewId == null
                       && string.IsNullOrWhiteSpace(q)
                       && sortBy == "id" && sortDir == "desc" && page == 1 && pageSize == 25;
@@ -108,6 +111,25 @@ public class TicketsController : Controller
                     else if (activeView.FilterPriority != null)
                         priorities = [activeView.FilterPriority.Value];
                 }
+                // Branch multi-select: FilterBranchIds takes priority over legacy FilterBranchId
+                if (branchIds == null || branchIds.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterBranchIds))
+                        branchIds = activeView.FilterBranchIds.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => int.TryParse(s.Trim(), out var bid) ? bid : (int?)null)
+                            .Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+                    else if (activeView.FilterBranchId != null)
+                        branchIds = [activeView.FilterBranchId.Value];
+                }
+                // Department multi-select: FilterDepartments takes priority over legacy FilterDepartment
+                if (departments == null || departments.Length == 0)
+                {
+                    if (!string.IsNullOrEmpty(activeView.FilterDepartments))
+                        departments = activeView.FilterDepartments.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(d => d.Trim()).Where(d => d.Length > 0).ToArray();
+                    else if (!string.IsNullOrEmpty(activeView.FilterDepartment))
+                        departments = [activeView.FilterDepartment];
+                }
                 unmatched  ??= activeView.FilterUnmatchedOnly  ? true : null;
                 unassigned ??= activeView.FilterUnassignedOnly ? true : null;
                 // FilterAssignedToMe → resolve current user's employee ID into assigneeIds
@@ -141,6 +163,8 @@ public class TicketsController : Controller
         if (statuses?.Length     > 0) query = query.Where(t => statuses.Contains(t.Status));
         if (categories?.Length   > 0) query = query.Where(t => categories.Contains(t.Category));
         if (priorities?.Length   > 0) query = query.Where(t => priorities.Contains(t.Priority));
+        if (branchIds?.Length    > 0) query = query.Where(t => t.BranchId != null && branchIds.Contains(t.BranchId.Value));
+        if (departments?.Length  > 0) query = query.Where(t => t.SubmittedBy != null && departments.Contains(t.SubmittedBy.Department!));
         // Assignee filter uses OR so "Unassigned + Jose Solis" returns tickets that are
         // either unassigned OR assigned to Jose — not the impossible AND intersection.
         if (assigneeIds?.Length > 0 || unassigned == true)
@@ -1116,7 +1140,9 @@ public class TicketsController : Controller
                 v.Id, v.Name, v.IsDefault, v.IsShared,
                 v.FilterStatuses, v.FilterCategories, v.FilterPriorities,
                 v.FilterStatus, v.FilterCategory, v.FilterPriority,
-                v.FilterBranchId, v.FilterDepartment, v.FilterGroupId,
+                v.FilterBranchId, v.FilterBranchIds,
+                v.FilterDepartment, v.FilterDepartments,
+                v.FilterGroupId,
                 v.FilterAssignedToMe, v.FilterUnassignedOnly, v.FilterUnmatchedOnly,
                 v.SortBy, v.SortDir, v.PageSize,
                 isOwner      = v.OwnerPortalUserId == userId,
@@ -1131,7 +1157,7 @@ public class TicketsController : Controller
     public async Task<IActionResult> SaveView(
         string name, bool isShared,
         string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
-        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        int[]? filterBranchIds, string[]? filterDepartments, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
     {
@@ -1143,11 +1169,11 @@ public class TicketsController : Controller
             Name                 = name.Trim(),
             OwnerPortalUserId    = userId,
             IsShared             = isShared,
-            FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null,
+            FilterStatuses       = filterStatuses   is { Length: > 0 } ? string.Join(",", filterStatuses)   : null,
             FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null,
             FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null,
-            FilterBranchId       = filterBranchId,
-            FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim(),
+            FilterBranchIds      = filterBranchIds  is { Length: > 0 } ? string.Join(",", filterBranchIds)  : null,
+            FilterDepartments    = filterDepartments is { Length: > 0 } ? string.Join(",", filterDepartments.Select(d => d.Trim()).Where(d => d.Length > 0)) : null,
             FilterGroupId        = filterGroupId,
             FilterAssignedToMe   = filterAssignedToMe,
             FilterUnassignedOnly = filterUnassignedOnly,
@@ -1167,7 +1193,7 @@ public class TicketsController : Controller
     public async Task<IActionResult> UpdateView(
         int id, string name, bool isShared,
         string[]? filterStatuses, string[]? filterCategories, string[]? filterPriorities,
-        int? filterBranchId, string? filterDepartment, int? filterGroupId,
+        int[]? filterBranchIds, string[]? filterDepartments, int? filterGroupId,
         bool filterAssignedToMe, bool filterUnassignedOnly, bool filterUnmatchedOnly,
         string sortBy = "id", string sortDir = "desc", int pageSize = 25)
     {
@@ -1178,15 +1204,17 @@ public class TicketsController : Controller
 
         view.Name                 = name.Trim();
         view.IsShared             = isShared;
-        view.FilterStatuses       = filterStatuses is { Length: > 0 } ? string.Join(",", filterStatuses) : null;
+        view.FilterStatuses       = filterStatuses   is { Length: > 0 } ? string.Join(",", filterStatuses)   : null;
         view.FilterCategories     = filterCategories is { Length: > 0 } ? string.Join(",", filterCategories) : null;
         view.FilterPriorities     = filterPriorities is { Length: > 0 } ? string.Join(",", filterPriorities) : null;
-        // Clear legacy single-value fields when multi-select values are stored
+        // Clear legacy single-value fields; new multi-select fields take over
         view.FilterStatus         = null;
         view.FilterCategory       = null;
         view.FilterPriority       = null;
-        view.FilterBranchId       = filterBranchId;
-        view.FilterDepartment     = string.IsNullOrWhiteSpace(filterDepartment) ? null : filterDepartment.Trim();
+        view.FilterBranchId       = null;
+        view.FilterDepartment     = null;
+        view.FilterBranchIds      = filterBranchIds  is { Length: > 0 } ? string.Join(",", filterBranchIds)  : null;
+        view.FilterDepartments    = filterDepartments is { Length: > 0 } ? string.Join(",", filterDepartments.Select(d => d.Trim()).Where(d => d.Length > 0)) : null;
         view.FilterGroupId        = filterGroupId;
         view.FilterAssignedToMe   = filterAssignedToMe;
         view.FilterUnassignedOnly = filterUnassignedOnly;
@@ -1294,6 +1322,28 @@ public class TicketsController : Controller
         else if (v.FilterPriority != null)
         {
             sb.Append($"&priorities={v.FilterPriority}");
+        }
+
+        // Branch multi-select
+        if (!string.IsNullOrEmpty(v.FilterBranchIds))
+        {
+            foreach (var b in v.FilterBranchIds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&branchIds={b.Trim()}");
+        }
+        else if (v.FilterBranchId != null)
+        {
+            sb.Append($"&branchIds={v.FilterBranchId}");
+        }
+
+        // Department multi-select
+        if (!string.IsNullOrEmpty(v.FilterDepartments))
+        {
+            foreach (var d in v.FilterDepartments.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append($"&departments={Uri.EscapeDataString(d.Trim())}");
+        }
+        else if (!string.IsNullOrEmpty(v.FilterDepartment))
+        {
+            sb.Append($"&departments={Uri.EscapeDataString(v.FilterDepartment)}");
         }
 
         if (v.FilterAssignedToMe)     sb.Append("&assignedToMe=true");

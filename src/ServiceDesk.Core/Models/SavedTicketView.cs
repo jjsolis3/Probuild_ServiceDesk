@@ -49,9 +49,17 @@ public class SavedTicketView
     public int?    FilterBranchId   { get; set; }
     public Branch? FilterBranch     { get; set; }
 
+    /// <summary>Comma-separated list of branch IDs for multi-branch filtering. Takes priority over FilterBranchId.</summary>
+    [MaxLength(200)]
+    public string? FilterBranchIds { get; set; }
+
     /// <summary>Filter to tickets where the requester's department matches.</summary>
     [MaxLength(100)]
     public string? FilterDepartment { get; set; }
+
+    /// <summary>Comma-separated list of department names for multi-department filtering. Takes priority over FilterDepartment.</summary>
+    [MaxLength(500)]
+    public string? FilterDepartments { get; set; }
 
     /// <summary>Filter to tickets assigned to members of this UserGroup.</summary>
     public int?       FilterGroupId { get; set; }

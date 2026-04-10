@@ -378,19 +378,39 @@
           </div>
           <div class="col-md-4">
             <label class="form-label small">Branch / Location</label>
-            <select id="svBranch" class="form-select form-select-sm">
-              <option value="">All Branches</option>
-              @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
-              { <option value="@b.Id">@b.Name</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svBranchBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Branches
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:180px;max-height:220px;overflow-y:auto;">
+                @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-branch-cb" type="checkbox" value="@b.Id" id="sv_b_@b.Id">
+                    <label class="form-check-label small" for="sv_b_@b.Id">@b.Name</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Department</label>
-            <select id="svDepartment" class="form-select form-select-sm">
-              <option value="">All Departments</option>
-              @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
-              { <option value="@d">@d</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svDeptBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Departments
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:200px;max-height:220px;overflow-y:auto;">
+                @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-dept-cb" type="checkbox" value="@d" id="sv_d_@(d.Replace(" ","_").Replace("/","_"))">
+                    <label class="form-check-label small" for="sv_d_@(d.Replace(" ","_").Replace("/","_"))">@d</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Group / Team</label>
@@ -917,7 +937,7 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
               <i class="bi ${starCls}"></i>
             </button>
             ${v.isOwner ? `<button class="btn btn-link btn-sm p-0" title="Edit" onclick="editView(event,${v.id})"><i class="bi bi-pencil text-muted"></i></button>
-            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})"><i class="bi bi-trash text-danger"></i></button>` : ''}
+            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${escHtml(JSON.stringify(v.name))})"><i class="bi bi-trash text-danger"></i></button>` : ''}
           </div></li>`;
     }
 
@@ -946,7 +966,7 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
                 <div class="d-flex gap-1">
                   <a href="?viewId=${v.id}" class="btn btn-sm btn-outline-primary" title="Apply view"><i class="bi bi-play-fill"></i></a>
                   ${v.isOwner ? `<button class="btn btn-sm btn-outline-secondary" onclick="editView(event,${v.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${escHtml(JSON.stringify(v.name))})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
                 </div>
               </div>`).join('');
         }
@@ -970,10 +990,22 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         if (statuses.length) parts.push('Status: ' + statuses.join(', '));
         if (cats.length)     parts.push('Category: ' + cats.join(', '));
         if (pris.length)     parts.push('Priority: ' + pris.join(', '));
+
+        // Branch multi-select
+        const branches = v.filterBranchIds
+            ? v.filterBranchIds.split(',').map(s => s.trim()).filter(Boolean)
+            : (v.filterBranchId != null ? [String(v.filterBranchId)] : []);
+        if (branches.length) parts.push(branches.length === 1 ? '1 Branch' : branches.length + ' Branches');
+
+        // Department multi-select
+        const depts = v.filterDepartments
+            ? v.filterDepartments.split(',').map(s => s.trim()).filter(Boolean)
+            : (v.filterDepartment ? [v.filterDepartment] : []);
+        if (depts.length) parts.push('Dept: ' + depts.join(', '));
+
         if (v.filterAssignedToMe)   parts.push('Assigned to me');
         if (v.filterUnassignedOnly) parts.push('Unassigned');
         if (v.filterUnmatchedOnly)  parts.push('Unmatched requester');
-        if (v.filterDepartment) parts.push('Dept: ' + v.filterDepartment);
         return parts.length ? parts.join(' · ') : 'No filters — shows all tickets';
     }
 
@@ -993,9 +1025,11 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         const checked = svGetCheckedValues(cssClass);
         const count = checked.length;
         let btnId, singular, plural;
-        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';   plural = 'Statuses'; }
-        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category'; plural = 'Categories'; }
-        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority'; plural = 'Priorities'; }
+        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';     plural = 'Statuses'; }
+        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category';   plural = 'Categories'; }
+        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority';   plural = 'Priorities'; }
+        if (cssClass === 'sv-branch-cb')   { btnId = 'svBranchBtn';   singular = 'Branch';     plural = 'Branches'; }
+        if (cssClass === 'sv-dept-cb')     { btnId = 'svDeptBtn';     singular = 'Department'; plural = 'Departments'; }
         const btn = document.getElementById(btnId);
         if (!btn) return;
         btn.textContent = count === 0 ? 'All ' + plural : count === 1 ? '1 ' + singular : count + ' ' + plural;
@@ -1003,10 +1037,12 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
     }
 
     // Wire up live label updates when checkboxes change
-    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb').forEach(cb => {
+    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb,.sv-branch-cb,.sv-dept-cb').forEach(cb => {
         cb.addEventListener('change', () => {
             const cls = cb.classList.contains('sv-status-cb')   ? 'sv-status-cb'   :
-                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' : 'sv-priority-cb';
+                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' :
+                        cb.classList.contains('sv-priority-cb') ? 'sv-priority-cb' :
+                        cb.classList.contains('sv-branch-cb')   ? 'sv-branch-cb'   : 'sv-dept-cb';
             svUpdateDropdownLabel(cls);
         });
     });
@@ -1020,8 +1056,8 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svSetCheckboxes('sv-status-cb',   pageState.currentStatuses   ?? []);
         svSetCheckboxes('sv-category-cb', pageState.currentCategories ?? []);
         svSetCheckboxes('sv-priority-cb', pageState.currentPriorities ?? []);
-        document.getElementById('svBranch').value  = '';
-        document.getElementById('svDepartment').value = '';
+        svSetCheckboxes('sv-branch-cb',   []);
+        svSetCheckboxes('sv-dept-cb',     []);
         document.getElementById('svGroup').value   = '';
         // Pre-fill "Assigned to me" if the current user's employee ID is among the active assignee filters
         const myEmpId = pageState.currentEmployeeId;
@@ -1063,8 +1099,18 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svSetCheckboxes('sv-category-cb', cats);
         svSetCheckboxes('sv-priority-cb', pris);
 
-        document.getElementById('svBranch').value  = v.filterBranchId ?? '';
-        document.getElementById('svDepartment').value = v.filterDepartment ?? '';
+        // Restore branch multi-select: prefer new FilterBranchIds, fall back to legacy FilterBranchId
+        const branchVals = v.filterBranchIds
+            ? v.filterBranchIds.split(',').map(s => s.trim())
+            : (v.filterBranchId != null ? [String(v.filterBranchId)] : []);
+        svSetCheckboxes('sv-branch-cb', branchVals);
+
+        // Restore department multi-select: prefer new FilterDepartments, fall back to legacy FilterDepartment
+        const deptVals = v.filterDepartments
+            ? v.filterDepartments.split(',').map(s => s.trim())
+            : (v.filterDepartment ? [v.filterDepartment] : []);
+        svSetCheckboxes('sv-dept-cb', deptVals);
+
         document.getElementById('svGroup').value   = v.filterGroupId  ?? '';
         document.getElementById('svAssignedToMe').checked  = v.filterAssignedToMe;
         document.getElementById('svUnassigned').checked    = v.filterUnassignedOnly;
@@ -1094,12 +1140,10 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svGetCheckedValues('sv-category-cb').forEach(v => body.append('filterCategories', v));
         svGetCheckedValues('sv-priority-cb').forEach(v => body.append('filterPriorities', v));
 
-        const branch = document.getElementById('svBranch').value;
-        const dept   = document.getElementById('svDepartment').value;
-        const group  = document.getElementById('svGroup').value;
-        if (branch) body.append('filterBranchId',   branch);
-        if (dept)   body.append('filterDepartment', dept);
-        if (group)  body.append('filterGroupId',    group);
+        svGetCheckedValues('sv-branch-cb').forEach(v => body.append('filterBranchIds',   v));
+        svGetCheckedValues('sv-dept-cb').forEach(v   => body.append('filterDepartments', v));
+        const group = document.getElementById('svGroup').value;
+        if (group) body.append('filterGroupId', group);
         body.append('filterAssignedToMe',   document.getElementById('svAssignedToMe').checked);
         body.append('filterUnassignedOnly', document.getElementById('svUnassigned').checked);
         body.append('filterUnmatchedOnly',  document.getElementById('svUnmatched').checked);
