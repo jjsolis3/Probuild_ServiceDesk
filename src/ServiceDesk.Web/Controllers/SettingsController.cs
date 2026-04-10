@@ -4,6 +4,7 @@ using ServiceDesk.Core.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
@@ -18,12 +19,14 @@ public class SettingsController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly GmailApiService _gmailApiService;
     private readonly EmailNotificationService _emailService;
+    private readonly IMemoryCache _cache;
 
-    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService, IMemoryCache cache)
     {
         _context = context;
         _gmailApiService = gmailApiService;
         _emailService = emailService;
+        _cache = cache;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -37,7 +40,10 @@ public class SettingsController : Controller
     // GET: Settings/Account
     public async Task<IActionResult> Account()
     {
-        var settings = await _context.AppSettings.ToListAsync();
+        // Exclude Branding — those live on their own dedicated page
+        var settings = await _context.AppSettings
+            .Where(s => s.Category != "Branding")
+            .ToListAsync();
         var employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
         ViewBag.Employees = employees;
         return View(settings);
@@ -64,6 +70,97 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         TempData["Success"] = "Account settings saved successfully.";
         return RedirectToAction(nameof(Account));
+    }
+
+    // ==================== BRANDING ====================
+
+    // GET: Settings/Branding
+    public async Task<IActionResult> Branding()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Branding")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Branding
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Branding(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Branding")
+            .ToListAsync();
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+                setting.Value = form[setting.Key].FirstOrDefault() ?? setting.Value;
+        }
+        await _context.SaveChangesAsync();
+
+        // Bust the BrandingFilter cache so the new logo/name takes effect immediately
+        _cache.Remove("ss_branding_v1");
+
+        TempData["Success"] = "Branding settings saved.";
+        return RedirectToAction(nameof(Branding));
+    }
+
+    // ==================== EMAIL TEMPLATES ====================
+
+    // GET: Settings/EmailTemplates
+    public async Task<IActionResult> EmailTemplates()
+    {
+        var templates = await _context.EmailTemplates.OrderBy(t => t.Id).ToListAsync();
+        return View(templates);
+    }
+
+    // GET: Settings/EditEmailTemplate/5
+    public async Task<IActionResult> EditEmailTemplate(int id)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        var brandColor = await _context.AppSettings
+            .Where(s => s.Key == "BrandColor")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync() ?? "#4f46e5";
+        ViewBag.BrandColor = string.IsNullOrWhiteSpace(brandColor) ? "#4f46e5" : brandColor;
+
+        return View(template);
+    }
+
+    // POST: Settings/EditEmailTemplate/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditEmailTemplate(int id, string subjectTemplate, string bodyTemplate, bool isActive)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        template.SubjectTemplate = string.IsNullOrWhiteSpace(subjectTemplate) ? null : subjectTemplate.Trim();
+        template.BodyTemplate    = string.IsNullOrWhiteSpace(bodyTemplate)    ? null : bodyTemplate.Trim();
+        template.IsActive        = isActive;
+        template.UpdatedDate     = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Template '{template.Name}' saved.";
+        return RedirectToAction(nameof(EmailTemplates));
+    }
+
+    // POST: Settings/ResetEmailTemplate/5 — clears customisation, reverts to system default
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetEmailTemplate(int id)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        template.BodyTemplate = null;
+        template.UpdatedDate  = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Template '{template.Name}' reset to system default.";
+        return RedirectToAction(nameof(EmailTemplates));
     }
 
     // ==================== ROLES & PERMISSIONS ====================

@@ -499,7 +499,52 @@ public static class DbInitializer
 
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyAddress')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
-                    VALUES ('CompanyAddress', '', 'Branding', 'Company mailing address displayed in portal footer');");
+                    VALUES ('CompanyAddress', '', 'Branding', 'Company mailing address displayed in portal footer');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'BrandColor')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('BrandColor', '#4f46e5', 'Branding', 'Primary brand colour used in email headers and PDF exports (hex format, e.g. #4f46e5)');");
+
+            // 19. Create EmailTemplates table (DB-backed email template management)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailTemplates')
+                BEGIN
+                    CREATE TABLE dbo.EmailTemplates (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        [Key]           NVARCHAR(50)    NOT NULL,
+                        Name            NVARCHAR(100)   NOT NULL,
+                        Description     NVARCHAR(500)   NULL,
+                        SubjectTemplate NVARCHAR(300)   NULL,
+                        BodyTemplate    NVARCHAR(MAX)   NULL,
+                        IsActive        BIT             NOT NULL DEFAULT 1,
+                        UpdatedDate     DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE UNIQUE INDEX IX_EmailTemplates_Key ON dbo.EmailTemplates ([Key]);
+
+                    -- Seed default template metadata (BodyTemplate left NULL — system defaults used until admin customises)
+                    INSERT INTO dbo.EmailTemplates ([Key], Name, Description, SubjectTemplate) VALUES
+                    (N'TicketCreated',
+                     N'Ticket Created Confirmation',
+                     N'Sent to the submitter when a new ticket is created. Confirms receipt and provides the ticket reference.',
+                     N'[#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'TicketAssigned',
+                     N'Ticket Assigned — Agent Notification',
+                     N'Sent to the IT agent when a ticket is assigned to them.',
+                     N'Assigned: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'TicketUpdated',
+                     N'Ticket Status Update',
+                     N'Sent to the submitter when the ticket status or priority changes.',
+                     N'Updated: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'NoteAdded',
+                     N'New Comment / Note',
+                     N'Sent to the submitter when an IT agent adds a public note or comment to the ticket.',
+                     N'Re: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'PasswordReset',
+                     N'Password Reset Request',
+                     N'Sent to a portal user when they request a password reset link.',
+                     N'Reset Your {{CompanyName}} Password');
+                END");
         }
         catch (Exception ex)
         {

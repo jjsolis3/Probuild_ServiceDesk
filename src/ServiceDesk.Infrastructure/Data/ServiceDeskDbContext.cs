@@ -50,6 +50,9 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
     public DbSet<CategoryKeyword> CategoryKeywords => Set<CategoryKeyword>();
 
+    // Email templates
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -304,5 +307,15 @@ public class ServiceDeskDbContext : DbContext
         // Index on CategoryKeyword for fast lookup by category
         modelBuilder.Entity<CategoryKeyword>()
             .HasIndex(k => new { k.Category, k.IsActive });
+
+        // Unique index on EmailTemplate Key
+        modelBuilder.Entity<EmailTemplate>()
+            .HasIndex(t => t.Key)
+            .IsUnique();
+
+        // Store email body without length limit
+        modelBuilder.Entity<EmailTemplate>()
+            .Property(t => t.BodyTemplate)
+            .HasColumnType("nvarchar(max)");
     }
 }

@@ -1,0 +1,210 @@
+@model IEnumerable<AppSetting>
+@{
+    ViewData["Title"] = "Branding";
+
+    string Val(string key) => Model.FirstOrDefault(s => s.Key == key)?.Value ?? "";
+    string companyName  = Val("CompanyName");   // from Account settings (read-only here)
+    string logoUrl      = Val("CompanyLogoUrl");
+    string brandColor   = string.IsNullOrWhiteSpace(Val("BrandColor")) ? "#4f46e5" : Val("BrandColor");
+    string phone        = Val("CompanyPhone");
+    string website      = Val("CompanyWebsite");
+    string address      = Val("CompanyAddress");
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">Branding</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-palette text-primary"></i> Branding</h1>
+        <p class="text-muted mb-0">Customise your company logo, brand colour, and contact details shown in emails and the portal.</p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i> @TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<form method="post" asp-action="Branding" asp-antiforgery="true">
+    <div class="row g-4">
+
+        <!-- Left column: form fields -->
+        <div class="col-lg-8">
+
+            <!-- Brand Identity -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-award me-2"></i> Brand Identity</h5>
+                </div>
+                <div class="card-body">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Company Name</label>
+                        <div class="form-control-plaintext border rounded px-3 py-2 bg-light text-muted small">
+                            @(ViewBag.CompanyName ?? "—")
+                            <span class="ms-2">
+                                <a asp-action="Account" class="text-primary small">
+                                    <i class="bi bi-pencil-square me-1"></i>Edit in Account Settings
+                                </a>
+                            </span>
+                        </div>
+                        <div class="form-text">Company name is managed in <a asp-action="Account">Account Settings</a>.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="BrandColor">Brand Colour</label>
+                        <div class="input-group" style="max-width: 260px;">
+                            <input type="color" class="form-control form-control-color"
+                                   id="brandColorPicker" value="@brandColor"
+                                   title="Pick a colour" />
+                            <input type="text" class="form-control font-monospace"
+                                   id="BrandColor" name="BrandColor"
+                                   value="@brandColor" maxlength="7"
+                                   placeholder="#4f46e5" />
+                        </div>
+                        <div class="form-text">Used in email headers, PDF exports, and portal accents.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="CompanyLogoUrl">Company Logo URL</label>
+                        <input type="url" class="form-control" id="CompanyLogoUrl" name="CompanyLogoUrl"
+                               value="@logoUrl" placeholder="https://your-domain.com/logo.png or /images/logo.png" />
+                        <div class="form-text">Shown in the employee/customer portal header. Use an absolute URL or a server-relative path.</div>
+                        @if (!string.IsNullOrWhiteSpace(logoUrl))
+                        {
+                            <div class="mt-2">
+                                <img id="logoPreview" src="@logoUrl" alt="Logo preview"
+                                     style="max-height: 60px; max-width: 240px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px; background: #fff;" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mt-2 text-muted small">
+                                <img id="logoPreview" src="" alt="" style="display:none;max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
+                                No logo URL set — default ServiceSphere logo will be used.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact Details -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-telephone me-2"></i> Contact Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="CompanyPhone">Company Phone</label>
+                        <input type="text" class="form-control" id="CompanyPhone" name="CompanyPhone"
+                               value="@phone" placeholder="e.g. (555) 123-4567" />
+                        <div class="form-text">Displayed in the portal footer.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="CompanyWebsite">Company Website</label>
+                        <input type="url" class="form-control" id="CompanyWebsite" name="CompanyWebsite"
+                               value="@website" placeholder="https://www.yourcompany.com" />
+                        <div class="form-text">Displayed as a link in the portal footer.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="CompanyAddress">Company Address</label>
+                        <input type="text" class="form-control" id="CompanyAddress" name="CompanyAddress"
+                               value="@address" placeholder="123 Main St, City, State 12345" />
+                        <div class="form-text">Displayed in the portal footer.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> Save Branding
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
+            </div>
+        </div>
+
+        <!-- Right column: live preview -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-eye me-1 text-info"></i> Email Header Preview</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="emailPreview"
+                         style="background: linear-gradient(135deg, @brandColor 0%, @(brandColor)cc 100%); color: white; padding: 20px 16px; border-radius: 0 0 0 0;">
+                        <div style="font-size: 17px; font-weight: 600;" id="previewCompanyName">@(ViewBag.CompanyName ?? "Your Company")</div>
+                        <div style="font-size: 12px; opacity: 0.85; margin-top: 3px;">IT Service Desk</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-lightbulb me-1 text-warning"></i> Tips</h6>
+                    <ul class="small text-muted mb-0">
+                        <li class="mb-2">The <strong>Brand Colour</strong> is used in email headers and PDF report headers.</li>
+                        <li class="mb-2">The <strong>Logo URL</strong> appears in the customer/employee portal. If blank, the default ServiceSphere logo is used.</li>
+                        <li class="mb-2">Contact details appear in the portal footer so users can easily reach your IT team.</li>
+                        <li>For best results, use a logo that is transparent (PNG) and at least 200px wide.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</form>
+
+@section Scripts {
+<script>
+(function () {
+    var colorPicker = document.getElementById('brandColorPicker');
+    var colorText   = document.getElementById('BrandColor');
+    var preview     = document.getElementById('emailPreview');
+    var logoInput   = document.getElementById('CompanyLogoUrl');
+    var logoPreview = document.getElementById('logoPreview');
+
+    function applyColor(hex) {
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+            preview.style.background = 'linear-gradient(135deg, ' + hex + ' 0%, ' + hex + 'cc 100%)';
+        }
+    }
+
+    colorPicker.addEventListener('input', function () {
+        colorText.value = colorPicker.value;
+        applyColor(colorPicker.value);
+    });
+    colorText.addEventListener('input', function () {
+        var v = colorText.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            colorPicker.value = v;
+            applyColor(v);
+        }
+    });
+
+    logoInput.addEventListener('input', function () {
+        var url = logoInput.value.trim();
+        if (url) {
+            logoPreview.src = url;
+            logoPreview.style.display = 'block';
+        } else {
+            logoPreview.style.display = 'none';
+        }
+    });
+})();
+</script>
+}

@@ -11,7 +11,7 @@
 
 <!-- ADMIN & COMPANY SETTINGs -->
 <div class="row g-4 mb-4">
-    
+
     <!-- Account Settings -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
@@ -22,7 +22,7 @@
                     </div>
                     <div>
                         <h5 class="card-title mb-1">Account Settings</h5>
-                        <p class="card-text text-muted small">Manage company info, timezone, default assignee, and ticket prefix</p>
+                        <p class="card-text text-muted small">Manage company name, timezone, default assignee, and ticket prefix</p>
                     </div>
                 </div>
             </div>
@@ -32,7 +32,29 @@
                 </a>
             </div>
         </div>
-    </div>    
+    </div>
+
+    <!-- Branding -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
+                        <i class="bi bi-palette display-6" style="color: #6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Branding</h5>
+                        <p class="card-text text-muted small">Logo, brand colour, and company contact details for emails and the portal</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Branding" class="btn btn-sm" style="background-color: #6f42c1; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- Branches & Sites -->
     <div class="col-lg-3 col-md-6">
@@ -284,6 +306,28 @@
             </div>
             <div class="card-footer bg-transparent border-top-0 pt-0">
                 <a asp-action="CannedResponses" class="btn btn-sm btn-success">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Templates -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-envelope-paper display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Templates</h5>
+                        <p class="card-text text-muted small">Customise HTML layout and content of automated notification emails</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailTemplates" class="btn btn-sm btn-info text-white">
                     <i class="bi bi-arrow-right-circle me-1"></i> Manage
                 </a>
             </div>
