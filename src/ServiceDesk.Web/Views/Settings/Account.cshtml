@@ -38,7 +38,7 @@
 }
 
 <form method="post" asp-action="Account" asp-antiforgery="true">
-    <div class="row">
+    <div class="row align-items-start">
         <div class="col-lg-8">
             @foreach (var group in Model.GroupBy(s => s.Category).OrderBy(g => g.Key))
             {
