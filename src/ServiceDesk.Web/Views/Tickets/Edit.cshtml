@@ -199,10 +199,17 @@
                                     <span class="fw-semibold">@note.AuthorName</span>
                                     <span class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</span>
                                 </div>
-                                <div class="comment-body bg-light rounded p-3">
-                                    @if (note.Source == "Email")
+                                <div class="comment-body bg-light rounded @(note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml) ? "p-0 overflow-hidden" : "p-3")">
+                                    @if (note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml))
                                     {
-                                        @Html.Raw(note.Content)
+                                        <iframe id="note-frame-@note.Id"
+                                                style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
+                                                sandbox="allow-same-origin"
+                                                title="Email comment"></iframe>
+                                    }
+                                    else if (note.Source == "Email")
+                                    {
+                                        <span style="white-space:pre-wrap;word-break:break-word;">@note.Content</span>
                                     }
                                     else
                                     {
@@ -547,6 +554,59 @@
 </div>
 
 @section Scripts {
+<script>
+// ── Email note iframe renderer ────────────────────────────────────────────
+(function () {
+    var noteBaseStyles = [
+        'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;',
+        '     margin:10px 14px;color:#212529;word-break:break-word;}',
+        'img{max-width:100%;height:auto;}',
+        'a{color:#0d6efd;}',
+        '.ss-hidden-quote{display:none!important;}'
+    ].join('');
+
+    function initNoteFrame(frameId, html) {
+        var frame = document.getElementById(frameId);
+        if (!frame) return;
+        var doc = frame.contentDocument || frame.contentWindow.document;
+        doc.open();
+        doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>');
+        doc.close();
+        doc.body.innerHTML = html;
+        var s = doc.createElement('style');
+        s.textContent = noteBaseStyles;
+        doc.head.appendChild(s);
+        collapseNoteQuotes(doc);
+        resizeNoteFrame(frame, doc);
+        doc.querySelectorAll('img').forEach(function(img){
+            img.addEventListener('load', function(){ resizeNoteFrame(frame, doc); });
+        });
+    }
+
+    function collapseNoteQuotes(doc) {
+        var sels = ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','blockquote',
+                    '#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix','div[id^="Signature"]'];
+        sels.forEach(function(sel){
+            try { doc.querySelectorAll(sel).forEach(function(el){ el.classList.add('ss-hidden-quote'); }); }
+            catch(e){}
+        });
+    }
+
+    function resizeNoteFrame(frame, doc) {
+        var h = doc.body.scrollHeight;
+        if (h < 80) h = 80;
+        if (h > 500) h = 500;
+        frame.style.height = h + 'px';
+    }
+
+    // Initialize all email note iframes on the page
+    @foreach (var note in Model.Notes.Where(n => !n.IsInternal && n.Source == "Email" && !string.IsNullOrEmpty(n.ContentHtml)))
+    {
+        <text>initNoteFrame('note-frame-@note.Id', @Html.Raw(System.Text.Json.JsonSerializer.Serialize(note.ContentHtml)));</text>
+    }
+})();
+</script>
+
 <script>
 // ── Searchable select: filters visible <option> elements by text ──────────
 function filterSelectOptions(input) {

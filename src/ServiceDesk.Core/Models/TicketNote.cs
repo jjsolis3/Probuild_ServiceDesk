@@ -23,6 +23,9 @@ public class TicketNote
     [Display(Name = "Content")]
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>Sanitized HTML version of the email body (null for portal/agent notes).</summary>
+    public string? ContentHtml { get; set; }
+
     [Display(Name = "Created Date")]
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

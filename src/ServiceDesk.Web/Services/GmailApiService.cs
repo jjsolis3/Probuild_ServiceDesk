@@ -242,6 +242,32 @@ public class GmailApiService : BackgroundService
             }
         }
 
+        // ---- THREADING FALLBACK: match clean subject against recent open tickets ----
+        // Catches forwarded emails and replies that bypass the three header-based checks above.
+        if (!existingTicketId.HasValue)
+        {
+            var cleanedSubject = CleanSubject(subject);
+            if (!string.IsNullOrWhiteSpace(cleanedSubject))
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-14);
+                var subjectMatch = await context.Tickets
+                    .Where(t => t.Title == cleanedSubject
+                             && t.CreatedDate >= cutoff
+                             && t.Status != TicketStatus.Closed
+                             && t.Status != TicketStatus.Cancelled)
+                    .OrderByDescending(t => t.CreatedDate)
+                    .Select(t => (int?)t.Id)
+                    .FirstOrDefaultAsync(stoppingToken);
+                if (subjectMatch.HasValue)
+                {
+                    existingTicketId = subjectMatch.Value;
+                    _logger.LogInformation(
+                        "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
+                        existingTicketId.Value, cleanedSubject);
+                }
+            }
+        }
+
         if (existingTicketId.HasValue)
         {
             // ---- APPEND NOTE TO EXISTING TICKET ----
@@ -251,6 +277,7 @@ public class GmailApiService : BackgroundService
                 AuthorName = fromName ?? fromEmail,
                 AuthorEmail = fromEmail,
                 Content = body,
+                ContentHtml = bodyHtml,
                 Source = "Email",
                 IsInternal = false,
                 CreatedDate = DateTime.UtcNow
@@ -318,6 +345,7 @@ public class GmailApiService : BackgroundService
                 AuthorName = fromName ?? fromEmail,
                 AuthorEmail = fromEmail,
                 Content = body,
+                ContentHtml = bodyHtml,
                 Source = "Email",
                 IsInternal = false,
                 CreatedDate = DateTime.UtcNow

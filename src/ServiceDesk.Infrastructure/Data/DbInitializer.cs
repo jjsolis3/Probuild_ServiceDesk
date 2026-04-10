@@ -393,6 +393,14 @@ public static class DbInitializer
                     BEGIN
                         ALTER TABLE dbo.SavedTicketViews ADD FilterDepartments NVARCHAR(500) NULL;
                     END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.TicketNotes') AND name = 'ContentHtml'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.TicketNotes ADD ContentHtml NVARCHAR(MAX) NULL;
+                    END
                 END");
 
             // Seed the system-level default view (active/non-resolved tickets).
