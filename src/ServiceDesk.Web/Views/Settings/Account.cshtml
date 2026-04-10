@@ -79,9 +79,14 @@
                                         <option value="">-- No Default Assignee --</option>
                                         @foreach (var emp in employees)
                                         {
-                                            <option value="@emp.Id" @(setting.Value == emp.Id.ToString() ? "selected" : null)>
-                                                @emp.FullName (@emp.Department)
-                                            </option>
+                                            if (setting.Value == emp.Id.ToString())
+                                            {
+                                                <option value="@emp.Id" selected="selected">@emp.FullName (@emp.Department)</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@emp.Id">@emp.FullName (@emp.Department)</option>
+                                            }
                                         }
                                     </select>
                                 }
