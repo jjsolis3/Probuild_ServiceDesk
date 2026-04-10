@@ -206,6 +206,7 @@
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
                                                 sandbox="allow-same-origin"
                                                 title="Email comment"></iframe>
+                                        <script type="application/json" id="note-html-@note.Id">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(note.ContentHtml))</script>
                                     }
                                     else if (note.Source == "Email")
                                     {
@@ -556,31 +557,31 @@
 @section Scripts {
 <script>
 // ── Email note iframe renderer ────────────────────────────────────────────
+// Data is read from sibling <script type="application/json"> elements so
+// no Razor directives are needed inside this <script> block.
 (function () {
-    var noteBaseStyles = [
-        'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;',
-        '     margin:10px 14px;color:#212529;word-break:break-word;}',
-        'img{max-width:100%;height:auto;}',
-        'a{color:#0d6efd;}',
-        '.ss-hidden-quote{display:none!important;}'
-    ].join('');
+    var noteBaseStyles =
+        'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}' +
+        'img{max-width:100%;height:auto;}a{color:#0d6efd;}' +
+        '.ss-hidden-quote{display:none!important;}';
 
     function initNoteFrame(frameId, html) {
         var frame = document.getElementById(frameId);
         if (!frame) return;
-        var doc = frame.contentDocument || frame.contentWindow.document;
-        doc.open();
-        doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>');
-        doc.close();
-        doc.body.innerHTML = html;
-        var s = doc.createElement('style');
-        s.textContent = noteBaseStyles;
-        doc.head.appendChild(s);
-        collapseNoteQuotes(doc);
-        resizeNoteFrame(frame, doc);
-        doc.querySelectorAll('img').forEach(function(img){
-            img.addEventListener('load', function(){ resizeNoteFrame(frame, doc); });
+        var fullDoc = '<!DOCTYPE html>' +
+            '<html><head><meta charset="utf-8"><style>' + noteBaseStyles + '</style></head>' +
+            '<body>' + html + '</body></html>';
+        frame.addEventListener('load', function onLoad() {
+            frame.removeEventListener('load', onLoad);
+            var doc = frame.contentDocument;
+            if (!doc) return;
+            collapseNoteQuotes(doc);
+            resizeNoteFrame(frame, doc);
+            doc.querySelectorAll('img').forEach(function(img){
+                img.addEventListener('load', function(){ resizeNoteFrame(frame, doc); });
+            });
         });
+        frame.setAttribute('srcdoc', fullDoc);
     }
 
     function collapseNoteQuotes(doc) {
@@ -599,11 +600,14 @@
         frame.style.height = h + 'px';
     }
 
-    // Initialize all email note iframes on the page
-    @foreach (var note in Model.Notes.Where(n => !n.IsInternal && n.Source == "Email" && !string.IsNullOrEmpty(n.ContentHtml)))
-    {
-        <text>initNoteFrame('note-frame-@note.Id', @Html.Raw(System.Text.Json.JsonSerializer.Serialize(note.ContentHtml)));</text>
-    }
+    // Read HTML data from <script type="application/json" id="note-html-N"> siblings
+    document.querySelectorAll('[id^="note-html-"]').forEach(function(dataEl) {
+        var noteId = dataEl.id.replace('note-html-', '');
+        try {
+            var html = JSON.parse(dataEl.textContent);
+            initNoteFrame('note-frame-' + noteId, html);
+        } catch(e) { /* ignore malformed data */ }
+    });
 })();
 </script>
 
