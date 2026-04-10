@@ -203,7 +203,7 @@
                                     @if (note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml))
                                     {
                                         <iframe id="note-frame-@note.Id"
-                                                data-html="@Html.AttributeEncode(note.ContentHtml)"
+                                                data-html="@note.ContentHtml"
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
                                                 sandbox="allow-same-origin"
                                                 title="Email comment"></iframe>
