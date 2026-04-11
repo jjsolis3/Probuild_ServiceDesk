@@ -82,7 +82,15 @@
                                     <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
                                         @foreach (var opt in modeOptions)
                                         {
-                                            <option value="@opt" @(setting.Value == opt ? "selected" : "")>@opt</option>
+                                            if (setting.Value == opt)
+                                            {
+                                                <option value="@opt" selected="selected">@opt</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@opt">@opt</option>
+                                            }
+
                                         }
                                     </select>
                                 }
