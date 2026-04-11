@@ -139,7 +139,9 @@
         }
         @if (aiRec != null)
         {
+            <!-- AI card uses data-* attributes + AJAX so no nested <form> inside the outer Edit form -->
             <div class="alert alert-info border-start border-4 border-primary shadow-sm mb-3 py-2 px-3" id="aiTriageCard"
+                 data-rec-id="@aiRec.Id"
                  style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);">
                 <div class="d-flex align-items-start gap-3">
                     <div class="flex-shrink-0 pt-1">
@@ -153,8 +155,8 @@
                         <div class="d-flex flex-wrap gap-3 small mb-2">
                             @if (aiRec.SuggestedCategory.HasValue)
                             {
-                                var catName  = ((ServiceDesk.Core.Enums.TicketCategory)aiRec.SuggestedCategory.Value).ToString();
-                                var catPct   = (int)(aiRec.CategoryConfidence * 100);
+                                var catName = ((ServiceDesk.Core.Enums.TicketCategory)aiRec.SuggestedCategory.Value).ToString();
+                                var catPct  = (int)(aiRec.CategoryConfidence * 100);
                                 <span>
                                     <i class="bi bi-tag me-1 text-primary"></i>
                                     <strong>Category:</strong> @catName
@@ -163,8 +165,8 @@
                             }
                             @if (aiRec.SuggestedPriority.HasValue)
                             {
-                                var priName  = ((ServiceDesk.Core.Enums.TicketPriority)aiRec.SuggestedPriority.Value).ToString();
-                                var priPct   = (int)(aiRec.PriorityConfidence * 100);
+                                var priName = ((ServiceDesk.Core.Enums.TicketPriority)aiRec.SuggestedPriority.Value).ToString();
+                                var priPct  = (int)(aiRec.PriorityConfidence * 100);
                                 <span>
                                     <i class="bi bi-flag me-1 text-warning"></i>
                                     <strong>Priority:</strong> @priName
@@ -180,26 +182,15 @@
                             }
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
-                            <form asp-action="ApproveAiRecommendation" asp-route-id="@Model.Id" method="post" class="d-inline">
-                                <input type="hidden" name="recommendationId" value="@aiRec.Id" />
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-check-lg me-1"></i>Apply Suggestions
-                                </button>
-                            </form>
-                            <form asp-action="DismissAiRecommendation" asp-route-id="@Model.Id" method="post" class="d-inline">
-                                <input type="hidden" name="recommendationId" value="@aiRec.Id" />
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-x-lg me-1"></i>Dismiss
-                                </button>
-                            </form>
-                            <form asp-action="RetriageTicket" asp-route-id="@Model.Id" method="post" class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-arrow-repeat me-1"></i>Re-run AI
-                                </button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-primary" id="btnApproveAiRec">
+                                <i class="bi bi-check-lg me-1"></i>Apply Suggestions
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDismissAiRec">
+                                <i class="bi bi-x-lg me-1"></i>Dismiss
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRetriageTicket">
+                                <i class="bi bi-arrow-repeat me-1"></i>Re-run AI
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -646,7 +637,8 @@
         'img{max-width:100%;height:auto;}a{color:#0d6efd;}.ss-hidden-quote{display:none!important;}';
 
     function initNoteFrame(frame, html) {
-        var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + noteStyles + '</style></head><body>' + html + '</body></html>';
+        // Use <\/ to avoid Razor parser exiting <script> raw-text mode on </style>, </body>, </html>
+        var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + noteStyles + '<\/style><\/head><body>' + html + '<\/body><\/html>';
         frame.addEventListener('load', function onLoad() {
             frame.removeEventListener('load', onLoad);
             var d = frame.contentDocument;
@@ -1018,6 +1010,60 @@ function filterSelectOptions(input) {
             alert('Failed to reach the server. Please try again.');
         });
     });
+})();
+</script>
+
+<script>
+// ── AI triage card buttons ────────────────────────────────────────────────
+(function () {
+    var card = document.getElementById('aiTriageCard');
+    if (!card) return;
+
+    var recId    = parseInt(card.dataset.recId || '0', 10);
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var token    = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    function postAction(url, onSuccess) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fetch(url, { method: 'POST', body: fd })
+            .then(function(r) { return r.ok ? r : Promise.reject(r.status); })
+            .then(function() { onSuccess(); })
+            .catch(function(err) { alert('Request failed (' + err + '). Please refresh and try again.'); });
+    }
+
+    var btnApprove = document.getElementById('btnApproveAiRec');
+    if (btnApprove) {
+        btnApprove.addEventListener('click', function () {
+            btnApprove.disabled = true;
+            btnApprove.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Applying...';
+            postAction('/Tickets/ApproveAiRecommendation/' + ticketId + '?recommendationId=' + recId, function () {
+                location.reload();
+            });
+        });
+    }
+
+    var btnDismiss = document.getElementById('btnDismissAiRec');
+    if (btnDismiss) {
+        btnDismiss.addEventListener('click', function () {
+            btnDismiss.disabled = true;
+            postAction('/Tickets/DismissAiRecommendation/' + ticketId + '?recommendationId=' + recId, function () {
+                card.style.display = 'none';
+            });
+        });
+    }
+
+    var btnRetriage = document.getElementById('btnRetriageTicket');
+    if (btnRetriage) {
+        btnRetriage.addEventListener('click', function () {
+            var origHtml = btnRetriage.innerHTML;
+            btnRetriage.disabled = true;
+            btnRetriage.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+            postAction('/Tickets/RetriageTicket/' + ticketId, function () {
+                location.reload();
+            });
+        });
+    }
 })();
 </script>
 }
