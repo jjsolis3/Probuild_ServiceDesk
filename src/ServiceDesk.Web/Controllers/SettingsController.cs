@@ -1238,4 +1238,73 @@ public class SettingsController : Controller
         }
         return RedirectToAction(nameof(CategoryKeywords));
     }
+
+    // ==================== AI TRIAGE ====================
+
+    // GET: Settings/Ai
+    public async Task<IActionResult> Ai()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "AI Triage")
+            .OrderBy(s => s.Key)
+            .ToListAsync();
+
+        // Status panel data
+        ViewBag.LastRunLog = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .FirstOrDefaultAsync();
+
+        ViewBag.TotalTrainingTickets = await _context.Tickets
+            .CountAsync(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
+                          || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed);
+
+        return View(settings);
+    }
+
+    // POST: Settings/Ai — save AI settings
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Ai(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "AI Triage")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+            {
+                var values = form[setting.Key];
+                setting.Value = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
+            }
+        }
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "AI Triage settings saved.";
+        return RedirectToAction(nameof(Ai));
+    }
+
+    // POST: Settings/AiRetrain — force-retrain the ML.NET model immediately
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AiRetrain()
+    {
+        var aiTriage = HttpContext.RequestServices.GetService<ServiceDesk.Web.Services.AiTriageService>();
+        if (aiTriage == null)
+        {
+            TempData["Error"] = "AI Triage service is not registered.";
+            return RedirectToAction(nameof(Ai));
+        }
+
+        await aiTriage.TrainNowAsync();
+
+        var lastLog = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .FirstOrDefaultAsync();
+
+        TempData["Success"] = lastLog?.Success == true
+            ? $"Model retrained successfully on {lastLog.TrainingTicketCount} tickets ({lastLog.DurationMs:F0} ms)."
+            : lastLog?.ErrorMessage ?? "Training complete (check logs for details).";
+
+        return RedirectToAction(nameof(Ai));
+    }
 }

@@ -53,6 +53,10 @@ public class ServiceDeskDbContext : DbContext
     // Email templates
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
 
+    // AI triage
+    public DbSet<AiRecommendation> AiRecommendations => Set<AiRecommendation>();
+    public DbSet<AiRunLog> AiRunLogs => Set<AiRunLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -317,5 +321,28 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<EmailTemplate>()
             .Property(t => t.BodyTemplate)
             .HasColumnType("nvarchar(max)");
+
+        // AiRecommendation -> Ticket (cascade)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.Ticket)
+            .WithMany()
+            .HasForeignKey(r => r.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AiRecommendation -> SuggestedAssignee (set null)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.SuggestedAssignee)
+            .WithMany()
+            .HasForeignKey(r => r.SuggestedAssigneeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Store draft reply without length limit
+        modelBuilder.Entity<AiRecommendation>()
+            .Property(r => r.AiDraftReply)
+            .HasColumnType("nvarchar(max)");
+
+        // Index on ticket + status for fast pending lookup
+        modelBuilder.Entity<AiRecommendation>()
+            .HasIndex(r => new { r.TicketId, r.Status });
     }
 }

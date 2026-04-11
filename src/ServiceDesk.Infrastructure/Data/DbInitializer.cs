@@ -569,6 +569,88 @@ public static class DbInitializer
                      N'Sent to a portal user when they request a password reset link.',
                      N'Reset Your {{CompanyName}} Password');
                 END");
+            // 20. Create AiRecommendations table (AI triage suggestions per ticket)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AiRecommendations')
+                BEGIN
+                    CREATE TABLE dbo.AiRecommendations (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId            INT             NOT NULL
+                            CONSTRAINT FK_AiRecommendations_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        SuggestedCategory   INT             NULL,
+                        SuggestedPriority   INT             NULL,
+                        SuggestedAssigneeId INT             NULL
+                            CONSTRAINT FK_AiRecommendations_Employees
+                            REFERENCES dbo.Employees(Id)
+                            ON DELETE SET NULL,
+                        CategoryConfidence  REAL            NOT NULL DEFAULT 0,
+                        PriorityConfidence  REAL            NOT NULL DEFAULT 0,
+                        AiSummary           NVARCHAR(2000)  NULL,
+                        AiDraftReply        NVARCHAR(MAX)   NULL,
+                        Status              NVARCHAR(20)    NOT NULL DEFAULT 'Pending',
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        ReviewedDate        DATETIME2       NULL,
+                        ReviewedBy          NVARCHAR(200)   NULL
+                    );
+
+                    CREATE INDEX IX_AiRecommendations_Ticket_Status
+                        ON dbo.AiRecommendations (TicketId, Status);
+                END");
+
+            // 21. Create AiRunLogs table (audit log for ML.NET training / prediction runs)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AiRunLogs')
+                BEGIN
+                    CREATE TABLE dbo.AiRunLogs (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        RunDate             DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        RunType             NVARCHAR(20)    NOT NULL DEFAULT 'Training',
+                        TrainingTicketCount INT             NOT NULL DEFAULT 0,
+                        ModelVersion        NVARCHAR(50)    NOT NULL DEFAULT '',
+                        Success             BIT             NOT NULL DEFAULT 1,
+                        ErrorMessage        NVARCHAR(1000)  NULL,
+                        DurationMs          FLOAT           NOT NULL DEFAULT 0
+                    );
+                END");
+
+            // 22. Seed AI feature-flag AppSettings keys
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiTriageEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiTriageEnabled', 'false', 'AI Triage',
+                            'Enable ML.NET-powered AI triage suggestions for new tickets');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiTriageMode')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiTriageMode', 'RecommendOnly', 'AI Triage',
+                            'RecommendOnly: show suggestions to agents | AutoApply: automatically apply suggestions when confidence is high');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiConfidenceThreshold')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiConfidenceThreshold', '0.65', 'AI Triage',
+                            'Minimum confidence score (0.0–1.0) required before a triage suggestion is shown or applied');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiMinTrainingTickets')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiMinTrainingTickets', '20', 'AI Triage',
+                            'Minimum number of resolved/closed tickets required before the AI model is trained');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaEnabled', 'false', 'AI Triage',
+                            'Enable Ollama local LLM for AI-generated ticket summaries and draft replies');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaUrl')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaUrl', 'http://localhost:11434', 'AI Triage',
+                            'URL of the locally running Ollama server (default: http://localhost:11434)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaModel')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaModel', 'phi3', 'AI Triage',
+                            'Ollama model name to use for text generation (e.g. phi3, llama3.1, mistral)');");
         }
         catch (Exception ex)
         {

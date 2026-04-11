@@ -18,12 +18,21 @@ public class TicketsController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly AssignmentResolverService _assignmentResolver;
     private readonly EmailNotificationService _emailService;
+    private readonly AiTriageService _aiTriage;
+    private readonly OllamaService _ollama;
 
-    public TicketsController(ServiceDeskDbContext context, AssignmentResolverService assignmentResolver, EmailNotificationService emailService)
+    public TicketsController(
+        ServiceDeskDbContext context,
+        AssignmentResolverService assignmentResolver,
+        EmailNotificationService emailService,
+        AiTriageService aiTriage,
+        OllamaService ollama)
     {
-        _context = context;
+        _context          = context;
         _assignmentResolver = assignmentResolver;
-        _emailService = emailService;
+        _emailService     = emailService;
+        _aiTriage         = aiTriage;
+        _ollama           = ollama;
     }
 
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
@@ -349,6 +358,9 @@ public class TicketsController : Controller
             _context.Add(ticket);
             await _context.SaveChangesAsync();
 
+            // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
+            _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
+
             // Notify assigned agent (fire-and-forget)
             if (ticket.AssignedToId != null)
                 _ = Task.Run(async () =>
@@ -381,6 +393,21 @@ public class TicketsController : Controller
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
+
+        // Load pending AI recommendation (if any) so the view can render the triage card
+        var pendingRec = await _context.AiRecommendations
+            .Include(r => r.SuggestedAssignee)
+            .Where(r => r.TicketId == id && r.Status == "Pending")
+            .OrderByDescending(r => r.CreatedDate)
+            .FirstOrDefaultAsync();
+        ViewBag.AiRecommendation = pendingRec;
+
+        // Load Ollama feature flag so the view can show/hide the "Draft AI Reply" button
+        var ollamaEnabled = await _context.AppSettings
+            .Where(s => s.Key == "OllamaEnabled")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
 
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -781,6 +808,131 @@ public class TicketsController : Controller
             .Select(r => new { r.Id, r.Title, r.Content, r.Category })
             .ToListAsync();
         return Json(responses);
+    }
+
+    // ── AI Triage endpoints ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Approve an AI recommendation: apply the suggested category / priority / assignee to the ticket
+    /// and mark the recommendation as Approved.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApproveAiRecommendation(int id, int recommendationId)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        var rec    = await _context.AiRecommendations
+            .FirstOrDefaultAsync(r => r.Id == recommendationId && r.TicketId == id && r.Status == "Pending");
+
+        if (ticket == null || rec == null) return NotFound();
+
+        // Apply suggestions
+        if (rec.SuggestedCategory.HasValue)
+            ticket.Category = (ServiceDesk.Core.Enums.TicketCategory)rec.SuggestedCategory.Value;
+        if (rec.SuggestedPriority.HasValue)
+            ticket.Priority = (ServiceDesk.Core.Enums.TicketPriority)rec.SuggestedPriority.Value;
+        if (rec.SuggestedAssigneeId.HasValue)
+            ticket.AssignedToId = rec.SuggestedAssigneeId.Value;
+
+        ticket.UpdatedDate = DateTime.UtcNow;
+
+        rec.Status       = "Approved";
+        rec.ReviewedDate = DateTime.UtcNow;
+        rec.ReviewedBy   = User.Identity?.Name ?? "Agent";
+
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = $"AI Triage (approved by {rec.ReviewedBy})",
+            FieldName   = "AI Recommendation",
+            OldValue    = null,
+            NewValue    = $"Category={ticket.Category}, Priority={ticket.Priority}"
+        });
+
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "AI suggestion applied.";
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    /// <summary>
+    /// Dismiss an AI recommendation without applying any changes.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DismissAiRecommendation(int id, int recommendationId)
+    {
+        var rec = await _context.AiRecommendations
+            .FirstOrDefaultAsync(r => r.Id == recommendationId && r.TicketId == id && r.Status == "Pending");
+
+        if (rec == null) return NotFound();
+
+        rec.Status       = "Dismissed";
+        rec.ReviewedDate = DateTime.UtcNow;
+        rec.ReviewedBy   = User.Identity?.Name ?? "Agent";
+
+        await _context.SaveChangesAsync();
+
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    /// <summary>
+    /// Retriage the ticket using the current ML.NET model and save a new Pending recommendation.
+    /// Used by the "Re-run AI" button when the AI feature flag is enabled.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetriageTicket(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        await _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
+
+        TempData["Success"] = "AI triage re-run complete.";
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    /// <summary>
+    /// Calls Ollama to generate a draft reply and returns it as JSON.
+    /// The Edit page JS inserts it into the reply text box.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DraftAiReply(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        var draft = await _ollama.DraftReplyAsync(
+            ticket.Title, ticket.Description, ticket.ResolutionNotes);
+
+        if (string.IsNullOrWhiteSpace(draft))
+            return Json(new { success = false, error = "Ollama is not available or returned an empty response." });
+
+        return Json(new { success = true, draft });
+    }
+
+    /// <summary>
+    /// Promotes a resolved ticket to a KB article suggestion — pre-fills the article
+    /// with the ticket title, description, and resolution notes. Redirects to KB Create.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestToKb(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        // Store pre-fill data in TempData so the KB Create action can read it
+        TempData["KbSuggest_Title"]       = ticket.Title;
+        TempData["KbSuggest_Problem"]     = ticket.Description;
+        TempData["KbSuggest_Solution"]    = ticket.ResolutionNotes ?? string.Empty;
+        TempData["KbSuggest_Category"]    = (int)ticket.Category;
+        TempData["KbSuggest_SourceId"]    = ticket.Id;
+
+        TempData["Success"] = "Ticket pre-filled into a new Knowledge Base article. Review and publish below.";
+        return RedirectToAction("Create", "KnowledgeBase");
     }
 
     public async Task<IActionResult> Delete(int? id)

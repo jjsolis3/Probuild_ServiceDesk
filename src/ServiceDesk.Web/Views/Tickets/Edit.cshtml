@@ -132,6 +132,90 @@
             </div>
         </div>
 
+        <!-- ===== AI TRIAGE CARD ===== -->
+        @{
+            var aiRec       = ViewBag.AiRecommendation as ServiceDesk.Core.Models.AiRecommendation;
+            var ollamaOn    = (bool)(ViewBag.OllamaEnabled ?? false);
+        }
+        @if (aiRec != null)
+        {
+            <div class="alert alert-info border-start border-4 border-primary shadow-sm mb-3 py-2 px-3" id="aiTriageCard"
+                 style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="flex-shrink-0 pt-1">
+                        <span class="fs-4" title="AI Triage">&#129302;</span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1" style="color:#1a56db;">
+                            AI Triage Suggestion
+                            <span class="fw-normal text-muted small ms-2">ML.NET classification</span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 small mb-2">
+                            @if (aiRec.SuggestedCategory.HasValue)
+                            {
+                                var catName  = ((ServiceDesk.Core.Enums.TicketCategory)aiRec.SuggestedCategory.Value).ToString();
+                                var catPct   = (int)(aiRec.CategoryConfidence * 100);
+                                <span>
+                                    <i class="bi bi-tag me-1 text-primary"></i>
+                                    <strong>Category:</strong> @catName
+                                    <span class="badge bg-primary ms-1">@catPct%</span>
+                                </span>
+                            }
+                            @if (aiRec.SuggestedPriority.HasValue)
+                            {
+                                var priName  = ((ServiceDesk.Core.Enums.TicketPriority)aiRec.SuggestedPriority.Value).ToString();
+                                var priPct   = (int)(aiRec.PriorityConfidence * 100);
+                                <span>
+                                    <i class="bi bi-flag me-1 text-warning"></i>
+                                    <strong>Priority:</strong> @priName
+                                    <span class="badge bg-warning text-dark ms-1">@priPct%</span>
+                                </span>
+                            }
+                            @if (aiRec.SuggestedAssignee != null)
+                            {
+                                <span>
+                                    <i class="bi bi-person-check me-1 text-success"></i>
+                                    <strong>Assignee:</strong> @aiRec.SuggestedAssignee.FullName
+                                </span>
+                            }
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <form asp-action="ApproveAiRecommendation" asp-route-id="@Model.Id" method="post" class="d-inline">
+                                <input type="hidden" name="recommendationId" value="@aiRec.Id" />
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-check-lg me-1"></i>Apply Suggestions
+                                </button>
+                            </form>
+                            <form asp-action="DismissAiRecommendation" asp-route-id="@Model.Id" method="post" class="d-inline">
+                                <input type="hidden" name="recommendationId" value="@aiRec.Id" />
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-x-lg me-1"></i>Dismiss
+                                </button>
+                            </form>
+                            <form asp-action="RetriageTicket" asp-route-id="@Model.Id" method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Re-run AI
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Ollama "Draft AI Reply" floating hint (visible when Ollama is enabled) -->
+        @if (ollamaOn)
+        {
+            <div class="d-flex justify-content-end mb-2">
+                <button type="button" id="btnDraftAiReply" class="btn btn-sm btn-outline-info">
+                    <i class="bi bi-robot me-1"></i>Draft AI Reply
+                </button>
+            </div>
+        }
+
         <!-- ===== TABS ===== -->
         <ul class="nav nav-tabs mb-3" id="ticketTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -886,6 +970,54 @@ function filterSelectOptions(input) {
         toastMsg.textContent = msg;
         toast.show();
     }
+})();
+</script>
+
+<script>
+// ── Ollama "Draft AI Reply" button ────────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnDraftAiReply');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Drafting...';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/DraftAiReply/' + ticketId, {
+            method: 'POST',
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            if (data.success && data.draft) {
+                var replyBox = document.getElementById('noteContent');
+                if (replyBox) {
+                    replyBox.value = data.draft;
+                    replyBox.focus();
+                    // Switch to Comments tab if not already active
+                    var commentsTab = document.getElementById('comments-tab');
+                    if (commentsTab && !commentsTab.classList.contains('active'))
+                        commentsTab.click();
+                }
+            } else {
+                alert(data.error || 'Ollama returned an empty response. Ensure Ollama is running and configured in Settings.');
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            alert('Failed to reach the server. Please try again.');
+        });
+    });
 })();
 </script>
 }

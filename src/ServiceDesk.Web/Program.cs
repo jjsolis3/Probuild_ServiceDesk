@@ -54,6 +54,18 @@ builder.Services.AddScoped<EmailNotificationService>();
 // Register assignment resolver (scoped — needs DbContext)
 builder.Services.AddScoped<AssignmentResolverService>();
 
+// Register AI triage service (singleton — holds trained model in memory)
+builder.Services.AddSingleton<AiTriageService>();
+
+// Register Ollama LLM service (singleton — stateless HTTP client wrapper)
+builder.Services.AddSingleton<OllamaService>();
+
+// Named HTTP client for Ollama with a generous timeout for LLM generation
+builder.Services.AddHttpClient("Ollama", c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(120);
+});
+
 var app = builder.Build();
 
 // Apply incremental schema upgrades then seed reference data
