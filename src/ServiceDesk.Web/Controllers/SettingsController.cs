@@ -1307,4 +1307,112 @@ public class SettingsController : Controller
 
         return RedirectToAction(nameof(Ai));
     }
+
+    // GET: Settings/AiDashboard — AI statistics dashboard
+    public async Task<IActionResult> AiDashboard()
+    {
+        var aiTriage = HttpContext.RequestServices
+            .GetService<ServiceDesk.Web.Services.AiTriageService>();
+
+        var vm = new ServiceDesk.Web.Models.AiDashboardViewModel
+        {
+            ModelIsTrained = aiTriage?.IsModelTrained ?? false,
+            TotalTrainingTickets = await _context.Tickets
+                .CountAsync(t => t.Status == TicketStatus.Resolved
+                              || t.Status == TicketStatus.Closed)
+        };
+
+        // Load all recommendations with ticket titles
+        var allRecs = await _context.AiRecommendations
+            .Include(r => r.Ticket)
+            .OrderByDescending(r => r.CreatedDate)
+            .ToListAsync();
+
+        var cutoff30 = DateTime.UtcNow.AddDays(-30);
+
+        vm.TotalRecommendations = allRecs.Count;
+        vm.ApprovedCount  = allRecs.Count(r => r.Status == "Approved");
+        vm.DismissedCount = allRecs.Count(r => r.Status == "Dismissed");
+        vm.PendingCount   = allRecs.Count(r => r.Status == "Pending");
+        vm.RecsLast30Days = allRecs.Count(r => r.CreatedDate >= cutoff30);
+
+        var reviewed = allRecs.Where(r => r.Status is "Approved" or "Dismissed").ToList();
+        vm.ApprovalRate = reviewed.Count > 0
+            ? Math.Round((double)vm.ApprovedCount / reviewed.Count * 100, 1)
+            : 0;
+
+        if (allRecs.Count > 0)
+        {
+            vm.AvgCategoryConfidence = Math.Round(
+                allRecs.Average(r => (double)r.CategoryConfidence) * 100, 1);
+            vm.AvgPriorityConfidence = Math.Round(
+                allRecs.Average(r => (double)r.PriorityConfidence) * 100, 1);
+        }
+
+        // Confidence bands — use max(cat, pri) as the headline score per rec
+        foreach (var r in allRecs)
+        {
+            var score = Math.Max(r.CategoryConfidence, r.PriorityConfidence);
+            if      (score < 0.50f) vm.ConfUnder50++;
+            else if (score < 0.65f) vm.Conf50To65++;
+            else if (score < 0.80f) vm.Conf65To80++;
+            else                    vm.ConfOver80++;
+        }
+
+        // Category breakdown
+        vm.CategoryStats = allRecs
+            .Where(r => r.SuggestedCategory.HasValue)
+            .GroupBy(r => r.SuggestedCategory!.Value)
+            .Select(g => new ServiceDesk.Web.Models.AiCategoryStat
+            {
+                CategoryName = Enum.IsDefined(typeof(TicketCategory), g.Key)
+                    ? ((TicketCategory)g.Key).ToString()
+                    : $"Category {g.Key}",
+                Suggested = g.Count(),
+                Approved  = g.Count(r => r.Status == "Approved")
+            })
+            .OrderByDescending(c => c.Suggested)
+            .ToList();
+
+        // 30-day daily trend
+        var recsIn30 = allRecs.Where(r => r.CreatedDate >= cutoff30).ToList();
+        vm.DailyTrend = Enumerable.Range(0, 30)
+            .Select(i =>
+            {
+                var day = DateTime.UtcNow.Date.AddDays(-29 + i);
+                return new ServiceDesk.Web.Models.AiDailyTrendPoint
+                {
+                    DateLabel = day.ToString("MMM d"),
+                    Count     = recsIn30.Count(r => r.CreatedDate.Date == day)
+                };
+            })
+            .ToList();
+
+        // Training history (last 10)
+        vm.RecentTrainingRuns = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .Take(10)
+            .ToListAsync();
+
+        // Recent recommendations (last 50)
+        vm.RecentRecs = allRecs.Take(50).Select(r => new ServiceDesk.Web.Models.AiRecentRecRow
+        {
+            RecId      = r.Id,
+            TicketId   = r.TicketId,
+            TicketTitle = r.Ticket?.Title ?? $"Ticket #{r.TicketId}",
+            SuggestedCategory = r.SuggestedCategory.HasValue && Enum.IsDefined(typeof(TicketCategory), r.SuggestedCategory.Value)
+                ? ((TicketCategory)r.SuggestedCategory.Value).ToString()
+                : "—",
+            SuggestedPriority = r.SuggestedPriority.HasValue && Enum.IsDefined(typeof(TicketPriority), r.SuggestedPriority.Value)
+                ? ((TicketPriority)r.SuggestedPriority.Value).ToString()
+                : "—",
+            CategoryConfidencePct = (int)Math.Round(r.CategoryConfidence * 100),
+            PriorityConfidencePct = (int)Math.Round(r.PriorityConfidence * 100),
+            Status      = r.Status,
+            CreatedDate = r.CreatedDate,
+            ReviewedBy  = r.ReviewedBy
+        }).ToList();
+
+        return View(vm);
+    }
 }
