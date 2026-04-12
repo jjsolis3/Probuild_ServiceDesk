@@ -20,19 +20,25 @@ public class TicketsController : Controller
     private readonly EmailNotificationService _emailService;
     private readonly AiTriageService _aiTriage;
     private readonly OllamaService _ollama;
+    private readonly TicketSimilarityService _similarity;
+    private readonly SlaRiskService _slaRisk;
 
     public TicketsController(
         ServiceDeskDbContext context,
         AssignmentResolverService assignmentResolver,
         EmailNotificationService emailService,
         AiTriageService aiTriage,
-        OllamaService ollama)
+        OllamaService ollama,
+        TicketSimilarityService similarity,
+        SlaRiskService slaRisk)
     {
-        _context          = context;
+        _context            = context;
         _assignmentResolver = assignmentResolver;
-        _emailService     = emailService;
-        _aiTriage         = aiTriage;
-        _ollama           = ollama;
+        _emailService       = emailService;
+        _aiTriage           = aiTriage;
+        _ollama             = ollama;
+        _similarity         = similarity;
+        _slaRisk            = slaRisk;
     }
 
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
@@ -291,6 +297,16 @@ public class TicketsController : Controller
             .Where(e => e.Department != null && e.Department != "")
             .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
 
+        // ── SLA risk badges ──────────────────────────────────────────────────
+        await _slaRisk.EnsureBaselinesBuiltAsync();
+        ViewBag.SlaRisks = tickets
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .ToDictionary(
+                t => t.Id,
+                t => _slaRisk.GetRisk((int)t.Category, (int)t.Priority, t.CreatedDate));
+
         return View(tickets);
     }
 
@@ -408,6 +424,14 @@ public class TicketsController : Controller
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
         ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
+
+        // SLA risk for this specific ticket
+        await _slaRisk.EnsureBaselinesBuiltAsync();
+        ViewBag.SlaRisk           = _slaRisk.GetRisk((int)ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
+        ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel((int)ticket.Category, (int)ticket.Priority);
+
+        // Note count for the "Summarize Thread" button visibility check
+        ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
 
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -933,6 +957,61 @@ public class TicketsController : Controller
 
         TempData["Success"] = "Ticket pre-filled into a new Knowledge Base article. Review and publish below.";
         return RedirectToAction("Create", "KnowledgeBase");
+    }
+
+    /// <summary>
+    /// Returns a JSON list of tickets similar to the given ticket (TF-IDF cosine similarity).
+    /// Called via AJAX from the ticket Edit page after load.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> SimilarTickets(int id)
+    {
+        var ticket = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => t.Id == id)
+            .Select(t => new { t.Id, t.Title, t.Description })
+            .FirstOrDefaultAsync();
+
+        if (ticket == null) return NotFound();
+
+        var similar = await _similarity.FindSimilarAsync(
+            ticket.Title, ticket.Description ?? string.Empty, excludeTicketId: id, topN: 6);
+
+        return Json(similar.Select(s => new
+        {
+            ticketId  = s.TicketId,
+            title     = s.Title,
+            status    = s.Status.ToString(),
+            priority  = s.Priority.ToString(),
+            scorePct  = s.ScorePct
+        }));
+    }
+
+    /// <summary>
+    /// Calls Ollama to summarize the entire ticket thread (description + all notes).
+    /// Returns { success, summary } JSON.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SummarizeThread(int id)
+    {
+        var ticket = await _context.Tickets
+            .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (ticket == null) return NotFound();
+
+        var noteContents = ticket.Notes
+            .Where(n => !string.IsNullOrWhiteSpace(n.Content))
+            .Select(n => n.Content!);
+
+        var summary = await _ollama.SummarizeThreadAsync(
+            ticket.Title, ticket.Description ?? string.Empty, noteContents);
+
+        if (string.IsNullOrWhiteSpace(summary))
+            return Json(new { success = false, error = "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+
+        return Json(new { success = true, summary });
     }
 
     public async Task<IActionResult> Delete(int? id)

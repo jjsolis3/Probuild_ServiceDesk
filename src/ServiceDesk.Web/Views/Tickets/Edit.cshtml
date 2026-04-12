@@ -117,17 +117,34 @@
                 <span asp-validation-for="Title" class="text-danger small"></span>
             </div>
 
-            <!-- Created date -->
-            <div class="text-muted small">
-                <i class="bi bi-calendar3 me-1"></i>
-                Created: @Model.CreatedDate.ToString("MMM dd, yyyy") at @Model.CreatedDate.ToString("h:mm tt")
-                @if (Model.SubmittedBy != null)
-                {
-                    <span> by <strong>@Model.SubmittedBy.FullName</strong></span>
-                }
+            <!-- Created date + SLA risk badge -->
+            <div class="text-muted small d-flex flex-wrap align-items-center gap-3">
+                <span>
+                    <i class="bi bi-calendar3 me-1"></i>
+                    Created: @Model.CreatedDate.ToString("MMM dd, yyyy") at @Model.CreatedDate.ToString("h:mm tt")
+                    @if (Model.SubmittedBy != null)
+                    {
+                        <span> by <strong>@Model.SubmittedBy.FullName</strong></span>
+                    }
+                </span>
                 @if (Model.UpdatedDate.HasValue)
                 {
-                    <span class="ms-3"><i class="bi bi-pencil me-1"></i>Updated: @Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</span>
+                    <span><i class="bi bi-pencil me-1"></i>Updated: @Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</span>
+                }
+                @{
+                    var slaRisk  = (ServiceDesk.Web.Services.SlaRiskLevel)(ViewBag.SlaRisk ?? ServiceDesk.Web.Services.SlaRiskLevel.None);
+                    var slaLabel = (string)(ViewBag.SlaThresholdLabel ?? "");
+                    var isOpen   = Model.Status != ServiceDesk.Core.Enums.TicketStatus.Resolved
+                                && Model.Status != ServiceDesk.Core.Enums.TicketStatus.Closed
+                                && Model.Status != ServiceDesk.Core.Enums.TicketStatus.Cancelled;
+                }
+                @if (isOpen && slaRisk != ServiceDesk.Web.Services.SlaRiskLevel.None)
+                {
+                    <span class="badge bg-@ServiceDesk.Web.Services.SlaRiskService.RiskBadgeClass(slaRisk) text-white"
+                          title="Expected resolution window: @slaLabel">
+                        <i class="bi bi-clock-history me-1"></i>@ServiceDesk.Web.Services.SlaRiskService.RiskLabel(slaRisk)
+                        <span class="opacity-75 ms-1">(@slaLabel SLA)</span>
+                    </span>
                 }
             </div>
         </div>
@@ -197,10 +214,35 @@
             </div>
         }
 
+        <!-- ===== SIMILAR TICKETS PANEL ===== -->
+        <div id="similarTicketsPanel" class="mb-3" style="display:none;">
+            <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg,#f8fff8 0%,#edfaed 100%);">
+                <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-2">
+                    <span class="fw-semibold small" style="color:#146c43;">
+                        <i class="bi bi-diagram-2 me-1"></i>Similar Tickets
+                        <span class="text-muted fw-normal ms-1">— these may be related or duplicates</span>
+                    </span>
+                    <button type="button" class="btn-close btn-sm" onclick="document.getElementById('similarTicketsPanel').style.display='none';"></button>
+                </div>
+                <div class="card-body py-2 px-3" id="similarTicketsList">
+                    <div class="text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Finding similar tickets…</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Ollama "Draft AI Reply" floating hint (visible when Ollama is enabled) -->
+        @{
+            var noteCountForOllama = (int)(ViewBag.NoteCount ?? 0);
+        }
         @if (ollamaOn)
         {
-            <div class="d-flex justify-content-end mb-2">
+            <div class="d-flex justify-content-end gap-2 mb-2">
+                @if (noteCountForOllama > 0)
+                {
+                    <button type="button" id="btnSummarizeThread" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-journal-text me-1"></i>Summarize Thread
+                    </button>
+                }
                 <button type="button" id="btnDraftAiReply" class="btn btn-sm btn-outline-info">
                     <i class="bi bi-robot me-1"></i>Draft AI Reply
                 </button>
@@ -1064,6 +1106,101 @@ function filterSelectOptions(input) {
             });
         });
     }
+})();
+</script>
+
+<script>
+// ── Similar tickets (loaded via AJAX after page paint) ────────────────────
+(function () {
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    if (!ticketId) return;
+
+    var panel = document.getElementById('similarTicketsPanel');
+    var list  = document.getElementById('similarTicketsList');
+    if (!panel || !list) return;
+
+    fetch('/Tickets/SimilarTickets/' + ticketId)
+        .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function(data) {
+            if (!data || data.length === 0) { panel.style.display = 'none'; return; }
+
+            var statusClasses = {
+                'Open': 'bg-primary', 'InProgress': 'bg-info text-dark',
+                'OnHold': 'bg-warning text-dark', 'Resolved': 'bg-success',
+                'Closed': 'bg-secondary', 'Cancelled': 'bg-secondary'
+            };
+            var priClasses = {
+                'Critical': 'bg-danger', 'High': 'bg-warning text-dark',
+                'Medium': 'bg-info text-dark', 'Low': 'bg-secondary'
+            };
+
+            var html = '<div class="d-flex flex-wrap gap-2">';
+            data.forEach(function(t) {
+                var sc = statusClasses[t.status] || 'bg-secondary';
+                var pc = priClasses[t.priority] || 'bg-secondary';
+                html += '<a href="\/Tickets\/Edit\/' + t.ticketId + '" class="text-decoration-none">' +
+                    '<div class="border rounded p-2 bg-white" style="min-width:180px;max-width:240px;">' +
+                    '<div class="small fw-semibold text-truncate" title="' + t.title.replace(/"/g,'&quot;') + '">' +
+                    '<span class="text-muted me-1">#' + t.ticketId + '</span>' + t.title + '<\/div>' +
+                    '<div class="mt-1 d-flex gap-1">' +
+                    '<span class="badge ' + sc + ' small">' + t.status + '<\/span>' +
+                    '<span class="badge ' + pc + ' small">' + t.priority + '<\/span>' +
+                    '<span class="badge bg-light text-dark border small">' + Math.round(t.scorePct) + '% match<\/span>' +
+                    '<\/div><\/div><\/a>';
+            });
+            html += '<\/div>';
+            list.innerHTML = html;
+            panel.style.display = '';
+        })
+        .catch(function() { panel.style.display = 'none'; });
+})();
+</script>
+
+<script>
+// ── Summarize Thread button (Ollama) ──────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnSummarizeThread');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Summarizing…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/SummarizeThread/' + ticketId, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (data.success && data.summary) {
+                    // Show in a small dismissible banner above the tabs
+                    var existing = document.getElementById('threadSummaryBanner');
+                    if (existing) existing.remove();
+                    var banner = document.createElement('div');
+                    banner.id = 'threadSummaryBanner';
+                    banner.className = 'alert alert-secondary alert-dismissible fade show mb-3 small';
+                    banner.innerHTML =
+                        '<strong><i class="bi bi-journal-text me-1"><\/i>AI Thread Summary:<\/strong> ' +
+                        data.summary +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert"><\/button>';
+                    var tabs = document.getElementById('ticketTabs');
+                    if (tabs) tabs.parentNode.insertBefore(banner, tabs);
+                } else {
+                    alert(data.error || 'Summarization failed. Ensure Ollama is running.');
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
 })();
 </script>
 }

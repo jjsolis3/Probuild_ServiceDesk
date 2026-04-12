@@ -1413,6 +1413,136 @@ public class SettingsController : Controller
             ReviewedBy  = r.ReviewedBy
         }).ToList();
 
+        // ── Accuracy tracking ─────────────────────────────────────────────────
+        // For Approved recs whose ticket is now closed/resolved, check if the
+        // final ticket category/priority still matches what was suggested.
+        var closedApproved = allRecs
+            .Where(r => r.Status == "Approved" && r.Ticket != null
+                     && (r.Ticket.Status == TicketStatus.Resolved
+                      || r.Ticket.Status == TicketStatus.Closed))
+            .ToList();
+
+        vm.AccuracyCategoryTotal   = closedApproved.Count(r => r.SuggestedCategory.HasValue);
+        vm.AccuracyCategoryCorrect = closedApproved.Count(r =>
+            r.SuggestedCategory.HasValue &&
+            r.SuggestedCategory.Value == (int)r.Ticket!.Category);
+
+        vm.AccuracyPriorityTotal   = closedApproved.Count(r => r.SuggestedPriority.HasValue);
+        vm.AccuracyPriorityCorrect = closedApproved.Count(r =>
+            r.SuggestedPriority.HasValue &&
+            r.SuggestedPriority.Value == (int)r.Ticket!.Priority);
+
+        // ── Category gap detection ────────────────────────────────────────────
+        // Find low-confidence recs and extract the most common terms from their
+        // ticket titles to surface potential missing categories.
+        var lowConfRecs = allRecs
+            .Where(r => Math.Max(r.CategoryConfidence, r.PriorityConfidence) < 0.50f
+                     && r.Ticket != null)
+            .ToList();
+
+        if (lowConfRecs.Count >= 3)
+        {
+            var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "the","is","are","was","were","have","has","had","be","a","an","and","or",
+                "in","on","at","to","for","of","with","by","as","not","can","my","our",
+                "your","its","this","that","i","we","they","he","she","it","do","did",
+                "please","help","issue","problem","request","ticket","need","new","old"
+            };
+
+            // Count word frequency across all low-confidence ticket titles
+            var wordCounts = new Dictionary<string, List<(int Id, string Title)>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rec in lowConfRecs)
+            {
+                var title = rec.Ticket!.Title ?? string.Empty;
+                var words = System.Text.RegularExpressions.Regex
+                    .Split(title.ToLowerInvariant(), @"[^a-z0-9]+")
+                    .Where(w => w.Length >= 3 && !stopWords.Contains(w));
+
+                foreach (var word in words.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!wordCounts.ContainsKey(word))
+                        wordCounts[word] = new();
+                    wordCounts[word].Add((rec.TicketId, title));
+                }
+            }
+
+            vm.CategoryGaps = wordCounts
+                .Where(kv => kv.Value.Count >= 2) // minimum 2 tickets for a cluster
+                .OrderByDescending(kv => kv.Value.Count)
+                .Take(8)
+                .Select(kv => new ServiceDesk.Web.Models.AiCategoryGapCluster
+                {
+                    KeyTerm     = kv.Key,
+                    TicketCount = kv.Value.Count,
+                    Samples     = kv.Value.DistinctBy(t => t.Id).Take(3).ToList()
+                })
+                .ToList();
+        }
+
+        // ── Tickets awaiting triage ───────────────────────────────────────────
+        var openTicketIds = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .Select(t => t.Id)
+            .ToListAsync();
+
+        var ticketsWithPendingRec = await _context.AiRecommendations
+            .Where(r => r.Status == "Pending" && openTicketIds.Contains(r.TicketId))
+            .Select(r => r.TicketId)
+            .Distinct()
+            .ToListAsync();
+
+        vm.TicketsAwaitingTriage = openTicketIds.Count - ticketsWithPendingRec.Count;
+
         return View(vm);
+    }
+
+    // POST: Settings/AiBatchRetriage — queue AI triage for all open tickets without a pending rec
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AiBatchRetriage()
+    {
+        var aiTriage = HttpContext.RequestServices.GetService<ServiceDesk.Web.Services.AiTriageService>();
+        if (aiTriage == null)
+        {
+            TempData["Error"] = "AI Triage service is not registered.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        // Find open tickets without a current Pending recommendation
+        var openTickets = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .Select(t => new { t.Id, t.Title, t.Description, t.BranchId })
+            .ToListAsync();
+
+        var pendingTicketIds = await _context.AiRecommendations
+            .Where(r => r.Status == "Pending")
+            .Select(r => r.TicketId)
+            .Distinct()
+            .ToListAsync();
+
+        var toProcess = openTickets
+            .Where(t => !pendingTicketIds.Contains(t.Id))
+            .ToList();
+
+        if (toProcess.Count == 0)
+        {
+            TempData["Success"] = "All open tickets already have a pending AI recommendation.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        // Fire-and-forget — triage runs in background via IServiceScopeFactory
+        _ = Task.Run(async () =>
+        {
+            foreach (var t in toProcess)
+                await aiTriage.TriageAndSaveAsync(t.Id, t.Title, t.Description ?? string.Empty, t.BranchId);
+        });
+
+        TempData["Success"] = $"Batch triage started for {toProcess.Count} ticket(s). Results will appear shortly.";
+        return RedirectToAction(nameof(AiDashboard));
     }
 }

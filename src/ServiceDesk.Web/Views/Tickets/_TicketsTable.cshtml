@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Html
 @using ServiceDesk.Core.Enums
 @using ServiceDesk.Core.Models
+@using ServiceDesk.Web.Services
 
 @{
     var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
@@ -79,7 +80,20 @@
                         }
                     </td>
                     <td>@ticket.Category.GetDisplayName()</td>
-                    <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
+                    <td>
+                        <span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span>
+                        @{
+                            var slaRisks = ViewBag.SlaRisks as System.Collections.Generic.Dictionary<int, SlaRiskLevel>;
+                            if (slaRisks != null && slaRisks.TryGetValue(ticket.Id, out var slaR) && slaR != SlaRiskLevel.None)
+                            {
+                                <span class="badge bg-@SlaRiskService.RiskBadgeClass(slaR) ms-1"
+                                      title="SLA: @SlaRiskService.RiskLabel(slaR)">
+                                    <i class="bi bi-clock-history"></i>
+                                    @SlaRiskService.RiskLabel(slaR)
+                                </span>
+                            }
+                        }
+                    </td>
                     <td>
                         <div class="dropdown inline-edit-dropdown">
                             <span class="badge badge-@ticket.Status.ToString().ToLower() inline-edit-badge"

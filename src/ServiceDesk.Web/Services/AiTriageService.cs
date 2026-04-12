@@ -98,6 +98,17 @@ public class AiTriageService
         Enum.TryParse<TicketCategory>(catPred.PredictedLabel, out var cat);
         Enum.TryParse<TicketPriority>(priPred.PredictedLabel, out var pri);
 
+        // ── Sentiment / urgency boost ─────────────────────────────────────────
+        var boostedPri = SentimentService.GetBoostPriority(title, description, pri);
+        if (boostedPri.HasValue)
+        {
+            _logger.LogInformation(
+                "[AiTriage] Urgency detected — boosting priority {From} → {To}",
+                pri, boostedPri.Value);
+            pri      = boostedPri.Value;
+            priScore = Math.Max(priScore, 0.72f); // ensure boosted priority passes threshold
+        }
+
         return new TriageResult(cat, catScore, pri, priScore);
     }
 

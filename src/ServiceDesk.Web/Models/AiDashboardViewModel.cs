@@ -27,13 +27,9 @@ public class AiDashboardViewModel
     public int TotalTrainingTickets { get; set; }
 
     // ── Confidence bands (count of recs in each band) ─────────────────────────
-    /// <summary>Recommendations where max(cat, pri) confidence &lt; 50%.</summary>
     public int ConfUnder50 { get; set; }
-    /// <summary>50–64%.</summary>
     public int Conf50To65 { get; set; }
-    /// <summary>65–79%.</summary>
     public int Conf65To80 { get; set; }
-    /// <summary>80% and above.</summary>
     public int ConfOver80 { get; set; }
 
     // ── Category breakdown ────────────────────────────────────────────────────
@@ -47,6 +43,32 @@ public class AiDashboardViewModel
 
     // ── Recent recommendations (last 50) ─────────────────────────────────────
     public List<AiRecentRecRow> RecentRecs { get; set; } = new();
+
+    // ── Accuracy tracking ─────────────────────────────────────────────────────
+    /// <summary>
+    /// Among Approved recs where the ticket is now resolved/closed,
+    /// how many still have the category matching what the AI suggested.
+    /// </summary>
+    public int AccuracyCategoryCorrect { get; set; }
+    public int AccuracyCategoryTotal { get; set; }
+    public int AccuracyPriorityCorrect { get; set; }
+    public int AccuracyPriorityTotal { get; set; }
+
+    public double CategoryAccuracyRate => AccuracyCategoryTotal > 0
+        ? Math.Round((double)AccuracyCategoryCorrect / AccuracyCategoryTotal * 100, 1) : 0;
+    public double PriorityAccuracyRate => AccuracyPriorityTotal > 0
+        ? Math.Round((double)AccuracyPriorityCorrect / AccuracyPriorityTotal * 100, 1) : 0;
+
+    // ── Category gap detection ────────────────────────────────────────────────
+    /// <summary>
+    /// Ticket clusters from low-confidence (&lt;50%) recommendations.
+    /// Each cluster represents a potential missing category or sub-category.
+    /// </summary>
+    public List<AiCategoryGapCluster> CategoryGaps { get; set; } = new();
+
+    // ── Batch retriage ────────────────────────────────────────────────────────
+    /// <summary>Count of open tickets with no active AI recommendation.</summary>
+    public int TicketsAwaitingTriage { get; set; }
 }
 
 public class AiCategoryStat
@@ -74,4 +96,14 @@ public class AiRecentRecRow
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
     public string? ReviewedBy { get; set; }
+}
+
+public class AiCategoryGapCluster
+{
+    /// <summary>The most frequent keyword in this low-confidence ticket cluster.</summary>
+    public string KeyTerm { get; set; } = string.Empty;
+    /// <summary>Number of low-confidence tickets containing this term.</summary>
+    public int TicketCount { get; set; }
+    /// <summary>Sample ticket IDs and titles (up to 3).</summary>
+    public List<(int Id, string Title)> Samples { get; set; } = new();
 }

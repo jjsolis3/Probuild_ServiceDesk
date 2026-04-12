@@ -66,6 +66,12 @@ builder.Services.AddHttpClient("Ollama", c =>
     c.Timeout = TimeSpan.FromSeconds(120);
 });
 
+// Register TF-IDF ticket similarity engine (singleton — builds corpus in memory)
+builder.Services.AddSingleton<TicketSimilarityService>();
+
+// Register SLA breach-risk calculator (singleton — caches resolution baselines)
+builder.Services.AddSingleton<SlaRiskService>();
+
 var app = builder.Build();
 
 // Apply incremental schema upgrades then seed reference data

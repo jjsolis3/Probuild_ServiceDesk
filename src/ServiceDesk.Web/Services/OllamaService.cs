@@ -72,6 +72,31 @@ public class OllamaService
         return await GenerateAsync(prompt, ct);
     }
 
+    /// <summary>
+    /// Summarizes the full ticket thread (description + agent notes) into a concise paragraph.
+    /// Returns null when Ollama is disabled or the server is unavailable.
+    /// </summary>
+    public async Task<string?> SummarizeThreadAsync(
+        string title,
+        string description,
+        IEnumerable<string> noteContents,
+        CancellationToken ct = default)
+    {
+        var notes = noteContents?.ToList() ?? [];
+        var noteBlock = notes.Count > 0
+            ? "\n\nAgent notes (chronological):\n" + string.Join("\n---\n", notes.Select((n, i) => $"[{i + 1}] {n}"))
+            : string.Empty;
+
+        var prompt =
+            $"You are an IT help desk assistant. Summarize the following support ticket " +
+            $"thread in 3-5 sentences, covering the original issue, any troubleshooting " +
+            $"steps taken, and the current state or resolution. Be concise and factual.\n\n" +
+            $"Title: {title}\n\nOriginal description:\n{description}" +
+            noteBlock;
+
+        return await GenerateAsync(prompt, ct);
+    }
+
     // ── Core generation ──────────────────────────────────────────────────────
 
     private async Task<string?> GenerateAsync(string prompt, CancellationToken ct)
