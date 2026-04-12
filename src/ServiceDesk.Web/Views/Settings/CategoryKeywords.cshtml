@@ -45,7 +45,7 @@
     </div>
 }
 
-<div class="row g-4">
+<div class="row g-4 align-items-start">
 @foreach (var cat in Enum.GetValues<TicketCategory>())
 {
     var (icon, color) = catStyle.TryGetValue(cat, out var s) ? s : ("bi-tag", "#6c757d");
