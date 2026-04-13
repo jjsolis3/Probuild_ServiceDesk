@@ -146,6 +146,21 @@
                         <span class="opacity-75 ms-1">(@slaLabel SLA)</span>
                     </span>
                 }
+                @if (Model.IsEscalated)
+                {
+                    <span class="badge bg-danger text-white"
+                          title="Escalated @(Model.EscalatedAt.HasValue ? Model.EscalatedAt.Value.ToString("MMM dd, yyyy h:mm tt") : ""): @(Model.EscalationReason ?? "")">
+                        <i class="bi bi-exclamation-octagon-fill me-1"></i>ESCALATED
+                    </span>
+                }
+                @if (isOpen && !Model.IsEscalated)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0"
+                            data-bs-toggle="modal" data-bs-target="#escalateModal"
+                            title="Escalate this ticket">
+                        <i class="bi bi-arrow-up-circle me-1"></i>Escalate
+                    </button>
+                }
             </div>
         </div>
 
@@ -662,6 +677,50 @@
 </form>
 
 <!-- Toast for comment post feedback -->
+<!-- ── Escalate Ticket Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="escalateModal" tabindex="-1" aria-labelledby="escalateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="escalateModalLabel">
+                    <i class="bi bi-exclamation-octagon-fill me-2"></i>Escalate Ticket #@Model.Id
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Escalating will raise the ticket priority and notify the assigned agent and requester.
+                    The ticket will be flagged as <strong>ESCALATED</strong> in the audit trail.
+                </p>
+                <div class="mb-3">
+                    <label for="escalateReason" class="form-label fw-semibold">Escalation Reason <span class="text-danger">*</span></label>
+                    <textarea id="escalateReason" class="form-control" rows="3"
+                              placeholder="Briefly explain why this ticket needs to be escalated…" maxlength="500"></textarea>
+                    <div id="escalateReasonError" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-circle me-1"></i>Please provide a reason for escalation.
+                    </div>
+                </div>
+                <div class="alert alert-warning small py-2 mb-0">
+                    <i class="bi bi-arrow-up-circle me-1"></i>
+                    Current priority: <strong>@Model.Priority</strong> →
+                    will be raised to <strong>@(Model.Priority switch {
+                        ServiceDesk.Core.Enums.TicketPriority.Low    => "High",
+                        ServiceDesk.Core.Enums.TicketPriority.Medium => "High",
+                        ServiceDesk.Core.Enums.TicketPriority.High   => "Critical",
+                        _                                             => "Critical"
+                    })</strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="btnConfirmEscalate" class="btn btn-danger">
+                    <i class="bi bi-exclamation-octagon me-1"></i>Confirm Escalation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="commentToast" class="toast align-items-center text-bg-success border-0" role="alert">
         <div class="d-flex">
@@ -1193,6 +1252,54 @@ function filterSelectOptions(input) {
                     if (tabs) tabs.parentNode.insertBefore(banner, tabs);
                 } else {
                     alert(data.error || 'Summarization failed. Ensure Ollama is running.');
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
+})();
+</script>
+
+<script>
+// ── Ticket Escalation modal ───────────────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnConfirmEscalate');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var reason = (document.getElementById('escalateReason')?.value || '').trim();
+        if (!reason) {
+            document.getElementById('escalateReasonError').style.display = '';
+            return;
+        }
+        document.getElementById('escalateReasonError').style.display = 'none';
+
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Escalating…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+        fd.append('reason', reason);
+
+        fetch('/Tickets/EscalateTicket/' + ticketId, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    // Close modal, reload page to reflect new state
+                    var modalEl = document.getElementById('escalateModal');
+                    bootstrap.Modal.getInstance(modalEl)?.hide();
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert(data.error || 'Escalation failed.');
                 }
             })
             .catch(function() {

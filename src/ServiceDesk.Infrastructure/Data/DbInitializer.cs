@@ -651,6 +651,49 @@ public static class DbInitializer
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                     VALUES ('OllamaModel', 'phi3', 'AI Triage',
                             'Ollama model name to use for text generation (e.g. phi3, llama3.1, mistral)');");
+
+            // 23. Add escalation columns to Tickets table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'IsEscalated'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD IsEscalated       BIT           NOT NULL DEFAULT 0;
+                    ALTER TABLE dbo.Tickets ADD EscalationReason  NVARCHAR(500) NULL;
+                    ALTER TABLE dbo.Tickets ADD EscalatedAt       DATETIME2     NULL;
+                    ALTER TABLE dbo.Tickets ADD EscalatedById     INT           NULL
+                        CONSTRAINT FK_Tickets_EscalatedBy
+                        REFERENCES dbo.Employees(Id)
+                        ON DELETE SET NULL;
+                END");
+
+            // 24. Seed notification-trigger AppSettings keys
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnTicketCreated')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnTicketCreated', 'true', 'Notifications',
+                            'Send confirmation email to the requester when a new ticket is created');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnStatusChange')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnStatusChange', 'true', 'Notifications',
+                            'Send email to the requester when the ticket status changes');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnAssignment')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnAssignment', 'true', 'Notifications',
+                            'Send email to the assigned agent when a ticket is assigned to them');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnNoteAdded')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnNoteAdded', 'true', 'Notifications',
+                            'Send email to the requester when a public comment is added to their ticket');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnEscalation')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnEscalation', 'true', 'Notifications',
+                            'Send email to the assigned agent and admin when a ticket is escalated');"  );
         }
         catch (Exception ex)
         {

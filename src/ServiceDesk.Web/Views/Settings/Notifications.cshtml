@@ -1,0 +1,133 @@
+@model List<ServiceDesk.Core.Models.AppSetting>
+@{
+    ViewData["Title"] = "Notification Settings";
+    bool IsOn(string key) => Model.FirstOrDefault(s => s.Key == key)?.Value == "true";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">Notifications</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-bell text-primary me-2"></i>Notification Settings</h1>
+        <p class="text-muted small mt-1 mb-0">
+            Control which events trigger outbound emails. Emails are sent via the configured Gmail integration.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2" role="alert">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4 align-items-start">
+    <!-- Toggle Card -->
+    <div class="col-lg-8">
+        <form asp-action="Notifications" method="post">
+            @Html.AntiForgeryToken()
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom py-3">
+                    <h5 class="mb-0"><i class="bi bi-toggles me-2 text-primary"></i>Email Trigger Rules</h5>
+                </div>
+                <div class="card-body p-0">
+
+                    @{
+                        var triggers = new[]
+                        {
+                            ("NotifyOnTicketCreated",
+                             "bi-plus-circle text-success",
+                             "Ticket Created — Requester Confirmation",
+                             "Send a confirmation email to the requester when their ticket is successfully created.",
+                             "Requester"),
+                            ("NotifyOnStatusChange",
+                             "bi-arrow-repeat text-primary",
+                             "Status Change — Requester Update",
+                             "Notify the requester whenever the ticket status changes (e.g. Open → In Progress, In Progress → Resolved).",
+                             "Requester"),
+                            ("NotifyOnAssignment",
+                             "bi-person-check text-info",
+                             "Ticket Assigned — Agent Notification",
+                             "Notify the assigned IT agent when a ticket is assigned or re-assigned to them.",
+                             "Agent"),
+                            ("NotifyOnNoteAdded",
+                             "bi-chat-left-text text-warning",
+                             "Public Comment Added — Requester Update",
+                             "Notify the requester when an IT agent adds a public comment or reply to their ticket. Internal notes are never sent.",
+                             "Requester"),
+                            ("NotifyOnEscalation",
+                             "bi-exclamation-octagon text-danger",
+                             "Ticket Escalated — Agent &amp; Requester Alert",
+                             "Send an alert to both the assigned agent and the requester when a ticket is escalated.",
+                             "Agent &amp; Requester"),
+                        };
+                    }
+
+                    @foreach (var (key, icon, label, desc, audience) in triggers)
+                    {
+                        var isOn = IsOn(key);
+                        <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="rounded-circle bg-light p-2 d-flex" style="width:42px;height:42px;align-items:center;justify-content:center;">
+                                    <i class="bi @icon fs-5"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold small">@Html.Raw(label)</div>
+                                    <div class="text-muted" style="font-size:0.78rem;">@desc</div>
+                                    <div class="mt-1">
+                                        <span class="badge bg-light text-dark border" style="font-size:0.7rem;">
+                                            <i class="bi bi-people me-1"></i>@Html.Raw(audience)
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-check form-switch ms-4 flex-shrink-0" style="min-width:60px;">
+                                <input class="form-check-input" type="checkbox"
+                                       name="@key" id="@key"
+                                       style="width:2.5rem;height:1.25rem;"
+                                       @(isOn ? "checked" : "")>
+                                <label class="form-check-label visually-hidden" for="@key">@Html.Raw(label)</label>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer bg-white border-top d-flex justify-content-end py-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save me-1"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle text-primary me-1"></i>How It Works</h6>
+                <ul class="small text-muted ps-3 mb-0">
+                    <li class="mb-1">Emails use the Gmail account configured under <a asp-action="EmailConfig">Email Integration</a>.</li>
+                    <li class="mb-1">Email content is customizable via <a asp-action="EmailTemplates">Email Templates</a>.</li>
+                    <li class="mb-1">Internal notes are <strong>never</strong> emailed to requesters regardless of this setting.</li>
+                    <li>Disabling a trigger only suppresses future emails — historical notifications are not affected.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="card border-0 shadow-sm border-start border-4 border-warning">
+            <div class="card-body small">
+                <h6 class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Gmail Required</h6>
+                <p class="text-muted mb-0">
+                    Notifications are only sent when a Gmail account is connected and active.
+                    Configure it under <a asp-action="EmailConfig">Email Integration</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

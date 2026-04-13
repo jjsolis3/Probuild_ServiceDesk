@@ -511,26 +511,69 @@ public class TicketsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> QuickUpdate(int id, string field, string value)
     {
-        var ticket = await _context.Tickets.FindAsync(id);
+        var ticket = await _context.Tickets
+            .Include(t => t.SubmittedBy)
+            .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
-        var notifyAssignment = false;
+        var changedBy    = User.Identity?.Name ?? "Unknown";
+        var notifyAssignment   = false;
+        var notifyStatusChange = false;
+        TicketHistory? historyEntry = null;
 
         if (field == "status")
         {
             if (!Enum.TryParse<TicketStatus>(value, out var newStatus)) return BadRequest();
+            var oldStatus = ticket.Status;
             ticket.Status = newStatus;
             if (newStatus == TicketStatus.Resolved && ticket.ResolvedDate == null)
                 ticket.ResolvedDate = DateTime.UtcNow;
             if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
                 ticket.ClosedDate = DateTime.UtcNow;
+
+            if (oldStatus != newStatus)
+            {
+                historyEntry = new TicketHistory
+                {
+                    TicketId    = id,
+                    ChangedBy   = changedBy,
+                    FieldName   = "Status",
+                    OldValue    = oldStatus.ToString(),
+                    NewValue    = newStatus.ToString(),
+                    ChangedDate = DateTime.UtcNow,
+                };
+                notifyStatusChange = true;
+            }
         }
         else if (field == "assignee")
         {
             var prevAssigneeId = ticket.AssignedToId;
-            ticket.AssignedToId = string.IsNullOrEmpty(value) || value == "0" ? null : int.TryParse(value, out var empId) ? empId : (int?)null;
-            if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
-                notifyAssignment = true;
+            ticket.AssignedToId = string.IsNullOrEmpty(value) || value == "0"
+                ? null
+                : int.TryParse(value, out var empId) ? empId : (int?)null;
+
+            if (ticket.AssignedToId != prevAssigneeId)
+            {
+                var oldName = prevAssigneeId.HasValue
+                    ? (await _context.Employees.FindAsync(prevAssigneeId.Value))?.FullName ?? "Unknown"
+                    : "Unassigned";
+                var newName = ticket.AssignedToId.HasValue
+                    ? (await _context.Employees.FindAsync(ticket.AssignedToId.Value))?.FullName ?? "Unknown"
+                    : "Unassigned";
+
+                historyEntry = new TicketHistory
+                {
+                    TicketId    = id,
+                    ChangedBy   = changedBy,
+                    FieldName   = "Assigned To",
+                    OldValue    = oldName,
+                    NewValue    = newName,
+                    ChangedDate = DateTime.UtcNow,
+                };
+
+                if (ticket.AssignedToId != null)
+                    notifyAssignment = true;
+            }
         }
         else
         {
@@ -538,6 +581,8 @@ public class TicketsController : Controller
         }
 
         ticket.UpdatedDate = DateTime.UtcNow;
+        if (historyEntry != null)
+            _context.TicketHistory.Add(historyEntry);
         await _context.SaveChangesAsync();
 
         string? assigneeName = null;
@@ -554,6 +599,19 @@ public class TicketsController : Controller
                 {
                     var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
                     if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                }
+                catch { }
+            });
+
+        if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var t = await _context.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == id);
+                    if (t?.SubmittedBy?.Email != null)
+                        await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email,
+                            $"Status changed to: {t.Status}");
                 }
                 catch { }
             });
@@ -832,6 +890,82 @@ public class TicketsController : Controller
             .Select(r => new { r.Id, r.Title, r.Content, r.Category })
             .ToListAsync();
         return Json(responses);
+    }
+
+    // ── Ticket Escalation ────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EscalateTicket(int id, string reason)
+    {
+        var ticket = await _context.Tickets
+            .Include(t => t.SubmittedBy)
+            .Include(t => t.AssignedTo)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (ticket == null) return NotFound();
+
+        if (ticket.IsEscalated)
+            return Json(new { success = false, error = "Ticket is already escalated." });
+
+        // Resolve the escalating user's employee record for EscalatedById
+        var currentUser = User.Identity?.Name;
+        var escalatedByEmp = currentUser != null
+            ? await _context.Employees.FirstOrDefaultAsync(e => e.Email == currentUser)
+            : null;
+
+        var oldPriority = ticket.Priority;
+        // Bump priority: Medium→High, Low→High, High→Critical; Critical stays Critical
+        ticket.Priority = ticket.Priority switch
+        {
+            TicketPriority.Low    => TicketPriority.High,
+            TicketPriority.Medium => TicketPriority.High,
+            TicketPriority.High   => TicketPriority.Critical,
+            _                     => TicketPriority.Critical,
+        };
+        ticket.IsEscalated      = true;
+        ticket.EscalationReason = reason?.Trim();
+        ticket.EscalatedAt      = DateTime.UtcNow;
+        ticket.EscalatedById    = escalatedByEmp?.Id;
+        ticket.UpdatedDate      = DateTime.UtcNow;
+
+        // Log to audit trail
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = currentUser ?? "Unknown",
+            FieldName   = "Escalation",
+            OldValue    = $"Priority: {oldPriority}",
+            NewValue    = $"ESCALATED — Priority: {ticket.Priority} — Reason: {ticket.EscalationReason ?? "None"}",
+            ChangedDate = DateTime.UtcNow,
+        });
+
+        await _context.SaveChangesAsync();
+
+        // Fire-and-forget notification
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var t = await _context.Tickets
+                    .Include(x => x.SubmittedBy)
+                    .Include(x => x.AssignedTo)
+                    .FirstOrDefaultAsync(x => x.Id == id);
+                if (t == null) return;
+
+                var msg = $"Ticket has been escalated to {t.Priority} priority. Reason: {t.EscalationReason ?? "Not specified"}";
+
+                // Notify assignee
+                if (t.AssignedTo?.Email != null)
+                    await _emailService.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
+
+                // Notify requester
+                if (t.SubmittedBy?.Email != null)
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+            }
+            catch { }
+        });
+
+        return Json(new { success = true, priority = ticket.Priority.ToString() });
     }
 
     // ── AI Triage endpoints ──────────────────────────────────────────────────

@@ -97,6 +97,18 @@ public class Ticket
     public ICollection<TicketAttachment> Attachments { get; set; } = new List<TicketAttachment>();
     public ICollection<TicketHistory> History { get; set; } = new List<TicketHistory>();
 
+    // ── Escalation ────────────────────────────────────────────────────────────
+    /// <summary>True once an agent has manually escalated this ticket.</summary>
+    public bool IsEscalated { get; set; }
+
+    [StringLength(500)]
+    public string? EscalationReason { get; set; }
+
+    public DateTime? EscalatedAt { get; set; }
+
+    public int? EscalatedById { get; set; }
+    public Employee? EscalatedBy { get; set; }
+
     public bool IsOverdue => DueDate.HasValue && DueDate.Value < DateTime.UtcNow
                              && Status != TicketStatus.Resolved
                              && Status != TicketStatus.Closed

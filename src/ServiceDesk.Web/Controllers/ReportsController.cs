@@ -214,4 +214,30 @@ public class ReportsController : Controller
 
         return Json(filtered);
     }
+
+    // API: Get tickets assigned to a specific agent for report table modals
+    [HttpGet]
+    public async Task<IActionResult> TicketsByAssignee(string assignee)
+    {
+        var tickets = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.AssignedTo != null)
+            .ToListAsync();
+
+        var filtered = tickets
+            .Where(t => (t.AssignedTo!.FirstName + " " + t.AssignedTo.LastName).Trim() == assignee)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = t.Category.GetDisplayName(),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToList();
+
+        return Json(filtered);
+    }
 }

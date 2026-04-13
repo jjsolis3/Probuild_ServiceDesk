@@ -1545,4 +1545,36 @@ public class SettingsController : Controller
         TempData["Success"] = $"Batch triage started for {toProcess.Count} ticket(s). Results will appear shortly.";
         return RedirectToAction(nameof(AiDashboard));
     }
+
+    // ==================== NOTIFICATION SETTINGS ====================
+
+    // GET: Settings/Notifications
+    public async Task<IActionResult> Notifications()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Notifications")
+            .OrderBy(s => s.Key)
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Notifications
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Notifications(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Notifications")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            // Checkboxes: present = true, absent = false
+            setting.Value = form.ContainsKey(setting.Key) ? "true" : "false";
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Notification settings saved.";
+        return RedirectToAction(nameof(Notifications));
+    }
 }

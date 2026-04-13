@@ -101,11 +101,23 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Returns true when a notification trigger key is enabled in AppSettings.
+    /// Defaults to true if the key has never been seeded (safe fallback).
+    /// </summary>
+    private async Task<bool> IsNotificationEnabled(string key)
+    {
+        var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == key);
+        return setting == null || setting.Value?.ToLower() == "true";
+    }
+
+    /// <summary>
     /// Sends a confirmation email when a new ticket is created from an inbound email.
     /// Includes the [#SS-XXXXX] reference so future replies thread correctly.
     /// </summary>
     public async Task SendTicketCreatedConfirmation(Ticket ticket, string recipientEmail, string recipientName)
     {
+        if (!await IsNotificationEnabled("NotifyOnTicketCreated")) return;
+
         var config = await GetActiveConfig();
         if (config == null)
         {
@@ -163,6 +175,7 @@ public class EmailNotificationService
     public async Task NotifyTicketAssigned(Ticket ticket)
     {
         if (ticket.AssignedTo == null) return;
+        if (!await IsNotificationEnabled("NotifyOnAssignment")) return;
 
         var config = await GetActiveConfig();
         if (config == null) return;
@@ -217,6 +230,11 @@ public class EmailNotificationService
     /// </summary>
     public async Task NotifyTicketUpdated(Ticket ticket, string recipientEmail, string? updateMessage = null)
     {
+        // Check the appropriate setting — escalation messages bypass the status-change gate
+        var isEscalation = updateMessage?.StartsWith("Ticket has been escalated") == true;
+        var settingKey   = isEscalation ? "NotifyOnEscalation" : "NotifyOnStatusChange";
+        if (!await IsNotificationEnabled(settingKey)) return;
+
         var config = await GetActiveConfig();
         if (config == null) return;
 
@@ -275,6 +293,8 @@ public class EmailNotificationService
     /// </summary>
     public async Task NotifyNoteAdded(Ticket ticket, TicketNote note, string recipientEmail)
     {
+        if (!await IsNotificationEnabled("NotifyOnNoteAdded")) return;
+
         var config = await GetActiveConfig();
         if (config == null) return;
 
