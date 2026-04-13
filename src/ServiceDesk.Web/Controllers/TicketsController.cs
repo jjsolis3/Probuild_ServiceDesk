@@ -1159,10 +1159,14 @@ public class TicketsController : Controller
     private async Task<List<ImportTicketRow>> ParseTicketImportAsync(string filePath)
     {
         using var reader = new System.IO.StreamReader(filePath, System.Text.Encoding.UTF8);
-        var headerLine = await reader.ReadLineAsync();
+        // Use RFC-4180-aware reader so multi-line quoted fields don't split into phantom rows
+        var headerLine = await ReadCsvRecordAsync(reader);
         if (string.IsNullOrWhiteSpace(headerLine)) return new List<ImportTicketRow>();
 
-        var delimiter = headerLine.Count(c => c == '\t') > 10 ? '\t' : ',';
+        // Detect delimiter by comparing count of tabs vs commas in header
+        int tabCount   = headerLine.Count(c => c == '\t');
+        int commaCount = headerLine.Count(c => c == ',');
+        var delimiter  = tabCount > commaCount ? '\t' : ',';
         var headers = SplitCsvLine(headerLine, delimiter);
         var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < headers.Count; i++)
@@ -1190,14 +1194,15 @@ public class TicketsController : Controller
 
         var preview = new List<ImportTicketRow>();
         int rowNum = 1;
-        string? line;
+        string? record;
 
-        while ((line = await reader.ReadLineAsync()) != null)
+        // ReadCsvRecordAsync handles RFC-4180 multi-line quoted fields
+        while ((record = await ReadCsvRecordAsync(reader)) != null)
         {
             rowNum++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (string.IsNullOrWhiteSpace(record)) continue;
 
-            var cols = SplitCsvLine(line, delimiter);
+            var cols = SplitCsvLine(record, delimiter);
             string Get(string name) =>
                 colIndex.TryGetValue(name, out var i) && i < cols.Count ? cols[i].Trim() : "";
 
@@ -1304,6 +1309,46 @@ public class TicketsController : Controller
         }
         result.Add(current.ToString());
         return result;
+    }
+
+    /// <summary>
+    /// Reads one logical CSV/TSV record from <paramref name="reader"/>.
+    /// Handles RFC-4180 multi-line quoted fields: if a line ends while inside a
+    /// quoted field the reader keeps consuming physical lines until the quote closes,
+    /// joining them with <c>\n</c> so the embedded newline is preserved in the value.
+    /// Returns <c>null</c> when the stream is exhausted.
+    /// </summary>
+    private static async Task<string?> ReadCsvRecordAsync(System.IO.StreamReader reader)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool firstLine = true;
+
+        string? line;
+        while ((line = await reader.ReadLineAsync()) != null)
+        {
+            if (!firstLine) sb.Append('\n');
+            sb.Append(line);
+            firstLine = false;
+
+            // Determine whether we are still inside a quoted field by scanning
+            // the accumulated buffer for unescaped quote characters.
+            bool inQuotes = false;
+            for (int i = 0; i < sb.Length; i++)
+            {
+                if (sb[i] == '"')
+                {
+                    // "" inside a quoted field is an escaped literal quote
+                    if (inQuotes && i + 1 < sb.Length && sb[i + 1] == '"')
+                        i++;          // skip the second quote of the escape pair
+                    else
+                        inQuotes = !inQuotes;
+                }
+            }
+
+            if (!inQuotes) break;  // record is complete — stop reading physical lines
+        }
+
+        return firstLine ? null : sb.ToString();
     }
 
     private static string ExtractEmail(string raw)
