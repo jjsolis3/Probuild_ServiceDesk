@@ -413,8 +413,23 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">Description</label>
-                        <textarea asp-for="Description" class="form-control" rows="6"></textarea>
-                        <span asp-validation-for="Description" class="text-danger small"></span>
+                        @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
+                        {
+                            @* Email-originated ticket: show rendered HTML, keep Description value via hidden input *@
+                            <input type="hidden" asp-for="Description" />
+                            <div class="border rounded overflow-hidden" style="min-height:120px;">
+                                <iframe srcdoc="@(_noteDocPrefix + Model.DescriptionHtml + _noteDocSuffix)"
+                                        style="width:100%;border:none;min-height:120px;max-height:600px;display:block;"
+                                        sandbox="allow-same-origin"
+                                        title="Email description"
+                                        onload="initEmailFrame(this)"></iframe>
+                            </div>
+                        }
+                        else
+                        {
+                            <textarea asp-for="Description" class="form-control" rows="6"></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        }
                     </div>
                     <div class="col-md-6">
                         <div class="row g-3">

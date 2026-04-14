@@ -1,4 +1,11 @@
 @model Ticket
+@{
+    var _mdPrefix = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+        + "body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}"
+        + "img{max-width:100%;height:auto;}a{color:#0d6efd;}"
+        + "</style></head><body>";
+    var _mdSuffix = "</body></html>";
+}
 
 <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
@@ -14,9 +21,22 @@
     <div class="col-md-7">
         <div class="card">
             <div class="card-header">Description</div>
-            <div class="card-body">
-                <p class="mb-0" style="white-space:pre-wrap; word-break:break-word;">@Model.Description</p>
-            </div>
+            @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
+            {
+                <div class="card-body p-0">
+                    <iframe srcdoc="@(_mdPrefix + Model.DescriptionHtml + _mdSuffix)"
+                            style="width:100%;border:none;min-height:150px;max-height:600px;display:block;"
+                            sandbox="allow-same-origin"
+                            title="Email description"
+                            onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;var h=d.body.scrollHeight;f.style.height=Math.min(600,Math.max(150,h))+'px';})(this)"></iframe>
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    <p class="mb-0" style="white-space:pre-wrap; word-break:break-word;">@Model.Description</p>
+                </div>
+            }
         </div>
         @if (!string.IsNullOrWhiteSpace(Model.ResolutionNotes))
         {
