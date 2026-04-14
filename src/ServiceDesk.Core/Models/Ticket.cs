@@ -53,6 +53,12 @@ public class Ticket
     [Display(Name = "Resolution Notes")]
     public string? ResolutionNotes { get; set; }
 
+    /// <summary>
+    /// Categorises how the ticket was resolved. Set when status changes to Resolved or Closed.
+    /// </summary>
+    [StringLength(100)]
+    public string? ResolutionType { get; set; }
+
     // Foreign keys
     [Required]
     [Display(Name = "Submitted By")]

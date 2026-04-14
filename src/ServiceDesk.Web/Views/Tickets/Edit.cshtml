@@ -153,6 +153,12 @@
                         <i class="bi bi-exclamation-octagon-fill me-1"></i>ESCALATED
                     </span>
                 }
+                @if (!string.IsNullOrEmpty(Model.ResolutionType))
+                {
+                    <span class="badge bg-success ms-1" title="Resolution Type">
+                        <i class="bi bi-check-circle me-1"></i>@Model.ResolutionType
+                    </span>
+                }
                 @if (isOpen && !Model.IsEscalated)
                 {
                     <button type="button" class="btn btn-sm btn-outline-danger py-0"
@@ -702,6 +708,53 @@
 </form>
 
 <!-- Toast for comment post feedback -->
+<!-- ── Resolution Modal ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="resolveModal" tabindex="-1" aria-labelledby="resolveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="resolveModalLabel">
+                    <i class="bi bi-check-circle me-2"></i>Resolve Ticket <span id="resolveModalStatusLabel" class="fw-normal opacity-75 small"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" id="btnResolveDismiss" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Resolution Type <span class="text-danger">*</span></label>
+                    <select id="resolveTypeSelect" class="form-select">
+                        <option value="">— Select a resolution type —</option>
+                        <option value="Resolved – Full Solution">Resolved – Full Solution</option>
+                        <option value="Resolved – Workaround">Resolved – Workaround</option>
+                        <option value="Resolved – Not Reproducible">Resolved – Not Reproducible</option>
+                        <option value="Resolved – By Design">Resolved – By Design</option>
+                        <option value="Resolved – Informational">Resolved – Informational</option>
+                        <option value="Resolved – Third Party">Resolved – Third Party</option>
+                        <option value="Resolved – User Cancelled">Resolved – User Cancelled</option>
+                        <option value="Resolved – Duplicate">Resolved – Duplicate</option>
+                        <option value="Resolved – No Action Required">Resolved – No Action Required</option>
+                    </select>
+                    <div id="resolveTypeError" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-circle me-1"></i>Please select a resolution type.
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        Resolution Notes
+                        <span class="badge bg-secondary fw-normal ms-1">Internal — not emailed to user</span>
+                    </label>
+                    <textarea id="resolveNotesTextarea" class="form-control" rows="4"
+                              placeholder="Describe what resolved this ticket, any steps taken, workarounds applied, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="btnResolveCancelModal">Cancel</button>
+                <button type="button" class="btn btn-success" id="btnResolveConfirm">
+                    <i class="bi bi-check-circle me-1"></i>Confirm Resolution
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- ── Escalate Ticket Modal ─────────────────────────────────────────────── -->
 <div class="modal fade" id="escalateModal" tabindex="-1" aria-labelledby="escalateModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -1293,6 +1346,90 @@ function filterSelectOptions(input) {
                 }
             })
             .catch(function() {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
+})();
+</script>
+
+<script>
+// ── Ticket Resolution modal ───────────────────────────────────────────────
+(function () {
+    var resolveModalEl = document.getElementById('resolveModal');
+    if (!resolveModalEl) return;
+
+    var resolveModal   = new bootstrap.Modal(resolveModalEl, { backdrop: 'static', keyboard: false });
+    var statusSelect   = document.getElementById('statusSelect');
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId       = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var pendingStatus  = '';
+    var previousStatus = statusSelect ? statusSelect.value : '';
+
+    // Intercept status dropdown — show modal when user picks Resolved or Closed
+    if (statusSelect) {
+        statusSelect.addEventListener('change', function () {
+            var val = this.value;
+            if (val === 'Resolved' || val === 'Closed') {
+                pendingStatus = val;
+                document.getElementById('resolveModalStatusLabel').textContent = '— ' + val;
+                document.getElementById('resolveTypeSelect').value = '';
+                document.getElementById('resolveNotesTextarea').value = '';
+                document.getElementById('resolveTypeError').style.display = 'none';
+                // Revert dropdown until modal is confirmed
+                this.value = previousStatus;
+                resolveModal.show();
+            } else {
+                previousStatus = val;
+            }
+        });
+        resolveModalEl.addEventListener('hidden.bs.modal', function () {
+            // If modal dismissed without confirming, keep status reverted
+        });
+    }
+
+    document.getElementById('btnResolveDismiss')?.addEventListener('click', function () {
+        resolveModal.hide();
+    });
+    document.getElementById('btnResolveCancelModal')?.addEventListener('click', function () {
+        resolveModal.hide();
+    });
+
+    document.getElementById('btnResolveConfirm')?.addEventListener('click', function () {
+        var resType  = document.getElementById('resolveTypeSelect').value;
+        var resNotes = (document.getElementById('resolveNotesTextarea')?.value || '').trim();
+
+        if (!resType) {
+            document.getElementById('resolveTypeError').style.display = '';
+            return;
+        }
+        document.getElementById('resolveTypeError').style.display = 'none';
+
+        var btn = this;
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Resolving…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+        fd.append('resolutionType', resType);
+        fd.append('resolutionNotes', resNotes);
+        fd.append('targetStatus', pendingStatus || 'Resolved');
+
+        fetch('/Tickets/ResolveTicket/' + ticketId, { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    resolveModal.hide();
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert(data.error || 'Resolution failed. Please try again.');
+                }
+            })
+            .catch(function () {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
                 alert('Failed to reach the server. Please try again.');

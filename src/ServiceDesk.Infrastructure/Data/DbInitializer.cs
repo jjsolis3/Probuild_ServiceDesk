@@ -668,7 +668,17 @@ public static class DbInitializer
                         ON DELETE SET NULL;
                 END");
 
-            // 24. Seed notification-trigger AppSettings keys
+            // 24. Add ResolutionType column to Tickets table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'ResolutionType'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD ResolutionType NVARCHAR(100) NULL;
+                END");
+
+            // 25. Seed notification-trigger AppSettings keys
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnTicketCreated')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)

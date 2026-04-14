@@ -968,6 +968,88 @@ public class TicketsController : Controller
         return Json(new { success = true, priority = ticket.Priority.ToString() });
     }
 
+    // ── Ticket Resolution ─────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResolveTicket(int id, string resolutionType, string? resolutionNotes, string? targetStatus)
+    {
+        var ticket = await _context.Tickets
+            .Include(t => t.SubmittedBy)
+            .Include(t => t.AssignedTo)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (ticket == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(resolutionType))
+            return Json(new { success = false, error = "Resolution type is required." });
+
+        var changedBy = User.Identity?.Name ?? "Unknown";
+        var oldStatus = ticket.Status;
+
+        if (!Enum.TryParse<TicketStatus>(targetStatus ?? "Resolved", out var newStatus))
+            newStatus = TicketStatus.Resolved;
+
+        ticket.Status         = newStatus;
+        ticket.ResolutionType = resolutionType.Trim();
+        ticket.UpdatedDate    = DateTime.UtcNow;
+
+        if (!string.IsNullOrWhiteSpace(resolutionNotes))
+            ticket.ResolutionNotes = resolutionNotes.Trim();
+
+        if (ticket.ResolvedDate == null)
+            ticket.ResolvedDate = DateTime.UtcNow;
+        if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
+            ticket.ClosedDate = DateTime.UtcNow;
+
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = changedBy,
+            FieldName   = "Status",
+            OldValue    = oldStatus.ToString(),
+            NewValue    = newStatus.ToString(),
+            ChangedDate = DateTime.UtcNow,
+        });
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = changedBy,
+            FieldName   = "Resolution Type",
+            OldValue    = string.Empty,
+            NewValue    = resolutionType.Trim(),
+            ChangedDate = DateTime.UtcNow,
+        });
+        if (!string.IsNullOrWhiteSpace(resolutionNotes))
+        {
+            _context.TicketHistory.Add(new TicketHistory
+            {
+                TicketId    = id,
+                ChangedBy   = changedBy,
+                FieldName   = "Resolution Notes",
+                OldValue    = string.Empty,
+                NewValue    = resolutionNotes.Trim(),
+                ChangedDate = DateTime.UtcNow,
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        // Fire status-change notification (resolution notes are internal — not emailed)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var t = ticket; // capture for closure
+                var msg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
+                if (t.SubmittedBy?.Email != null)
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+            }
+            catch { /* swallow — notification is non-critical */ }
+        });
+
+        return Json(new { success = true });
+    }
+
     // ── AI Triage endpoints ──────────────────────────────────────────────────
 
     /// <summary>
