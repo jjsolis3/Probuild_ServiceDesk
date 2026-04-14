@@ -82,6 +82,7 @@ public class PortalController : Controller
             PageSize       = pageSize
         };
 
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "MyTickets";
         return View(model);
     }
@@ -99,7 +100,7 @@ public class PortalController : Controller
         ViewBag.Services = new SelectList(
             await _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name).ToListAsync(),
             "Id", "Name");
-
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "Submit";
         return View(new PortalSubmitTicketViewModel());
     }
@@ -170,6 +171,7 @@ public class PortalController : Controller
         ViewBag.Services = new SelectList(
             await _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name).ToListAsync(),
             "Id", "Name");
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "Submit";
         return View(model);
     }
@@ -200,6 +202,7 @@ public class PortalController : Controller
             CurrentUser = portalUser
         };
 
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "MyTickets";
         return View(model);
     }
@@ -274,7 +277,7 @@ public class PortalController : Controller
         }
 
         if (category.HasValue)
-            query = query.Where(a => (int)a.Category == category.Value);
+            query = query.Where(a => a.Category == category.Value);
 
         var articles = await query
             .OrderByDescending(a => a.CreatedDate)
@@ -282,11 +285,33 @@ public class PortalController : Controller
 
         ViewBag.SearchQuery = q;
         ViewBag.SelectedCategory = category;
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "KB";
         return View(articles);
     }
 
     // -------------------------------------------------------
+    private async Task LoadCategoryViewBagAsync()
+    {
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+            ViewBag.CategorySelectList = new Microsoft.AspNetCore.Mvc.Rendering.SelectList(cats, "Id", "Name");
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+            ViewBag.CategorySelectList = new Microsoft.AspNetCore.Mvc.Rendering.SelectList(cats, "Id", "Name");
+        }
+    }
+
     private async Task<ServiceDesk.Core.Models.PortalUser?> GetCurrentPortalUserAsync()
     {
         var userId = User.FindFirstValue("UserId");

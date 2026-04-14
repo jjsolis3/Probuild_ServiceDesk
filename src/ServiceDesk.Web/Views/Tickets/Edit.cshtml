@@ -55,7 +55,7 @@
             <!-- Category -->
             <div class="ticket-header-field">
                 <label class="ticket-header-label">Category</label>
-                <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
+                <select asp-for="Category" asp-items="@ViewBag.CategorySelectList" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
             </div>
 
             <!-- Sub-Category -->
@@ -193,7 +193,8 @@
                         <div class="d-flex flex-wrap gap-3 small mb-2">
                             @if (aiRec.SuggestedCategory.HasValue)
                             {
-                                var catName = ((ServiceDesk.Core.Enums.TicketCategory)aiRec.SuggestedCategory.Value).ToString();
+                                var aiCatById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
+                                var catName = aiCatById.TryGetValue(aiRec.SuggestedCategory.Value, out var aiCn) ? aiCn : aiRec.SuggestedCategory.Value.ToString();
                                 var catPct  = (int)(aiRec.CategoryConfidence * 100);
                                 <span>
                                     <i class="bi bi-tag me-1 text-primary"></i>
@@ -1371,9 +1372,10 @@ function filterSelectOptions(input) {
     if (statusSelect) {
         statusSelect.addEventListener('change', function () {
             var val = this.value;
-            if (val === 'Resolved' || val === 'Closed') {
-                pendingStatus = val;
-                document.getElementById('resolveModalStatusLabel').textContent = '— ' + val;
+            var selectedText = (this.options[this.selectedIndex] ? this.options[this.selectedIndex].text : '').trim();
+            if (selectedText === 'Resolved' || selectedText === 'Closed') {
+                pendingStatus = selectedText;  // must be text ("Resolved"/"Closed") for Enum.TryParse in controller
+                document.getElementById('resolveModalStatusLabel').textContent = '— ' + selectedText;
                 document.getElementById('resolveTypeSelect').value = '';
                 document.getElementById('resolveNotesTextarea').value = '';
                 document.getElementById('resolveTypeError').style.display = 'none';

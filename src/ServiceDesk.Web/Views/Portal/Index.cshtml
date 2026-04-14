@@ -3,6 +3,7 @@
     ViewData["Title"] = "My Support Tickets";
     Layout = "_PortalLayout";
 
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
     var sf = Model.StatusFilter?.ToLower();
 
     string KpiCardClass(string key) =>
@@ -145,7 +146,7 @@
                                 </div>
                                 <div class="fw-semibold mb-1">@ticket.Title</div>
                                 <div class="text-muted small">
-                                    <i class="fas fa-tag me-1"></i>@ticket.Category.GetDisplayName()
+                                    <i class="fas fa-tag me-1"></i>@(catById.TryGetValue(ticket.Category, out var catName) ? catName : $"Category {ticket.Category}")
                                     &nbsp;·&nbsp;
                                     <i class="fas fa-flag me-1"></i>@ticket.Priority
                                     @if (ticket.AssignedTo != null)

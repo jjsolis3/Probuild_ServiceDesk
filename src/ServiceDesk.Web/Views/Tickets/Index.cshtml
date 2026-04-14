@@ -46,7 +46,7 @@
 <!-- Filters -->
 @{
     var selStatuses    = (TicketStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<TicketStatus>());
-    var selCategories  = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selCategories  = (int[])(ViewBag.SelectedCategories ?? Array.Empty<int>());
     var selPriorities  = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
     var selAssignees   = (int[])(ViewBag.SelectedAssigneeIds  ?? Array.Empty<int>());
     var selRequesters  = (int[])(ViewBag.SelectedRequesterIds ?? Array.Empty<int>());
@@ -102,12 +102,12 @@
                     <span class="filter-label">@FilterLabel("Category", "Categories", selCategories.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
-                    @foreach (var c in Enum.GetValues<TicketCategory>())
+                    @foreach (var c in (ViewBag.Categories as IEnumerable<dynamic> ?? []))
                     {
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="categories"
-                                   value="@c" id="fc_@c" @(selCategories.Contains(c) ? "checked" : "")>
-                            <label class="form-check-label small" for="fc_@c">@c.GetDisplayName()</label>
+                                   value="@c.Id" id="fc_@c.Id" @(selCategories.Contains((int)c.Id) ? "checked" : "")>
+                            <label class="form-check-label small" for="fc_@c.Id">@c.Name</label>
                         </div>
                     }
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
@@ -396,11 +396,11 @@
                 All Categories
               </button>
               <div class="dropdown-menu p-2 shadow" style="min-width:200px;">
-                @foreach (var c in Enum.GetValues<TicketCategory>())
+                @foreach (var c in ViewBag.Categories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>())
                 {
                   <div class="form-check">
-                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c" id="sv_c_@c">
-                    <label class="form-check-label small" for="sv_c_@c">@c</label>
+                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c.Id" id="sv_c_@c.Id">
+                    <label class="form-check-label small" for="sv_c_@c.Id">@c.Name</label>
                   </div>
                 }
               </div>
@@ -566,7 +566,7 @@
     sortDir  = (string?)ViewBag.SortDir ?? "desc",
     pageSize = (int)(ViewBag.PageSize ?? 25),
     currentStatuses    = ((TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>())).Select(s => s.ToString()).ToArray(),
-    currentCategories  = ((TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>())).Select(c => c.ToString()).ToArray(),
+    currentCategories  = ((int[])(ViewBag.SelectedCategories ?? Array.Empty<int>())).Select(c => c.ToString()).ToArray(),
     currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray(),
     currentAssigneeIds = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>()),
     currentEmployeeId  = (int?)ViewBag.CurrentEmployeeId

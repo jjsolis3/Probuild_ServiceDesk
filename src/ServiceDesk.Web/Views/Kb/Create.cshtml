@@ -45,7 +45,7 @@
 
                 <div class="col-md-4">
                     <label asp-for="Category" class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
-                    <select asp-for="Category" asp-items="Html.GetEnumSelectList<ServiceDesk.Core.Enums.TicketCategory>()" class="form-select"></select>
+                    <select asp-for="Category" asp-items="@ViewBag.CategorySelectList" class="form-select"></select>
                 </div>
 
                 <div class="col-md-4 d-flex align-items-end">

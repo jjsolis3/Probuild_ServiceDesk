@@ -47,6 +47,7 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
 
     // Ticket categorisation
+    public DbSet<TicketCategoryEntry> TicketCategories => Set<TicketCategoryEntry>();
     public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
     public DbSet<CategoryKeyword> CategoryKeywords => Set<CategoryKeyword>();
 
@@ -303,6 +304,11 @@ public class ServiceDeskDbContext : DbContext
             .WithMany()
             .HasForeignKey(t => t.UserGroupId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // TicketCategoryEntry — no IDENTITY; IDs 0-7 are seeded as system categories
+        modelBuilder.Entity<TicketCategoryEntry>()
+            .Property(c => c.Id)
+            .ValueGeneratedNever();
 
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()

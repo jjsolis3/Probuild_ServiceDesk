@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
@@ -120,6 +121,18 @@ public class HomeController : Controller
             ExpiringWarranties = expiringWarranties,
             SlaBreachCount = slaBreachCount
         };
+
+        // Load category names for display in ticket tables
+        try
+        {
+            ViewBag.CategoriesById = await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            ViewBag.CategoriesById = Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
 
         return View(model);
     }

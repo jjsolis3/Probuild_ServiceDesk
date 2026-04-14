@@ -43,7 +43,7 @@ public class TicketsController : Controller
 
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(
-        TicketStatus[]?  statuses,    TicketCategory[]? categories,
+        TicketStatus[]?  statuses,    int[]? categories,
         TicketPriority[]? priorities, int[]? assigneeIds,
         int[]? requesterIds,
         int[]? branchIds, string[]? departments,
@@ -112,7 +112,7 @@ public class TicketsController : Controller
                 {
                     if (!string.IsNullOrEmpty(activeView.FilterCategories))
                         categories = activeView.FilterCategories.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                            .Select(c => Enum.TryParse<TicketCategory>(c.Trim(), out var v) ? v : (TicketCategory?)null)
+                            .Select(c => int.TryParse(c.Trim(), out var id) ? id : (int?)null)
                             .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
                     else if (activeView.FilterCategory != null)
                         categories = [activeView.FilterCategory.Value];
@@ -234,7 +234,7 @@ public class TicketsController : Controller
             .ToListAsync();
 
         ViewBag.SelectedStatuses     = statuses     ?? Array.Empty<TicketStatus>();
-        ViewBag.SelectedCategories   = categories   ?? Array.Empty<TicketCategory>();
+        ViewBag.SelectedCategories   = categories   ?? Array.Empty<int>();
         ViewBag.SelectedPriorities   = priorities   ?? Array.Empty<TicketPriority>();
         ViewBag.SelectedAssigneeIds  = assigneeIds  ?? Array.Empty<int>();
         ViewBag.SelectedRequesterIds = requesterIds ?? Array.Empty<int>();
@@ -287,6 +287,25 @@ public class TicketsController : Controller
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
 
+        // Load categories from DB for the filter dropdown
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.GetDisplayName() }).ToList();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
             .Select(b => new { b.Id, b.Name }).ToListAsync();
@@ -305,7 +324,7 @@ public class TicketsController : Controller
                      && t.Status != TicketStatus.Cancelled)
             .ToDictionary(
                 t => t.Id,
-                t => _slaRisk.GetRisk((int)t.Category, (int)t.Priority, t.CreatedDate));
+                t => _slaRisk.GetRisk(t.Category, (int)t.Priority, t.CreatedDate));
 
         return View(tickets);
     }
@@ -427,8 +446,8 @@ public class TicketsController : Controller
 
         // SLA risk for this specific ticket
         await _slaRisk.EnsureBaselinesBuiltAsync();
-        ViewBag.SlaRisk           = _slaRisk.GetRisk((int)ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
-        ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel((int)ticket.Category, (int)ticket.Priority);
+        ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
+        ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
 
         // Note count for the "Summarize Thread" button visibility check
         ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
@@ -868,9 +887,9 @@ public class TicketsController : Controller
         return RedirectToAction(nameof(Edit), new { id = resolvedPrimaryId });
     }
 
-    // GET: Tickets/SubCategories?category=SoftwareIssue — returns sub-categories for a given parent
+    // GET: Tickets/SubCategories?category=2 — returns sub-categories for a given parent category ID
     [HttpGet]
-    public async Task<IActionResult> SubCategories(TicketCategory category)
+    public async Task<IActionResult> SubCategories(int category)
     {
         var items = await _context.TicketSubCategories
             .Where(s => s.Category == category && s.IsActive)
@@ -1068,7 +1087,7 @@ public class TicketsController : Controller
 
         // Apply suggestions
         if (rec.SuggestedCategory.HasValue)
-            ticket.Category = (ServiceDesk.Core.Enums.TicketCategory)rec.SuggestedCategory.Value;
+            ticket.Category = rec.SuggestedCategory.Value;
         if (rec.SuggestedPriority.HasValue)
             ticket.Priority = (ServiceDesk.Core.Enums.TicketPriority)rec.SuggestedPriority.Value;
         if (rec.SuggestedAssigneeId.HasValue)
@@ -1603,17 +1622,18 @@ public class TicketsController : Controller
         _                            => TicketPriority.Medium
     };
 
-    private static TicketCategory MapCategory(string raw) =>
+    // MapCategory maps CSV category strings to category IDs (matching system category seeds)
+    private static int MapCategory(string raw) =>
         raw.ToLower().Replace(" ", "").Replace("-", "") switch
         {
-            "hardware"                       => TicketCategory.HardwareIssue,
+            "hardware"                       => 1, // HardwareIssue
             "software" or "applications"
-                or "application"             => TicketCategory.SoftwareIssue,
-            "network" or "networkissue"      => TicketCategory.NetworkIssue,
-            "employee" or "hr" or "people"   => TicketCategory.EmployeeIssue,
-            "security" or "securityincident" => TicketCategory.SecurityIncident,
-            "servicerequest" or "service"    => TicketCategory.ServiceRequest,
-            _                                => TicketCategory.Other
+                or "application"             => 2, // SoftwareIssue
+            "network" or "networkissue"      => 4, // NetworkIssue
+            "employee" or "hr" or "people"   => 3, // EmployeeIssue
+            "security" or "securityincident" => 5, // SecurityIncident
+            "servicerequest" or "service"    => 0, // ServiceRequest
+            _                                => 6  // Other
         };
 
     // ── Saved Views ──────────────────────────────────────────────────────────
@@ -1848,6 +1868,28 @@ public class TicketsController : Controller
 
     private void PopulateDropdowns(Ticket? ticket = null)
     {
+        // Load categories from DB; fall back to enum for system categories on fresh installs
+        List<(int Id, string Name)> cats;
+        try
+        {
+            cats = _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .AsEnumerable()
+                .Select(c => (c.Id, c.Name))
+                .ToList();
+        }
+        catch
+        {
+            cats = Enum.GetValues<TicketCategory>()
+                .Select(c => ((int)c, c.GetDisplayName()))
+                .ToList();
+        }
+        ViewBag.CategorySelectList = new SelectList(
+            cats.Select(c => new { c.Id, c.Name }), "Id", "Name", ticket?.Category);
+        ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+
         ViewBag.Employees = new SelectList(
             _context.Employees.Where(e => e.IsActive).OrderBy(e => e.LastName)
                 .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName }),

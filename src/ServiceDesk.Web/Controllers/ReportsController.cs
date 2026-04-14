@@ -30,6 +30,10 @@ public class ReportsController : Controller
             .Take(5000)
             .ToListAsync();
 
+        // Load categories from DB for display names; fall back to enum for IDs 0-7
+        var categoryLookup = await LoadCategoryLookupAsync();
+        ViewBag.CategoriesById = categoryLookup;
+
         var model = new TicketReportViewModel
         {
             TotalTickets = tickets.Count,
@@ -70,6 +74,24 @@ public class ReportsController : Controller
 
         return View(model);
     }
+
+    private async Task<Dictionary<int, string>> LoadCategoryLookupAsync()
+    {
+        try
+        {
+            return await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            // Table not yet created — fall back to enum
+            return Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+    }
+
+    private string CategoryName(int id, Dictionary<int, string> lookup) =>
+        lookup.TryGetValue(id, out var name) ? name : $"Category {id}";
 
     public async Task<IActionResult> Assets()
     {
@@ -145,7 +167,9 @@ public class ReportsController : Controller
             _ => query
         };
 
-        // Materialize with raw enum values first, then apply display names in memory
+        var catLookup = await LoadCategoryLookupAsync();
+
+        // Materialize with raw values first, then apply display names in memory
         var raw = await query
             .OrderByDescending(t => t.CreatedDate)
             .Select(t => new {
@@ -158,7 +182,7 @@ public class ReportsController : Controller
 
         return Json(raw.Select(t => new {
             t.Id, t.Title,
-            Category = t.Category.GetDisplayName(),
+            Category = CategoryName(t.Category, catLookup),
             Priority = t.Priority.GetDisplayName(),
             Status = t.Status.GetDisplayName(),
             t.SubmittedBy, t.AssignedTo, t.Created
@@ -166,34 +190,41 @@ public class ReportsController : Controller
     }
 
     // API: Get tickets by category for report table modals
+    // The `category` param is a numeric category ID (as string) e.g. "1"
     [HttpGet]
     public async Task<IActionResult> TicketsByCategory(string category)
     {
+        var catLookup = await LoadCategoryLookupAsync();
+
         var tickets = await _context.Tickets
             .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
             .ToListAsync();
 
-        var filtered = tickets
-            .Where(t => t.Category.ToString() == category)
+        // Support both numeric IDs ("1") and legacy enum names ("HardwareIssue")
+        var filtered = int.TryParse(category, out int catId)
+            ? tickets.Where(t => t.Category == catId)
+            : tickets.Where(t => Enum.TryParse<TicketCategory>(category, out var e) && t.Category == (int)e);
+
+        return Json(filtered
             .OrderByDescending(t => t.CreatedDate)
             .Select(t => new {
                 t.Id, t.Title,
-                Category = t.Category.GetDisplayName(),
+                Category = CategoryName(t.Category, catLookup),
                 Priority = t.Priority.GetDisplayName(),
                 Status   = t.Status.GetDisplayName(),
                 SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
                 AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
                 Created = t.CreatedDate.ToString("MMM dd, yyyy")
             })
-            .ToList();
-
-        return Json(filtered);
+            .ToList());
     }
 
     // API: Get tickets by priority for report table modals
     [HttpGet]
     public async Task<IActionResult> TicketsByPriority(string priority)
     {
+        var catLookup = await LoadCategoryLookupAsync();
+
         var tickets = await _context.Tickets
             .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
             .ToListAsync();
@@ -203,7 +234,7 @@ public class ReportsController : Controller
             .OrderByDescending(t => t.CreatedDate)
             .Select(t => new {
                 t.Id, t.Title,
-                Category = t.Category.GetDisplayName(),
+                Category = CategoryName(t.Category, catLookup),
                 Priority = t.Priority.GetDisplayName(),
                 Status   = t.Status.GetDisplayName(),
                 SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
@@ -219,6 +250,8 @@ public class ReportsController : Controller
     [HttpGet]
     public async Task<IActionResult> TicketsByAssignee(string assignee)
     {
+        var catLookup = await LoadCategoryLookupAsync();
+
         var tickets = await _context.Tickets
             .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
             .Where(t => t.AssignedTo != null)
@@ -229,7 +262,7 @@ public class ReportsController : Controller
             .OrderByDescending(t => t.CreatedDate)
             .Select(t => new {
                 t.Id, t.Title,
-                Category = t.Category.GetDisplayName(),
+                Category = CategoryName(t.Category, catLookup),
                 Priority = t.Priority.GetDisplayName(),
                 Status   = t.Status.GetDisplayName(),
                 SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",

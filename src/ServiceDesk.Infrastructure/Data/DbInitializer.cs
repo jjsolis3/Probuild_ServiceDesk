@@ -742,6 +742,66 @@ public static class DbInitializer
                     (7, N'weekly report'),
                     (7, N'quarterly report');
                 END");
+
+            // 27. Create TicketCategories table and seed system categories
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketCategories')
+                BEGIN
+                    CREATE TABLE dbo.TicketCategories (
+                        Id          INT             NOT NULL PRIMARY KEY,
+                        Name        NVARCHAR(100)   NOT NULL,
+                        IsSystem    BIT             NOT NULL DEFAULT 1,
+                        IsActive    BIT             NOT NULL DEFAULT 1,
+                        SortOrder   INT             NOT NULL DEFAULT 0,
+                        Icon        NVARCHAR(60)    NULL,
+                        Color       NVARCHAR(20)    NULL
+                    );
+                END
+
+                -- Seed system categories (IDs 0-7 match the original TicketCategory enum values)
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 0)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (0, N'Service Request',   1, 1, 10, N'bi-clipboard-check',    N'#4f46e5');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 1)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (1, N'Hardware Issue',    1, 1, 20, N'bi-pc-display',         N'#0d6efd');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 2)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (2, N'Software Issue',    1, 1, 30, N'bi-code-square',        N'#198754');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 3)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (3, N'Employee Issue',    1, 1, 40, N'bi-person-badge',       N'#fd7e14');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 4)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (4, N'Network Issue',     1, 1, 50, N'bi-router',             N'#0dcaf0');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 5)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (5, N'Security Incident', 1, 1, 60, N'bi-shield-exclamation', N'#dc3545');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 6)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (6, N'Other',             1, 1, 70, N'bi-question-circle',    N'#6c757d');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 7)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (7, N'Report Request',    1, 1, 80, N'bi-file-earmark-bar-graph', N'#20c997');
+
+                -- Migrate SavedTicketViews.FilterCategories from enum names to numeric IDs
+                -- Only runs when alphabetic names are still present (one-time migration)
+                IF EXISTS (SELECT 1 FROM dbo.SavedTicketViews WHERE FilterCategories LIKE '%[a-zA-Z]%')
+                BEGIN
+                    UPDATE dbo.SavedTicketViews
+                    SET FilterCategories =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            ISNULL(FilterCategories, ''),
+                            'ServiceRequest',   '0'),
+                            'HardwareIssue',    '1'),
+                            'SoftwareIssue',    '2'),
+                            'EmployeeIssue',    '3'),
+                            'NetworkIssue',     '4'),
+                            'SecurityIncident', '5'),
+                            'ReportRequest',    '7'),
+                            'Other',            '6')
+                    WHERE FilterCategories IS NOT NULL AND FilterCategories LIKE '%[a-zA-Z]%';
+                END");
         }
         catch (Exception ex)
         {

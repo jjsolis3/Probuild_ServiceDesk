@@ -1,5 +1,6 @@
 @model Ticket
 @{
+    var _catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
     var _mdPrefix = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
         + "body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}"
         + "img{max-width:100%;height:auto;}a{color:#0d6efd;}"
@@ -58,7 +59,7 @@
                     <dt>Priority</dt>
                     <dd><span class="badge badge-@Model.Priority.ToString().ToLower()">@Model.Priority</span></dd>
                     <dt>Category</dt>
-                    <dd>@Model.Category</dd>
+                    <dd>@(_catById.TryGetValue(Model.Category, out var _cn) ? _cn : $"Category {Model.Category}")</dd>
                     <dt>Submitted By</dt>
                     <dd>@(Model.SubmittedBy?.FullName ?? "—")</dd>
                     <dt>Assigned To</dt>

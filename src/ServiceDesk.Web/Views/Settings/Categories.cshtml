@@ -1,8 +1,10 @@
 @model IEnumerable<ServiceDesk.Core.Models.TicketSubCategory>
-@using ServiceDesk.Core.Enums
+@using ServiceDesk.Core.Models
 @{
     ViewData["Title"] = "Categories & Sub-Categories";
-    var grouped = Model.GroupBy(s => s.Category).OrderBy(g => g.Key.ToString());
+    var topLevel = ViewBag.TopLevelCategories as List<TicketCategoryEntry> ?? new List<TicketCategoryEntry>();
+    var catById  = topLevel.ToDictionary(c => c.Id, c => c);
+    var grouped  = Model.GroupBy(s => s.Category).OrderBy(g => g.Key);
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -11,6 +13,9 @@
         <p class="text-muted mb-0">Manage ticket categories and their sub-categories for your IT department.</p>
     </div>
     <div class="d-flex gap-2">
+        <a asp-action="CreateCategory" class="btn btn-outline-success">
+            <i class="bi bi-folder-plus me-1"></i> Add Category
+        </a>
         <a asp-action="CreateSubCategory" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i> Add Sub-Category
         </a>
@@ -20,6 +25,76 @@
     </div>
 </div>
 
+<!-- Top-Level Categories management -->
+@if (topLevel.Any())
+{
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header fw-semibold">
+            <i class="bi bi-folder me-1"></i> Top-Level Categories
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th class="text-center" style="width:70px;">System</th>
+                        <th class="text-center" style="width:70px;">Active</th>
+                        <th style="width:110px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cat in topLevel.OrderBy(c => c.SortOrder).ThenBy(c => c.Name))
+                    {
+                        <tr class="@(cat.IsActive ? "" : "text-muted")">
+                            <td>
+                                @if (!string.IsNullOrEmpty(cat.Icon))
+                                {
+                                    <i class="bi @cat.Icon me-1" style="color:@(cat.Color ?? "#6c757d")"></i>
+                                }
+                                @cat.Name
+                            </td>
+                            <td class="text-center">
+                                @if (cat.IsSystem)
+                                {
+                                    <span class="badge bg-secondary">System</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (cat.IsActive)
+                                {
+                                    <span class="badge bg-success">Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">No</span>
+                                }
+                            </td>
+                            <td class="text-end pe-2">
+                                @if (!cat.IsSystem)
+                                {
+                                    <form asp-action="ToggleCategory" asp-route-id="@cat.Id" method="post" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary py-0" title="@(cat.IsActive ? "Deactivate" : "Activate")">
+                                            <i class="bi @(cat.IsActive ? "bi-eye-slash" : "bi-eye")"></i>
+                                        </button>
+                                    </form>
+                                    <form asp-action="DeleteCategory" asp-route-id="@cat.Id" method="post" class="d-inline"
+                                          data-confirm-title="Delete Category" data-confirm-message="Delete this category? Any tickets using it will retain their numeric category ID.">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 @if (TempData["Success"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -28,15 +103,26 @@
     </div>
 }
 
+<h5 class="mb-3"><i class="bi bi-diagram-3 me-1"></i> Sub-Categories</h5>
 <div class="row g-4">
-    @foreach (var cat in Enum.GetValues<TicketCategory>())
+    @foreach (var cat in topLevel.OrderBy(c => c.SortOrder).ThenBy(c => c.Name))
     {
-        var subs = Model.Where(s => s.Category == cat).OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToList();
+        var subs = Model.Where(s => s.Category == cat.Id).OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToList();
         <div class="col-lg-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold"><i class="bi bi-folder me-1"></i> @cat.GetDisplayName()</span>
-                    <a asp-action="CreateSubCategory" asp-route-category="@((int)cat)" class="btn btn-sm btn-outline-primary">
+                    <span class="fw-semibold">
+                        @if (!string.IsNullOrEmpty(cat.Icon))
+                        {
+                            <i class="bi @cat.Icon me-1" style="color:@(cat.Color ?? "#6c757d")"></i>
+                        }
+                        else
+                        {
+                            <i class="bi bi-folder me-1"></i>
+                        }
+                        @cat.Name
+                    </span>
+                    <a asp-action="CreateSubCategory" asp-route-category="@cat.Id" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-plus"></i> Add
                     </a>
                 </div>

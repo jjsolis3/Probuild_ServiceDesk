@@ -3,6 +3,7 @@
     ViewData["Title"] = $"Ticket #{Model.Ticket.Id}";
     Layout = "_PortalLayout";
     var ticket = Model.Ticket;
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
     var statusClass = ticket.Status.ToString().ToLower() switch
     {
         "open" => "badge-open",
@@ -196,7 +197,7 @@
                     <dd class="col-7"><span class="badge @priorityClass">@ticket.Priority</span></dd>
 
                     <dt class="col-5 text-muted">Category</dt>
-                    <dd class="col-7">@ticket.Category.GetDisplayName()</dd>
+                    <dd class="col-7">@(catById.TryGetValue(ticket.Category, out var catName) ? catName : $"Category {ticket.Category}")</dd>
 
                     @if (ticket.CompanyService != null)
                     {

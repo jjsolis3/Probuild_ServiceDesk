@@ -6,9 +6,10 @@
 
 @{
     var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
-    var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
+    var selCa = (int[]?)          ViewBag.SelectedCategories ?? [];
     var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
     var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <!-- Table toolbar: count + page size -->
@@ -79,7 +80,7 @@
                             </span>
                         }
                     </td>
-                    <td>@ticket.Category.GetDisplayName()</td>
+                    <td>@(catById.TryGetValue(ticket.Category, out var catName) ? catName : $"Category {ticket.Category}")</td>
                     <td>
                         <span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span>
                         @{
@@ -218,7 +219,7 @@
         var ps = (int)ViewBag.PageSize;
         var qs = $"?page={p}&pageSize={ps}&sortBy={sortBy}&sortDir={sortDir}";
         var selSt = (TicketStatus[]?) ViewBag.SelectedStatuses   ?? [];
-        var selCa = (TicketCategory[]?)ViewBag.SelectedCategories ?? [];
+        var selCa = (int[]?)ViewBag.SelectedCategories ?? [];
         var selPr = (TicketPriority[]?)ViewBag.SelectedPriorities ?? [];
         var selAi = (int[]?)           ViewBag.SelectedAssigneeIds ?? [];
         foreach (var s in selSt) qs += $"&statuses={s}";

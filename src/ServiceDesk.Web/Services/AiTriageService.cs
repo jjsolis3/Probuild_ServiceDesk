@@ -44,7 +44,7 @@ public class AiTriageService
     // ── Public result type ───────────────────────────────────────────────────
 
     public record TriageResult(
-        TicketCategory? SuggestedCategory,
+        int? SuggestedCategory,
         float CategoryConfidence,
         TicketPriority? SuggestedPriority,
         float PriorityConfidence
@@ -95,7 +95,14 @@ public class AiTriageService
         var catScore  = catPred.Score?.Length > 0 ? catPred.Score.Max() : 0f;
         var priScore  = priPred.Score?.Length > 0 ? priPred.Score.Max() : 0f;
 
-        Enum.TryParse<TicketCategory>(catPred.PredictedLabel, out var cat);
+        // Parse category — new models output integer strings ("0","1",...);
+        // old models output enum names ("HardwareIssue",...) — support both for backward compat.
+        int? cat = null;
+        if (int.TryParse(catPred.PredictedLabel, out int catInt))
+            cat = catInt;
+        else if (Enum.TryParse<TicketCategory>(catPred.PredictedLabel, out var catEnum))
+            cat = (int)catEnum;
+
         Enum.TryParse<TicketPriority>(priPred.PredictedLabel, out var pri);
 
         // ── Sentiment / urgency boost ─────────────────────────────────────────
@@ -180,7 +187,7 @@ public class AiTriageService
             context.AiRecommendations.Add(new AiRecommendation
             {
                 TicketId            = ticketId,
-                SuggestedCategory   = result.CategoryConfidence >= threshold ? (int?)result.SuggestedCategory   : null,
+                SuggestedCategory   = result.CategoryConfidence >= threshold ? result.SuggestedCategory : null,
                 SuggestedPriority   = result.PriorityConfidence >= threshold ? (int?)result.SuggestedPriority   : null,
                 SuggestedAssigneeId = suggestedAssigneeId,
                 CategoryConfidence  = result.CategoryConfidence,

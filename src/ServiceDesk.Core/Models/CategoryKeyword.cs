@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Core.Models;
 
@@ -8,7 +7,7 @@ public class CategoryKeyword
     public int Id { get; set; }
 
     [Required]
-    public TicketCategory Category { get; set; }
+    public int Category { get; set; }
 
     [Required]
     [StringLength(100, MinimumLength = 2)]

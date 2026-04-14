@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Web.Services;
 
@@ -20,6 +21,27 @@ public class EmailNotificationService
         _context = context;
         _logger = logger;
         _gmailApiService = gmailApiService;
+    }
+
+    // ── Category name lookup ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves a category ID to its display name by querying the TicketCategories
+    /// table. Falls back to enum name for system categories (0-7) when the DB lookup
+    /// fails, and to "Category N" for unknown custom categories.
+    /// </summary>
+    private async Task<string> GetCategoryNameAsync(int categoryId)
+    {
+        try
+        {
+            var cat = await _context.TicketCategories.FindAsync(categoryId);
+            if (cat != null) return cat.Name;
+        }
+        catch { /* table may not exist yet on fresh install */ }
+
+        if (Enum.IsDefined(typeof(TicketCategory), categoryId))
+            return ((TicketCategory)categoryId).GetDisplayName();
+        return $"Category {categoryId}";
     }
 
     // ── Branding & template helpers ───────────────────────────────────────────
@@ -191,12 +213,13 @@ public class EmailNotificationService
         var tmpl = await GetTemplateAsync("TicketAssigned");
 
         var assigneeName = ticket.AssignedTo.FirstName + " " + ticket.AssignedTo.LastName;
+        var categoryName = await GetCategoryNameAsync(ticket.Category);
         var tokens = new Dictionary<string, string>
         {
             ["TicketId"]          = ticket.Id.ToString(),
             ["TicketTitle"]       = System.Net.WebUtility.HtmlEncode(ticket.Title),
             ["TicketPriority"]    = ticket.Priority.ToString(),
-            ["TicketCategory"]    = ticket.Category.GetDisplayName(),
+            ["TicketCategory"]    = categoryName,
             ["TicketDescription"] = ticket.Description ?? string.Empty,
             ["AssigneeName"]      = System.Net.WebUtility.HtmlEncode(assigneeName),
             ["CompanyName"]       = System.Net.WebUtility.HtmlEncode(companyName),
@@ -215,7 +238,7 @@ public class EmailNotificationService
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:120px;'>Ticket #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>SS-{ticket.Id}</td></tr>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Title</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(ticket.Title)}</td></tr>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Priority</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{ticket.Priority}</td></tr>
-                <tr><td style='padding:8px;font-weight:bold;'>Category</td><td style='padding:8px;'>{ticket.Category.GetDisplayName()}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Category</td><td style='padding:8px;'>{categoryName}</td></tr>
             </table>
             <p><strong>Description:</strong></p>
             <div style='background:#f9fafb;padding:12px;border-radius:6px;margin:10px 0;'>{ticket.Description}</div>";

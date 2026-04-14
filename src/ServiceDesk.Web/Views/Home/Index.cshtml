@@ -1,6 +1,7 @@
 @model DashboardViewModel
 @{
     ViewData["Title"] = "Dashboard";
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -222,7 +223,7 @@
                                         @ticket.Title
                                     </a>
                                 </td>
-                                <td>@ticket.Category.GetDisplayName()</td>
+                                <td>@(catById.TryGetValue(ticket.Category, out var cn) ? cn : $"Cat {ticket.Category}")</td>
                                 <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
                                 <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
                                 <td>@ticket.CreatedDate.ToString("MMM dd")</td>

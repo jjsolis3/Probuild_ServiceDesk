@@ -1,6 +1,7 @@
 @model ServiceDesk.Web.Models.TicketReportViewModel
 @{
     ViewData["Title"] = "Ticket Reports";
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <nav aria-label="breadcrumb">
@@ -100,9 +101,10 @@
                     @foreach (var item in Model.ByCategory)
                     {
                         var percent = maxCategory > 0 ? (int)((double)item.Value / maxCategory * 100) : 0;
-                        <div class="mb-3 row-clickable" data-category="@item.Key" data-category-label="@item.Key.GetDisplayName()" role="button" title="View @item.Key.GetDisplayName() tickets">
+                        @{ var catLabel = catById.TryGetValue(item.Key, out var catNameRpt) ? catNameRpt : $"Category {item.Key}"; }
+                        <div class="mb-3 row-clickable" data-category="@item.Key" data-category-label="@catLabel" role="button" title="View @catLabel tickets">
                             <div class="d-flex justify-content-between mb-1">
-                                <span>@item.Key.GetDisplayName()</span>
+                                <span>@catLabel</span>
                                 <span class="fw-bold">@item.Value</span>
                             </div>
                             <div class="progress" style="height: 8px;">
@@ -258,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Category Donut — segments clickable to open modal
     var donutEl = document.getElementById('chartCategoryDonut');
     if (donutEl) {
-        var catLabels  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.GetDisplayName()).ToList()));
+        var catLabels  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => catById.TryGetValue(k, out var ln) ? ln : k.ToString()).ToList()));
         var catKeys    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
         var catCounts  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
         var hasData = catCounts.some(function(v) { return v > 0; });

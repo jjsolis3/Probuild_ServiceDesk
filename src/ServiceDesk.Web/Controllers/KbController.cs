@@ -1,7 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 
@@ -19,6 +22,27 @@ public class KbController : Controller
     public KbController(ServiceDeskDbContext context)
     {
         _context = context;
+    }
+
+    private async Task PopulateCategoryViewBagAsync()
+    {
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.CategorySelectList = new SelectList(cats, "Id", "Name");
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.GetDisplayName() }).ToList();
+            ViewBag.CategorySelectList = new SelectList(cats, "Id", "Name");
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
     }
 
     // -------------------------------------------------------
@@ -40,7 +64,7 @@ public class KbController : Controller
         }
 
         if (category.HasValue)
-            query = query.Where(a => (int)a.Category == category.Value);
+            query = query.Where(a => a.Category == category.Value);
 
         var articles = await query
             .OrderByDescending(a => a.CreatedDate)
@@ -48,6 +72,7 @@ public class KbController : Controller
 
         ViewBag.SearchQuery = q;
         ViewBag.SelectedCategory = category;
+        await PopulateCategoryViewBagAsync();
         return View(articles);
     }
 
@@ -116,6 +141,7 @@ public class KbController : Controller
             }
         }
 
+        await PopulateCategoryViewBagAsync();
         return View(model);
     }
 
@@ -137,6 +163,7 @@ public class KbController : Controller
             TempData["Success"] = $"Knowledge Base article \"{model.Title}\" created successfully.";
             return RedirectToAction("Details", new { id = model.Id });
         }
+        await PopulateCategoryViewBagAsync();
         return View(model);
     }
 
@@ -148,6 +175,7 @@ public class KbController : Controller
     {
         var article = await _context.KbArticles.FindAsync(id);
         if (article == null) return NotFound();
+        await PopulateCategoryViewBagAsync();
         return View(article);
     }
 
@@ -177,6 +205,7 @@ public class KbController : Controller
             TempData["Success"] = "Article updated.";
             return RedirectToAction("Details", new { id });
         }
+        await PopulateCategoryViewBagAsync();
         return View(model);
     }
 

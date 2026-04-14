@@ -1,19 +1,10 @@
 @model List<ServiceDesk.Core.Models.CategoryKeyword>
-@using ServiceDesk.Core.Enums
-@using ServiceDesk.Core.Extensions
+@using ServiceDesk.Core.Models
 @{
     ViewData["Title"] = "Category Keywords";
-    // Category icon + colour map
-    var catStyle = new Dictionary<TicketCategory, (string Icon, string Color)>
-    {
-        [TicketCategory.ServiceRequest]   = ("bi-clipboard-check",      "#4f46e5"),
-        [TicketCategory.HardwareIssue]    = ("bi-pc-display",           "#0d6efd"),
-        [TicketCategory.SoftwareIssue]    = ("bi-code-square",          "#198754"),
-        [TicketCategory.EmployeeIssue]    = ("bi-person-badge",         "#fd7e14"),
-        [TicketCategory.NetworkIssue]     = ("bi-router",               "#0dcaf0"),
-        [TicketCategory.SecurityIncident] = ("bi-shield-exclamation",   "#dc3545"),
-        [TicketCategory.Other]            = ("bi-question-circle",      "#6c757d"),
-    };
+    var categories    = ViewBag.CategorySelectItems as List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>
+                        ?? new List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>();
+    var catById       = (ViewBag.CategoriesById as Dictionary<int, string>) ?? new Dictionary<int, string>();
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -46,11 +37,14 @@
 }
 
 <div class="row g-4 align-items-start">
-@foreach (var cat in Enum.GetValues<TicketCategory>())
+@foreach (var item in categories)
 {
-    var (icon, color) = catStyle.TryGetValue(cat, out var s) ? s : ("bi-tag", "#6c757d");
-    var catKeywords = Model.Where(k => k.Category == cat).OrderBy(k => k.Keyword).ToList();
+    var catId   = int.Parse(item.Value);
+    var catName = item.Text;
+    var catKeywords = Model.Where(k => k.Category == catId).OrderBy(k => k.Keyword).ToList();
     var activeCount = catKeywords.Count(k => k.IsActive);
+    var color = "#6c757d";
+    var icon  = "bi-tag";
 
     <div class="col-lg-6">
         <div class="card shadow-sm border-0 h-100">
@@ -60,23 +54,23 @@
                     <i class="bi @icon" style="color: @color; font-size: 1.25rem;"></i>
                 </div>
                 <div class="flex-grow-1">
-                    <h6 class="mb-0 fw-semibold">@cat.GetDisplayName()</h6>
+                    <h6 class="mb-0 fw-semibold">@catName</h6>
                     <small class="text-muted">@activeCount active of @catKeywords.Count keywords</small>
                 </div>
                 <button class="btn btn-sm btn-outline-primary"
                         data-bs-toggle="collapse"
-                        data-bs-target="#add-@((int)cat)"
+                        data-bs-target="#add-@catId"
                         aria-expanded="false">
                     <i class="bi bi-plus-lg me-1"></i>Add
                 </button>
             </div>
 
             <!-- Add keyword form (collapsed by default) -->
-            <div class="collapse" id="add-@((int)cat)">
+            <div class="collapse" id="add-@catId">
                 <div class="card-body border-bottom pb-3">
                     <form asp-action="CreateCategoryKeyword" method="post" class="d-flex gap-2">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="category" value="@((int)cat)" />
+                        <input type="hidden" name="category" value="@catId" />
                         <input type="text" name="keyword" class="form-control form-control-sm"
                                placeholder="e.g. vpn, outlook, printer..."
                                minlength="2" maxlength="100" required />

@@ -922,6 +922,18 @@ public class SettingsController : Controller
             .OrderBy(r => r.SortOrder)
             .ThenBy(r => r.Name)
             .ToListAsync();
+
+        try
+        {
+            ViewBag.CategoriesById = await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            ViewBag.CategoriesById = Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+
         return View(rules);
     }
 
@@ -1014,9 +1026,23 @@ public class SettingsController : Controller
             .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .ToListAsync();
 
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new { Value = (int)c, Text = c.GetDisplayName() })
-            .ToList();
+        try
+        {
+            var dbCats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { Value = c.Id, Text = c.Name })
+                .ToListAsync();
+            ViewBag.Categories = dbCats;
+            ViewBag.CategoriesById = dbCats.ToDictionary(c => c.Value, c => c.Text);
+        }
+        catch
+        {
+            var fallback = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Value = (int)c, Text = c.GetDisplayName() }).ToList();
+            ViewBag.Categories = fallback;
+            ViewBag.CategoriesById = fallback.ToDictionary(c => c.Value, c => c.Text);
+        }
 
         ViewBag.SubCategories = await _context.TicketSubCategories
             .Where(s => s.IsActive)
@@ -1095,20 +1121,40 @@ public class SettingsController : Controller
 
     // ==================== CATEGORIES & SUB-CATEGORIES ====================
 
+    private async Task<List<SelectListItem>> LoadCategorySelectItemsAsync()
+    {
+        try
+        {
+            return await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new SelectListItem(c.Name, c.Id.ToString()))
+                .ToListAsync();
+        }
+        catch
+        {
+            return Enum.GetValues<TicketCategory>()
+                .Select(c => new SelectListItem(c.GetDisplayName(), ((int)c).ToString()))
+                .ToList();
+        }
+    }
+
     public async Task<IActionResult> Categories()
     {
+        var categories = await _context.TicketCategories
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .ToListAsync();
         var subCategories = await _context.TicketSubCategories
             .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
             .ToListAsync();
+        ViewBag.TopLevelCategories = categories;
         return View(subCategories);
     }
 
-    public IActionResult CreateSubCategory(TicketCategory? category)
+    public async Task<IActionResult> CreateSubCategory(int? category)
     {
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
-        var model = new TicketSubCategory { Category = category ?? TicketCategory.Other };
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
+        var model = new TicketSubCategory { Category = category ?? 6 }; // default to "Other"
         return View(model);
     }
 
@@ -1123,9 +1169,7 @@ public class SettingsController : Controller
             TempData["Success"] = "Sub-category created.";
             return RedirectToAction(nameof(Categories));
         }
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(model);
     }
 
@@ -1133,9 +1177,7 @@ public class SettingsController : Controller
     {
         var subCat = await _context.TicketSubCategories.FindAsync(id);
         if (subCat == null) return NotFound();
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(subCat);
     }
 
@@ -1151,9 +1193,7 @@ public class SettingsController : Controller
             TempData["Success"] = "Sub-category updated.";
             return RedirectToAction(nameof(Categories));
         }
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(model);
     }
 
@@ -1171,6 +1211,64 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(Categories));
     }
 
+    // ==================== TOP-LEVEL CATEGORY MANAGEMENT ====================
+
+    public IActionResult CreateCategory()
+    {
+        return View(new ServiceDesk.Core.Models.TicketCategoryEntry());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateCategory(ServiceDesk.Core.Models.TicketCategoryEntry model)
+    {
+        if (ModelState.IsValid)
+        {
+            // Assign next available ID (max existing + 1, minimum 8 to avoid clashing with system IDs 0-7)
+            var maxId = await _context.TicketCategories.MaxAsync(c => (int?)c.Id) ?? -1;
+            model.Id = Math.Max(8, maxId + 1);
+            model.IsSystem = false;
+            _context.TicketCategories.Add(model);
+            await _context.SaveChangesAsync();
+            _cache.Remove("TicketCategories");
+            TempData["Success"] = $"Category \"{model.Name}\" created.";
+            return RedirectToAction(nameof(Categories));
+        }
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleCategory(int id)
+    {
+        var cat = await _context.TicketCategories.FindAsync(id);
+        if (cat != null && !cat.IsSystem)
+        {
+            cat.IsActive = !cat.IsActive;
+            await _context.SaveChangesAsync();
+            _cache.Remove("TicketCategories");
+        }
+        return RedirectToAction(nameof(Categories));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCategory(int id)
+    {
+        var cat = await _context.TicketCategories.FindAsync(id);
+        if (cat == null) return NotFound();
+        if (cat.IsSystem)
+        {
+            TempData["Error"] = "System categories cannot be deleted.";
+            return RedirectToAction(nameof(Categories));
+        }
+        _context.TicketCategories.Remove(cat);
+        await _context.SaveChangesAsync();
+        _cache.Remove("TicketCategories");
+        TempData["Success"] = $"Category \"{cat.Name}\" deleted.";
+        return RedirectToAction(nameof(Categories));
+    }
+
     // ==================== CATEGORY KEYWORDS ====================
 
     public async Task<IActionResult> CategoryKeywords()
@@ -1178,12 +1276,23 @@ public class SettingsController : Controller
         var keywords = await _context.CategoryKeywords
             .OrderBy(k => k.Category).ThenBy(k => k.Keyword)
             .ToListAsync();
+        try
+        {
+            ViewBag.CategoriesById = await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            ViewBag.CategoriesById = Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+        ViewBag.CategorySelectItems = await LoadCategorySelectItemsAsync();
         return View(keywords);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateCategoryKeyword(TicketCategory category, string keyword)
+    public async Task<IActionResult> CreateCategoryKeyword(int category, string keyword)
     {
         keyword = keyword?.Trim().ToLowerInvariant() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(keyword) || keyword.Length < 2)

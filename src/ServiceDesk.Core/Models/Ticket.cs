@@ -23,7 +23,7 @@ public class Ticket
 
     [Required]
     [Display(Name = "Category")]
-    public TicketCategory Category { get; set; }
+    public int Category { get; set; }
 
     [Display(Name = "Sub-Category")]
     public int? SubCategoryId { get; set; }

@@ -42,7 +42,8 @@ public class SavedTicketView
 
     /// <summary>Single status filter — superseded by FilterStatuses when that field is set.</summary>
     public TicketStatus?   FilterStatus   { get; set; }
-    public TicketCategory? FilterCategory { get; set; }
+    /// <summary>Single category ID filter — superseded by FilterCategories when that field is set.</summary>
+    public int?            FilterCategory { get; set; }
     public TicketPriority? FilterPriority { get; set; }
 
     /// <summary>Filter to tickets whose branch matches this ID.</summary>

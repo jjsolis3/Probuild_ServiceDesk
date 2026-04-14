@@ -10,7 +10,8 @@ public class TicketReportViewModel
     public int InProgressTickets { get; set; }
     public int ResolvedTickets { get; set; }
     public int ClosedTickets { get; set; }
-    public Dictionary<TicketCategory, int> ByCategory { get; set; } = new();
+    /// <summary>Category ID → ticket count.</summary>
+    public Dictionary<int, int> ByCategory { get; set; } = new();
     public Dictionary<TicketPriority, int> ByPriority { get; set; } = new();
     public Dictionary<string, int> ByMonth { get; set; } = new();
     public List<AssigneeStats> TopAssignees { get; set; } = new();
