@@ -704,6 +704,44 @@ public static class DbInitializer
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                     VALUES ('NotifyOnEscalation', 'true', 'Notifications',
                             'Send email to the assigned agent and admin when a ticket is escalated');"  );
+
+            // 26. Seed Report Request category sub-categories and keywords (Category = 7)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketSubCategories WHERE Category = 7)
+                BEGIN
+                    INSERT INTO dbo.TicketSubCategories (Category, Name, SortOrder) VALUES
+                    (7, N'AR Report',                10),
+                    (7, N'Installation Report',      20),
+                    (7, N'Inventory Report',         30),
+                    (7, N'Rebate Report',            40),
+                    (7, N'Sales Report',             50),
+                    (7, N'Management Report',        60),
+                    (7, N'Custom / Ad-Hoc Report',   70),
+                    (7, N'General Report Request',   80);
+                END
+
+                -- Seed auto-classification keywords for Report Request
+                IF NOT EXISTS (SELECT 1 FROM dbo.CategoryKeywords WHERE Category = 7)
+                BEGIN
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (7, N'report'),
+                    (7, N'reporting'),
+                    (7, N'ar report'),
+                    (7, N'accounts receivable report'),
+                    (7, N'installation report'),
+                    (7, N'inventory report'),
+                    (7, N'rebate report'),
+                    (7, N'sales report'),
+                    (7, N'management report'),
+                    (7, N'generate report'),
+                    (7, N'run report'),
+                    (7, N'pull report'),
+                    (7, N'export report'),
+                    (7, N'report request'),
+                    (7, N'monthly report'),
+                    (7, N'weekly report'),
+                    (7, N'quarterly report');
+                END");
         }
         catch (Exception ex)
         {

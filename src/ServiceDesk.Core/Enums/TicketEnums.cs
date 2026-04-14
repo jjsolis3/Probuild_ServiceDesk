@@ -17,7 +17,9 @@ public enum TicketCategory
     [Display(Name = "Security Incident")]
     SecurityIncident,
     [Display(Name = "Other")]
-    Other
+    Other,
+    [Display(Name = "Report Request")]
+    ReportRequest
 }
 
 public enum TicketStatus
