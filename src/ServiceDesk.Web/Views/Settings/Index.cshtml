@@ -77,6 +77,10 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- EMAIL & NOTIFICATION SETTINGS -->
+<div class="row g-4 mb-4">
 
     <!-- Email Integration -->
     <div class="col-lg-3 col-md-6">
@@ -121,6 +125,29 @@
             </div>
         </div>
     </div>
+
+    <!-- Email Templates -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-envelope-paper display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Templates</h5>
+                        <p class="card-text text-muted small">Customise HTML layout and content of automated notification emails</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailTemplates" class="btn btn-sm btn-info text-white">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- USER & ROLES MANAGEMENT-->
@@ -381,28 +408,6 @@
                 </a>
             </div>
         </div>
-    </div>
-
-    <!-- Email Templates -->
-    <div class="col-lg-3 col-md-6">
-        <div class="card h-100 shadow-sm border-0">
-            <div class="card-body">
-                <div class="d-flex align-items-start">
-                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
-                        <i class="bi bi-envelope-paper display-6 text-info"></i>
-                    </div>
-                    <div>
-                        <h5 class="card-title mb-1">Email Templates</h5>
-                        <p class="card-text text-muted small">Customise HTML layout and content of automated notification emails</p>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0 pt-0">
-                <a asp-action="EmailTemplates" class="btn btn-sm btn-info text-white">
-                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
-                </a>
-            </div>
-        </div>
-    </div>
+    </div>   
 
 </div>
