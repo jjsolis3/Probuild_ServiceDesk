@@ -45,12 +45,18 @@ public class EmailNotificationService
         => await _context.EmailTemplates.FirstOrDefaultAsync(t => t.Key == key && t.IsActive);
 
     /// <summary>
-    /// Replaces {{Token}} placeholders in a template string.
+    /// Replaces token placeholders in a template string.
+    /// Supports both {{Token}} (current seed format) and {Token} (legacy DB records).
+    /// Double-brace is tried first so it is never confused with single-brace leftovers.
     /// </summary>
     private static string ApplyTokens(string template, Dictionary<string, string> tokens)
     {
         foreach (var (k, v) in tokens)
-            template = template.Replace("{{" + k + "}}", v ?? string.Empty, StringComparison.Ordinal);
+        {
+            template = template
+                .Replace("{{" + k + "}}", v ?? string.Empty, StringComparison.Ordinal)
+                .Replace("{" + k + "}", v ?? string.Empty, StringComparison.Ordinal);
+        }
         return template;
     }
 

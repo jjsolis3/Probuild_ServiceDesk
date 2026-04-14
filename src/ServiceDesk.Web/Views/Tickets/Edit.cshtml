@@ -744,7 +744,7 @@
             frame.removeEventListener('load', onLoad);
             var d = frame.contentDocument;
             if (!d) return;
-            ['.gmail_quote','.gmail_attr','blockquote','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
+            ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
                 try { d.querySelectorAll(sel).forEach(function(el){ el.classList.add('ss-hidden-quote'); }); } catch(e){}
             });
             resizeFrame(frame, d);
