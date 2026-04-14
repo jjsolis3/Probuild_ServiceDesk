@@ -348,7 +348,7 @@
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
                                                 sandbox="allow-same-origin"
                                                 title="Email comment"
-                                                onload="initEmailFrame(this)"></iframe>
+                                                onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;['.gmail_quote','.gmail_attr','blockquote[type=&quot;cite&quot;]','#divRplyFwdMsg','#divRFW','.yahoo_quoted'].forEach(function(s){try{d.querySelectorAll(s).forEach(function(e){e.style.display='none'});}catch(x){}});function r(){f.style.height=Math.min(500,Math.max(80,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
                                     }
                                     else if (note.Source == "Email")
                                     {
@@ -422,7 +422,7 @@
                                         style="width:100%;border:none;min-height:120px;max-height:600px;display:block;"
                                         sandbox="allow-same-origin"
                                         title="Email description"
-                                        onload="initEmailFrame(this)"></iframe>
+                                        onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;function r(){f.style.height=Math.min(600,Math.max(120,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
                             </div>
                         }
                         else
@@ -756,24 +756,6 @@
 </div>
 
 @section Scripts {
-<script>
-// Global handler called by iframe onload="initEmailFrame(this)"
-// srcdoc is already set by Razor — this only collapses quote blocks and auto-sizes.
-function initEmailFrame(frame) {
-    var d = frame.contentDocument;
-    if (!d || !d.body) return;
-    ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
-        try { d.querySelectorAll(sel).forEach(function(el){ el.style.display = 'none'; }); } catch(e){}
-    });
-    function resize() {
-        var h = d.body.scrollHeight;
-        frame.style.height = Math.min(500, Math.max(80, h)) + 'px';
-    }
-    resize();
-    d.querySelectorAll('img').forEach(function(img){ img.addEventListener('load', resize); });
-}
-</script>
-
 <script>
 // ── Searchable select: filters visible <option> elements by text ──────────
 function filterSelectOptions(input) {
