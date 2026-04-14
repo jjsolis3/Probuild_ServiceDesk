@@ -311,6 +311,15 @@
             <!-- ===== COMMENTS TAB ===== -->
             <div class="tab-pane fade show active" id="tab-comments" role="tabpanel">
                 <!-- Existing comments -->
+                @{
+                    // srcdoc prefix/suffix — Razor HTML-encodes the full expression when placed in an
+                    // attribute, and the browser HTML-decodes it to reconstruct the exact document.
+                    var _noteDocPrefix = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+                        + "body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}"
+                        + "img{max-width:100%;height:auto;}a{color:#0d6efd;}.ss-hidden-quote{display:none!important;}"
+                        + "</style></head><body>";
+                    var _noteDocSuffix = "</body></html>";
+                }
                 <div id="commentsContainer">
                     @if (!Model.Notes.Any(n => !n.IsInternal))
                     {
@@ -335,10 +344,11 @@
                                     @if (note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml))
                                     {
                                         <iframe id="note-frame-@note.Id"
-                                                data-html="@note.ContentHtml"
+                                                srcdoc="@(_noteDocPrefix + note.ContentHtml + _noteDocSuffix)"
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
                                                 sandbox="allow-same-origin"
-                                                title="Email comment"></iframe>
+                                                title="Email comment"
+                                                onload="initEmailFrame(this)"></iframe>
                                     }
                                     else if (note.Source == "Email")
                                     {
@@ -732,38 +742,21 @@
 
 @section Scripts {
 <script>
-(function () {
-    var noteStyles =
-        'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}' +
-        'img{max-width:100%;height:auto;}a{color:#0d6efd;}.ss-hidden-quote{display:none!important;}';
-
-    function initNoteFrame(frame, html) {
-        // Use <\/ to avoid Razor parser exiting <script> raw-text mode on </style>, </body>, </html>
-        var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + noteStyles + '<\/style><\/head><body>' + html + '<\/body><\/html>';
-        frame.addEventListener('load', function onLoad() {
-            frame.removeEventListener('load', onLoad);
-            var d = frame.contentDocument;
-            if (!d) return;
-            ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
-                try { d.querySelectorAll(sel).forEach(function(el){ el.classList.add('ss-hidden-quote'); }); } catch(e){}
-            });
-            resizeFrame(frame, d);
-            d.querySelectorAll('img').forEach(function(img){ img.addEventListener('load', function(){ resizeFrame(frame, d); }); });
-        });
-        frame.setAttribute('srcdoc', doc);
-    }
-
-    function resizeFrame(frame, d) {
+// Global handler called by iframe onload="initEmailFrame(this)"
+// srcdoc is already set by Razor — this only collapses quote blocks and auto-sizes.
+function initEmailFrame(frame) {
+    var d = frame.contentDocument;
+    if (!d || !d.body) return;
+    ['.gmail_quote','.gmail_attr','blockquote[type="cite"]','#divRplyFwdMsg','#divRFW','.yahoo_quoted','.moz-cite-prefix'].forEach(function(sel){
+        try { d.querySelectorAll(sel).forEach(function(el){ el.style.display = 'none'; }); } catch(e){}
+    });
+    function resize() {
         var h = d.body.scrollHeight;
         frame.style.height = Math.min(500, Math.max(80, h)) + 'px';
     }
-
-    document.querySelectorAll('iframe[data-html]').forEach(function(frame) {
-        var html = frame.getAttribute('data-html');
-        frame.removeAttribute('data-html');
-        initNoteFrame(frame, html);
-    });
-})();
+    resize();
+    d.querySelectorAll('img').forEach(function(img){ img.addEventListener('load', resize); });
+}
 </script>
 
 <script>
