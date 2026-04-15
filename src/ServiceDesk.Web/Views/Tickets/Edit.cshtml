@@ -884,6 +884,23 @@ function filterSelectOptions(input) {
         _updateStatusAccent(this.value.toLowerCase());
     });
 
+    // --- Neutral select active-state highlight ---
+    // Adds .select-active (primary accent outline) when a non-blank value is chosen
+    (function () {
+        function applyNeutralActive(sel) {
+            if (!sel) return;
+            function update() { sel.classList.toggle('select-active', !!sel.value); }
+            sel.addEventListener('change', update);
+            update();
+        }
+        applyNeutralActive(document.querySelector('select[name="UserGroupId"]'));
+        applyNeutralActive(document.querySelector('select[name="AssignedToId"]'));
+        applyNeutralActive(document.querySelector('select[name="SubmittedById"]'));
+        // Category and SubCategory are handled by their own loaders but apply active state here too
+        applyNeutralActive(document.getElementById('categorySelect'));
+        applyNeutralActive(document.getElementById('subCategorySelect'));
+    })();
+
     // --- Sub-category AJAX loader ---
     (function () {
         const catSel = document.getElementById('categorySelect');
@@ -905,6 +922,7 @@ function filterSelectOptions(input) {
                         if (selectId && item.id === selectId) opt.selected = true;
                         subSel.appendChild(opt);
                     });
+                    subSel.dispatchEvent(new Event('change')); // refresh active-state highlight
                 });
         }
 
