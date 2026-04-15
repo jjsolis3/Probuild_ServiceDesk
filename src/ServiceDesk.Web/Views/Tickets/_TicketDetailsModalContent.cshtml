@@ -6,9 +6,18 @@
         + "img{max-width:100%;height:auto;}a{color:#0d6efd;}"
         + "</style></head><body>";
     var _mdSuffix = "</body></html>";
+    var _mStatusAccent = Model.Status switch {
+        TicketStatus.Open       => "#3b82f6",
+        TicketStatus.InProgress => "#f59e0b",
+        TicketStatus.OnHold     => "#6b7280",
+        TicketStatus.Resolved   => "#10b981",
+        TicketStatus.Closed     => "#374151",
+        TicketStatus.Cancelled  => "#ef4444",
+        _                       => "#9ca3af"
+    };
 }
 
-<div class="d-flex justify-content-between align-items-start mb-3">
+<div class="d-flex justify-content-between align-items-start mb-2">
     <div>
         <h5 class="mb-1">#@Model.Id - @Model.Title</h5>
         <div class="text-muted small">Created @Model.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</div>
@@ -17,6 +26,7 @@
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
 </div>
+<div style="height:3px;background:@_mStatusAccent;border-radius:2px;margin-bottom:1rem;"></div>
 
 <div class="row g-3">
     <div class="col-md-7">
