@@ -66,7 +66,7 @@
             <!-- Category -->
             <div class="ticket-header-field">
                 <label class="ticket-header-label">Category</label>
-                <select asp-for="Category" asp-items="@ViewBag.CategorySelectList" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
+                <select asp-for="Category" asp-items="@ViewBag.CategorySelectList" class="form-select form-select-sm ticket-header-select" id="categorySelect" data-no-picker></select>
             </div>
 
             <!-- Sub-Category -->
@@ -77,13 +77,9 @@
                 </select>
             </div>
 
-            <!-- Submitted By (with inline search) -->
+            <!-- Submitted By -->
             <div class="ticket-header-field" style="min-width:160px;">
                 <label class="ticket-header-label">Submitted By</label>
-                <input type="text" class="form-control form-control-sm mb-1 requester-search"
-                       placeholder="Search…" data-target="SubmittedById"
-                       oninput="filterSelectOptions(this)"
-                       autocomplete="off" style="max-width:160px;">
                 <select asp-for="SubmittedById" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.Employees">
                     <option value="">— Select —</option>
                 </select>
@@ -885,7 +881,7 @@ function filterSelectOptions(input) {
     });
 
     // --- Neutral select active-state highlight ---
-    // Adds .select-active (primary accent outline) when a non-blank value is chosen
+    // Native selects: run immediately on DOM-ready
     (function () {
         function applyNeutralActive(sel) {
             if (!sel) return;
@@ -894,12 +890,28 @@ function filterSelectOptions(input) {
             update();
         }
         applyNeutralActive(document.querySelector('select[name="UserGroupId"]'));
-        applyNeutralActive(document.querySelector('select[name="AssignedToId"]'));
-        applyNeutralActive(document.querySelector('select[name="SubmittedById"]'));
-        // Category and SubCategory are handled by their own loaders but apply active state here too
+        // Category and SubCategory use native select (data-no-picker / few options)
         applyNeutralActive(document.getElementById('categorySelect'));
         applyNeutralActive(document.getElementById('subCategorySelect'));
     })();
+
+    // Bootstrap-select-wrapped selects: defer until after window.load so the
+    // wrapper <div class="bootstrap-select"> exists before we query it.
+    $(window).on('load', function () {
+        function applyBsSelectActive(sel) {
+            if (!sel) return;
+            const $sel = $(sel);
+            function update() {
+                const wrapper = sel.closest('.bootstrap-select');
+                const target = wrapper || sel;
+                target.classList.toggle('select-active', !!sel.value);
+            }
+            $sel.on('changed.bs.select change', update);
+            update();
+        }
+        applyBsSelectActive(document.querySelector('select[name="AssignedToId"]'));
+        applyBsSelectActive(document.querySelector('select[name="SubmittedById"]'));
+    });
 
     // --- Sub-category AJAX loader ---
     (function () {

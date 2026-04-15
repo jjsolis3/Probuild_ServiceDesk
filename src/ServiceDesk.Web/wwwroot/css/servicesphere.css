@@ -488,6 +488,43 @@ body[data-sidebar-style="icon-hover"] .ss-brand-logo img {
     margin-bottom: 2px;
 }
 
+/* Bootstrap-select buttons inside the ticket edit header bar */
+.ticket-header-bar .bootstrap-select > .btn {
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    padding: 0.28rem 0.65rem !important;
+    border-radius: 0.375rem !important;
+    border: 1.5px solid #d1d5db !important;
+    background-color: #ffffff !important;
+    color: #495057 !important;
+    line-height: 1.4 !important;
+    box-shadow: none !important;
+    min-width: 90px;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+
+.ticket-header-bar .bootstrap-select > .btn:hover {
+    border-color: #9ca3af !important;
+    background-color: #f9fafb !important;
+    color: #374151 !important;
+}
+
+/* Bootstrap-select adds its own bs-caret; hide Bootstrap's ::after to prevent double arrow */
+.ticket-header-bar .bootstrap-select .dropdown-toggle::after {
+    display: none !important;
+}
+
+/* Active state for bootstrap-select buttons with a value set */
+.ticket-header-bar .bootstrap-select.select-active > .btn {
+    border-color: var(--ss-primary) !important;
+    background-color: rgba(47, 76, 221, 0.07) !important;
+    color: var(--ss-primary) !important;
+}
+
+.ticket-header-bar .bootstrap-select.select-active > .btn:hover {
+    background-color: rgba(47, 76, 221, 0.12) !important;
+}
+
 /* Base: looks like btn btn-sm btn-outline-secondary */
 .ticket-header-select {
     font-size: 0.78rem;
