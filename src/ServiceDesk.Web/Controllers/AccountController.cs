@@ -106,6 +106,7 @@ public class AccountController : Controller
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        Response.Cookies.Delete("sd_tkt_last"); // clear persisted ticket view state on sign-out
         return RedirectToAction("Login");
     }
 

@@ -77,6 +77,18 @@ public class TicketsController : Controller
 
         if (noFilters && userId != null)
         {
+            // Restore the last filter state the user had in this browser session.
+            // This ensures that returning from ticket edit/detail pages brings the user
+            // back to whatever view they had active, not the default saved view.
+            var lastView = Request.Cookies["sd_tkt_last"];
+            if (!string.IsNullOrEmpty(lastView)
+                && lastView.StartsWith("/Tickets", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(lastView, "/Tickets", StringComparison.OrdinalIgnoreCase))
+            {
+                return Redirect(lastView);
+            }
+
+            // No session state yet — apply the configured default view on first load.
             // 1. Personal default takes priority
             var def = await _context.SavedTicketViews
                 .FirstOrDefaultAsync(v => v.IsDefault && v.OwnerPortalUserId == userId);
@@ -325,6 +337,17 @@ public class TicketsController : Controller
             .ToDictionary(
                 t => t.Id,
                 t => _slaRisk.GetRisk(t.Category, (int)t.Priority, t.CreatedDate));
+
+        // Persist the current URL so that returning to /Tickets after editing a ticket
+        // restores this exact view instead of falling back to the default saved view.
+        // The cookie is a session cookie (no Expires) so it clears on browser close or sign-out.
+        var currentViewUrl = (Request.Path + Request.QueryString).ToString();
+        Response.Cookies.Append("sd_tkt_last", currentViewUrl, new CookieOptions
+        {
+            SameSite = SameSiteMode.Lax,
+            Secure   = Request.IsHttps,
+            Path     = "/"
+        });
 
         return View(tickets);
     }

@@ -921,6 +921,9 @@ function loadTable(url) {
             container.style.opacity = '1';
             container.style.pointerEvents = '';
             history.pushState({ url: url }, '', url);
+            // Persist the current view so returning from edit/detail pages restores it
+            document.cookie = 'sd_tkt_last=' + url + '; path=/; SameSite=Lax'
+                + (location.protocol === 'https:' ? '; Secure' : '');
         })
         .catch(function () {
             container.style.opacity = '1';
