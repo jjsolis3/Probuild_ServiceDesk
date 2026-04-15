@@ -101,7 +101,7 @@
                     @foreach (var item in Model.ByCategory)
                     {
                         var percent = maxCategory > 0 ? (int)((double)item.Value / maxCategory * 100) : 0;
-                        @{ var catLabel = catById.TryGetValue(item.Key, out var catNameRpt) ? catNameRpt : $"Category {item.Key}"; }
+                        var catLabel = catById.TryGetValue(item.Key, out var catNameRpt) ? catNameRpt : $"Category {item.Key}";
                         <div class="mb-3 row-clickable" data-category="@item.Key" data-category-label="@catLabel" role="button" title="View @catLabel tickets">
                             <div class="d-flex justify-content-between mb-1">
                                 <span>@catLabel</span>

@@ -301,7 +301,7 @@ public class TicketsController : Controller
         catch
         {
             var cats = Enum.GetValues<TicketCategory>()
-                .Select(c => new { Id = (int)c, Name = c.GetDisplayName() }).ToList();
+                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
             ViewBag.Categories     = cats;
             ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
         }
@@ -1883,7 +1883,7 @@ public class TicketsController : Controller
         catch
         {
             cats = Enum.GetValues<TicketCategory>()
-                .Select(c => ((int)c, c.GetDisplayName()))
+                .Select(c => ((int)c, c.ToString()))
                 .ToList();
         }
         ViewBag.CategorySelectList = new SelectList(

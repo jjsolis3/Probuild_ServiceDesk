@@ -122,7 +122,7 @@ public class KbController : Controller
     // GET /Kb/Create  (IT only)
     // -------------------------------------------------------
     [Authorize(Roles = "Admin,IT Agent")]
-    public IActionResult Create(int? ticketId)
+    public async Task<IActionResult> Create(int? ticketId)
     {
         var model = new KbArticle { IsPublished = true };
 
