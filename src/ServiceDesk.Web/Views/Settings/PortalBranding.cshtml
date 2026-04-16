@@ -114,10 +114,27 @@
                         <label class="form-label fw-semibold" for="PortalAnnouncementType">Banner Colour</label>
                         <select class="form-select" id="PortalAnnouncementType" name="PortalAnnouncementType"
                                 style="max-width:280px;" data-no-picker>
-                            <option value="info"    @(annoType == "info"    ? "selected" : "")>Blue — Info</option>
-                            <option value="warning" @(annoType == "warning" ? "selected" : "")>Yellow — Warning</option>
-                            <option value="danger"  @(annoType == "danger"  ? "selected" : "")>Red — Danger / Outage</option>
-                            <option value="success" @(annoType == "success" ? "selected" : "")>Green — Success / Resolved</option>
+                                if (@annoType == "info") { 
+                                    <option value="info" selected>Blue — Info</option> }
+                                else {
+                                    <option value="info">Blue — Info</option> 
+                                }
+
+                                if (@annoType == "warning") { 
+                                    <option value="warning" selected>Yellow — Warning</option> }
+                                else {
+                                    <option value="warning">Yellow — Warning</option>
+                                }
+                                if (@annoType == "danger") { 
+                                    <option value="danger" selected>Red — Danger / Outage</option> }
+                                else {
+                                    <option value="danger">Red — Danger / Outage</option>
+                                }
+                                if (@annoType == "success") { 
+                                    <option value="success" selected>Green — Success / Resolved</option> }
+                                else {
+                                    <option value="success">Green — Success / Resolved</option>
+                                }
                         </select>
                     </div>
                 </div>
