@@ -363,6 +363,7 @@ public class TicketsController : Controller
             .Include(t => t.CompanyService)
             .Include(t => t.SubCategory)
             .Include(t => t.Branch)
+            .Include(t => t.Asset)
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
@@ -1943,5 +1944,10 @@ public class TicketsController : Controller
         ViewBag.Services = new SelectList(
             _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name),
             "Id", "Name", ticket?.CompanyServiceId);
+
+        ViewBag.Assets = new SelectList(
+            _context.Assets.OrderBy(a => a.AssetTag)
+                .Select(a => new { a.Id, Label = a.AssetTag + " — " + a.Name }),
+            "Id", "Label", ticket?.AssetId);
     }
 }

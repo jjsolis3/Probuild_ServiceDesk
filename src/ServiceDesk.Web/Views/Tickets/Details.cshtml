@@ -168,6 +168,20 @@
                         }
                     </dd>
 
+                    <dt>Related Asset</dt>
+                    <dd>
+                        @if (Model.Asset != null)
+                        {
+                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetId">
+                                <i class="bi bi-laptop me-1"></i>@Model.Asset.AssetTag — @Model.Asset.Name
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">None</span>
+                        }
+                    </dd>
+
                     <dt>Created</dt>
                     <dd>@Model.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</dd>
 

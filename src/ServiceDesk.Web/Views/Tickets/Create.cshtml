@@ -58,17 +58,24 @@
             </div>
 
             <div class="row g-3 mb-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label asp-for="AssignedToId" class="form-label">Assign To (IT Staff)</label>
                     <select asp-for="AssignedToId" class="form-select" asp-items="@ViewBag.ITStaff">
                         <option value="">-- Unassigned --</option>
                     </select>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label asp-for="CompanyServiceId" class="form-label">Related Service</label>
                     <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
                         <option value="">-- None --</option>
                     </select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="AssetId" class="form-label">Related Asset</label>
+                    <select asp-for="AssetId" class="form-select" asp-items="@ViewBag.Assets">
+                        <option value="">-- None --</option>
+                    </select>
+                    <div class="form-text">Link this ticket to a specific asset.</div>
                 </div>
             </div>
 

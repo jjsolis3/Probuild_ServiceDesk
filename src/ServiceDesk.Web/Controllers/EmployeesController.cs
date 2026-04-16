@@ -71,6 +71,42 @@ public class EmployeesController : Controller
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (employee == null) return NotFound();
+
+        // Trend analytics: category breakdown of submitted tickets
+        var submitted = employee.SubmittedTickets.ToList();
+        var categoryIds = submitted.Select(t => t.Category).Distinct().ToList();
+        var categoryNames = await _context.TicketCategories
+            .Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+
+        ViewBag.CategoryBreakdown = submitted
+            .GroupBy(t => t.Category)
+            .Select(g => new {
+                CategoryId   = g.Key,
+                CategoryName = categoryNames.GetValueOrDefault(g.Key, $"Category {g.Key}"),
+                Count        = g.Count(),
+                OpenCount    = g.Count(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Open
+                                         || t.Status == ServiceDesk.Core.Enums.TicketStatus.InProgress),
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        // Monthly submission counts for the last 6 months
+        var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);
+        ViewBag.MonthlyTrend = submitted
+            .Where(t => t.CreatedDate >= sixMonthsAgo)
+            .GroupBy(t => new { t.CreatedDate.Year, t.CreatedDate.Month })
+            .Select(g => new {
+                Label = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yy"),
+                Count = g.Count()
+            })
+            .OrderBy(x => x.Label)
+            .ToList();
+
+        ViewBag.RecurringCategories = (ViewBag.CategoryBreakdown as IEnumerable<dynamic>)
+            ?.Where(x => x.Count >= 3 && x.OpenCount > 0)
+            .ToList();
+
         return View(employee);
     }
 

@@ -462,6 +462,12 @@
                                 </select>
                             </div>
                             <div class="col-12">
+                                <label class="form-label fw-semibold">Related Asset</label>
+                                <select asp-for="AssetId" class="form-select" asp-items="@ViewBag.Assets">
+                                    <option value="">— None —</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
                                 <label class="form-label fw-semibold">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
                                 <input type="datetime-local" id="dueDatePicker"
                                        class="form-control @(Model.IsOverdue ? "border-danger" : "")"
