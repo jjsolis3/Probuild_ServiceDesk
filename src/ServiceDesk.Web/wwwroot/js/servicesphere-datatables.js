@@ -47,8 +47,9 @@ $(window).on('load', function () {
         if ($sel.closest('.dataTables_wrapper').length > 0) return;
         // Skip if already initialized
         if ($sel.data('selectpicker')) return;
-        // Skip selects that explicitly opt out (e.g. settings page fields)
-        if ($sel.data('no-picker')) return;
+        // Skip selects that explicitly opt out — check attribute presence, not value,
+        // because data-no-picker="" (no value) is falsy via .data() but the attr IS present.
+        if ($sel.attr('data-no-picker') !== undefined) return;
 
         var pickerOptions;
         if (isFilterBarSelect) {

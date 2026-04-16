@@ -488,6 +488,15 @@ body[data-sidebar-style="icon-hover"] .ss-brand-logo img {
     margin-bottom: 2px;
 }
 
+/* The hidden native <select> inside a bootstrap-select wrapper has opacity:0 but
+   still receives pointer events. Our min-width:90px expands it beyond bootstrap-select's
+   intended 0.5px, making it overlap the visible button and appear as a "second button".
+   Lock it to zero width and disable pointer events so only the styled button is interactive. */
+.ticket-header-bar .bootstrap-select > select {
+    min-width: 0 !important;
+    pointer-events: none !important;
+}
+
 /* Bootstrap-select buttons inside the ticket edit header bar */
 .ticket-header-bar .bootstrap-select > .btn {
     font-size: 0.78rem !important;
