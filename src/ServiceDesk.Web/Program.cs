@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Filters;
 using ServiceDesk.Web.Services;
@@ -80,6 +81,22 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
     DbInitializer.ApplySchemaUpgrades(context);
     DbInitializer.Seed(context);
+
+    // Apply DB-backed SLA hours to the static policy (avoids hard-coded defaults persisting)
+    try
+    {
+        var slaSettings = context.AppSettings
+            .Where(s => s.Category == "SLA")
+            .ToDictionary(s => s.Key, s => s.Value ?? "");
+        if (int.TryParse(slaSettings.GetValueOrDefault("SlaHoursCritical", "4"),  out var slaCrit) &&
+            int.TryParse(slaSettings.GetValueOrDefault("SlaHoursHigh",     "8"),  out var slaHigh) &&
+            int.TryParse(slaSettings.GetValueOrDefault("SlaHoursMedium",   "24"), out var slaMed)  &&
+            int.TryParse(slaSettings.GetValueOrDefault("SlaHoursLow",      "72"), out var slaLow))
+        {
+            SlaPolicy.Configure(slaCrit, slaHigh, slaMed, slaLow);
+        }
+    }
+    catch { /* table may not exist on fresh install — safe to skip */ }
 }
 
 // Configure the HTTP request pipeline

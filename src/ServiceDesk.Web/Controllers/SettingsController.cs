@@ -1750,6 +1750,50 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(AiDashboard));
     }
 
+    // ==================== SLA POLICY ====================
+
+    // GET: Settings/Sla
+    public async Task<IActionResult> Sla()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "SLA")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Sla
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Sla(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "SLA")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key) &&
+                int.TryParse(form[setting.Key].FirstOrDefault(), out var hours) &&
+                hours >= 1)
+            {
+                setting.Value = hours.ToString();
+            }
+        }
+        await _context.SaveChangesAsync();
+
+        // Immediately apply new hours to the live static policy (no restart needed)
+        int GetH(string key, int fallback) =>
+            int.TryParse(settings.FirstOrDefault(s => s.Key == key)?.Value, out var h) && h > 0 ? h : fallback;
+        ServiceDesk.Core.Services.SlaPolicy.Configure(
+            GetH("SlaHoursCritical", 4),
+            GetH("SlaHoursHigh",     8),
+            GetH("SlaHoursMedium",   24),
+            GetH("SlaHoursLow",      72));
+
+        TempData["Success"] = "SLA policy saved. New tickets will use the updated deadlines immediately.";
+        return RedirectToAction(nameof(Sla));
+    }
+
     // ==================== NOTIFICATION SETTINGS ====================
 
     // GET: Settings/Notifications

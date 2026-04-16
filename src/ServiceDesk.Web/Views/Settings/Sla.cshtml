@@ -1,0 +1,251 @@
+@model List<AppSetting>
+@{
+    ViewData["Title"] = "SLA Policy";
+
+    int GetHours(string key, int fallback) =>
+        int.TryParse(Model.FirstOrDefault(s => s.Key == key)?.Value, out var h) && h > 0 ? h : fallback;
+
+    int critical = GetHours("SlaHoursCritical", 4);
+    int high     = GetHours("SlaHoursHigh",     8);
+    int medium   = GetHours("SlaHoursMedium",   24);
+    int low      = GetHours("SlaHoursLow",      72);
+
+    string HumanDuration(int hours)
+    {
+        if (hours < 24)  return $"{hours}h";
+        if (hours % 24 == 0) return $"{hours / 24}d";
+        return $"{hours / 24}d {hours % 24}h";
+    }
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">SLA Policy</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-clock-history text-primary me-2"></i>SLA Policy</h1>
+        <p class="text-muted small mt-1 mb-0">
+            Configure how many hours each priority level is given before a ticket is considered overdue.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form method="post" asp-action="Sla" asp-antiforgery="true">
+    <div class="row g-4 align-items-start">
+
+        <!-- Left column: inputs -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Response Time by Priority</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">
+                        Enter the maximum number of hours allowed before a ticket of each priority is flagged as overdue.
+                        The due date is set when a ticket is created (or when its priority changes).
+                    </p>
+
+                    @{
+                        var priorities = new[]
+                        {
+                            ("SlaHoursCritical", "Critical", "bi-exclamation-octagon-fill text-danger", critical,  "#dc3545", "System outage, data loss, or business-critical failure."),
+                            ("SlaHoursHigh",     "High",     "bi-exclamation-triangle-fill text-warning", high,    "#fd7e14", "Significant impact on productivity; workaround unavailable."),
+                            ("SlaHoursMedium",   "Medium",   "bi-dash-circle-fill text-info",    medium,            "#0dcaf0", "Moderate impact; a workaround exists."),
+                            ("SlaHoursLow",      "Low",      "bi-arrow-down-circle-fill text-secondary", low,      "#6c757d", "Minor inconvenience or general IT question."),
+                        };
+                    }
+
+                    @foreach (var (key, label, icon, hours, color, desc) in priorities)
+                    {
+                        <div class="d-flex align-items-center gap-3 py-3 border-bottom">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width:42px;height:42px;background:@(color)1a;">
+                                <i class="bi @icon fs-5"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold small">@label</div>
+                                <div class="text-muted" style="font-size:0.78rem;">@desc</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                <div class="input-group" style="width:130px;">
+                                    <input type="number" class="form-control form-control-sm text-end sla-input"
+                                           id="@key" name="@key"
+                                           value="@hours" min="1" max="8760"
+                                           data-preview="preview_@key" />
+                                    <span class="input-group-text small">h</span>
+                                </div>
+                                <span class="badge bg-light text-dark border small" id="preview_@key"
+                                      style="min-width:52px;font-size:0.75rem;">
+                                    @HumanDuration(hours)
+                                </span>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end py-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save me-1"></i> Save SLA Policy
+                    </button>
+                    <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
+                </div>
+            </div>
+
+            <!-- Reference table -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-table me-2 text-muted"></i>Current Policy at a Glance</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Priority</th>
+                                <th class="text-center">Hours</th>
+                                <th class="text-center">Equivalent</th>
+                                <th>Example — ticket created Mon 9 AM</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge" style="background:#dc3545;">Critical</span></td>
+                                <td class="text-center fw-semibold" id="ref_critical">@critical</td>
+                                <td class="text-center text-muted" id="ref_critical_human">@HumanDuration(critical)</td>
+                                <td class="text-muted small" id="ref_critical_example">Due @(DateTime.UtcNow.Date.AddHours(9).AddHours(critical).ToString("ddd h:mm tt"))</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background:#fd7e14;">High</span></td>
+                                <td class="text-center fw-semibold" id="ref_high">@high</td>
+                                <td class="text-center text-muted" id="ref_high_human">@HumanDuration(high)</td>
+                                <td class="text-muted small" id="ref_high_example">Due @(DateTime.UtcNow.Date.AddHours(9).AddHours(high).ToString("ddd h:mm tt"))</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background:#6c757d;">Medium</span></td>
+                                <td class="text-center fw-semibold" id="ref_medium">@medium</td>
+                                <td class="text-center text-muted" id="ref_medium_human">@HumanDuration(medium)</td>
+                                <td class="text-muted small" id="ref_medium_example">Due @(DateTime.UtcNow.Date.AddHours(9).AddHours(medium).ToString("ddd h:mm tt"))</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary">Low</span></td>
+                                <td class="text-center fw-semibold" id="ref_low">@low</td>
+                                <td class="text-center text-muted" id="ref_low_human">@HumanDuration(low)</td>
+                                <td class="text-muted small" id="ref_low_example">Due @(DateTime.UtcNow.Date.AddHours(9).AddHours(low).ToString("ddd h:mm tt"))</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column: info + nav -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm mb-3 border-start border-4 border-primary">
+                <div class="card-body small">
+                    <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle text-primary me-1"></i>How SLA Works</h6>
+                    <ul class="text-muted ps-3 mb-0">
+                        <li class="mb-1">When a ticket is created, its <strong>Due Date</strong> is set to <em>now + SLA hours</em> for that priority.</li>
+                        <li class="mb-1">If the priority is changed, the due date is recalculated from the <strong>original creation date</strong>.</li>
+                        <li class="mb-1">Tickets past their due date are flagged as <strong>Overdue</strong> in the ticket list and dashboard.</li>
+                        <li>Changing these settings <strong>does not retroactively update</strong> existing ticket due dates.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-3 border-start border-4 border-warning">
+                <div class="card-body small">
+                    <h6 class="fw-semibold mb-1"><i class="bi bi-lightbulb text-warning me-1"></i>Industry Defaults</h6>
+                    <table class="table table-sm table-borderless mb-0">
+                        <thead class="table-light">
+                            <tr><th>Priority</th><th>Typical Range</th></tr>
+                        </thead>
+                        <tbody class="text-muted">
+                            <tr><td>Critical</td><td>1–4 hours</td></tr>
+                            <tr><td>High</td><td>4–8 hours</td></tr>
+                            <tr><td>Medium</td><td>24–48 hours</td></tr>
+                            <tr><td>Low</td><td>72–120 hours</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm border-0" style="background:#f8fafc;">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Account" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-building me-2"></i> Account Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Default assignee, ticket prefix</small>
+                        </a>
+                        <a asp-action="AssignmentRules" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-signpost-split me-2"></i> Assignment Rules
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Auto-assign tickets by branch/category</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">SLA breach alerts (if enabled)</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</form>
+
+@section Scripts {
+<script>
+(function () {
+    function humanDuration(hours) {
+        if (hours < 24) return hours + 'h';
+        var d = Math.floor(hours / 24), r = hours % 24;
+        return r === 0 ? d + 'd' : d + 'd ' + r + 'h';
+    }
+
+    // Map input IDs to their reference-row cell IDs
+    var rows = [
+        { inputId: 'SlaHoursCritical', previewId: 'preview_SlaHoursCritical', refId: 'ref_critical',  refHuman: 'ref_critical_human'  },
+        { inputId: 'SlaHoursHigh',     previewId: 'preview_SlaHoursHigh',     refId: 'ref_high',      refHuman: 'ref_high_human'      },
+        { inputId: 'SlaHoursMedium',   previewId: 'preview_SlaHoursMedium',   refId: 'ref_medium',    refHuman: 'ref_medium_human'    },
+        { inputId: 'SlaHoursLow',      previewId: 'preview_SlaHoursLow',      refId: 'ref_low',       refHuman: 'ref_low_human'       },
+    ];
+
+    rows.forEach(function (row) {
+        var input   = document.getElementById(row.inputId);
+        var preview = document.getElementById(row.previewId);
+        var refNum  = document.getElementById(row.refId);
+        var refHuman= document.getElementById(row.refHuman);
+
+        if (!input) return;
+        input.addEventListener('input', function () {
+            var h = parseInt(input.value, 10);
+            if (isNaN(h) || h < 1) return;
+            var label = humanDuration(h);
+            if (preview)  preview.textContent = label;
+            if (refNum)   refNum.textContent  = h;
+            if (refHuman) refHuman.textContent = label;
+        });
+    });
+})();
+</script>
+}

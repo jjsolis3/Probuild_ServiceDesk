@@ -796,6 +796,23 @@ public static class DbInitializer
                     INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
                     VALUES (7, N'Report Request',    1, 1, 80, N'bi-file-earmark-bar-graph', N'#20c997');
 
+                -- 28. Seed SLA policy hours AppSettings
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursCritical')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursCritical', '4', 'SLA', 'SLA response time in hours for Critical priority tickets (default: 4)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursHigh')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursHigh', '8', 'SLA', 'SLA response time in hours for High priority tickets (default: 8)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursMedium')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursMedium', '24', 'SLA', 'SLA response time in hours for Medium priority tickets (default: 24)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursLow')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursLow', '72', 'SLA', 'SLA response time in hours for Low priority tickets (default: 72)');
+
                 -- Migrate SavedTicketViews.FilterCategories from enum names to numeric IDs
                 -- Only runs when alphabetic names are still present (one-time migration)
                 IF EXISTS (SELECT 1 FROM dbo.SavedTicketViews WHERE FilterCategories LIKE '%[a-zA-Z]%')
