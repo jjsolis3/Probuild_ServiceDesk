@@ -2,15 +2,34 @@
     ViewData["Title"] = "Settings";
 }
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1><i class="bi bi-gear"></i> Settings</h1>
         <p class="text-muted mb-0">Configure and manage your ServiceDesk platform settings.</p>
     </div>
 </div>
 
+<!-- Settings search bar -->
+<div class="mb-4" style="max-width:420px;">
+    <div class="input-group shadow-sm">
+        <span class="input-group-text bg-white border-end-0">
+            <i class="bi bi-search text-muted"></i>
+        </span>
+        <input type="search" id="settingsSearch" class="form-control border-start-0 ps-0"
+               placeholder="Search settings…" autocomplete="off" />
+        <button class="btn btn-outline-secondary" type="button" id="settingsSearchClear" style="display:none;">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+</div>
+<div id="settingsNoResults" class="text-muted text-center py-5" style="display:none;">
+    <i class="bi bi-search display-4 d-block mb-2 opacity-25"></i>
+    No settings match "<span id="settingsNoResultsQuery"></span>". Try a different keyword.
+</div>
+
 <!-- ADMIN & COMPANY SETTINGs -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Account Company Branding Logo Branches Sites Portal</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Account Settings -->
     <div class="col-lg-3 col-md-6">
@@ -102,7 +121,8 @@
 </div>
 
 <!-- EMAIL & NOTIFICATION SETTINGS -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Email Notifications Templates Integration Gmail</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Email Integration -->
     <div class="col-lg-3 col-md-6">
@@ -173,7 +193,8 @@
 </div>
 
 <!-- USER & ROLES MANAGEMENT-->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Users Roles Permissions Groups Teams Portal</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Portal Users -->
     <div class="col-lg-3 col-md-6">
@@ -245,7 +266,8 @@
 </div>
 
 <!-- TICKET CREATION / MANAGEMENT -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Tickets Categories Keywords Assignment Rules SLA</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Categories & Keywords -->
     <div class="col-lg-3 col-md-6">
@@ -337,7 +359,8 @@
 </div>
 
 <!-- AI & AUTOMATION -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">AI Triage Machine Learning Dashboard Automation</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- AI Triage -->
     <div class="col-lg-3 col-md-6">
@@ -386,7 +409,8 @@
 </div>
 
 <!-- TICKET STATUS AND RESOLUTIONS -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Resolution Codes States Workflow Canned Responses</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Custom Ticket States -->
     <div class="col-lg-3 col-md-6">
@@ -452,6 +476,74 @@
                 </a>
             </div>
         </div>
-    </div>   
+    </div>
 
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var searchInput  = document.getElementById('settingsSearch');
+    var clearBtn     = document.getElementById('settingsSearchClear');
+    var noResults    = document.getElementById('settingsNoResults');
+    var noResultsQ   = document.getElementById('settingsNoResultsQuery');
+
+    if (!searchInput) return;
+
+    // Build searchable text for each card column once, then cache it
+    var cols = Array.from(document.querySelectorAll('.settings-row .col-lg-3, .settings-row .col-md-6'));
+    cols.forEach(function (col) {
+        // Include surrounding section label in each card's search text
+        var row = col.closest('.settings-row');
+        var sectionLabel = '';
+        if (row) {
+            var prev = row.previousElementSibling;
+            while (prev && !prev.classList.contains('settings-section-label')) {
+                prev = prev.previousElementSibling;
+            }
+            if (prev) sectionLabel = prev.textContent;
+        }
+        col.dataset.searchText = (col.textContent + ' ' + sectionLabel).toLowerCase().replace(/\s+/g, ' ');
+    });
+
+    function filterCards(q) {
+        q = q.trim().toLowerCase();
+        clearBtn.style.display = q ? 'block' : 'none';
+        if (!q) {
+            cols.forEach(function (c) { c.style.display = ''; });
+            // Restore section row visibility
+            document.querySelectorAll('.settings-row').forEach(function (r) { r.style.display = ''; });
+            noResults.style.display = 'none';
+            return;
+        }
+        var terms = q.split(/\s+/).filter(Boolean);
+        var totalVisible = 0;
+        // Process row by row
+        document.querySelectorAll('.settings-row').forEach(function (row) {
+            var rowCols = Array.from(row.querySelectorAll('.col-lg-3, .col-md-6'));
+            var anyVisible = false;
+            rowCols.forEach(function (col) {
+                var text = col.dataset.searchText || '';
+                var match = terms.every(function (t) { return text.includes(t); });
+                col.style.display = match ? '' : 'none';
+                if (match) { anyVisible = true; totalVisible++; }
+            });
+            row.style.display = anyVisible ? '' : 'none';
+        });
+        if (totalVisible === 0) {
+            noResults.style.display = 'block';
+            if (noResultsQ) noResultsQ.textContent = q;
+        } else {
+            noResults.style.display = 'none';
+        }
+    }
+
+    searchInput.addEventListener('input', function () { filterCards(searchInput.value); });
+    clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        filterCards('');
+        searchInput.focus();
+    });
+})();
+</script>
+}
