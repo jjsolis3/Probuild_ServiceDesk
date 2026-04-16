@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using ServiceDesk.Core.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -20,13 +21,15 @@ public class SettingsController : Controller
     private readonly GmailApiService _gmailApiService;
     private readonly EmailNotificationService _emailService;
     private readonly IMemoryCache _cache;
+    private readonly IWebHostEnvironment _env;
 
-    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService, IMemoryCache cache)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env)
     {
         _context = context;
         _gmailApiService = gmailApiService;
         _emailService = emailService;
         _cache = cache;
+        _env = env;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -89,22 +92,90 @@ public class SettingsController : Controller
     // POST: Settings/Branding
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Branding(IFormCollection form)
+    public async Task<IActionResult> Branding(IFormCollection form, IFormFile? logoFile)
     {
         var settings = await _context.AppSettings
             .Where(s => s.Category == "Branding")
             .ToListAsync();
+
+        // Apply all submitted text/toggle fields first
         foreach (var setting in settings)
         {
             if (form.ContainsKey(setting.Key))
                 setting.Value = form[setting.Key].FirstOrDefault() ?? setting.Value;
         }
+
+        // If a logo file was provided, validate, save it, and override CompanyLogoUrl
+        if (logoFile != null && logoFile.Length > 0)
+        {
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp" };
+            var ext = Path.GetExtension(logoFile.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(ext))
+            {
+                TempData["Error"] = "Invalid logo file type. Allowed: PNG, JPG, GIF, SVG, WEBP.";
+                return RedirectToAction(nameof(Branding));
+            }
+            if (logoFile.Length > 2 * 1024 * 1024)
+            {
+                TempData["Error"] = "Logo file is too large. Maximum size is 2 MB.";
+                return RedirectToAction(nameof(Branding));
+            }
+
+            // Delete any previously uploaded logo file from disk
+            var logoSetting = settings.FirstOrDefault(s => s.Key == "CompanyLogoUrl");
+            if (logoSetting?.Value?.StartsWith("/uploads/branding/") == true)
+            {
+                var oldPath = Path.Combine(_env.WebRootPath,
+                    logoSetting.Value.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(oldPath))
+                    System.IO.File.Delete(oldPath);
+            }
+
+            // Save the uploaded file
+            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads", "branding");
+            Directory.CreateDirectory(uploadsDir);
+            var fileName = $"logo_{DateTime.UtcNow.Ticks}{ext}";
+            var filePath = Path.Combine(uploadsDir, fileName);
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await logoFile.CopyToAsync(stream);
+
+            // Override CompanyLogoUrl with the uploaded path
+            if (logoSetting != null)
+                logoSetting.Value = $"/uploads/branding/{fileName}";
+        }
+
         await _context.SaveChangesAsync();
-
-        // Bust the BrandingFilter cache so the new logo/name takes effect immediately
         _cache.Remove("ss_branding_v1");
-
         TempData["Success"] = "Branding settings saved.";
+        return RedirectToAction(nameof(Branding));
+    }
+
+    // POST: Settings/RemoveLogo
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveLogo()
+    {
+        var logoSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CompanyLogoUrl");
+
+        if (logoSetting != null)
+        {
+            // Delete the file from disk if it was an uploaded asset
+            if (logoSetting.Value?.StartsWith("/uploads/branding/") == true)
+            {
+                var filePath = Path.Combine(_env.WebRootPath,
+                    logoSetting.Value.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(filePath))
+                    System.IO.File.Delete(filePath);
+            }
+
+            logoSetting.Value = string.Empty;
+            await _context.SaveChangesAsync();
+            _cache.Remove("ss_branding_v1");
+        }
+
+        TempData["Success"] = "Logo removed.";
         return RedirectToAction(nameof(Branding));
     }
 

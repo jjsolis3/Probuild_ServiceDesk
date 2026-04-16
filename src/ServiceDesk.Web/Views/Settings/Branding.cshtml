@@ -43,7 +43,10 @@
     </div>
 }
 
-<form method="post" asp-action="Branding" asp-antiforgery="true">
+<!-- Standalone form for logo removal — kept outside main form to avoid nesting -->
+<form id="removeLogoForm" method="post" asp-action="RemoveLogo" asp-antiforgery="true" style="display:none;"></form>
+
+<form method="post" asp-action="Branding" asp-antiforgery="true" enctype="multipart/form-data">
     <div class="row g-4 align-items-start">
 
         <!-- Left column: form fields -->
@@ -84,10 +87,48 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold" for="CompanyLogoUrl">Company Logo URL</label>
+                        <label class="form-label fw-semibold">Company Logo</label>
+
+                        @if (!string.IsNullOrWhiteSpace(logoUrl))
+                        {
+                            <div class="d-flex align-items-center gap-3 p-2 border rounded bg-white mb-3" style="max-width:440px;">
+                                <img src="@logoUrl" alt="Current logo"
+                                     style="max-height:52px;max-width:160px;object-fit:contain;flex-shrink:0;" />
+                                <div class="flex-grow-1 small text-muted text-truncate" title="@logoUrl">@logoUrl</div>
+                                <button type="submit" form="removeLogoForm"
+                                        class="btn btn-sm btn-outline-danger flex-shrink-0"
+                                        onclick="return confirm('Remove the current logo?');">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small mb-3">
+                                <i class="bi bi-image me-1"></i> No logo set — default will be used.
+                            </div>
+                        }
+
+                        <!-- File upload -->
+                        <div class="mb-2">
+                            <label class="small fw-semibold text-muted mb-1 d-block">Upload a file</label>
+                            <input type="file" class="form-control" id="logoFileInput" name="logoFile"
+                                   accept=".png,.jpg,.jpeg,.gif,.svg,.webp" style="max-width:440px;" />
+                            <div class="form-text">PNG, JPG, GIF, SVG or WEBP &mdash; max 2 MB. Saved on the server. A file upload overrides the URL field below.</div>
+                        </div>
+
+                        <!-- OR divider -->
+                        <div class="d-flex align-items-center gap-2 my-3" style="max-width:440px;">
+                            <hr class="flex-grow-1 m-0" style="border-color:#dee2e6;" />
+                            <span class="small text-muted px-1">or paste a URL</span>
+                            <hr class="flex-grow-1 m-0" style="border-color:#dee2e6;" />
+                        </div>
+
+                        <!-- URL input -->
                         <input type="url" class="form-control" id="CompanyLogoUrl" name="CompanyLogoUrl"
-                               value="@logoUrl" placeholder="https://your-domain.com/logo.png or /images/logo.png" />
-                        <div class="form-text">Shown in the employee/customer portal header. Use an absolute URL or a server-relative path.</div>
+                               value="@logoUrl" placeholder="https://your-domain.com/logo.png" style="max-width:440px;" />
+                        <div class="form-text">Absolute URL or server-relative path (e.g. /images/logo.png). Shown in the portal header and outgoing emails.</div>
+
                         @if (!string.IsNullOrWhiteSpace(logoUrl))
                         {
                             <div class="mt-2">
@@ -97,9 +138,9 @@
                         }
                         else
                         {
-                            <div class="mt-2 text-muted small">
-                                <img id="logoPreview" src="" alt="" style="display:none;max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
-                                No logo URL set — default ServiceSphere logo will be used.
+                            <div class="mt-2">
+                                <img id="logoPreview" src="" alt=""
+                                     style="display:none;max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
                             </div>
                         }
                     </div>
