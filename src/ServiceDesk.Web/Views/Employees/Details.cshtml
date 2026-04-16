@@ -2,322 +2,549 @@
 @using ServiceDesk.Core.Enums
 @{
     ViewData["Title"] = Model.FullName;
-    var categoryBreakdown = ViewBag.CategoryBreakdown as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
-    var monthlyTrend      = ViewBag.MonthlyTrend      as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var categoryBreakdown   = ViewBag.CategoryBreakdown   as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var monthlyTrend        = ViewBag.MonthlyTrend        as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
     var recurringCategories = ViewBag.RecurringCategories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
-    int totalSubmitted    = Model.SubmittedTickets.Count;
-    int openCount         = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress);
-    int resolvedCount     = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+    int totalSubmitted = Model.SubmittedTickets.Count;
+    int openCount      = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress);
+    int resolvedCount  = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+
+    var activeTab = Context.Request.Query["tab"].ToString();
+    if (string.IsNullOrEmpty(activeTab)) activeTab = "overview";
+    string TabClass(string key) => activeTab == key ? "nav-link active" : "nav-link";
+    string PaneClass(string key) => activeTab == key ? "tab-pane fade show active" : "tab-pane fade";
 }
 
-<nav aria-label="breadcrumb">
+<nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a asp-action="Index">Employees</a></li>
         <li class="breadcrumb-item active">@Model.FullName</li>
     </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>
-        <i class="bi bi-person"></i> @Model.FullName
-        @if (Model.IsActive)
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-person-circle text-primary me-2"></i>@Model.FullName
+            @if (Model.IsActive)
+            { <span class="badge bg-success ms-1 fs-6">Active</span> }
+            else
+            { <span class="badge bg-secondary ms-1 fs-6">Inactive</span> }
+        </h1>
+        <div class="text-muted small">@(Model.JobTitle ?? "No title") &nbsp;·&nbsp; @Model.Department</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Edit
+        </a>
+        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash me-1"></i>Delete
+        </a>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-0" id="empTabs">
+    <li class="nav-item">
+        <a class="@TabClass("overview")" href="?tab=overview">
+            <i class="bi bi-person-badge me-1"></i>Overview
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("credentials")" href="?tab=credentials">
+            <i class="bi bi-key me-1"></i>Credentials
+            @if (Model.Credentials.Any()) { <span class="badge bg-secondary ms-1">@Model.Credentials.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("tickets")" href="?tab=tickets">
+            <i class="bi bi-ticket-detailed me-1"></i>Tickets
+            @if (totalSubmitted > 0) { <span class="badge bg-secondary ms-1">@totalSubmitted</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("assets")" href="?tab=assets">
+            <i class="bi bi-laptop me-1"></i>Assets
+            @if (Model.AssignedAssets.Any()) { <span class="badge bg-secondary ms-1">@Model.AssignedAssets.Count</span> }
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
+
+    <!-- ═══ OVERVIEW ═══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("overview")">
+        <div class="row g-4">
+
+            <!-- Profile card -->
+            <div class="col-md-5">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header fw-semibold"><i class="bi bi-person me-2"></i>Profile</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5 text-muted small">Email</dt>
+                            <dd class="col-sm-7"><a href="mailto:@Model.Email">@Model.Email</a></dd>
+                            <dt class="col-sm-5 text-muted small">Phone</dt>
+                            <dd class="col-sm-7">@(Model.Phone ?? "—")@(!string.IsNullOrEmpty(Model.Extension) ? $" ext. {Model.Extension}" : "")</dd>
+                            <dt class="col-sm-5 text-muted small">Department</dt>
+                            <dd class="col-sm-7">@Model.Department</dd>
+                            <dt class="col-sm-5 text-muted small">Job Title</dt>
+                            <dd class="col-sm-7">@(Model.JobTitle ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Hire Date</dt>
+                            <dd class="col-sm-7">@Model.HireDate.ToString("MMM dd, yyyy")</dd>
+                            <dt class="col-sm-5 text-muted small">Status</dt>
+                            <dd class="col-sm-7">
+                                @if (Model.IsActive)
+                                { <span class="badge bg-success">Active</span> }
+                                else
+                                { <span class="badge bg-secondary">Inactive</span> }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ticket KPI summary -->
+            <div class="col-md-7">
+                <div class="row g-3 mb-3">
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-primary">@totalSubmitted</div>
+                                <div class="text-muted small">Total Tickets</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-warning">@openCount</div>
+                                <div class="text-muted small">Open / In Progress</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-success">@resolvedCount</div>
+                                <div class="text-muted small">Resolved</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Training hint -->
+                @if (recurringCategories.Any())
+                {
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-mortarboard me-2"></i>
+                        <strong>Training Opportunity:</strong>
+                        Recurring open tickets in:
+                        @string.Join(", ", recurringCategories.Select(x => (string)x.CategoryName))
+                    </div>
+                }
+
+                <!-- Category breakdown -->
+                @if (categoryBreakdown.Any())
+                {
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body p-3">
+                            <div class="fw-semibold small text-muted mb-2">
+                                <i class="bi bi-bar-chart-line me-1"></i>Ticket Categories
+                            </div>
+                            @foreach (var cat in categoryBreakdown)
+                            {
+                                var pct = totalSubmitted > 0 ? (int)((double)cat.Count / totalSubmitted * 100) : 0;
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="small">@cat.CategoryName</span>
+                                        <span class="small text-muted">@cat.Count (@pct%)</span>
+                                    </div>
+                                    <div class="progress" style="height:6px;">
+                                        <div class="progress-bar bg-primary" style="width:@pct%"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Monthly trend chart -->
+            @if (monthlyTrend.Any())
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header fw-semibold small">
+                            <i class="bi bi-graph-up me-1"></i>Monthly Submissions (Last 6 Months)
+                        </div>
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-end gap-2" style="height:80px;">
+                                @{
+                                    var maxMonthly = monthlyTrend.Any() ? (int)monthlyTrend.Max(x => (int)x.Count) : 1;
+                                    if (maxMonthly == 0) maxMonthly = 1;
+                                }
+                                @foreach (var m in monthlyTrend)
+                                {
+                                    var barH = Math.Max(6, (int)((double)(int)m.Count / maxMonthly * 72));
+                                    <div class="flex-fill text-center">
+                                        <div class="bg-primary rounded-top mx-auto"
+                                             style="height:@(barH)px;min-width:18px;" title="@m.Count tickets"></div>
+                                        <div class="text-muted" style="font-size:0.65rem;margin-top:2px;">@m.Label</div>
+                                        <div class="fw-semibold" style="font-size:0.7rem;">@m.Count</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ═══ CREDENTIALS ═════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("credentials")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-key me-2"></i>IT-Managed Credential Vault</h6>
+                <div class="text-muted small">Credentials IT manages on behalf of this employee (AD, VPN, email, etc.)</div>
+            </div>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCredModal">
+                <i class="bi bi-plus-lg me-1"></i>Add Credential
+            </button>
+        </div>
+
+        @if (!Model.Credentials.Any())
         {
-            <span class="badge bg-success fs-6">Active</span>
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-key fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-1">No credentials stored for this employee.</p>
+                <p class="small text-muted">Store Active Directory, VPN, email, or other IT-managed passwords here.</p>
+            </div>
         }
         else
         {
-            <span class="badge bg-secondary fs-6">Inactive</span>
-        }
-    </h1>
-    <div>
-        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
-            <i class="bi bi-pencil"></i> Edit
-        </a>
-        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
-            <i class="bi bi-trash"></i> Delete
-        </a>
-    </div>
-</div>
-
-<div class="row g-3">
-    <!-- Employee Details Card -->
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-person-badge"></i> Employee Details
-            </div>
-            <div class="card-body">
-                <dl>
-                    <dt>First Name</dt>
-                    <dd>@Model.FirstName</dd>
-
-                    <dt>Last Name</dt>
-                    <dd>@Model.LastName</dd>
-
-                    <dt>Email</dt>
-                    <dd><a href="mailto:@Model.Email">@Model.Email</a></dd>
-
-                    <dt>Phone</dt>
-                    <dd>@(Model.Phone ?? "N/A")</dd>
-
-                    <dt>Department</dt>
-                    <dd>@Model.Department</dd>
-
-                    <dt>Job Title</dt>
-                    <dd>@(Model.JobTitle ?? "N/A")</dd>
-
-                    <dt>Hire Date</dt>
-                    <dd>@Model.HireDate.ToString("MMM dd, yyyy")</dd>
-
-                    <dt>Status</dt>
-                    <dd>
-                        @if (Model.IsActive)
-                        {
-                            <span class="badge bg-success">Active</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary">Inactive</span>
-                        }
-                    </dd>
-                </dl>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tickets, Assets & Trend Analytics -->
-    <div class="col-md-8">
-
-        <!-- Trend KPI row -->
-        <div class="row g-3 mb-3">
-            <div class="col-4">
-                <div class="card text-center shadow-sm border-0 h-100">
-                    <div class="card-body py-3">
-                        <div class="fs-3 fw-bold text-primary">@totalSubmitted</div>
-                        <div class="text-muted small">Total Tickets</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-4">
-                <div class="card text-center shadow-sm border-0 h-100">
-                    <div class="card-body py-3">
-                        <div class="fs-3 fw-bold text-warning">@openCount</div>
-                        <div class="text-muted small">Open / In Progress</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-4">
-                <div class="card text-center shadow-sm border-0 h-100">
-                    <div class="card-body py-3">
-                        <div class="fs-3 fw-bold text-success">@resolvedCount</div>
-                        <div class="text-muted small">Resolved / Closed</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Training hint banner -->
-        @if (recurringCategories.Any())
-        {
-            <div class="alert alert-warning py-2 mb-3 small">
-                <i class="bi bi-mortarboard me-2"></i>
-                <strong>Training Opportunity:</strong>
-                This employee has repeatedly submitted tickets in:
-                @string.Join(", ", recurringCategories.Select(x => (string)x.CategoryName).ToArray()).
-                Consider targeted training or knowledge base articles.
-            </div>
-        }
-
-        <!-- Category Breakdown -->
-        @if (categoryBreakdown.Any())
-        {
-            <div class="card shadow-sm mb-3">
-                <div class="card-header fw-semibold">
-                    <i class="bi bi-bar-chart-line me-2"></i>Ticket Category Breakdown
-                </div>
-                <div class="card-body p-3">
-                    @foreach (var cat in categoryBreakdown)
-                    {
-                        var pct = totalSubmitted > 0 ? (int)((double)cat.Count / totalSubmitted * 100) : 0;
-                        <div class="mb-2">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="small fw-semibold">@cat.CategoryName</span>
-                                <span class="small text-muted">@cat.Count ticket@(cat.Count == 1 ? "" : "s") (@pct%)</span>
+            <div class="list-group">
+                @foreach (var cred in Model.Credentials.OrderBy(c => c.Label))
+                {
+                    <div class="list-group-item px-3 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">
+                                    <i class="bi bi-lock-fill text-warning me-1"></i>@cred.Label
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Username))
+                                {
+                                    <div class="text-muted small"><i class="bi bi-person me-1"></i>@cred.Username</div>
+                                }
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <input type="password" class="form-control form-control-sm bg-light"
+                                           id="empwd_@cred.Id" value="••••••••" readonly style="max-width:200px;" />
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="revealEmpPwd(@cred.Id, this)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="copyEmpPwd(@cred.Id)" title="Copy password">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Url))
+                                {
+                                    <div class="mt-1 small">
+                                        <i class="bi bi-link-45deg me-1"></i>
+                                        <a href="@cred.Url" target="_blank" rel="noopener">@cred.Url</a>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(cred.Notes))
+                                {
+                                    <div class="text-muted small mt-1"><i class="bi bi-info-circle me-1"></i>@cred.Notes</div>
+                                }
+                                <div class="text-muted mt-1" style="font-size:0.72rem;">
+                                    Added by @cred.CreatedByEmail on @cred.CreatedDate.ToString("MMM d, yyyy")
+                                </div>
                             </div>
-                            <div class="progress" style="height:8px;">
-                                <div class="progress-bar bg-primary" role="progressbar"
-                                     style="width:@pct%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"></div>
+                            <form asp-action="DeleteCredential" asp-route-id="@Model.Id" method="post" class="ms-3">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="credentialId" value="@cred.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Delete this credential?')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Add Credential Modal -->
+        <div class="modal fade" id="addCredModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Add Credential for @Model.FirstName</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddCredential" asp-route-id="@Model.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Label <span class="text-danger">*</span></label>
+                                <input type="text" name="label" class="form-control"
+                                       placeholder="e.g. Active Directory, VPN, Email, Wi-Fi" maxlength="100" required />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Username</label>
+                                <input type="text" name="username" class="form-control"
+                                       placeholder="e.g. jsmith" maxlength="200" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <input type="password" name="password" id="newEmpCredPwd" class="form-control"
+                                           placeholder="Enter password" maxlength="500" required />
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="toggleEmpNewPwd()">
+                                        <i class="bi bi-eye" id="newEmpPwdIcon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">URL / System Link</label>
+                                <input type="url" name="url" class="form-control"
+                                       placeholder="https://..." maxlength="500" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="credNotes" class="form-control"
+                                       placeholder="e.g. Temp password — must change on first login" maxlength="500" />
+                            </div>
+                            <div class="alert alert-info py-2 small mb-0">
+                                <i class="bi bi-shield-lock me-1"></i>
+                                Passwords are encrypted and never stored in plain text.
+                                Only IT staff can view or reveal them.
                             </div>
                         </div>
-                    }
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-lock me-1"></i>Save Credential</button>
+                        </div>
+                    </form>
                 </div>
-            </div>
-        }
-
-        <!-- Monthly trend (last 6 months) -->
-        @if (monthlyTrend.Any())
-        {
-            <div class="card shadow-sm mb-3">
-                <div class="card-header fw-semibold">
-                    <i class="bi bi-graph-up me-2"></i>Monthly Submissions (Last 6 Months)
-                </div>
-                <div class="card-body p-3">
-                    <div class="d-flex align-items-end gap-2" style="height:80px;">
-                        @{
-                            var maxMonthly = monthlyTrend.Any() ? (int)monthlyTrend.Max(x => (int)x.Count) : 1;
-                            if (maxMonthly == 0) maxMonthly = 1;
-                        }
-                        @foreach (var m in monthlyTrend)
-                        {
-                            var barHeight = Math.Max(6, (int)((double)(int)m.Count / maxMonthly * 72));
-                            <div class="flex-fill text-center">
-                                <div class="bg-primary rounded-top mx-auto"
-                                     style="height:@(barHeight)px;min-width:18px;" title="@m.Count tickets"></div>
-                                <div class="text-muted" style="font-size:0.65rem;margin-top:2px;">@m.Label</div>
-                                <div class="fw-semibold" style="font-size:0.7rem;">@m.Count</div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
-        }
-
-        <!-- Submitted Tickets -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <i class="bi bi-ticket-detailed"></i> Submitted Tickets
-                <span class="badge bg-primary rounded-pill ms-1">@Model.SubmittedTickets.Count</span>
-            </div>
-            <div class="card-body">
-                @if (Model.SubmittedTickets.Any())
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Status</th>
-                                    <th>Priority</th>
-                                    <th>Created</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var ticket in Model.SubmittedTickets)
-                                {
-                                    <tr>
-                                        <td>@ticket.Id</td>
-                                        <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@ticket.Id">
-                                                @ticket.Title
-                                            </a>
-                                        </td>
-                                        <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
-                                        <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                                        <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No submitted tickets.</p>
-                }
             </div>
         </div>
+    </div>
 
-        <!-- Assigned Tickets -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <i class="bi bi-clipboard-check"></i> Assigned Tickets
-                <span class="badge bg-info rounded-pill ms-1">@Model.AssignedTickets.Count</span>
-            </div>
-            <div class="card-body">
-                @if (Model.AssignedTickets.Any())
+    <!-- ═══ TICKETS ══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("tickets")">
+        <ul class="nav nav-pills mb-3" id="ticketSubTabs">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabSubmitted">
+                    Submitted (@Model.SubmittedTickets.Count)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabAssigned">
+                    Assigned to Them (@Model.AssignedTickets.Count)
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="tabSubmitted">
+                @if (!Model.SubmittedTickets.Any())
+                {
+                    <p class="text-muted text-center py-4">No submitted tickets.</p>
+                }
+                else
                 {
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Status</th>
-                                    <th>Priority</th>
-                                    <th>Created</th>
-                                </tr>
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var ticket in Model.AssignedTickets)
+                                @foreach (var t in Model.SubmittedTickets.OrderByDescending(t => t.CreatedDate))
                                 {
                                     <tr>
-                                        <td>@ticket.Id</td>
+                                        <td class="text-muted">#@t.Id</td>
                                         <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@ticket.Id">
-                                                @ticket.Title
-                                            </a>
+                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a>
                                         </td>
-                                        <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
-                                        <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                                        <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
+                                        <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
+                                        <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
+                                        <td class="text-muted small">@t.CreatedDate.ToString("MMM dd, yyyy")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
                 }
-                else
+            </div>
+            <div class="tab-pane fade" id="tabAssigned">
+                @if (!Model.AssignedTickets.Any())
                 {
-                    <p class="text-muted mb-0">No assigned tickets.</p>
+                    <p class="text-muted text-center py-4">No tickets assigned to this employee.</p>
                 }
-            </div>
-        </div>
-
-        <!-- Assigned Assets -->
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-laptop"></i> Assigned Assets
-                <span class="badge bg-warning text-dark rounded-pill ms-1">@Model.AssignedAssets.Count</span>
-            </div>
-            <div class="card-body">
-                @if (Model.AssignedAssets.Any())
+                else
                 {
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>Asset Tag</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Serial Number</th>
-                                </tr>
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var asset in Model.AssignedAssets)
+                                @foreach (var t in Model.AssignedTickets.OrderByDescending(t => t.CreatedDate))
                                 {
                                     <tr>
+                                        <td class="text-muted">#@t.Id</td>
                                         <td>
-                                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id">
-                                                @asset.AssetTag
-                                            </a>
+                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a>
                                         </td>
-                                        <td>@asset.Name</td>
-                                        <td>@asset.AssetType</td>
-                                        <td><span class="badge badge-@asset.Status.ToString().ToLower()">@asset.Status</span></td>
-                                        <td>@(asset.SerialNumber ?? "N/A")</td>
+                                        <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
+                                        <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
+                                        <td class="text-muted small">@t.CreatedDate.ToString("MMM dd, yyyy")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No assets assigned.</p>
                 }
             </div>
         </div>
     </div>
+
+    <!-- ═══ ASSETS ═══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("assets")">
+        <h6 class="fw-semibold mb-3"><i class="bi bi-laptop me-2"></i>Assigned Assets</h6>
+        @if (!Model.AssignedAssets.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-laptop fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No assets assigned to this employee.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ss-datatable-compact">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Asset Tag</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Serial Number</th>
+                            <th>Warranty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var asset in Model.AssignedAssets)
+                        {
+                            var wExpired = asset.WarrantyExpiry.HasValue && asset.WarrantyExpiry.Value < DateTime.Today;
+                            <tr>
+                                <td>
+                                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id">
+                                        <code>@asset.AssetTag</code>
+                                    </a>
+                                </td>
+                                <td>@asset.Name</td>
+                                <td>@asset.AssetType</td>
+                                <td><span class="badge badge-@asset.Status.ToString().ToLower()">@asset.Status</span></td>
+                                <td><code class="small">@(asset.SerialNumber ?? "—")</code></td>
+                                <td>
+                                    @if (asset.WarrantyExpiry.HasValue)
+                                    {
+                                        <span class="@(wExpired ? "text-danger" : "text-success") small">
+                                            @asset.WarrantyExpiry.Value.ToString("MMM yyyy")
+                                            @if (wExpired) { <i class="bi bi-exclamation-triangle ms-1"></i> }
+                                        </span>
+                                    }
+                                    else { <span class="text-muted small">—</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+    window.revealEmpPwd = function (credId, btn) {
+        var input = document.getElementById('empwd_' + credId);
+        if (input.type === 'text') {
+            input.type = 'password';
+            input.value = '••••••••';
+            btn.innerHTML = '<i class="bi bi-eye"></i>';
+            return;
+        }
+        fetch('@Url.Action("RevealPassword", "Employees")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': token
+            },
+            body: 'credentialId=' + credId
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                input.type = 'text';
+                input.value = d.password;
+                btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                alert('Error: ' + d.message);
+            }
+        });
+    };
+
+    window.copyEmpPwd = function (credId) {
+        var input = document.getElementById('empwd_' + credId);
+        if (input.type !== 'text') {
+            fetch('@Url.Action("RevealPassword", "Employees")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'RequestVerificationToken': token
+                },
+                body: 'credentialId=' + credId
+            })
+            .then(r => r.json())
+            .then(d => { if (d.success) navigator.clipboard.writeText(d.password); });
+        } else {
+            navigator.clipboard.writeText(input.value);
+        }
+    };
+
+    window.toggleEmpNewPwd = function () {
+        var inp = document.getElementById('newEmpCredPwd');
+        var ico = document.getElementById('newEmpPwdIcon');
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+        ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+    };
+})();
+</script>
+}

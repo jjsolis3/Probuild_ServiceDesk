@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
@@ -12,10 +13,12 @@ namespace ServiceDesk.Web.Controllers;
 public class EmployeesController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly IDataProtector _protector;
 
-    public EmployeesController(ServiceDeskDbContext context)
+    public EmployeesController(ServiceDeskDbContext context, IDataProtectionProvider dpProvider)
     {
         _context = context;
+        _protector = dpProvider.CreateProtector("EmployeeCredentials.v1");
     }
 
     public async Task<IActionResult> Index(string[]? departments, bool? active, int[]? branchIds, bool? hasLogin, string? q)
@@ -68,6 +71,7 @@ public class EmployeesController : Controller
             .Include(e => e.SubmittedTickets)
             .Include(e => e.AssignedTickets)
             .Include(e => e.AssignedAssets)
+            .Include(e => e.Credentials)
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (employee == null) return NotFound();
@@ -91,7 +95,6 @@ public class EmployeesController : Controller
             .OrderByDescending(x => x.Count)
             .ToList();
 
-        // Monthly submission counts for the last 6 months
         var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);
         ViewBag.MonthlyTrend = submitted
             .Where(t => t.CreatedDate >= sixMonthsAgo)
@@ -108,6 +111,68 @@ public class EmployeesController : Controller
             .ToList();
 
         return View(employee);
+    }
+
+    // ── Employee Credential Vault ─────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddCredential(int id, string label, string? username,
+        string password, string? url, string? credNotes)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(password))
+        {
+            TempData["Error"] = "Label and password are required.";
+            return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+        }
+
+        _context.EmployeeCredentials.Add(new EmployeeCredential
+        {
+            EmployeeId        = id,
+            Label             = label.Trim(),
+            Username          = username?.Trim(),
+            EncryptedPassword = _protector.Protect(password),
+            Url               = url?.Trim(),
+            Notes             = credNotes?.Trim(),
+            CreatedDate       = DateTime.UtcNow,
+            CreatedByEmail    = User.Identity?.Name ?? "system",
+        });
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Credential added.";
+        return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCredential(int id, int credentialId)
+    {
+        var cred = await _context.EmployeeCredentials.FindAsync(credentialId);
+        if (cred != null && cred.EmployeeId == id)
+        {
+            _context.EmployeeCredentials.Remove(cred);
+            await _context.SaveChangesAsync();
+        }
+        TempData["Success"] = "Credential deleted.";
+        return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevealPassword(int credentialId)
+    {
+        var cred = await _context.EmployeeCredentials.FindAsync(credentialId);
+        if (cred == null) return Json(new { success = false, message = "Not found" });
+
+        try
+        {
+            var plain = _protector.Unprotect(cred.EncryptedPassword);
+            return Json(new { success = true, password = plain });
+        }
+        catch
+        {
+            return Json(new { success = false, message = "Decryption failed." });
+        }
     }
 
     public async Task<IActionResult> Create()

@@ -21,6 +21,9 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<AssetCredential> AssetCredentials => Set<AssetCredential>();
     public DbSet<AssetAttachment> AssetAttachments => Set<AssetAttachment>();
     public DbSet<AssetRelationship> AssetRelationships => Set<AssetRelationship>();
+
+    // Employee credential vault
+    public DbSet<EmployeeCredential> EmployeeCredentials => Set<EmployeeCredential>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
@@ -347,6 +350,24 @@ public class ServiceDeskDbContext : DbContext
         // Index: fast lookup of a user's views + shared views
         modelBuilder.Entity<SavedTicketView>()
             .HasIndex(v => new { v.OwnerPortalUserId, v.IsShared });
+
+        // EmployeeCredential -> Employee
+        modelBuilder.Entity<EmployeeCredential>()
+            .HasOne(c => c.Employee)
+            .WithMany(e => e.Credentials)
+            .HasForeignKey(c => c.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EmployeeCredential>()
+            .Property(c => c.EncryptedPassword)
+            .HasColumnType("nvarchar(max)");
+
+        // Subscription -> Asset (optional)
+        modelBuilder.Entity<Subscription>()
+            .HasOne(s => s.Asset)
+            .WithMany()
+            .HasForeignKey(s => s.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Decimal precision — prevents silent truncation on SQL Server
         modelBuilder.Entity<Asset>()

@@ -48,4 +48,9 @@ public class Subscription
 
     [StringLength(500)]
     public string? Notes { get; set; }
+
+    /// <summary>Optional link to the asset this license is installed on / assigned to.</summary>
+    [Display(Name = "Linked Asset")]
+    public int? AssetId { get; set; }
+    public Asset? Asset { get; set; }
 }

@@ -945,6 +945,31 @@ public static class DbInitializer
                         CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
                         CreatedByEmail      NVARCHAR(200) NULL
                     );");
+
+            // 31. Employee credential vault + Subscription → Asset link
+            context.Database.ExecuteSqlRaw(@"
+                -- Per-employee IT-managed credential vault
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeCredentials')
+                    CREATE TABLE dbo.EmployeeCredentials (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        EmployeeId          INT NOT NULL REFERENCES dbo.Employees(Id) ON DELETE CASCADE,
+                        Label               NVARCHAR(100) NOT NULL,
+                        Username            NVARCHAR(200) NULL,
+                        EncryptedPassword   NVARCHAR(MAX) NOT NULL,
+                        Url                 NVARCHAR(500) NULL,
+                        Notes               NVARCHAR(500) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2 NULL,
+                        CreatedByEmail      NVARCHAR(200) NOT NULL
+                    );
+
+                -- Link software subscriptions to a specific asset (device-based license tracking)
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Subscriptions') AND name = 'AssetId')
+                BEGIN
+                    ALTER TABLE dbo.Subscriptions ADD AssetId INT NULL;
+                    ALTER TABLE dbo.Subscriptions ADD CONSTRAINT FK_Subscriptions_Assets
+                        FOREIGN KEY (AssetId) REFERENCES dbo.Assets(Id) ON DELETE SET NULL;
+                END");
         }
         catch (Exception ex)
         {

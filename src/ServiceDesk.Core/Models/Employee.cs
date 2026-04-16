@@ -55,4 +55,5 @@ public class Employee
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();
     public ICollection<Ticket> AssignedTickets { get; set; } = new List<Ticket>();
     public ICollection<Asset> AssignedAssets { get; set; } = new List<Asset>();
+    public ICollection<EmployeeCredential> Credentials { get; set; } = new List<EmployeeCredential>();
 }
