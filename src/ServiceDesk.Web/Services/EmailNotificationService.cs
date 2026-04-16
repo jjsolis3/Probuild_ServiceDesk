@@ -420,6 +420,68 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends a test email for the given template key, filling all tokens with
+    /// sample values so the recipient can see an accurate rendered preview.
+    /// Returns (success, message) so the caller can surface the result to the UI.
+    /// </summary>
+    public async Task<(bool Success, string Message)> SendTestEmailAsync(
+        string templateKey,
+        string? customBody,
+        string? customSubject,
+        string recipientEmail)
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+            return (false, "No active, authorized email configuration found. Set one up in Email Integration first.");
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]          = "1042",
+            ["TicketTitle"]       = "Sample Ticket — Test Preview",
+            ["TicketStatus"]      = "Open",
+            ["TicketPriority"]    = "High",
+            ["TicketCategory"]    = "Software Issue",
+            ["TicketDescription"] = "This is a sample description used to preview the email template.",
+            ["RecipientName"]     = "Test Recipient",
+            ["AssigneeName"]      = "Support Agent",
+            ["NoteAuthor"]        = "Support Agent",
+            ["NoteContent"]       = "This is a sample comment used to preview the template.",
+            ["CompanyName"]       = companyName,
+            ["ResetUrl"]          = "https://example.com/reset-password",
+            ["ResolutionRow"]     = string.Empty,
+            ["UpdateBlock"]       = string.Empty,
+        };
+
+        var subject = !string.IsNullOrWhiteSpace(customSubject)
+            ? $"[TEST] {ApplyTokens(customSubject, tokens)}"
+            : $"[TEST] Email Template — {templateKey}";
+
+        var innerContent = !string.IsNullOrWhiteSpace(customBody)
+            ? ApplyTokens(customBody, tokens)
+            : $"<p><em>This is a test send for the <strong>{templateKey}</strong> template. No custom body is set — the system default will be used when this email is actually triggered.</em></p>";
+
+        // Add a test banner so recipients know this is not a real notification
+        var testBanner = "<div style='background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;'>"
+            + "<strong>Test Email</strong> — This message was sent from the ServiceDesk email template preview. Sample data is used in place of real ticket values.</div>";
+
+        var htmlBody = BuildHtmlEmail(testBanner + innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
+            _logger.LogInformation("Sent test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            return (true, $"Test email sent successfully to {recipientEmail}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            return (false, $"Send failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
     /// </summary>
     private static string BuildHtmlEmail(

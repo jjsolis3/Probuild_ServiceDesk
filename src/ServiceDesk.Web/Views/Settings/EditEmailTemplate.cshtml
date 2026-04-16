@@ -113,6 +113,10 @@
                         <button type="button" class="btn btn-sm btn-outline-info" id="btnPreview">
                             <i class="bi bi-eye me-1"></i> Preview
                         </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnOpenTestEmail"
+                                data-bs-toggle="modal" data-bs-target="#testEmailModal">
+                            <i class="bi bi-send me-1"></i> Send Test
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -225,6 +229,37 @@
     </div>
 </form>
 
+<!-- Send Test Email Modal -->
+<div class="modal fade" id="testEmailModal" tabindex="-1" aria-labelledby="testEmailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="testEmailModalLabel">
+                    <i class="bi bi-send me-2 text-primary"></i> Send Test Email
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Renders this template with sample data and sends it to the address below so you can preview the final result in a real inbox.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="testEmailAddress">Recipient Email</label>
+                    <input type="email" class="form-control" id="testEmailAddress"
+                           placeholder="you@example.com" autocomplete="email" />
+                </div>
+                <div id="testEmailResult"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="btnSendTestEmail">
+                    <i class="bi bi-send me-1"></i> Send Test
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 (function () {
@@ -270,6 +305,57 @@
 
     btnPreview.addEventListener('click', function () { buildPreview(); previewCard.style.display = 'block'; });
     btnClose.addEventListener('click',   function () { previewCard.style.display = 'none'; });
+})();
+
+// ── Send Test Email ────────────────────────────────────────────────────────
+(function () {
+    var btnSend      = document.getElementById('btnSendTestEmail');
+    var emailInput   = document.getElementById('testEmailAddress');
+    var resultDiv    = document.getElementById('testEmailResult');
+    var tokenInput   = document.querySelector('input[name="__RequestVerificationToken"]');
+    var templateId   = @Model.Id;
+    var sendUrl      = '@Url.Action("SendTestEmail", "Settings")';
+
+    // Clear result when modal is reopened
+    document.getElementById('testEmailModal').addEventListener('show.bs.modal', function () {
+        resultDiv.innerHTML = '';
+    });
+
+    btnSend.addEventListener('click', function () {
+        var email = emailInput.value.trim();
+        if (!email) {
+            resultDiv.innerHTML = '<div class="alert alert-warning py-2 mb-0 small"><i class="bi bi-exclamation-triangle me-1"></i>Please enter a recipient email address.</div>';
+            return;
+        }
+
+        btnSend.disabled = true;
+        btnSend.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sending…';
+        resultDiv.innerHTML = '';
+
+        fetch(sendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': tokenInput ? tokenInput.value : ''
+            },
+            body: 'templateId=' + encodeURIComponent(templateId) + '&recipientEmail=' + encodeURIComponent(email)
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success py-2 mb-0 small"><i class="bi bi-check-circle me-1"></i>' + data.message + '</div>';
+            } else {
+                resultDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0 small"><i class="bi bi-exclamation-circle me-1"></i>' + data.message + '</div>';
+            }
+        })
+        .catch(function () {
+            resultDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0 small"><i class="bi bi-exclamation-circle me-1"></i>Request failed. Check your network connection and try again.</div>';
+        })
+        .finally(function () {
+            btnSend.disabled = false;
+            btnSend.innerHTML = '<i class="bi bi-send me-1"></i> Send Test';
+        });
+    });
 })();
 </script>
 }

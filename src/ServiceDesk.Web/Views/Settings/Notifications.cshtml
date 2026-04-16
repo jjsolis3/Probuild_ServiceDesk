@@ -113,20 +113,47 @@
             <div class="card-body">
                 <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle text-primary me-1"></i>How It Works</h6>
                 <ul class="small text-muted ps-3 mb-0">
-                    <li class="mb-1">Emails use the Gmail account configured under <a asp-action="EmailConfig">Email Integration</a>.</li>
+                    <li class="mb-1">Emails use the Gmail account configured under <a asp-action="EmailIntegration">Email Integration</a>.</li>
                     <li class="mb-1">Email content is customizable via <a asp-action="EmailTemplates">Email Templates</a>.</li>
                     <li class="mb-1">Internal notes are <strong>never</strong> emailed to requesters regardless of this setting.</li>
                     <li>Disabling a trigger only suppresses future emails — historical notifications are not affected.</li>
                 </ul>
             </div>
         </div>
-        <div class="card border-0 shadow-sm border-start border-4 border-warning">
+        <div class="card border-0 shadow-sm border-start border-4 border-warning mb-3">
             <div class="card-body small">
                 <h6 class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Gmail Required</h6>
                 <p class="text-muted mb-0">
                     Notifications are only sent when a Gmail account is connected and active.
-                    Configure it under <a asp-action="EmailConfig">Email Integration</a>.
+                    Configure it under <a asp-action="EmailIntegration">Email Integration</a>.
                 </p>
+            </div>
+        </div>
+
+        <!-- Related settings quick-nav -->
+        <div class="card shadow-sm border-0" style="background:#f8fafc;">
+            <div class="card-body">
+                <h6 class="card-title text-muted mb-3">
+                    <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                </h6>
+                <div class="d-grid gap-2">
+                    <a asp-action="EmailTemplates" class="btn btn-outline-secondary btn-sm text-start">
+                        <i class="bi bi-envelope-at me-2"></i> Email Templates
+                        <small class="d-block text-muted" style="font-size:0.7rem;">Customise the body of each notification type</small>
+                    </a>
+                    <a asp-action="Branding" class="btn btn-outline-secondary btn-sm text-start">
+                        <i class="bi bi-palette me-2"></i> Branding
+                        <small class="d-block text-muted" style="font-size:0.7rem;">Logo, brand colour, email header &amp; footer</small>
+                    </a>
+                    <a asp-action="EmailIntegration" class="btn btn-outline-secondary btn-sm text-start">
+                        <i class="bi bi-envelope-check me-2"></i> Email Integration
+                        <small class="d-block text-muted" style="font-size:0.7rem;">Gmail OAuth &amp; inbound email config</small>
+                    </a>
+                    <a asp-action="Account" class="btn btn-outline-secondary btn-sm text-start">
+                        <i class="bi bi-building me-2"></i> Account Settings
+                        <small class="d-block text-muted" style="font-size:0.7rem;">Company name, timezone, defaults</small>
+                    </a>
+                </div>
             </div>
         </div>
     </div>

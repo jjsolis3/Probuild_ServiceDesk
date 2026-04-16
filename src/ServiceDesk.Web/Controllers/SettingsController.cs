@@ -221,6 +221,27 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(EmailTemplates));
     }
 
+    // POST: Settings/SendTestEmail — sends a rendered test email for the given template
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendTestEmail(int templateId, string recipientEmail)
+    {
+        if (string.IsNullOrWhiteSpace(recipientEmail))
+            return Json(new { success = false, message = "Please enter a recipient email address." });
+
+        var template = await _context.EmailTemplates.FindAsync(templateId);
+        if (template == null)
+            return Json(new { success = false, message = "Template not found." });
+
+        var (success, message) = await _emailService.SendTestEmailAsync(
+            template.Key,
+            template.BodyTemplate,
+            template.SubjectTemplate,
+            recipientEmail.Trim());
+
+        return Json(new { success, message });
+    }
+
     // POST: Settings/ResetEmailTemplate/5 — clears customisation, reverts to system default
     [HttpPost]
     [ValidateAntiForgeryToken]
