@@ -165,6 +165,29 @@
                 </div>
             </div>
 
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm mb-3 border-0" style="background:#f8fafc;">
+                <div class="card-body py-3">
+                    <h6 class="card-title text-muted mb-3" style="font-size:0.8rem;">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Branding" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-palette me-2"></i> Branding
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Email header, footer &amp; logo</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Toggle which events trigger emails</small>
+                        </a>
+                        <a asp-action="EmailIntegration" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-envelope-check me-2"></i> Email Integration
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Gmail OAuth &amp; inbound config</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Token reference -->
             <div class="card shadow-sm">
                 <div class="card-header">

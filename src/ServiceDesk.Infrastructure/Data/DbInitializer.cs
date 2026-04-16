@@ -527,7 +527,19 @@ public static class DbInitializer
 
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'BrandColor')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
-                    VALUES ('BrandColor', '#4f46e5', 'Branding', 'Primary brand colour used in email headers and PDF exports (hex format, e.g. #4f46e5)');");
+                    VALUES ('BrandColor', '#4f46e5', 'Branding', 'Primary brand colour used in email headers and PDF exports (hex format, e.g. #4f46e5)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailHeaderTagline')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailHeaderTagline', 'IT Service Desk', 'Branding', 'Tagline shown below the company name in the email header banner (e.g. ''IT Service Desk'', ''Support Team'')');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailShowLogo')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailShowLogo', 'true', 'Branding', 'Show the company logo image in outgoing email headers (requires Company Logo URL to be set)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailFooterText')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailFooterText', '', 'Branding', 'Custom footer text for all outgoing emails. Leave blank to use the default automated-notification message.');");
 
             // 19. Create EmailTemplates table (DB-backed email template management)
             context.Database.ExecuteSqlRaw(@"

@@ -40,9 +40,12 @@ public class SettingsController : Controller
     // GET: Settings/Account
     public async Task<IActionResult> Account()
     {
-        // Exclude Branding — those live on their own dedicated page
+        // Only show General/Account-level settings here.
+        // AI Triage → Settings/Ai, Notifications → Settings/Notifications, Branding → Settings/Branding
         var settings = await _context.AppSettings
-            .Where(s => s.Category != "Branding")
+            .Where(s => s.Category != "Branding"
+                     && s.Category != "AI Triage"
+                     && s.Category != "Notifications")
             .ToListAsync();
         var employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
         ViewBag.Employees = employees;

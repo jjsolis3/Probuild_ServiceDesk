@@ -47,16 +47,21 @@ public class EmailNotificationService
     // ── Branding & template helpers ───────────────────────────────────────────
 
     /// <summary>
-    /// Loads CompanyName and BrandColor from AppSettings, with sensible defaults.
+    /// Loads branding values from AppSettings used to compose the email wrapper.
     /// </summary>
-    private async Task<(string CompanyName, string BrandColor)> GetBrandingAsync()
+    private async Task<(string CompanyName, string BrandColor, string LogoUrl, string Tagline, string FooterText, bool ShowLogo)> GetBrandingAsync()
     {
+        var keys = new[] { "CompanyName", "BrandColor", "CompanyLogoUrl", "EmailHeaderTagline", "EmailFooterText", "EmailShowLogo" };
         var settings = await _context.AppSettings
-            .Where(s => s.Key == "CompanyName" || s.Key == "BrandColor")
+            .Where(s => keys.Contains(s.Key))
             .ToDictionaryAsync(s => s.Key, s => s.Value ?? string.Empty);
         return (
             settings.GetValueOrDefault("CompanyName", "ServiceSphere"),
-            settings.GetValueOrDefault("BrandColor", "#4f46e5")
+            settings.GetValueOrDefault("BrandColor", "#4f46e5"),
+            settings.GetValueOrDefault("CompanyLogoUrl", string.Empty),
+            settings.GetValueOrDefault("EmailHeaderTagline", "IT Service Desk"),
+            settings.GetValueOrDefault("EmailFooterText", string.Empty),
+            !settings.GetValueOrDefault("EmailShowLogo", "true").Equals("false", StringComparison.OrdinalIgnoreCase)
         );
     }
 
@@ -154,7 +159,7 @@ public class EmailNotificationService
         }
 
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
-        var (companyName, brandColor) = await GetBrandingAsync();
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("TicketCreated");
 
         var tokens = new Dictionary<string, string>
@@ -185,7 +190,7 @@ public class EmailNotificationService
             <p>To add information to this ticket, simply <strong>reply to this email</strong>. Your reply will be automatically attached to ticket [#SS-{ticket.Id}].</p>
             <p style='color:#6b7280;font-size:13px;'>Please keep <strong>[#SS-{ticket.Id}]</strong> in the subject line so we can track your conversation.</p>";
 
-        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor);
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
@@ -209,7 +214,7 @@ public class EmailNotificationService
         if (config == null) return;
 
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
-        var (companyName, brandColor) = await GetBrandingAsync();
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("TicketAssigned");
 
         var assigneeName = ticket.AssignedTo.FirstName + " " + ticket.AssignedTo.LastName;
@@ -243,7 +248,7 @@ public class EmailNotificationService
             <p><strong>Description:</strong></p>
             <div style='background:#f9fafb;padding:12px;border-radius:6px;margin:10px 0;'>{ticket.Description}</div>";
 
-        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor);
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, ticket.AssignedTo.Email, subject, htmlBody, ticket.Id, inReplyTo, references);
@@ -268,7 +273,7 @@ public class EmailNotificationService
         if (config == null) return;
 
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
-        var (companyName, brandColor) = await GetBrandingAsync();
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("TicketUpdated");
 
         var resolutionRow = !string.IsNullOrEmpty(ticket.ResolutionNotes)
@@ -306,7 +311,7 @@ public class EmailNotificationService
             {updateBlock}
             <p style='color:#6b7280;font-size:13px;'>Reply to this email to add comments to ticket [#SS-{ticket.Id}].</p>";
 
-        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor);
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
@@ -328,7 +333,7 @@ public class EmailNotificationService
         if (config == null) return;
 
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
-        var (companyName, brandColor) = await GetBrandingAsync();
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("NoteAdded");
 
         var tokens = new Dictionary<string, string>
@@ -351,7 +356,7 @@ public class EmailNotificationService
             <div style='background:#f9fafb;padding:12px;border-radius:6px;border-left:4px solid #4f46e5;margin:15px 0;'>{note.Content}</div>
             <p style='color:#6b7280;font-size:13px;'>Reply to this email to continue the conversation on ticket [#SS-{ticket.Id}].</p>";
 
-        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor);
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
@@ -374,7 +379,7 @@ public class EmailNotificationService
             return;
         }
 
-        var (companyName, brandColor) = await GetBrandingAsync();
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("PasswordReset");
 
         var tokens = new Dictionary<string, string>
@@ -402,7 +407,7 @@ public class EmailNotificationService
             <p style='color:#6b7280;font-size:12px;'>If the button above doesn't work, copy and paste this URL into your browser:<br/>
                 <a href='{resetUrl}' style='color:{brandColor};'>{resetUrl}</a></p>";
 
-        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor);
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
@@ -417,23 +422,40 @@ public class EmailNotificationService
     /// <summary>
     /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
     /// </summary>
-    private static string BuildHtmlEmail(string innerContent, string companyName, string brandColor)
+    private static string BuildHtmlEmail(
+        string innerContent,
+        string companyName,
+        string brandColor,
+        string logoUrl = "",
+        string tagline = "IT Service Desk",
+        string footerText = "",
+        bool showLogo = true)
     {
         var encodedCompany = System.Net.WebUtility.HtmlEncode(companyName);
+        var encodedTagline  = System.Net.WebUtility.HtmlEncode(tagline);
+        var encodedFooter   = string.IsNullOrWhiteSpace(footerText)
+            ? $"This is an automated notification from {encodedCompany}. Replies to this email are processed automatically and attached to the relevant ticket."
+            : System.Net.WebUtility.HtmlEncode(footerText);
+
+        // Logo block: only render if ShowLogo is true and a URL is provided
+        var logoBlock = showLogo && !string.IsNullOrWhiteSpace(logoUrl)
+            ? $"<div style='margin-bottom:10px;'><img src='{System.Net.WebUtility.HtmlEncode(logoUrl)}' alt='{encodedCompany}' style='max-height:50px;max-width:200px;display:block;' /></div>"
+            : string.Empty;
+
         return $@"<!DOCTYPE html>
 <html>
 <body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Arial, sans-serif;'>
     <div style='max-width: 600px; margin: 0 auto;'>
         <div style='background: linear-gradient(135deg, {brandColor} 0%, {brandColor}cc 100%); color: white; padding: 24px 20px; border-radius: 8px 8px 0 0;'>
+            {logoBlock}
             <h2 style='margin: 0; font-size: 20px;'>{encodedCompany}</h2>
-            <p style='margin: 4px 0 0; opacity: 0.85; font-size: 13px;'>IT Service Desk</p>
+            <p style='margin: 4px 0 0; opacity: 0.85; font-size: 13px;'>{encodedTagline}</p>
         </div>
         <div style='padding: 24px 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; background: #ffffff;'>
             {innerContent}
             <hr style='border: none; border-top: 1px solid #e5e7eb; margin: 24px 0 16px;' />
             <p style='color: #9ca3af; font-size: 11px; margin: 0;'>
-                This is an automated notification from {encodedCompany}.
-                Replies to this email are processed automatically and attached to the relevant ticket.
+                {encodedFooter}
             </p>
         </div>
     </div>

@@ -9,6 +9,9 @@
     string phone        = Val("CompanyPhone");
     string website      = Val("CompanyWebsite");
     string address      = Val("CompanyAddress");
+    string emailTagline = string.IsNullOrWhiteSpace(Val("EmailHeaderTagline")) ? "IT Service Desk" : Val("EmailHeaderTagline");
+    string emailFooter  = Val("EmailFooterText");
+    bool   showLogo     = !Val("EmailShowLogo").Equals("false", StringComparison.OrdinalIgnoreCase);
 }
 
 <nav aria-label="breadcrumb">
@@ -103,6 +106,36 @@
                 </div>
             </div>
 
+            <!-- Email Header & Footer -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-envelope-paper me-2"></i> Email Header &amp; Footer</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="hidden" name="EmailShowLogo" value="false" />
+                            <input type="checkbox" class="form-check-input" id="EmailShowLogo" name="EmailShowLogo" value="true"
+                                   @(showLogo ? "checked" : "") />
+                            <label class="form-check-label fw-semibold" for="EmailShowLogo">Show logo in email header</label>
+                        </div>
+                        <div class="form-text">Displays the Company Logo image above the company name in outgoing emails. Requires a logo URL above.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="EmailHeaderTagline">Header Tagline</label>
+                        <input type="text" class="form-control" id="EmailHeaderTagline" name="EmailHeaderTagline"
+                               value="@emailTagline" placeholder="IT Service Desk" maxlength="100" />
+                        <div class="form-text">Short line shown below the company name in the email header banner (e.g. "IT Support Team", "Help Desk").</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="EmailFooterText">Footer Text</label>
+                        <textarea class="form-control" id="EmailFooterText" name="EmailFooterText"
+                                  rows="3" maxlength="500" placeholder="Leave blank to use the default automated-notification message.">@emailFooter</textarea>
+                        <div class="form-text">Custom disclaimer or message shown at the bottom of all outgoing emails. Leave blank to keep the default.</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Contact Details -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header">
@@ -138,17 +171,70 @@
             </div>
         </div>
 
-        <!-- Right column: live preview -->
+        <!-- Right column: live preview + navigation -->
         <div class="col-lg-4">
+            <!-- Email preview -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0"><i class="bi bi-eye me-1 text-info"></i> Email Header Preview</h6>
+                    <h6 class="mb-0"><i class="bi bi-eye me-1 text-info"></i> Email Preview</h6>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" style="border-radius:0 0 var(--bs-card-border-radius) var(--bs-card-border-radius); overflow:hidden;">
+                    <!-- Header band -->
                     <div id="emailPreview"
-                         style="background: linear-gradient(135deg, @brandColor 0%, @(brandColor)cc 100%); color: white; padding: 20px 16px; border-radius: 0 0 0 0;">
+                         style="background: linear-gradient(135deg, @brandColor 0%, @(brandColor)cc 100%); color: white; padding: 20px 16px;">
+                        @if (showLogo && !string.IsNullOrWhiteSpace(logoUrl))
+                        {
+                            <div id="previewLogoWrap" style="margin-bottom:8px;">
+                                <img id="previewLogo" src="@logoUrl" alt="Logo"
+                                     style="max-height:44px;max-width:180px;display:block;" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div id="previewLogoWrap" style="margin-bottom:8px;display:none;">
+                                <img id="previewLogo" src="" alt="Logo"
+                                     style="max-height:44px;max-width:180px;display:block;" />
+                            </div>
+                        }
                         <div style="font-size: 17px; font-weight: 600;" id="previewCompanyName">@(ViewBag.CompanyName ?? "Your Company")</div>
-                        <div style="font-size: 12px; opacity: 0.85; margin-top: 3px;">IT Service Desk</div>
+                        <div style="font-size: 12px; opacity: 0.85; margin-top: 3px;" id="previewTagline">@emailTagline</div>
+                    </div>
+                    <!-- Body stub -->
+                    <div style="padding:14px 16px; border:1px solid #e5e7eb; border-top:none; background:#fff;">
+                        <p style="color:#374151;font-size:13px;margin:0 0 10px;">Your email content goes here…</p>
+                        <hr style="border:none;border-top:1px solid #e5e7eb;margin:10px 0;" />
+                        <p id="previewFooter" style="color:#9ca3af;font-size:11px;margin:0;">
+                            @(string.IsNullOrWhiteSpace(emailFooter)
+                                ? $"This is an automated notification from {(ViewBag.CompanyName ?? "Your Company")}. Replies are attached to the relevant ticket."
+                                : emailFooter)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm mb-4 border-0" style="background:#f8fafc;">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Account" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-building me-2"></i> Account Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Company name, timezone, defaults</small>
+                        </a>
+                        <a asp-action="EmailTemplates" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-envelope-at me-2"></i> Email Templates
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Customise notification email bodies</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Toggle which events send emails</small>
+                        </a>
+                        <a asp-action="EmailIntegration" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-envelope-check me-2"></i> Email Integration
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Gmail OAuth &amp; inbound settings</small>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -157,10 +243,11 @@
                 <div class="card-body">
                     <h6 class="card-title"><i class="bi bi-lightbulb me-1 text-warning"></i> Tips</h6>
                     <ul class="small text-muted mb-0">
-                        <li class="mb-2">The <strong>Brand Colour</strong> is used in email headers and PDF report headers.</li>
-                        <li class="mb-2">The <strong>Logo URL</strong> appears in the customer/employee portal. If blank, the default ServiceSphere logo is used.</li>
-                        <li class="mb-2">Contact details appear in the portal footer so users can easily reach your IT team.</li>
-                        <li>For best results, use a logo that is transparent (PNG) and at least 200px wide.</li>
+                        <li class="mb-2">The <strong>Brand Colour</strong> tints the gradient header of every outgoing email.</li>
+                        <li class="mb-2">Enable <strong>Show logo</strong> and set the Logo URL to display your company logo at the top of each email.</li>
+                        <li class="mb-2">The <strong>Tagline</strong> replaces the hard-coded "IT Service Desk" subtitle in the email header.</li>
+                        <li class="mb-2">A custom <strong>Footer Text</strong> replaces the default automated-notification disclaimer.</li>
+                        <li>For best results use a transparent PNG logo at least 200px wide.</li>
                     </ul>
                 </div>
             </div>
@@ -172,11 +259,19 @@
 @section Scripts {
 <script>
 (function () {
-    var colorPicker = document.getElementById('brandColorPicker');
-    var colorText   = document.getElementById('BrandColor');
-    var preview     = document.getElementById('emailPreview');
-    var logoInput   = document.getElementById('CompanyLogoUrl');
-    var logoPreview = document.getElementById('logoPreview');
+    var colorPicker    = document.getElementById('brandColorPicker');
+    var colorText      = document.getElementById('BrandColor');
+    var preview        = document.getElementById('emailPreview');
+    var logoInput      = document.getElementById('CompanyLogoUrl');
+    var logoPreview    = document.getElementById('logoPreview');       // small preview under URL input
+    var previewLogo    = document.getElementById('previewLogo');       // logo in email preview header
+    var previewLogoWrap= document.getElementById('previewLogoWrap');
+    var showLogoChk    = document.getElementById('EmailShowLogo');
+    var taglineInput   = document.getElementById('EmailHeaderTagline');
+    var previewTagline = document.getElementById('previewTagline');
+    var footerInput    = document.getElementById('EmailFooterText');
+    var previewFooter  = document.getElementById('previewFooter');
+    var companyName    = '@Html.Raw(System.Web.HttpUtility.JavaScriptStringEncode(ViewBag.CompanyName ?? "Your Company"))';
 
     function applyColor(hex) {
         if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
@@ -184,27 +279,49 @@
         }
     }
 
-    colorPicker.addEventListener('input', function () {
+    function syncLogoPreview() {
+        var url = logoInput ? logoInput.value.trim() : '';
+        var show = showLogoChk ? showLogoChk.checked : false;
+        // Small URL preview
+        if (logoPreview) {
+            if (url) { logoPreview.src = url; logoPreview.style.display = 'block'; }
+            else      { logoPreview.style.display = 'none'; }
+        }
+        // Email header preview
+        if (previewLogoWrap && previewLogo) {
+            if (show && url) {
+                previewLogo.src = url;
+                previewLogoWrap.style.display = 'block';
+            } else {
+                previewLogoWrap.style.display = 'none';
+            }
+        }
+    }
+
+    function syncTagline() {
+        if (previewTagline && taglineInput)
+            previewTagline.textContent = taglineInput.value.trim() || 'IT Service Desk';
+    }
+
+    function syncFooter() {
+        if (previewFooter && footerInput) {
+            var v = footerInput.value.trim();
+            previewFooter.textContent = v || ('This is an automated notification from ' + companyName + '. Replies are attached to the relevant ticket.');
+        }
+    }
+
+    if (colorPicker) colorPicker.addEventListener('input', function () {
         colorText.value = colorPicker.value;
         applyColor(colorPicker.value);
     });
-    colorText.addEventListener('input', function () {
+    if (colorText) colorText.addEventListener('input', function () {
         var v = colorText.value.trim();
-        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-            colorPicker.value = v;
-            applyColor(v);
-        }
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) { colorPicker.value = v; applyColor(v); }
     });
-
-    logoInput.addEventListener('input', function () {
-        var url = logoInput.value.trim();
-        if (url) {
-            logoPreview.src = url;
-            logoPreview.style.display = 'block';
-        } else {
-            logoPreview.style.display = 'none';
-        }
-    });
+    if (logoInput)   logoInput.addEventListener('input', syncLogoPreview);
+    if (showLogoChk) showLogoChk.addEventListener('change', syncLogoPreview);
+    if (taglineInput) taglineInput.addEventListener('input', syncTagline);
+    if (footerInput)  footerInput.addEventListener('input', syncFooter);
 })();
 </script>
 }
