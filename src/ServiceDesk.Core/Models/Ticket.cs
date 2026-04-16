@@ -79,7 +79,11 @@ public class Ticket
     [Display(Name = "Group Assignment")]
     public int? UserGroupId { get; set; }
 
+    [Display(Name = "Related Asset")]
+    public int? AssetId { get; set; }
+
     // Navigation properties
+    public Asset? Asset { get; set; }
     public Branch? Branch { get; set; }
 
     [Display(Name = "Group Assignment")]

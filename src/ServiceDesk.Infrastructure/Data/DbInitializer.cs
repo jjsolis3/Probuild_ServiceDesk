@@ -857,6 +857,94 @@ public static class DbInitializer
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                     VALUES ('PortalShowKnowledgeBase', 'true', 'Portal Branding',
                             'Show the Knowledge Base link in the portal navigation bar');");
+
+            // 30. ITAM enhancements — new asset-related tables + column additions
+            context.Database.ExecuteSqlRaw(@"
+                -- Network / system fields on Assets
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'IpAddress')
+                    ALTER TABLE dbo.Assets ADD IpAddress NVARCHAR(50) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'MacAddress')
+                    ALTER TABLE dbo.Assets ADD MacAddress NVARCHAR(17) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'Hostname')
+                    ALTER TABLE dbo.Assets ADD Hostname NVARCHAR(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'OsVersion')
+                    ALTER TABLE dbo.Assets ADD OsVersion NVARCHAR(100) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'OsBuild')
+                    ALTER TABLE dbo.Assets ADD OsBuild NVARCHAR(50) NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                -- AssetId FK on Tickets (optional link to related asset)
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'AssetId')
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD AssetId INT NULL;
+                    ALTER TABLE dbo.Tickets ADD CONSTRAINT FK_Tickets_Assets
+                        FOREIGN KEY (AssetId) REFERENCES dbo.Assets(Id) ON DELETE SET NULL;
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                -- Assignment history / custody chain
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAssignmentHistory')
+                    CREATE TABLE dbo.AssetAssignmentHistory (
+                        Id              INT IDENTITY PRIMARY KEY,
+                        AssetId         INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        AssignedToId    INT NULL REFERENCES dbo.Employees(Id) ON DELETE NO ACTION,
+                        AssignedById    INT NULL REFERENCES dbo.Employees(Id) ON DELETE NO ACTION,
+                        AssignedDate    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        ReturnedDate    DATETIME2 NULL,
+                        Notes           NVARCHAR(500) NULL
+                    );
+
+                -- Asset change audit log
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAuditLogs')
+                    CREATE TABLE dbo.AssetAuditLogs (
+                        Id              INT IDENTITY PRIMARY KEY,
+                        AssetId         INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        FieldName       NVARCHAR(100) NOT NULL,
+                        OldValue        NVARCHAR(1000) NULL,
+                        NewValue        NVARCHAR(1000) NULL,
+                        ChangedDate     DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        ChangedByEmail  NVARCHAR(200) NOT NULL
+                    );
+
+                -- Password / credential vault
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetCredentials')
+                    CREATE TABLE dbo.AssetCredentials (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        AssetId             INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        Label               NVARCHAR(100) NOT NULL,
+                        Username            NVARCHAR(200) NULL,
+                        EncryptedPassword   NVARCHAR(MAX) NOT NULL,
+                        Url                 NVARCHAR(500) NULL,
+                        Notes               NVARCHAR(500) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2 NULL,
+                        CreatedByEmail      NVARCHAR(200) NOT NULL
+                    );
+
+                -- Asset file attachments
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAttachments')
+                    CREATE TABLE dbo.AssetAttachments (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        AssetId             INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        FileName            NVARCHAR(260) NOT NULL,
+                        StoredFileName      NVARCHAR(260) NOT NULL,
+                        FileSizeBytes       BIGINT NOT NULL DEFAULT 0,
+                        ContentType         NVARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+                        UploadedDate        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UploadedByEmail     NVARCHAR(200) NOT NULL
+                    );
+
+                -- CMDB-lite asset-to-asset relationship web
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetRelationships')
+                    CREATE TABLE dbo.AssetRelationships (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        SourceAssetId       INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        TargetAssetId       INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE NO ACTION,
+                        RelationshipType    NVARCHAR(80) NOT NULL DEFAULT 'ConnectedTo',
+                        Notes               NVARCHAR(300) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        CreatedByEmail      NVARCHAR(200) NULL
+                    );");
         }
         catch (Exception ex)
         {
