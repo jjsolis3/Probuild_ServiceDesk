@@ -14,6 +14,13 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Asset> Assets => Set<Asset>();
+
+    // Asset ITAM extensions
+    public DbSet<AssetAssignmentHistory> AssetAssignmentHistory => Set<AssetAssignmentHistory>();
+    public DbSet<AssetAuditLog> AssetAuditLogs => Set<AssetAuditLog>();
+    public DbSet<AssetCredential> AssetCredentials => Set<AssetCredential>();
+    public DbSet<AssetAttachment> AssetAttachments => Set<AssetAttachment>();
+    public DbSet<AssetRelationship> AssetRelationships => Set<AssetRelationship>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
@@ -135,6 +142,74 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<Asset>()
             .HasIndex(a => a.AssetTag)
             .IsUnique();
+
+        // AssetAssignmentHistory -> Asset
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.Asset)
+            .WithMany(a => a.AssignmentHistory)
+            .HasForeignKey(h => h.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.AssignedTo)
+            .WithMany()
+            .HasForeignKey(h => h.AssignedToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.AssignedBy)
+            .WithMany()
+            .HasForeignKey(h => h.AssignedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssetAuditLog -> Asset
+        modelBuilder.Entity<AssetAuditLog>()
+            .HasOne(l => l.Asset)
+            .WithMany(a => a.AuditLogs)
+            .HasForeignKey(l => l.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetAuditLog>()
+            .HasIndex(l => new { l.AssetId, l.ChangedDate });
+
+        // AssetCredential -> Asset
+        modelBuilder.Entity<AssetCredential>()
+            .HasOne(c => c.Asset)
+            .WithMany(a => a.Credentials)
+            .HasForeignKey(c => c.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetCredential>()
+            .Property(c => c.EncryptedPassword)
+            .HasColumnType("nvarchar(max)");
+
+        // AssetAttachment -> Asset
+        modelBuilder.Entity<AssetAttachment>()
+            .HasOne(at => at.Asset)
+            .WithMany(a => a.Attachments)
+            .HasForeignKey(at => at.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetRelationship -> SourceAsset
+        modelBuilder.Entity<AssetRelationship>()
+            .HasOne(r => r.SourceAsset)
+            .WithMany(a => a.RelationshipsFrom)
+            .HasForeignKey(r => r.SourceAssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetRelationship -> TargetAsset (restrict to avoid multiple cascade paths)
+        modelBuilder.Entity<AssetRelationship>()
+            .HasOne(r => r.TargetAsset)
+            .WithMany(a => a.RelationshipsTo)
+            .HasForeignKey(r => r.TargetAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Ticket -> Asset (optional FK)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.Asset)
+            .WithMany(a => a.RelatedTickets)
+            .HasForeignKey(t => t.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Unique constraint on Employee Email
         modelBuilder.Entity<Employee>()

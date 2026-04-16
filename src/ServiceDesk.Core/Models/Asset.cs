@@ -52,11 +52,39 @@ public class Asset
     [StringLength(500)]
     public string? Notes { get; set; }
 
-    // Foreign key
+    // ── Network / System fields ───────────────────────────────────────────────
+    [StringLength(50)]
+    [Display(Name = "IP Address")]
+    public string? IpAddress { get; set; }
+
+    [StringLength(17)]
+    [Display(Name = "MAC Address")]
+    public string? MacAddress { get; set; }
+
+    [StringLength(200)]
+    public string? Hostname { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "OS Version")]
+    public string? OsVersion { get; set; }
+
+    [StringLength(50)]
+    [Display(Name = "OS Build")]
+    public string? OsBuild { get; set; }
+
+    // ── Foreign key ───────────────────────────────────────────────────────────
     [Display(Name = "Assigned To")]
     public int? AssignedToId { get; set; }
 
-    // Navigation property
+    // ── Navigation properties ─────────────────────────────────────────────────
     [Display(Name = "Assigned To")]
     public Employee? AssignedTo { get; set; }
+
+    public ICollection<AssetAssignmentHistory> AssignmentHistory { get; set; } = new List<AssetAssignmentHistory>();
+    public ICollection<AssetAuditLog> AuditLogs { get; set; } = new List<AssetAuditLog>();
+    public ICollection<AssetCredential> Credentials { get; set; } = new List<AssetCredential>();
+    public ICollection<AssetAttachment> Attachments { get; set; } = new List<AssetAttachment>();
+    public ICollection<AssetRelationship> RelationshipsFrom { get; set; } = new List<AssetRelationship>();
+    public ICollection<AssetRelationship> RelationshipsTo { get; set; } = new List<AssetRelationship>();
+    public ICollection<Ticket> RelatedTickets { get; set; } = new List<Ticket>();
 }

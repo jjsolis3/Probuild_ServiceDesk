@@ -85,6 +85,32 @@
                 <input asp-for="Location" class="form-control" />
             </div>
 
+            <div class="card border-0 bg-light p-3 mb-3">
+                <h6 class="fw-semibold mb-3"><i class="bi bi-router me-2"></i>Network &amp; System</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label asp-for="IpAddress" class="form-label"></label>
+                        <input asp-for="IpAddress" class="form-control" placeholder="e.g. 192.168.1.100" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="MacAddress" class="form-label"></label>
+                        <input asp-for="MacAddress" class="form-control" placeholder="e.g. AA:BB:CC:DD:EE:FF" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="Hostname" class="form-label"></label>
+                        <input asp-for="Hostname" class="form-control" placeholder="e.g. DESKTOP-ABC123" />
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="OsVersion" class="form-label"></label>
+                        <input asp-for="OsVersion" class="form-control" placeholder="e.g. Windows 11 Pro" />
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="OsBuild" class="form-label"></label>
+                        <input asp-for="OsBuild" class="form-control" placeholder="e.g. 22H2" />
+                    </div>
+                </div>
+            </div>
+
             <div class="mb-3">
                 <label asp-for="Notes" class="form-label"></label>
                 <textarea asp-for="Notes" class="form-control" rows="3"></textarea>
