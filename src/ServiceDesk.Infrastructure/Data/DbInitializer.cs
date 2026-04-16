@@ -831,6 +831,32 @@ public static class DbInitializer
                             'Other',            '6')
                     WHERE FilterCategories IS NOT NULL AND FilterCategories LIKE '%[a-zA-Z]%';
                 END");
+            // 29. Seed Portal Branding AppSettings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalWelcomeMessage')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalWelcomeMessage', 'Track and manage your IT support requests.', 'Portal Branding',
+                            'Short tagline shown below the greeting on the portal dashboard');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalSupportTitle')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalSupportTitle', 'IT Support Portal', 'Portal Branding',
+                            'Text appended to the company name in portal browser tab titles');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalAnnouncement')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalAnnouncement', '', 'Portal Branding',
+                            'Optional announcement banner shown at the top of every portal page. Leave blank to hide.');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalAnnouncementType')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalAnnouncementType', 'info', 'Portal Branding',
+                            'Bootstrap alert colour for the announcement banner: info, warning, danger, or success');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalShowKnowledgeBase')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalShowKnowledgeBase', 'true', 'Portal Branding',
+                            'Show the Knowledge Base link in the portal navigation bar');");
         }
         catch (Exception ex)
         {

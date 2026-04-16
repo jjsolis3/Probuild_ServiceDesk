@@ -1750,6 +1750,36 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(AiDashboard));
     }
 
+    // ==================== PORTAL BRANDING ====================
+
+    // GET: Settings/PortalBranding
+    public async Task<IActionResult> PortalBranding()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Portal Branding")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/PortalBranding
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PortalBranding(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Portal Branding")
+            .ToListAsync();
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+                setting.Value = form[setting.Key].FirstOrDefault() ?? setting.Value;
+        }
+        await _context.SaveChangesAsync();
+        _cache.Remove("ss_branding_v1");
+        TempData["Success"] = "Portal branding settings saved.";
+        return RedirectToAction(nameof(PortalBranding));
+    }
+
     // ==================== SLA POLICY ====================
 
     // GET: Settings/Sla

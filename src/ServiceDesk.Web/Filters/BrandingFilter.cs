@@ -22,7 +22,11 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             var branding = await cache.GetOrCreateAsync(CacheKey, async entry =>
             {
                 entry.SlidingExpiration = TimeSpan.FromMinutes(10);
-                var keys = new[] { "CompanyName", "CompanyLogoUrl", "CompanyPhone", "CompanyWebsite", "CompanyAddress" };
+                var keys = new[] {
+                    "CompanyName", "CompanyLogoUrl", "CompanyPhone", "CompanyWebsite", "CompanyAddress",
+                    "PortalWelcomeMessage", "PortalSupportTitle",
+                    "PortalAnnouncement", "PortalAnnouncementType", "PortalShowKnowledgeBase"
+                };
                 return await context.AppSettings
                     .Where(s => keys.Contains(s.Key))
                     .ToDictionaryAsync(s => s.Key, s => s.Value ?? string.Empty);
@@ -33,6 +37,13 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             controller.ViewBag.CompanyPhone   = branding!.GetValueOrDefault("CompanyPhone",   string.Empty);
             controller.ViewBag.CompanyWebsite = branding!.GetValueOrDefault("CompanyWebsite", string.Empty);
             controller.ViewBag.CompanyAddress = branding!.GetValueOrDefault("CompanyAddress", string.Empty);
+
+            controller.ViewBag.PortalWelcomeMessage   = branding!.GetValueOrDefault("PortalWelcomeMessage",   "Track and manage your IT support requests.");
+            controller.ViewBag.PortalSupportTitle     = branding!.GetValueOrDefault("PortalSupportTitle",     "IT Support Portal");
+            controller.ViewBag.PortalAnnouncement     = branding!.GetValueOrDefault("PortalAnnouncement",     string.Empty);
+            controller.ViewBag.PortalAnnouncementType = branding!.GetValueOrDefault("PortalAnnouncementType", "info");
+            controller.ViewBag.PortalShowKnowledgeBase = !branding!.GetValueOrDefault("PortalShowKnowledgeBase", "true")
+                                                                    .Equals("false", StringComparison.OrdinalIgnoreCase);
         }
 
         await next();

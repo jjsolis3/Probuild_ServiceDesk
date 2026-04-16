@@ -1,0 +1,242 @@
+@model List<AppSetting>
+@{
+    ViewData["Title"] = "Portal Branding";
+
+    string Val(string key, string def = "") =>
+        Model.FirstOrDefault(s => s.Key == key)?.Value ?? def;
+
+    var welcomeMsg    = Val("PortalWelcomeMessage",   "Track and manage your IT support requests.");
+    var supportTitle  = Val("PortalSupportTitle",     "IT Support Portal");
+    var announcement  = Val("PortalAnnouncement",     "");
+    var annoType      = Val("PortalAnnouncementType", "info");
+    bool showKb       = !Val("PortalShowKnowledgeBase", "true").Equals("false", StringComparison.OrdinalIgnoreCase);
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">Portal Branding</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-window-fullscreen text-primary me-2"></i>Portal Branding</h1>
+        <p class="text-muted small mt-1 mb-0">
+            Customise the self-service portal experience seen by end users.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form method="post" asp-action="PortalBranding" asp-antiforgery="true">
+    <div class="row g-4 align-items-start">
+
+        <!-- Left: form fields -->
+        <div class="col-lg-7">
+
+            <!-- Identity & Text -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-type me-2"></i>Identity &amp; Text</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="PortalSupportTitle">Support Portal Title</label>
+                        <input type="text" class="form-control" id="PortalSupportTitle" name="PortalSupportTitle"
+                               value="@supportTitle" maxlength="80"
+                               placeholder="IT Support Portal" />
+                        <div class="form-text">Used in browser tab titles: "<em>My Tickets — Acme Corp IT Support Portal</em>"</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="PortalWelcomeMessage">Dashboard Welcome Message</label>
+                        <input type="text" class="form-control" id="PortalWelcomeMessage" name="PortalWelcomeMessage"
+                               value="@welcomeMsg" maxlength="200"
+                               placeholder="Track and manage your IT support requests." />
+                        <div class="form-text">Short tagline shown below the greeting on the portal dashboard, e.g. "Hello, Jane — <em>@welcomeMsg</em>"</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-layout-sidebar me-2"></i>Navigation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="hidden" name="PortalShowKnowledgeBase" value="false" />
+                            <input type="checkbox" class="form-check-input" id="PortalShowKnowledgeBase"
+                                   name="PortalShowKnowledgeBase" value="true"
+                                   @(showKb ? "checked" : "") />
+                            <label class="form-check-label fw-semibold" for="PortalShowKnowledgeBase">
+                                Show Knowledge Base in navigation
+                            </label>
+                        </div>
+                        <div class="form-text">When disabled, the Knowledge Base link is hidden from the portal navigation bar.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Announcement Banner -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-megaphone me-2"></i>Announcement Banner</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Optional banner shown at the top of every portal page (e.g. maintenance windows, known outages).
+                        Leave blank to hide the banner.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="PortalAnnouncement">Announcement Text</label>
+                        <textarea class="form-control" id="PortalAnnouncement" name="PortalAnnouncement"
+                                  rows="3" maxlength="500"
+                                  placeholder="e.g. Scheduled maintenance on Saturday 2–4 AM. The portal may be briefly unavailable.">@announcement</textarea>
+                        <div class="form-text">Leave blank to hide the banner entirely.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="PortalAnnouncementType">Banner Colour</label>
+                        <select class="form-select" id="PortalAnnouncementType" name="PortalAnnouncementType"
+                                style="max-width:280px;" data-no-picker>
+                            <option value="info"    @(annoType == "info"    ? "selected" : "")>Blue — Info</option>
+                            <option value="warning" @(annoType == "warning" ? "selected" : "")>Yellow — Warning</option>
+                            <option value="danger"  @(annoType == "danger"  ? "selected" : "")>Red — Danger / Outage</option>
+                            <option value="success" @(annoType == "success" ? "selected" : "")>Green — Success / Resolved</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> Save Portal Branding
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
+            </div>
+        </div>
+
+        <!-- Right: preview + nav -->
+        <div class="col-lg-5">
+
+            <!-- Live preview -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-eye me-1 text-info"></i> Portal Preview</h6>
+                </div>
+                <div class="card-body p-0" style="border-radius:0 0 var(--bs-card-border-radius) var(--bs-card-border-radius);overflow:hidden;">
+                    <!-- Simulated announcement -->
+                    <div id="previewAnnouncementWrap" style="@(string.IsNullOrWhiteSpace(announcement) ? "display:none;" : "")">
+                        <div id="previewAnnouncement"
+                             class="alert alert-@annoType mb-0 py-2 small border-0 border-bottom"
+                             style="border-radius:0;">
+                            <i class="bi bi-megaphone me-1"></i><span id="previewAnnoText">@announcement</span>
+                        </div>
+                    </div>
+                    <!-- Simulated nav bar -->
+                    <div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 16px;font-size:13px;" class="d-flex justify-content-between align-items-center">
+                        <strong id="previewCompany">@(ViewBag.CompanyName ?? "Your Company")</strong>
+                        <span class="text-muted small">My Tickets &nbsp;|&nbsp; Submit Ticket
+                            <span id="previewKbLink"> &nbsp;|&nbsp; Knowledge Base</span>
+                        </span>
+                    </div>
+                    <!-- Simulated welcome row -->
+                    <div style="padding:14px 16px;background:#f8fafc;">
+                        <div style="font-size:16px;font-weight:600;">My Support Tickets</div>
+                        <div class="text-muted" style="font-size:12px;">
+                            Hello, Jane — <span id="previewWelcome">@welcomeMsg</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm border-0 mb-3" style="background:#f8fafc;">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Branding" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-palette me-2"></i> Branding
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Logo, brand colour, company details</small>
+                        </a>
+                        <a asp-action="Account" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-building me-2"></i> Account Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Company name, portal enabled toggle</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Email triggers for portal actions</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-lightbulb me-1 text-warning"></i> Tips</h6>
+                    <ul class="small text-muted mb-0">
+                        <li class="mb-2">The <strong>Support Portal Title</strong> appears in browser tab titles to help users identify the app.</li>
+                        <li class="mb-2">Use the <strong>Announcement Banner</strong> for time-sensitive notices like outages or maintenance windows.</li>
+                        <li>Hide <strong>Knowledge Base</strong> from the nav if your organisation is not using that feature yet.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</form>
+
+@section Scripts {
+<script>
+(function () {
+    var welcomeInput   = document.getElementById('PortalWelcomeMessage');
+    var annoInput      = document.getElementById('PortalAnnouncement');
+    var annoTypeSelect = document.getElementById('PortalAnnouncementType');
+    var kbToggle       = document.getElementById('PortalShowKnowledgeBase');
+
+    var previewWelcome    = document.getElementById('previewWelcome');
+    var previewAnnoWrap   = document.getElementById('previewAnnouncementWrap');
+    var previewAnnouncement = document.getElementById('previewAnnouncement');
+    var previewAnnoText   = document.getElementById('previewAnnoText');
+    var previewKbLink     = document.getElementById('previewKbLink');
+
+    if (welcomeInput) welcomeInput.addEventListener('input', function () {
+        if (previewWelcome) previewWelcome.textContent = welcomeInput.value || 'Track and manage your IT support requests.';
+    });
+
+    function syncAnnouncement() {
+        var text = annoInput ? annoInput.value.trim() : '';
+        if (previewAnnoWrap) previewAnnoWrap.style.display = text ? '' : 'none';
+        if (previewAnnoText) previewAnnoText.textContent = text;
+        if (previewAnnouncement && annoTypeSelect) {
+            // Swap alert class
+            previewAnnouncement.className = previewAnnouncement.className.replace(/alert-\w+/, 'alert-' + annoTypeSelect.value);
+        }
+    }
+
+    if (annoInput)      annoInput.addEventListener('input', syncAnnouncement);
+    if (annoTypeSelect) annoTypeSelect.addEventListener('change', syncAnnouncement);
+
+    if (kbToggle) kbToggle.addEventListener('change', function () {
+        if (previewKbLink) previewKbLink.style.display = kbToggle.checked ? '' : 'none';
+    });
+})();
+</script>
+}
