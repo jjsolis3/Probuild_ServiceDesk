@@ -26,12 +26,13 @@
     </div>
     <div class="text-end">
         <div class="small text-muted mb-1">Generated <strong>@DateTime.Now.ToString("MMM d, yyyy h:mm tt")</strong></div>
-        <button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-printer me-1"></i>Print
+        <button onclick="ssExport.show('ss-export-target','Executive Dashboard')" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-file-earmark-pdf me-1"></i>Export / Print
         </button>
     </div>
 </div>
 
+<div id="ss-export-target">
 <!-- ── KPI Row ──────────────────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-4 col-lg-2">
@@ -385,6 +386,7 @@
         }
     </div>
 </div>
+</div><!-- /ss-export-target -->
 
 @section Styles {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />

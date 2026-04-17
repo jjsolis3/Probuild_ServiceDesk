@@ -12,9 +12,14 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1><i class="bi bi-laptop"></i> Assets</h1>
-    <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-lg"></i> New Asset
-    </a>
+    <div class="d-flex gap-2">
+        <button onclick="ssExport.show('ss-export-target','Asset Inventory')" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-file-earmark-pdf me-1"></i>Export / Print
+        </button>
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Asset
+        </a>
+    </div>
 </div>
 
 <!-- Filters -->
@@ -151,6 +156,7 @@ document.addEventListener('click', function (e) {
 </script>
 }
 
+<div id="ss-export-target">
 <div class="table-responsive">
     <table class="table table-striped table-hover ss-datatable" data-export-title="Assets Report">
         <thead class="table-dark">
@@ -201,6 +207,7 @@ document.addEventListener('click', function (e) {
         <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
     </div>
 }
+</div><!-- /ss-export-target -->
 
 <script>
 function applyFilters() {
