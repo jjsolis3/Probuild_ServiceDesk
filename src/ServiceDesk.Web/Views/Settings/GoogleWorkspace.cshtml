@@ -131,9 +131,17 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Default Signature Template</label>
                         <div class="form-text mb-2">
-                            Variables: <code>{FIRST_NAME}</code> <code>{LAST_NAME}</code> <code>{FULL_NAME}</code>
-                            <code>{JOB_TITLE}</code> <code>{EMAIL}</code> <code>{PHONE}</code>
-                            <code>{DEPARTMENT}</code> <code>{BRANCH}</code> <code>{BRANCH_PHONE}</code>
+                            Variables: <code>{FIRST_NAME}</code> <code>{LAST_NAME}</code>
+                            <code>{FIRST_NAME_SLUG}</code> <code>{LAST_NAME_SLUG}</code>
+                            <code>{FULL_NAME}</code> <code>{JOB_TITLE}</code>
+                            <code>{EMAIL}</code> <code>{EMAIL_DISPLAY}</code>
+                            <code>{PHONE}</code> <code>{DEPARTMENT}</code>
+                            <code>{BRANCH}</code> <code>{BRANCH_PHONE}</code>
+                            <div class="mt-1 text-muted" style="font-size:0.8rem;">
+                                <i class="bi bi-info-circle me-1"></i>
+                                <code>{FIRST_NAME_SLUG}</code> / <code>{LAST_NAME_SLUG}</code> replace spaces with underscores (e.g. <em>Mary_Jane</em>) — use these in image file paths.
+                                <code>{EMAIL_DISPLAY}</code> converts <em>.org</em> → <em>.com</em>.
+                            </div>
                         </div>
                         <textarea name="signatureTemplate" class="form-control font-monospace"
                                   rows="10" placeholder="Paste your HTML signature template here...">@(Model?.SignatureTemplate ?? "")</textarea>
@@ -161,15 +169,18 @@
                 <div class="card-body">
                     @{
                         var preview = (Model.SignatureTemplate ?? "")
-                            .Replace("{FIRST_NAME}", "Jane")
-                            .Replace("{LAST_NAME}", "Smith")
-                            .Replace("{FULL_NAME}", "Jane Smith")
-                            .Replace("{JOB_TITLE}", "IT Manager")
-                            .Replace("{EMAIL}", "jsmith@yourdomain.com")
-                            .Replace("{PHONE}", "(555) 000-1234")
-                            .Replace("{DEPARTMENT}", "Information Technology")
-                            .Replace("{BRANCH}", "Main Office")
-                            .Replace("{BRANCH_PHONE}", "(555) 000-0000");
+                            .Replace("{FIRST_NAME}",      "Jane")
+                            .Replace("{LAST_NAME}",       "Smith")
+                            .Replace("{FULL_NAME}",       "Jane Smith")
+                            .Replace("{FIRST_NAME_SLUG}", "Jane")
+                            .Replace("{LAST_NAME_SLUG}",  "Smith")
+                            .Replace("{JOB_TITLE}",       "IT Manager")
+                            .Replace("{EMAIL}",           "jsmith@yourdomain.org")
+                            .Replace("{EMAIL_DISPLAY}",   "jsmith@yourdomain.com")
+                            .Replace("{PHONE}",           "(555) 000-1234")
+                            .Replace("{DEPARTMENT}",      "Information Technology")
+                            .Replace("{BRANCH}",          "Main Office")
+                            .Replace("{BRANCH_PHONE}",    "(555) 000-0000");
                     }
                     <div class="border rounded p-3 bg-light" style="font-family:Arial,sans-serif;font-size:14px;">
                         @Html.Raw(preview)

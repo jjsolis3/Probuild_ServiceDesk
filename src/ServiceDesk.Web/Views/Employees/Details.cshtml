@@ -565,9 +565,12 @@
                             <tbody>
                                 <tr><td><code>{FIRST_NAME}</code></td><td class="text-muted">@Model.FirstName</td></tr>
                                 <tr><td><code>{LAST_NAME}</code></td><td class="text-muted">@Model.LastName</td></tr>
+                                <tr><td><code>{FIRST_NAME_SLUG}</code></td><td class="text-muted">@Model.FirstName.Replace(" ","_")</td></tr>
+                                <tr><td><code>{LAST_NAME_SLUG}</code></td><td class="text-muted">@Model.LastName.Replace(" ","_")</td></tr>
                                 <tr><td><code>{FULL_NAME}</code></td><td class="text-muted">@Model.FullName</td></tr>
                                 <tr><td><code>{JOB_TITLE}</code></td><td class="text-muted">@(Model.JobTitle ?? "—")</td></tr>
                                 <tr><td><code>{EMAIL}</code></td><td class="text-muted">@Model.Email</td></tr>
+                                <tr><td><code>{EMAIL_DISPLAY}</code></td><td class="text-muted">@Model.Email.Replace(".org",".com")</td></tr>
                                 <tr><td><code>{PHONE}</code></td><td class="text-muted">@(Model.Phone ?? "—")</td></tr>
                                 <tr><td><code>{DEPARTMENT}</code></td><td class="text-muted">@Model.Department</td></tr>
                                 <tr><td><code>{BRANCH}</code></td><td class="text-muted">@(Model.Branch?.Name ?? "—")</td></tr>

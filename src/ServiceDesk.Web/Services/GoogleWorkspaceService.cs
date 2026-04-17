@@ -219,16 +219,21 @@ public class GoogleWorkspaceService
         var branchName  = employee.Branch?.Name  ?? "";
         var branchPhone = employee.Branch?.Phone ?? "";
 
+        static string Slug(string s) => s.Replace(" ", "_");
+
         return template
-            .Replace("{FIRST_NAME}",  employee.FirstName)
-            .Replace("{LAST_NAME}",   employee.LastName)
-            .Replace("{FULL_NAME}",   employee.FullName)
-            .Replace("{JOB_TITLE}",   employee.JobTitle  ?? "")
-            .Replace("{EMAIL}",       employee.Email)
-            .Replace("{PHONE}",       employee.Phone     ?? "")
-            .Replace("{DEPARTMENT}",  employee.Department)
-            .Replace("{BRANCH}",      branchName)
-            .Replace("{BRANCH_PHONE}", branchPhone);
+            .Replace("{FIRST_NAME}",      employee.FirstName)
+            .Replace("{LAST_NAME}",       employee.LastName)
+            .Replace("{FULL_NAME}",       employee.FullName)
+            .Replace("{FIRST_NAME_SLUG}", Slug(employee.FirstName))
+            .Replace("{LAST_NAME_SLUG}",  Slug(employee.LastName))
+            .Replace("{JOB_TITLE}",       employee.JobTitle  ?? "")
+            .Replace("{EMAIL}",           employee.Email)
+            .Replace("{EMAIL_DISPLAY}",   employee.Email.Replace(".org", ".com"))
+            .Replace("{PHONE}",           employee.Phone     ?? "")
+            .Replace("{DEPARTMENT}",      employee.Department)
+            .Replace("{BRANCH}",          branchName)
+            .Replace("{BRANCH_PHONE}",    branchPhone);
     }
 
     // ── Test connection ───────────────────────────────────────────────────────
