@@ -22,14 +22,18 @@ public class SettingsController : Controller
     private readonly EmailNotificationService _emailService;
     private readonly IMemoryCache _cache;
     private readonly IWebHostEnvironment _env;
+    private readonly GoogleWorkspaceService _googleWorkspace;
 
-    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
+        EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
+        GoogleWorkspaceService googleWorkspace)
     {
-        _context = context;
-        _gmailApiService = gmailApiService;
-        _emailService = emailService;
-        _cache = cache;
-        _env = env;
+        _context          = context;
+        _gmailApiService  = gmailApiService;
+        _emailService     = emailService;
+        _cache            = cache;
+        _env              = env;
+        _googleWorkspace  = googleWorkspace;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -1854,5 +1858,52 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         TempData["Success"] = "Notification settings saved.";
         return RedirectToAction(nameof(Notifications));
+    }
+
+    // ── Google Workspace ──────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GoogleWorkspace()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        return View(settings);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> GoogleWorkspace(string adminEmail, string domain,
+        IFormFile? serviceAccountFile, string? signatureTemplate)
+    {
+        string? jsonContent = null;
+
+        if (serviceAccountFile != null && serviceAccountFile.Length > 0)
+        {
+            if (!serviceAccountFile.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["Error"] = "Please upload a valid JSON service account key file.";
+                return RedirectToAction(nameof(GoogleWorkspace));
+            }
+
+            using var reader = new System.IO.StreamReader(serviceAccountFile.OpenReadStream());
+            jsonContent = await reader.ReadToEndAsync();
+
+            // Basic validation: must contain client_email and private_key
+            if (!jsonContent.Contains("client_email") || !jsonContent.Contains("private_key"))
+            {
+                TempData["Error"] = "The uploaded file does not look like a valid Google service account key.";
+                return RedirectToAction(nameof(GoogleWorkspace));
+            }
+        }
+
+        await _googleWorkspace.SaveSettingsAsync(adminEmail, domain, jsonContent, signatureTemplate);
+        TempData["Success"] = "Google Workspace settings saved.";
+        return RedirectToAction(nameof(GoogleWorkspace));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestGoogleWorkspace()
+    {
+        var (passed, message) = await _googleWorkspace.TestConnectionAsync();
+        TempData[passed ? "Success" : "Error"] = message;
+        return RedirectToAction(nameof(GoogleWorkspace));
     }
 }

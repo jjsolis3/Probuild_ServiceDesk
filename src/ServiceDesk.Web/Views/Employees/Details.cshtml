@@ -84,6 +84,11 @@
             @if (Model.AssignedAssets.Any()) { <span class="badge bg-secondary ms-1">@Model.AssignedAssets.Count</span> }
         </a>
     </li>
+    <li class="nav-item">
+        <a class="@TabClass("signature")" href="?tab=signature">
+            <i class="bi bi-pen me-1"></i>Signature
+        </a>
+    </li>
 </ul>
 
 <div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
@@ -491,6 +496,90 @@
         }
     </div>
 
+
+    <!-- ═══ SIGNATURE ══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("signature")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-pen me-2"></i>Gmail Email Signature</h6>
+                <div class="text-muted small">
+                    View and update the Gmail signature for <strong>@Model.Email</strong> via Google Workspace.
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" onclick="loadCurrentSignature()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Load Current
+                </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="applyTemplate()">
+                    <i class="bi bi-layout-text-sidebar me-1"></i>Apply Template
+                </button>
+            </div>
+        </div>
+
+        <div id="sigStatus" class="d-none mb-3"></div>
+
+        <div class="row g-4">
+            <!-- Editor -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-pencil-square me-1"></i>Editor (HTML)</span>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="sigViewToggle" onchange="toggleSigView(this)">
+                            <label class="form-check-label small" for="sigViewToggle">Preview</label>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <textarea id="sigEditor" class="form-control font-monospace border-0 rounded-0"
+                                  rows="18" style="resize:vertical;"
+                                  placeholder="HTML signature will appear here. Click 'Load Current' to fetch from Gmail or 'Apply Template' to use the configured template."></textarea>
+                        <div id="sigPreview" class="p-3 d-none" style="min-height:200px;font-family:Arial,sans-serif;font-size:14px;"></div>
+                    </div>
+                    <div class="card-footer d-flex gap-2">
+                        <button class="btn btn-primary btn-sm" onclick="saveSignature()">
+                            <i class="bi bi-cloud-upload me-1"></i>Save to Gmail
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="clearEditor()">
+                            <i class="bi bi-trash me-1"></i>Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live preview + tips -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-header fw-semibold small"><i class="bi bi-eye me-1"></i>Rendered Preview</div>
+                    <div class="card-body">
+                        <div id="sigLivePreview" class="border rounded p-3 bg-light"
+                             style="min-height:120px;font-family:Arial,sans-serif;font-size:14px;">
+                            <span class="text-muted small">Preview will appear here as you edit.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header fw-semibold small"><i class="bi bi-info-circle me-1"></i>Template Variables</div>
+                    <div class="card-body py-2">
+                        <table class="table table-sm table-borderless mb-0 small">
+                            <tbody>
+                                <tr><td><code>{FIRST_NAME}</code></td><td class="text-muted">@Model.FirstName</td></tr>
+                                <tr><td><code>{LAST_NAME}</code></td><td class="text-muted">@Model.LastName</td></tr>
+                                <tr><td><code>{FULL_NAME}</code></td><td class="text-muted">@Model.FullName</td></tr>
+                                <tr><td><code>{JOB_TITLE}</code></td><td class="text-muted">@(Model.JobTitle ?? "—")</td></tr>
+                                <tr><td><code>{EMAIL}</code></td><td class="text-muted">@Model.Email</td></tr>
+                                <tr><td><code>{PHONE}</code></td><td class="text-muted">@(Model.Phone ?? "—")</td></tr>
+                                <tr><td><code>{DEPARTMENT}</code></td><td class="text-muted">@Model.Department</td></tr>
+                                <tr><td><code>{BRANCH}</code></td><td class="text-muted">@(Model.Branch?.Name ?? "—")</td></tr>
+                                <tr><td><code>{BRANCH_PHONE}</code></td><td class="text-muted">@(Model.Branch?.Phone ?? "—")</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- ═══ TICKET VIEWER MODAL ══════════════════════════════════════════════ -->
@@ -587,6 +676,88 @@
         var ico = document.getElementById('newEmpPwdIcon');
         inp.type = inp.type === 'password' ? 'text' : 'password';
         ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+    };
+})();
+
+// ── Gmail Signature ───────────────────────────────────────────────────────
+(function () {
+    var editor      = document.getElementById('sigEditor');
+    var livePreview = document.getElementById('sigLivePreview');
+    var preview     = document.getElementById('sigPreview');
+    var status      = document.getElementById('sigStatus');
+
+    if (!editor) return;   // tab not rendered
+
+    function showStatus(msg, type) {
+        status.className = 'alert alert-' + type + ' py-2 small mb-3';
+        status.textContent = msg;
+        status.classList.remove('d-none');
+        if (type === 'success') setTimeout(function(){ status.classList.add('d-none'); }, 4000);
+    }
+
+    editor.addEventListener('input', function () {
+        livePreview.innerHTML = editor.value || '<span class="text-muted small">Preview will appear here as you edit.</span>';
+    });
+
+    window.toggleSigView = function(cb) {
+        editor.classList.toggle('d-none', cb.checked);
+        preview.classList.toggle('d-none', !cb.checked);
+        if (cb.checked) preview.innerHTML = editor.value;
+    };
+
+    window.clearEditor = function() {
+        editor.value = '';
+        livePreview.innerHTML = '<span class="text-muted small">Preview will appear here as you edit.</span>';
+        preview.innerHTML = '';
+    };
+
+    window.loadCurrentSignature = function() {
+        showStatus('Loading signature from Gmail…', 'info');
+        fetch('@Url.Action("GetSignature", "Employees", new { id = Model.Id })')
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    editor.value = d.html;
+                    livePreview.innerHTML = d.html || '<span class="text-muted small">Signature is currently empty.</span>';
+                    showStatus('Signature loaded from Gmail.', 'success');
+                } else {
+                    showStatus('Error: ' + d.error, 'danger');
+                }
+            })
+            .catch(function(){ showStatus('Network error loading signature.', 'danger'); });
+    };
+
+    window.applyTemplate = function() {
+        showStatus('Applying template…', 'info');
+        fetch('@Url.Action("GetSignatureTemplate", "Employees", new { id = Model.Id })')
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    editor.value = d.html;
+                    livePreview.innerHTML = d.html;
+                    showStatus('Template applied. Review and click Save to Gmail.', 'success');
+                } else {
+                    showStatus('Error: ' + d.message, 'danger');
+                }
+            })
+            .catch(function(){ showStatus('Network error loading template.', 'danger'); });
+    };
+
+    window.saveSignature = function() {
+        var html = editor.value.trim();
+        showStatus('Saving signature to Gmail…', 'info');
+        var fd = new FormData();
+        fd.append('html', html);
+        fetch('@Url.Action("UpdateSignature", "Employees", new { id = Model.Id })', {
+            method: 'POST',
+            headers: { 'RequestVerificationToken': token },
+            body: fd
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            showStatus(d.message, d.success ? 'success' : 'danger');
+        })
+        .catch(function(){ showStatus('Network error saving signature.', 'danger'); });
     };
 })();
 

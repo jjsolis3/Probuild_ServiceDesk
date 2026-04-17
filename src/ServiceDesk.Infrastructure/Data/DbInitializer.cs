@@ -970,6 +970,23 @@ public static class DbInitializer
                     ALTER TABLE dbo.Subscriptions ADD CONSTRAINT FK_Subscriptions_Assets
                         FOREIGN KEY (AssetId) REFERENCES dbo.Assets(Id) ON DELETE SET NULL;
                 END");
+
+            // 32. Google Workspace integration settings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'GoogleWorkspaceSettings')
+                    CREATE TABLE dbo.GoogleWorkspaceSettings (
+                        Id                          INT IDENTITY PRIMARY KEY,
+                        EncryptedServiceAccountJson NVARCHAR(MAX) NULL,
+                        AdminEmail                  NVARCHAR(300) NOT NULL DEFAULT '',
+                        Domain                      NVARCHAR(200) NOT NULL DEFAULT '',
+                        IsConfigured                BIT NOT NULL DEFAULT 0,
+                        LastTestedDate              DATETIME2 NULL,
+                        LastTestResult              NVARCHAR(500) NULL,
+                        LastTestPassed              BIT NOT NULL DEFAULT 0,
+                        SignatureTemplate           NVARCHAR(MAX) NULL,
+                        CreatedDate                 DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate                 DATETIME2 NULL
+                    );");
         }
         catch (Exception ex)
         {

@@ -1,0 +1,181 @@
+@model ServiceDesk.Core.Models.GoogleWorkspaceSettings
+@{
+    ViewData["Title"] = "Google Workspace";
+    bool configured = Model?.IsConfigured ?? false;
+    bool testPassed = Model?.LastTestPassed ?? false;
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">Google Workspace</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-google text-primary me-2"></i>Google Workspace Integration
+        </h1>
+        <p class="text-muted mb-0">
+            Connect a Service Account with Domain-Wide Delegation to manage Gmail signatures for all employees.
+        </p>
+    </div>
+    @if (configured)
+    {
+        <form asp-action="TestGoogleWorkspace" method="post">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-primary">
+                <i class="bi bi-wifi me-1"></i>Test Connection
+            </button>
+        </form>
+    }
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Status card -->
+@if (configured)
+{
+    <div class="alert @(testPassed ? "alert-success" : "alert-warning") d-flex align-items-center gap-3 mb-4">
+        <i class="bi @(testPassed ? "bi-check-circle-fill" : "bi-exclamation-circle-fill") fs-4"></i>
+        <div>
+            <strong>@(testPassed ? "Connected" : "Not verified")</strong>
+            @if (Model!.LastTestedDate.HasValue)
+            {
+                <span class="ms-2 small text-muted">Last tested @Model.LastTestedDate.Value.ToString("MMM d, yyyy h:mm tt")</span>
+            }
+            @if (!string.IsNullOrEmpty(Model!.LastTestResult))
+            {
+                <div class="small mt-1">@Model.LastTestResult</div>
+            }
+        </div>
+    </div>
+}
+
+<div class="row g-4">
+
+    <!-- Setup steps -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header fw-semibold"><i class="bi bi-list-ol me-2"></i>Setup Checklist</div>
+            <div class="card-body">
+                <ol class="ps-3 mb-0" style="line-height:2;">
+                    <li>In <strong>Google Cloud Console</strong>, enable the <em>Gmail API</em> for your project.</li>
+                    <li>Create a <strong>Service Account</strong> and download its JSON key.</li>
+                    <li>In the Service Account details, enable <strong>Domain-Wide Delegation</strong> and copy the Client ID.</li>
+                    <li>In <strong>Google Admin Console</strong> → Security → API Controls → Domain-wide Delegation, paste the Client ID and add the scope:<br>
+                        <code class="small">https://www.googleapis.com/auth/gmail.settings.basic</code>
+                    </li>
+                    <li>Upload the JSON key below and click <strong>Save</strong>.</li>
+                    <li>Click <strong>Test Connection</strong> to verify.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration form -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header fw-semibold"><i class="bi bi-gear me-2"></i>Configuration</div>
+            <div class="card-body">
+                <form asp-action="GoogleWorkspace" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Admin / Impersonation Email <span class="text-danger">*</span></label>
+                            <input type="email" name="adminEmail" class="form-control"
+                                   value="@(Model?.AdminEmail ?? "")"
+                                   placeholder="admin@yourdomain.com" required />
+                            <div class="form-text">A Workspace admin email used to test the connection.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Workspace Domain <span class="text-danger">*</span></label>
+                            <input type="text" name="domain" class="form-control"
+                                   value="@(Model?.Domain ?? "")"
+                                   placeholder="yourdomain.com" required />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Service Account JSON Key
+                            @if (configured)
+                            { <span class="badge bg-success ms-1">Uploaded</span> }
+                        </label>
+                        <input type="file" name="serviceAccountFile" class="form-control"
+                               accept=".json" @(configured ? "" : "required") />
+                        <div class="form-text">
+                            @if (configured)
+                            { <span>Leave blank to keep the existing key. Upload a new file to replace it.</span> }
+                            else
+                            { <span>Download from Google Cloud Console → IAM & Admin → Service Accounts → Keys.</span> }
+                        </div>
+                    </div>
+
+                    <!-- Signature template -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Default Signature Template</label>
+                        <div class="form-text mb-2">
+                            Variables: <code>{FIRST_NAME}</code> <code>{LAST_NAME}</code> <code>{FULL_NAME}</code>
+                            <code>{JOB_TITLE}</code> <code>{EMAIL}</code> <code>{PHONE}</code>
+                            <code>{DEPARTMENT}</code> <code>{BRANCH}</code> <code>{BRANCH_PHONE}</code>
+                        </div>
+                        <textarea name="signatureTemplate" class="form-control font-monospace"
+                                  rows="10" placeholder="Paste your HTML signature template here...">@(Model?.SignatureTemplate ?? "")</textarea>
+                        <div class="form-text">HTML is supported. This template is applied when you update a signature from an Employee's profile.</div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i>Save Settings
+                        </button>
+                        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Template preview -->
+        @if (!string.IsNullOrEmpty(Model?.SignatureTemplate))
+        {
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-header fw-semibold d-flex justify-content-between">
+                    <span><i class="bi bi-eye me-2"></i>Template Preview (sample values)</span>
+                    <span class="badge bg-secondary">Read-only</span>
+                </div>
+                <div class="card-body">
+                    @{
+                        var preview = (Model.SignatureTemplate ?? "")
+                            .Replace("{FIRST_NAME}", "Jane")
+                            .Replace("{LAST_NAME}", "Smith")
+                            .Replace("{FULL_NAME}", "Jane Smith")
+                            .Replace("{JOB_TITLE}", "IT Manager")
+                            .Replace("{EMAIL}", "jsmith@yourdomain.com")
+                            .Replace("{PHONE}", "(555) 000-1234")
+                            .Replace("{DEPARTMENT}", "Information Technology")
+                            .Replace("{BRANCH}", "Main Office")
+                            .Replace("{BRANCH_PHONE}", "(555) 000-0000");
+                    }
+                    <div class="border rounded p-3 bg-light" style="font-family:Arial,sans-serif;font-size:14px;">
+                        @Html.Raw(preview)
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>

@@ -68,6 +68,9 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<AiRecommendation> AiRecommendations => Set<AiRecommendation>();
     public DbSet<AiRunLog> AiRunLogs => Set<AiRunLog>();
 
+    // Google Workspace
+    public DbSet<GoogleWorkspaceSettings> GoogleWorkspaceSettings => Set<GoogleWorkspaceSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

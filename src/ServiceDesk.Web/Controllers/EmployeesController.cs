@@ -6,6 +6,7 @@ using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -14,11 +15,15 @@ public class EmployeesController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly IDataProtector _protector;
+    private readonly GoogleWorkspaceService _googleWorkspace;
 
-    public EmployeesController(ServiceDeskDbContext context, IDataProtectionProvider dpProvider)
+    public EmployeesController(ServiceDeskDbContext context,
+        IDataProtectionProvider dpProvider,
+        GoogleWorkspaceService googleWorkspace)
     {
-        _context = context;
-        _protector = dpProvider.CreateProtector("EmployeeCredentials.v1");
+        _context         = context;
+        _protector       = dpProvider.CreateProtector("EmployeeCredentials.v1");
+        _googleWorkspace = googleWorkspace;
     }
 
     public async Task<IActionResult> Index(string[]? departments, bool? active, int[]? branchIds, bool? hasLogin, string? q)
@@ -481,5 +486,46 @@ public class EmployeesController : Controller
         }
         result.Add(current.ToString());
         return result;
+    }
+
+    // ── Gmail Signature Management ────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetSignature(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (success, html, error) = await _googleWorkspace.GetSignatureAsync(employee.Email);
+        return Json(new { success, html = html ?? "", error });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateSignature(int id, string html)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (success, error) = await _googleWorkspace.UpdateSignatureAsync(employee.Email, html ?? "");
+        if (success)
+            return Json(new { success = true, message = $"Signature updated for {employee.FullName}." });
+
+        return Json(new { success = false, message = error ?? "Unknown error." });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetSignatureTemplate(int id)
+    {
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings?.SignatureTemplate == null)
+            return Json(new { success = false, message = "No signature template configured in Settings → Google Workspace." });
+
+        var rendered = await _googleWorkspace.RenderTemplateAsync(settings.SignatureTemplate, employee);
+        return Json(new { success = true, html = rendered });
     }
 }
