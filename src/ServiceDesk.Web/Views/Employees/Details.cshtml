@@ -124,7 +124,8 @@
             <div class="col-md-7">
                 <div class="row g-3 mb-3">
                     <div class="col-4">
-                        <div class="card text-center shadow-sm border-0 h-100">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="all" style="cursor:pointer;" title="View all tickets">
                             <div class="card-body py-3">
                                 <div class="fs-2 fw-bold text-primary">@totalSubmitted</div>
                                 <div class="text-muted small">Total Tickets</div>
@@ -132,7 +133,8 @@
                         </div>
                     </div>
                     <div class="col-4">
-                        <div class="card text-center shadow-sm border-0 h-100">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="open" style="cursor:pointer;" title="View open / in-progress tickets">
                             <div class="card-body py-3">
                                 <div class="fs-2 fw-bold text-warning">@openCount</div>
                                 <div class="text-muted small">Open / In Progress</div>
@@ -140,7 +142,8 @@
                         </div>
                     </div>
                     <div class="col-4">
-                        <div class="card text-center shadow-sm border-0 h-100">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="resolved" style="cursor:pointer;" title="View resolved tickets">
                             <div class="card-body py-3">
                                 <div class="fs-2 fw-bold text-success">@resolvedCount</div>
                                 <div class="text-muted small">Resolved</div>
@@ -171,7 +174,9 @@
                             @foreach (var cat in categoryBreakdown)
                             {
                                 var pct = totalSubmitted > 0 ? (int)((double)cat.Count / totalSubmitted * 100) : 0;
-                                <div class="mb-2">
+                                <div class="mb-2 cat-bar" data-cat-id="@cat.CategoryId"
+                                     data-cat-name="@cat.CategoryName"
+                                     style="cursor:pointer;" title="View @cat.CategoryName tickets">
                                     <div class="d-flex justify-content-between mb-1">
                                         <span class="small">@cat.CategoryName</span>
                                         <span class="small text-muted">@cat.Count (@pct%)</span>
@@ -488,6 +493,44 @@
 
 </div>
 
+<!-- ═══ TICKET VIEWER MODAL ══════════════════════════════════════════════ -->
+<div class="modal fade" id="ticketViewerModal" tabindex="-1" aria-labelledby="ticketViewerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ticketViewerTitle">
+                    <i class="bi bi-ticket-detailed me-2"></i><span id="ticketViewerLabel">Tickets</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="ticketViewerEmpty" class="text-center text-muted py-5 d-none">
+                    <i class="bi bi-ticket fs-1 opacity-25 d-block mb-3"></i>
+                    <p class="mb-0">No tickets match this filter.</p>
+                </div>
+                <div class="table-responsive" id="ticketViewerTableWrap">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Title</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ticketViewerBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <small class="text-muted me-auto" id="ticketViewerCount"></small>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 (function () {
@@ -545,6 +588,90 @@
         inp.type = inp.type === 'password' ? 'text' : 'password';
         ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
     };
+})();
+
+// ── Ticket Viewer Modal ────────────────────────────────────────────────────
+var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+    Model.SubmittedTickets.Select(t => new {
+        id          = t.Id,
+        title       = t.Title,
+        statusInt   = (int)t.Status,
+        status      = t.Status.ToString(),
+        priority    = t.Priority.ToString(),
+        category    = t.Category,
+        createdDate = t.CreatedDate.ToString("MMM dd, yyyy")
+    })
+));
+
+(function () {
+    var statusLabels = {0:'Open',1:'In Progress',2:'On Hold',3:'Resolved',4:'Closed',5:'Cancelled'};
+    var statusClasses = {0:'open',1:'inprogress',2:'onhold',3:'resolved',4:'closed',5:'cancelled'};
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function showTicketModal(label, tickets) {
+        document.getElementById('ticketViewerLabel').textContent = label;
+        var tbody  = document.getElementById('ticketViewerBody');
+        var empty  = document.getElementById('ticketViewerEmpty');
+        var wrap   = document.getElementById('ticketViewerTableWrap');
+        var count  = document.getElementById('ticketViewerCount');
+
+        tbody.innerHTML = '';
+
+        if (tickets.length === 0) {
+            empty.classList.remove('d-none');
+            wrap.classList.add('d-none');
+            count.textContent = '0 tickets';
+        } else {
+            empty.classList.add('d-none');
+            wrap.classList.remove('d-none');
+            count.textContent = tickets.length + ' ticket' + (tickets.length !== 1 ? 's' : '');
+
+            tickets.slice().sort(function(a,b){ return b.id - a.id; }).forEach(function(t) {
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="text-muted small">#' + t.id + '</td>' +
+                    '<td><a href="/Tickets/Details/' + t.id + '">' + escHtml(t.title) + '</a></td>' +
+                    '<td><span class="badge badge-' + (statusClasses[t.statusInt] || 'secondary') + '">' + (statusLabels[t.statusInt] || t.status) + '</span></td>' +
+                    '<td><span class="badge badge-' + t.priority.toLowerCase() + '">' + t.priority + '</span></td>' +
+                    '<td class="text-muted small">' + t.createdDate + '</td>';
+                tbody.appendChild(tr);
+            });
+        }
+
+        new bootstrap.Modal(document.getElementById('ticketViewerModal')).show();
+    }
+
+    // KPI card clicks
+    document.querySelectorAll('.kpi-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var filter = this.dataset.filter;
+            var filtered, label;
+            if (filter === 'all') {
+                filtered = empTickets.slice();
+                label = 'All Tickets';
+            } else if (filter === 'open') {
+                filtered = empTickets.filter(function(t) { return t.statusInt === 0 || t.statusInt === 1; });
+                label = 'Open / In Progress';
+            } else {
+                filtered = empTickets.filter(function(t) { return t.statusInt === 3 || t.statusInt === 4; });
+                label = 'Resolved / Closed';
+            }
+            showTicketModal(label + ' (' + filtered.length + ')', filtered);
+        });
+    });
+
+    // Category bar clicks
+    document.querySelectorAll('.cat-bar').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var catId   = parseInt(this.dataset.catId);
+            var catName = this.dataset.catName;
+            var filtered = empTickets.filter(function(t) { return t.category === catId; });
+            showTicketModal(catName + ' (' + filtered.length + ')', filtered);
+        });
+    });
 })();
 </script>
 }
