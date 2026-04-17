@@ -214,14 +214,14 @@ public class GoogleWorkspaceService
 
     // ── Template rendering ────────────────────────────────────────────────────
 
-    public async Task<string> RenderTemplateAsync(string template, Employee employee)
+    public Task<string> RenderTemplateAsync(string template, Employee employee)
     {
         var branchName  = employee.Branch?.Name  ?? "";
         var branchPhone = employee.Branch?.Phone ?? "";
 
         static string Slug(string s) => s.Replace(" ", "_");
 
-        return template
+        return Task.FromResult(template
             .Replace("{FIRST_NAME}",      employee.FirstName)
             .Replace("{LAST_NAME}",       employee.LastName)
             .Replace("{FULL_NAME}",       employee.FullName)
@@ -233,7 +233,7 @@ public class GoogleWorkspaceService
             .Replace("{PHONE}",           employee.Phone     ?? "")
             .Replace("{DEPARTMENT}",      employee.Department)
             .Replace("{BRANCH}",          branchName)
-            .Replace("{BRANCH_PHONE}",    branchPhone);
+            .Replace("{BRANCH_PHONE}",    branchPhone));
     }
 
     // ── Test connection ───────────────────────────────────────────────────────

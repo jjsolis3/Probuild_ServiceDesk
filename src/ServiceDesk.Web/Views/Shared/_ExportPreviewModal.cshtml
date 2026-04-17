@@ -50,9 +50,12 @@
 </div>
 
 <script>
+    var __ssBranding = @Html.Raw(brandingJson);
+</script>
+<script>
 (function () {
     /* ── branding ── */
-    var B = @Html.Raw(brandingJson);
+    var B = window.__ssBranding;
 
     /* ── public API ── */
     window.ssExport = {
