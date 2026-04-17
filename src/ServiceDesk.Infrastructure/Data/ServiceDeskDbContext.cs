@@ -71,6 +71,9 @@ public class ServiceDeskDbContext : DbContext
     // Google Workspace
     public DbSet<GoogleWorkspaceSettings> GoogleWorkspaceSettings => Set<GoogleWorkspaceSettings>();
 
+    // CSAT surveys
+    public DbSet<CsatSurvey> CsatSurveys => Set<CsatSurvey>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -440,6 +443,17 @@ public class ServiceDeskDbContext : DbContext
             .WithMany()
             .HasForeignKey(r => r.SuggestedAssigneeId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // CsatSurvey -> Ticket (cascade)
+        modelBuilder.Entity<CsatSurvey>()
+            .HasOne(s => s.Ticket)
+            .WithMany()
+            .HasForeignKey(s => s.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CsatSurvey>()
+            .HasIndex(s => s.Token)
+            .IsUnique();
 
         // Store draft reply without length limit
         modelBuilder.Entity<AiRecommendation>()

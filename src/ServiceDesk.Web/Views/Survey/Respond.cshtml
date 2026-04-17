@@ -1,0 +1,97 @@
+@model ServiceDesk.Core.Models.CsatSurvey
+@{
+    ViewData["Title"] = "Rate Your Experience";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container" style="max-width:520px;">
+    <div class="text-center mb-4 mt-5">
+        <i class="bi bi-star-fill text-warning fs-1"></i>
+        <h2 class="fw-bold mt-2">How did we do?</h2>
+        <p class="text-muted">
+            Your ticket <strong>#@Model.TicketId</strong>
+            @if (!string.IsNullOrEmpty(Model.Ticket?.Title))
+            {
+                <span>&mdash; <em>@Model.Ticket.Title</em></span>
+            }
+            has been resolved. Please take a moment to rate your experience.
+        </p>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+            <form asp-action="Respond" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="token" value="@Model.Token" />
+
+                <!-- Star Rating -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold d-block text-center mb-3">Select a rating</label>
+                    <div class="d-flex justify-content-center gap-3 star-picker" id="starPicker">
+                        @for (int i = 1; i <= 5; i++)
+                        {
+                            <button type="button" class="btn btn-link p-0 star-btn"
+                                    data-value="@i" title="@i star@(i > 1 ? "s" : "")">
+                                <i class="bi bi-star fs-1 text-warning star-icon" data-idx="@i"></i>
+                            </button>
+                        }
+                    </div>
+                    <input type="hidden" name="score" id="scoreInput" value="0" />
+                    @if (!ViewData.ModelState.IsValid)
+                    {
+                        <div class="text-danger small text-center mt-2">Please select a rating.</div>
+                    }
+                    <div class="text-center mt-2 small text-muted" id="ratingLabel">&nbsp;</div>
+                </div>
+
+                <!-- Optional comment -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Additional comments <span class="text-muted fw-normal">(optional)</span></label>
+                    <textarea name="feedback" class="form-control" rows="3"
+                              placeholder="What went well? What could we improve?"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
+                    <i class="bi bi-send me-1"></i>Submit Feedback
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var labels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+    var current = 0;
+    var scoreInput  = document.getElementById('scoreInput');
+    var submitBtn   = document.getElementById('submitBtn');
+    var ratingLabel = document.getElementById('ratingLabel');
+
+    function renderStars(hovered) {
+        var val = hovered || current;
+        document.querySelectorAll('.star-btn').forEach(function (btn) {
+            var idx = parseInt(btn.getAttribute('data-value'));
+            var icon = btn.querySelector('.star-icon');
+            icon.className = 'bi fs-1 text-warning star-icon ' + (idx <= val ? 'bi-star-fill' : 'bi-star');
+        });
+        ratingLabel.textContent = val > 0 ? labels[val] : '';
+    }
+
+    document.querySelectorAll('.star-btn').forEach(function (btn) {
+        btn.addEventListener('mouseenter', function () {
+            renderStars(parseInt(this.getAttribute('data-value')));
+        });
+        btn.addEventListener('mouseleave', function () {
+            renderStars(0);
+        });
+        btn.addEventListener('click', function () {
+            current = parseInt(this.getAttribute('data-value'));
+            scoreInput.value = current;
+            submitBtn.disabled = false;
+            renderStars(0);
+        });
+    });
+})();
+</script>
+}

@@ -1906,4 +1906,32 @@ public class SettingsController : Controller
         TempData[passed ? "Success" : "Error"] = message;
         return RedirectToAction(nameof(GoogleWorkspace));
     }
+
+    // ==================== CSAT SURVEYS ====================
+
+    // GET: Settings/Csat
+    public async Task<IActionResult> Csat()
+    {
+        var enabled = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+        ViewBag.CsatEnabled = enabled?.Value == "true";
+        return View();
+    }
+
+    // POST: Settings/Csat
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Csat(bool csatEnabled)
+    {
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+
+        if (setting != null)
+        {
+            setting.Value = csatEnabled ? "true" : "false";
+            await _context.SaveChangesAsync();
+        }
+
+        TempData["Success"] = $"CSAT surveys {(csatEnabled ? "enabled" : "disabled")}.";
+        return RedirectToAction(nameof(Csat));
+    }
 }

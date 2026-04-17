@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
 
@@ -21,6 +22,190 @@ public class ReportsController : Controller
     public IActionResult Index()
     {
         return View();
+    }
+
+    public async Task<IActionResult> Executive()
+    {
+        var now = DateTime.UtcNow;
+        var cutoff30 = now.AddDays(-30);
+
+        var tickets = await _context.Tickets
+            .Include(t => t.AssignedTo)
+            .Where(t => t.Status != TicketStatus.Cancelled)
+            .Take(10000)
+            .ToListAsync();
+
+        // MTTA: first agent note per ticket
+        var firstNotes = await _context.TicketNotes
+            .Where(n => n.Source == "Agent" && !n.IsInternal)
+            .GroupBy(n => n.TicketId)
+            .Select(g => new { TicketId = g.Key, FirstDate = g.Min(n => n.CreatedDate) })
+            .ToListAsync();
+        var firstNoteDict = firstNotes.ToDictionary(n => n.TicketId, n => n.FirstDate);
+
+        var catLookup = await LoadCategoryLookupAsync();
+
+        // MTTR
+        var resolvedTickets = tickets.Where(t => t.ResolvedDate.HasValue).ToList();
+        var mttr = resolvedTickets.Any()
+            ? resolvedTickets.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours)
+            : 0;
+
+        // MTTA
+        var mttaValues = tickets
+            .Where(t => firstNoteDict.ContainsKey(t.Id))
+            .Select(t => (firstNoteDict[t.Id] - t.CreatedDate).TotalHours)
+            .Where(h => h >= 0)
+            .ToList();
+        var mtta = mttaValues.Any() ? mttaValues.Average() : 0;
+
+        // SLA compliance per priority
+        var slaRows = new List<SlaPriorityRow>();
+        foreach (var pri in new[] { TicketPriority.Critical, TicketPriority.High, TicketPriority.Medium, TicketPriority.Low })
+        {
+            var priResolved = resolvedTickets.Where(t => t.Priority == pri).ToList();
+            if (!priResolved.Any()) continue;
+            var slaHours = SlaPolicy.GetHours(pri);
+            var met = priResolved.Count(t =>
+            {
+                var due = t.DueDate ?? t.CreatedDate.AddHours(slaHours);
+                return t.ResolvedDate!.Value <= due;
+            });
+            slaRows.Add(new SlaPriorityRow { Priority = pri, Met = met, Total = priResolved.Count });
+        }
+        var totalSlaMet   = slaRows.Sum(r => r.Met);
+        var totalSlaTotal = slaRows.Sum(r => r.Total);
+        var slaCompliance = totalSlaTotal > 0 ? (double)totalSlaMet / totalSlaTotal * 100 : 0;
+
+        // Open/volume counts
+        var openTickets    = tickets.Where(t => t.Status is TicketStatus.Open or TicketStatus.InProgress or TicketStatus.OnHold).ToList();
+        var resolvedLast30 = tickets.Count(t => t.ResolvedDate.HasValue && t.ResolvedDate.Value >= cutoff30);
+        var createdLast30  = tickets.Count(t => t.CreatedDate >= cutoff30);
+
+        // Backlog aging
+        var backlogOver7  = openTickets.Count(t => (now - t.CreatedDate).TotalDays > 7);
+        var backlogOver14 = openTickets.Count(t => (now - t.CreatedDate).TotalDays > 14);
+        var backlogOver30 = openTickets.Count(t => (now - t.CreatedDate).TotalDays > 30);
+
+        // Weekly volume: last 12 weeks
+        var weekly = new List<WeeklyPoint>();
+        for (int i = 11; i >= 0; i--)
+        {
+            var ws = now.AddDays(-7 * (i + 1)).Date;
+            var we = ws.AddDays(7);
+            weekly.Add(new WeeklyPoint
+            {
+                Label = ws.ToString("MMM d"),
+                Count = tickets.Count(t => t.CreatedDate >= ws && t.CreatedDate < we)
+            });
+        }
+
+        // Category breakdown (last 30 days)
+        var byCategory = tickets
+            .Where(t => t.CreatedDate >= cutoff30)
+            .GroupBy(t => t.Category)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Agent workload
+        var agentWorkload = tickets
+            .Where(t => t.AssignedTo != null)
+            .GroupBy(t => t.AssignedTo!.FullName)
+            .Select(g =>
+            {
+                var res30 = g.Where(t => t.ResolvedDate.HasValue && t.ResolvedDate.Value >= cutoff30).ToList();
+                return new AgentWorkloadRow
+                {
+                    AgentName          = g.Key,
+                    OpenTickets        = g.Count(t => t.Status == TicketStatus.Open),
+                    InProgressTickets  = g.Count(t => t.Status == TicketStatus.InProgress),
+                    ResolvedLast30Days = res30.Count,
+                    AvgResolutionHours = res30.Any()
+                        ? Math.Round(res30.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours), 1)
+                        : 0
+                };
+            })
+            .Where(a => a.OpenTickets + a.InProgressTickets + a.ResolvedLast30Days > 0)
+            .OrderByDescending(a => a.OpenTickets + a.InProgressTickets)
+            .ToList();
+
+        // AI effectiveness
+        var decidedRecs = await _context.AiRecommendations
+            .Where(r => r.Status == "Approved" || r.Status == "Dismissed")
+            .ToListAsync();
+        var aiAcceptance = decidedRecs.Any()
+            ? (double)decidedRecs.Count(r => r.Status == "Approved") / decidedRecs.Count * 100
+            : 0;
+
+        var approvedRecs = decidedRecs.Where(r => r.Status == "Approved").ToList();
+        var resolvedDict = resolvedTickets.ToDictionary(t => t.Id);
+
+        var catCorrect = approvedRecs.Count(r =>
+            r.SuggestedCategory.HasValue &&
+            resolvedDict.TryGetValue(r.TicketId, out var t2) && t2.Category == r.SuggestedCategory);
+        var catTotal = approvedRecs.Count(r =>
+            r.SuggestedCategory.HasValue && resolvedDict.ContainsKey(r.TicketId));
+
+        var priCorrect = approvedRecs.Count(r =>
+            r.SuggestedPriority.HasValue &&
+            resolvedDict.TryGetValue(r.TicketId, out var t3) && (int)t3.Priority == r.SuggestedPriority);
+        var priTotal = approvedRecs.Count(r =>
+            r.SuggestedPriority.HasValue && resolvedDict.ContainsKey(r.TicketId));
+
+        var aiCatAccuracy = catTotal > 0 ? (double)catCorrect / catTotal * 100 : 0;
+        var aiPriAccuracy = priTotal > 0 ? (double)priCorrect / priTotal * 100 : 0;
+        var aiRecsLast30  = await _context.AiRecommendations.CountAsync(r => r.CreatedDate >= cutoff30);
+        var latestRun     = await _context.AiRunLogs.OrderByDescending(r => r.RunDate).FirstOrDefaultAsync();
+
+        // CSAT
+        var csatSetting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+        var csatEnabled = csatSetting?.Value == "true";
+        double? csatAvg  = null;
+        int csatCount    = 0;
+        double? csatRate = null;
+        if (csatEnabled)
+        {
+            try
+            {
+                var surveys   = await _context.CsatSurveys.ToListAsync();
+                var completed = surveys.Where(s => s.Score.HasValue).ToList();
+                csatCount = completed.Count;
+                csatAvg   = completed.Any() ? Math.Round(completed.Average(s => (double)s.Score!.Value), 1) : null;
+                csatRate  = surveys.Any() ? Math.Round((double)completed.Count / surveys.Count * 100, 1) : null;
+            }
+            catch { /* table not yet created */ }
+        }
+
+        ViewBag.CategoriesById = catLookup;
+
+        var model = new ExecReportViewModel
+        {
+            MttrHours          = Math.Round(mttr,         1),
+            MttaHours          = Math.Round(mtta,         1),
+            SlaCompliancePct   = Math.Round(slaCompliance, 1),
+            TotalOpen          = openTickets.Count,
+            ResolvedLast30Days = resolvedLast30,
+            CreatedLast30Days  = createdLast30,
+            TotalTicketsAllTime = tickets.Count,
+            BacklogOver7Days   = backlogOver7,
+            BacklogOver14Days  = backlogOver14,
+            BacklogOver30Days  = backlogOver30,
+            SlaByPriority      = slaRows,
+            WeeklyVolume       = weekly,
+            ByCategory         = byCategory,
+            AgentWorkload      = agentWorkload,
+            AiAcceptanceRate      = Math.Round(aiAcceptance,  1),
+            AiCategoryAccuracyPct = Math.Round(aiCatAccuracy, 1),
+            AiPriorityAccuracyPct = Math.Round(aiPriAccuracy, 1),
+            AiRecsLast30Days   = aiRecsLast30,
+            AiHasData          = decidedRecs.Any(),
+            LatestTrainingRun  = latestRun,
+            CsatEnabled        = csatEnabled,
+            CsatAvgScore       = csatAvg,
+            CsatResponseCount  = csatCount,
+            CsatResponseRate   = csatRate
+        };
+
+        return View(model);
     }
 
     public async Task<IActionResult> Tickets()

@@ -1,0 +1,83 @@
+@{
+    ViewData["Title"] = "CSAT Surveys";
+    bool csatEnabled = ViewBag.CsatEnabled ?? false;
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">CSAT Surveys</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-star text-warning me-2"></i>Customer Satisfaction (CSAT) Surveys
+        </h1>
+        <p class="text-muted mb-0">
+            When enabled, a simple 1–5 star survey link can be sent to the ticket requester after their ticket is resolved.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+    <!-- Toggle Card -->
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0">
+            <div class="card-header fw-semibold"><i class="bi bi-toggle-on me-2"></i>Survey Toggle</div>
+            <div class="card-body">
+                <form asp-action="Csat" method="post">
+                    @Html.AntiForgeryToken()
+
+                    <div class="d-flex align-items-center justify-content-between p-3 border rounded mb-4">
+                        <div>
+                            <div class="fw-semibold">Enable CSAT Surveys</div>
+                            <div class="text-muted small">Activates survey tracking and shows CSAT data in the Executive Dashboard.</div>
+                        </div>
+                        <div class="form-check form-switch ms-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   name="csatEnabled" id="csatToggle" value="true"
+                                   @(csatEnabled ? "checked" : "") style="width:3em;height:1.6em;" />
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i>Save
+                        </button>
+                        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- How it Works -->
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header fw-semibold"><i class="bi bi-info-circle me-2"></i>How It Works</div>
+            <div class="card-body">
+                <ol class="ps-3 mb-0" style="line-height:2.2;">
+                    <li>Enable CSAT above and save.</li>
+                    <li>When a ticket is resolved, open the ticket and use the <strong>Send Survey</strong> button to generate a survey link for the requester.</li>
+                    <li>The requester clicks the link and selects <strong>1–5 stars</strong>, with an optional comment.</li>
+                    <li>Responses are collected and averaged in the <strong><a asp-controller="Reports" asp-action="Executive">Executive Dashboard</a></strong>.</li>
+                    <li>Toggle this off at any time — existing responses are preserved.</li>
+                </ol>
+                <div class="alert alert-info py-2 mt-3 mb-0">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    <strong>Tip:</strong> For a small IT department, run surveys during a specific campaign or after a major project — not on every ticket. Use the toggle to control when surveys are active.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

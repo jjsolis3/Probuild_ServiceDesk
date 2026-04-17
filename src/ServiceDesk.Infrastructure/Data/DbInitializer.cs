@@ -987,6 +987,33 @@ public static class DbInitializer
                         CreatedDate                 DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
                         UpdatedDate                 DATETIME2 NULL
                     );");
+
+            // 33. CSAT survey table + feature-flag AppSettings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CsatSurveys')
+                BEGIN
+                    CREATE TABLE dbo.CsatSurveys (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId        INT             NOT NULL
+                            CONSTRAINT FK_CsatSurveys_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        Token           NVARCHAR(64)    NOT NULL,
+                        Score           INT             NULL,
+                        Feedback        NVARCHAR(1000)  NULL,
+                        SentDate        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        CompletedDate   DATETIME2       NULL,
+                        CONSTRAINT UQ_CsatSurveys_Token UNIQUE (Token)
+                    );
+
+                    CREATE INDEX IX_CsatSurveys_TicketId
+                        ON dbo.CsatSurveys (TicketId);
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CsatSurveyEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CsatSurveyEnabled', 'false', 'Surveys',
+                            'Send a post-resolution satisfaction survey (1–5 stars) to the ticket requester when a ticket is closed');");
         }
         catch (Exception ex)
         {
