@@ -161,6 +161,18 @@
                             <span class="nav-text">Assets</span>
                         </a>
                     </li>
+                    <li class="@NavClass("SoftwareLicenses")">
+                        <a asp-controller="SoftwareLicenses" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-box"></i>
+                            <span class="nav-text">Licenses</span>
+                        </a>
+                    </li>
+                    <li class="@NavClass("Consumables")">
+                        <a asp-controller="Consumables" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-layer-group"></i>
+                            <span class="nav-text">Consumables</span>
+                        </a>
+                    </li>
                     @if (!User.IsInRole("Viewer"))
                     {
                     <li class="@NavClass("Employees")">

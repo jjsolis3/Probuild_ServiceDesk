@@ -103,6 +103,19 @@
         </a>
     </li>
     <li class="nav-item">
+        <a class="@TabClass("maintenance")" href="?tab=maintenance">
+            <i class="bi bi-tools me-1"></i>Maintenance
+            @if (Model.MaintenanceLogs.Any()) { <span class="badge bg-secondary ms-1">@Model.MaintenanceLogs.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("checkout")" href="?tab=checkout">
+            <i class="bi bi-box-arrow-right me-1"></i>Checkout
+            @{ var activeCheckout = Model.Checkouts.FirstOrDefault(c => c.ReturnedDate == null); }
+            @if (activeCheckout != null) { <span class="badge bg-warning text-dark ms-1">Out</span> }
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="@TabClass("history")" href="?tab=history">
             <i class="bi bi-clock-history me-1"></i>History
         </a>
@@ -614,6 +627,275 @@
                         </div>
                     </a>
                 }
+            </div>
+        }
+    </div>
+
+    <!-- ═══ MAINTENANCE ═══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("maintenance")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-tools me-2"></i>Maintenance Log</h6>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addMaintModal">
+                <i class="bi bi-plus-lg me-1"></i>Log Service
+            </button>
+        </div>
+
+        @if (!Model.MaintenanceLogs.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-tools fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No maintenance records yet.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Vendor / Tech</th>
+                            <th>Cost</th>
+                            <th>Next Service</th>
+                            <th class="no-sort"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in Model.MaintenanceLogs)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@m.ServiceDate.ToString("MMM d, yyyy")</td>
+                                <td><span class="badge bg-info text-dark">@m.ServiceType</span></td>
+                                <td>@m.Description</td>
+                                <td class="text-muted small">
+                                    @if (!string.IsNullOrEmpty(m.Vendor)) { <span>@m.Vendor</span> }
+                                    @if (!string.IsNullOrEmpty(m.PerformedBy)) { <span class="ms-1">(@m.PerformedBy)</span> }
+                                </td>
+                                <td>@(m.Cost?.ToString("C") ?? "—")</td>
+                                <td class="text-nowrap">
+                                    @if (m.NextServiceDate.HasValue)
+                                    {
+                                        var overdue = m.NextServiceDate.Value < DateTime.Today;
+                                        <span class="@(overdue ? "text-danger fw-semibold" : "")">
+                                            @m.NextServiceDate.Value.ToString("MMM d, yyyy")
+                                            @if (overdue) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
+                                        </span>
+                                    }
+                                    else { <span class="text-muted">—</span> }
+                                </td>
+                                <td>
+                                    <form asp-action="DeleteMaintenance" asp-route-id="@a.Id" method="post" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="maintenanceId" value="@m.Id" />
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('Delete this maintenance entry?')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <!-- Add Maintenance Modal -->
+        <div class="modal fade" id="addMaintModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-tools me-2"></i>Log Service / Maintenance</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddMaintenance" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Service Date <span class="text-danger">*</span></label>
+                                    <input type="date" name="serviceDate" class="form-control"
+                                           value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Service Type</label>
+                                    <select name="serviceType" class="form-select">
+                                        <option>Repair</option>
+                                        <option>Preventive</option>
+                                        <option>Upgrade</option>
+                                        <option>Inspection</option>
+                                        <option>Warranty Service</option>
+                                        <option>Replacement</option>
+                                        <option>Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Cost</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" name="cost" class="form-control" step="0.01" min="0"
+                                               placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
+                                    <textarea name="description" class="form-control" rows="2"
+                                              placeholder="Describe the work performed" required maxlength="1000"></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Vendor / Shop</label>
+                                    <input type="text" name="vendor" class="form-control"
+                                           placeholder="e.g. Best Buy Geek Squad" maxlength="200" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Performed By</label>
+                                    <input type="text" name="performedBy" class="form-control"
+                                           placeholder="Technician name" maxlength="200" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Next Service Date</label>
+                                    <input type="date" name="nextServiceDate" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Log</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ CHECKOUT ════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("checkout")">
+        @if (activeCheckout != null)
+        {
+            <div class="alert alert-warning d-flex align-items-center mb-4">
+                <i class="bi bi-box-arrow-right fs-4 me-3"></i>
+                <div class="flex-grow-1">
+                    <strong>Currently Checked Out</strong>
+                    @if (activeCheckout.CheckedOutTo != null)
+                    {
+                        <span class="ms-1">to <strong>@activeCheckout.CheckedOutTo.FullName</strong></span>
+                    }
+                    — due <strong>@activeCheckout.DueDate.ToString("MMM d, yyyy")</strong>
+                    @if (activeCheckout.IsOverdue) { <span class="badge bg-danger ms-2">OVERDUE</span> }
+                </div>
+                <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#checkInModal">
+                    <i class="bi bi-box-arrow-in-left me-1"></i>Check In
+                </button>
+            </div>
+
+            <!-- Check-In Modal -->
+            <div class="modal fade" id="checkInModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="bi bi-box-arrow-in-left me-2"></i>Check In Asset</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <form asp-action="CheckIn" asp-route-id="@a.Id" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="checkoutId" value="@activeCheckout.Id" />
+                            <div class="modal-body">
+                                <label class="form-label fw-semibold">Return Notes (optional)</label>
+                                <textarea name="returnNotes" class="form-control" rows="2"
+                                          placeholder="Condition, damage notes, etc." maxlength="500"></textarea>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg me-1"></i>Confirm Check-In</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header fw-semibold"><i class="bi bi-box-arrow-right me-2"></i>Check Out Asset</div>
+                <div class="card-body">
+                    <form asp-action="CheckOut" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label fw-semibold">Check Out To</label>
+                                <select name="employeeId" class="form-select form-select-sm">
+                                    <option value="">— Guest / External —</option>
+                                    @foreach (var emp in Model.ActiveEmployees)
+                                    {
+                                        <option value="@emp.Id">@emp.FullName</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold">Due Date <span class="text-danger">*</span></label>
+                                <input type="date" name="dueDate" class="form-control form-control-sm" required
+                                       value="@DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="notes" class="form-control form-control-sm"
+                                       placeholder="Purpose / event" maxlength="500" />
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-box-arrow-right me-1"></i>Check Out
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+
+        <!-- Checkout History -->
+        <h6 class="fw-semibold mb-3">Checkout History</h6>
+        @if (!Model.Checkouts.Any())
+        {
+            <p class="text-muted text-center py-3">No checkout history for this asset.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Checked Out</th>
+                            <th>To</th>
+                            <th>Due Date</th>
+                            <th>Returned</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var co in Model.Checkouts)
+                        {
+                            <tr class="@(co.IsActive && co.IsOverdue ? "table-danger" : co.IsActive ? "table-warning" : "")">
+                                <td class="text-nowrap text-muted small">@co.CheckoutDate.ToString("MMM d, yyyy")</td>
+                                <td>@(co.CheckedOutTo?.FullName ?? "— External —")</td>
+                                <td class="text-nowrap">
+                                    <span class="@(co.IsOverdue ? "text-danger fw-semibold" : "")">
+                                        @co.DueDate.ToString("MMM d, yyyy")
+                                        @if (co.IsOverdue) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
+                                    </span>
+                                </td>
+                                <td class="text-nowrap text-muted small">
+                                    @if (co.ReturnedDate.HasValue)
+                                    { @co.ReturnedDate.Value.ToString("MMM d, yyyy") }
+                                    else
+                                    { <span class="badge bg-warning text-dark">Out</span> }
+                                </td>
+                                <td class="text-muted small">@co.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         }
     </div>

@@ -106,6 +106,38 @@ public class AssetReportViewModel
     public Dictionary<AssetStatus, int> ByStatus { get; set; } = new();
     public List<Asset> ExpiringWarranties { get; set; } = new();
     public Dictionary<string, int> ByDepartment { get; set; } = new();
+
+    // New reporting sections
+    public Dictionary<string, int> AgeDistribution { get; set; } = new();
+    public List<RefreshCycleRow> RefreshCyclePlanner { get; set; } = new();
+    public List<CostCenterRow> CostCenterBreakdown { get; set; } = new();
+    public List<HardwareStdRow> HardwareStandardization { get; set; } = new();
+}
+
+public class RefreshCycleRow
+{
+    public AssetType Type { get; set; }
+    public int RecommendedLifeYears { get; set; }
+    public int TotalCount { get; set; }
+    public int OverdueCount { get; set; }
+    public int DueSoonCount { get; set; }
+    public List<Asset> OverdueAssets { get; set; } = new();
+}
+
+public class CostCenterRow
+{
+    public string Department { get; set; } = string.Empty;
+    public int AssetCount { get; set; }
+    public decimal TotalCost { get; set; }
+    public decimal AvgCost => AssetCount > 0 ? TotalCost / AssetCount : 0;
+}
+
+public class HardwareStdRow
+{
+    public string Make { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public AssetType Type { get; set; }
+    public int Count { get; set; }
 }
 
 public class UserReportViewModel

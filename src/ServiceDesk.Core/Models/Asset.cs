@@ -87,4 +87,6 @@ public class Asset
     public ICollection<AssetRelationship> RelationshipsFrom { get; set; } = new List<AssetRelationship>();
     public ICollection<AssetRelationship> RelationshipsTo { get; set; } = new List<AssetRelationship>();
     public ICollection<Ticket> RelatedTickets { get; set; } = new List<Ticket>();
+    public ICollection<AssetMaintenanceLog> MaintenanceLogs { get; set; } = new List<AssetMaintenanceLog>();
+    public ICollection<AssetCheckout> Checkouts { get; set; } = new List<AssetCheckout>();
 }

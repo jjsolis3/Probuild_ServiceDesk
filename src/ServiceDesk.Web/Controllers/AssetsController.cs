@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
@@ -113,6 +115,15 @@ public class AssetsController : Controller
                 .Include(t => t.SubmittedBy)
                 .OrderByDescending(t => t.CreatedDate)
                 .Take(20)
+                .ToListAsync(),
+            MaintenanceLogs = await _context.AssetMaintenanceLogs
+                .Where(m => m.AssetId == id)
+                .OrderByDescending(m => m.ServiceDate)
+                .ToListAsync(),
+            Checkouts = await _context.AssetCheckouts
+                .Where(c => c.AssetId == id)
+                .Include(c => c.CheckedOutTo)
+                .OrderByDescending(c => c.CheckoutDate)
                 .ToListAsync(),
             AllOtherAssets = await _context.Assets
                 .Where(a => a.Id != id)
@@ -456,6 +467,340 @@ public class AssetsController : Controller
         }
         TempData["Success"] = "Relationship removed.";
         return RedirectToAction(nameof(Details), new { id, tab = "relationships" });
+    }
+
+    // ── Bulk Actions ─────────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkUpdate(int[] ids, string action, AssetStatus? status, int? assignToId)
+    {
+        if (ids == null || ids.Length == 0)
+        {
+            TempData["Error"] = "No assets selected.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var assets = await _context.Assets.Where(a => ids.Contains(a.Id)).ToListAsync();
+
+        foreach (var asset in assets)
+        {
+            if (action == "status" && status.HasValue)
+                asset.Status = status.Value;
+            else if (action == "assign" && assignToId.HasValue)
+            {
+                asset.AssignedToId = assignToId.Value;
+                asset.Status = AssetStatus.Assigned;
+            }
+            else if (action == "unassign")
+            {
+                asset.AssignedToId = null;
+                asset.Status = AssetStatus.Available;
+            }
+            else if (action == "delete")
+            {
+                _context.Assets.Remove(asset);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"{assets.Count} asset(s) updated.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // ── Quick Edit (inline) ───────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QuickEdit(int id, string field, string? value)
+    {
+        var asset = await _context.Assets.FindAsync(id);
+        if (asset == null) return Json(new { success = false, message = "Not found" });
+
+        try
+        {
+            switch (field)
+            {
+                case "Status":
+                    if (Enum.TryParse<AssetStatus>(value, out var s)) asset.Status = s;
+                    break;
+                case "Location":
+                    asset.Location = value?.Trim();
+                    break;
+                case "IpAddress":
+                    asset.IpAddress = value?.Trim();
+                    break;
+                case "Hostname":
+                    asset.Hostname = value?.Trim();
+                    break;
+                default:
+                    return Json(new { success = false, message = "Field not editable inline." });
+            }
+            await _context.SaveChangesAsync();
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ── CSV Export ────────────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> ExportCsv()
+    {
+        var assets = await _context.Assets
+            .Include(a => a.AssignedTo)
+            .OrderBy(a => a.AssetTag)
+            .ToListAsync();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("AssetTag,Name,Type,Status,Manufacturer,Model,SerialNumber,Location,AssignedTo,PurchaseDate,PurchaseCost,WarrantyExpiry,IpAddress,MacAddress,Hostname,OsVersion,Notes");
+
+        foreach (var a in assets)
+        {
+            string Esc(string? v) => v == null ? "" : $"\"{v.Replace("\"", "\"\"")}\"";
+            sb.AppendLine(string.Join(",",
+                Esc(a.AssetTag), Esc(a.Name), Esc(a.AssetType.ToString()), Esc(a.Status.ToString()),
+                Esc(a.Manufacturer), Esc(a.Model), Esc(a.SerialNumber), Esc(a.Location),
+                Esc(a.AssignedTo?.FullName),
+                a.PurchaseDate?.ToString("yyyy-MM-dd") ?? "",
+                a.PurchaseCost?.ToString("F2") ?? "",
+                a.WarrantyExpiry?.ToString("yyyy-MM-dd") ?? "",
+                Esc(a.IpAddress), Esc(a.MacAddress), Esc(a.Hostname), Esc(a.OsVersion), Esc(a.Notes)));
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return File(bytes, "text/csv", $"assets_{DateTime.Today:yyyyMMdd}.csv");
+    }
+
+    // ── CSV Import ────────────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportCsv(IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            TempData["Error"] = "Please select a CSV file.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var imported = 0; var skipped = 0; var errors = new List<string>();
+
+        using var reader = new StreamReader(file.OpenReadStream());
+        var header = await reader.ReadLineAsync();
+        if (header == null) { TempData["Error"] = "Empty file."; return RedirectToAction(nameof(Index)); }
+
+        var cols = header.Split(',').Select(c => c.Trim().Trim('"')).ToArray();
+        int Col(string name) => Array.IndexOf(cols, name);
+
+        var iTag = Col("AssetTag"); var iName = Col("Name");
+        var iType = Col("Type"); var iStatus = Col("Status");
+        var iMfr = Col("Manufacturer"); var iModel = Col("Model");
+        var iSerial = Col("SerialNumber"); var iLoc = Col("Location");
+
+        string? line;
+        var lineNum = 1;
+        while ((line = await reader.ReadLineAsync()) != null)
+        {
+            lineNum++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var fields = ParseCsvLine(line);
+
+            try
+            {
+                var tag  = iTag  >= 0 && iTag  < fields.Length ? fields[iTag].Trim()  : "";
+                var name = iName >= 0 && iName < fields.Length ? fields[iName].Trim() : "";
+                if (string.IsNullOrEmpty(tag) || string.IsNullOrEmpty(name))
+                {
+                    errors.Add($"Row {lineNum}: AssetTag and Name are required.");
+                    skipped++;
+                    continue;
+                }
+
+                if (!Enum.TryParse<AssetType>(iType >= 0 && iType < fields.Length ? fields[iType].Trim() : "Other", true, out var assetType))
+                    assetType = AssetType.Other;
+                if (!Enum.TryParse<AssetStatus>(iStatus >= 0 && iStatus < fields.Length ? fields[iStatus].Trim() : "Available", true, out var assetStatus))
+                    assetStatus = AssetStatus.Available;
+
+                var existing = await _context.Assets.FirstOrDefaultAsync(a => a.AssetTag == tag);
+                if (existing != null)
+                {
+                    existing.Name         = name;
+                    existing.AssetType    = assetType;
+                    existing.Status       = assetStatus;
+                    existing.Manufacturer = iMfr    >= 0 && iMfr    < fields.Length ? fields[iMfr].Trim()    : existing.Manufacturer;
+                    existing.Model        = iModel  >= 0 && iModel  < fields.Length ? fields[iModel].Trim()  : existing.Model;
+                    existing.SerialNumber = iSerial >= 0 && iSerial < fields.Length ? fields[iSerial].Trim() : existing.SerialNumber;
+                    existing.Location     = iLoc    >= 0 && iLoc    < fields.Length ? fields[iLoc].Trim()    : existing.Location;
+                }
+                else
+                {
+                    _context.Assets.Add(new Asset
+                    {
+                        AssetTag      = tag,
+                        Name          = name,
+                        AssetType     = assetType,
+                        Status        = assetStatus,
+                        Manufacturer  = iMfr    >= 0 && iMfr    < fields.Length ? fields[iMfr].Trim()    : null,
+                        Model         = iModel  >= 0 && iModel  < fields.Length ? fields[iModel].Trim()  : null,
+                        SerialNumber  = iSerial >= 0 && iSerial < fields.Length ? fields[iSerial].Trim() : null,
+                        Location      = iLoc    >= 0 && iLoc    < fields.Length ? fields[iLoc].Trim()    : null,
+                    });
+                }
+                imported++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Row {lineNum}: {ex.Message}");
+                skipped++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Import complete: {imported} asset(s) imported/updated, {skipped} skipped.";
+        if (errors.Any())
+            TempData["Error"] = string.Join(" | ", errors.Take(5));
+        return RedirectToAction(nameof(Index));
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var i = 0;
+        while (i < line.Length)
+        {
+            if (line[i] == '"')
+            {
+                i++;
+                var sb = new StringBuilder();
+                while (i < line.Length)
+                {
+                    if (line[i] == '"' && i + 1 < line.Length && line[i + 1] == '"')
+                    { sb.Append('"'); i += 2; }
+                    else if (line[i] == '"')
+                    { i++; break; }
+                    else
+                    { sb.Append(line[i++]); }
+                }
+                fields.Add(sb.ToString());
+                if (i < line.Length && line[i] == ',') i++;
+            }
+            else
+            {
+                var end = line.IndexOf(',', i);
+                if (end < 0) end = line.Length;
+                fields.Add(line[i..end]);
+                i = end + 1;
+            }
+        }
+        return fields.ToArray();
+    }
+
+    // ── Maintenance Log ───────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddMaintenance(int id, DateTime serviceDate, string serviceType,
+        string description, decimal? cost, string? vendor, string? performedBy, DateTime? nextServiceDate)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            TempData["Error"] = "Description is required.";
+            return RedirectToAction(nameof(Details), new { id, tab = "maintenance" });
+        }
+
+        _context.AssetMaintenanceLogs.Add(new AssetMaintenanceLog
+        {
+            AssetId        = id,
+            ServiceDate    = serviceDate == default ? DateTime.Today : serviceDate,
+            ServiceType    = serviceType?.Trim() ?? "Repair",
+            Description    = description.Trim(),
+            Cost           = cost,
+            Vendor         = vendor?.Trim(),
+            PerformedBy    = performedBy?.Trim(),
+            NextServiceDate = nextServiceDate,
+            CreatedByEmail = User.Identity?.Name ?? "system",
+            CreatedDate    = DateTime.UtcNow,
+        });
+
+        _context.AssetAuditLogs.Add(new AssetAuditLog
+        {
+            AssetId        = id,
+            FieldName      = "Maintenance",
+            OldValue       = null,
+            NewValue       = $"{serviceType} on {serviceDate:yyyy-MM-dd}",
+            ChangedDate    = DateTime.UtcNow,
+            ChangedByEmail = User.Identity?.Name ?? "system",
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Maintenance log entry added.";
+        return RedirectToAction(nameof(Details), new { id, tab = "maintenance" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteMaintenance(int id, int maintenanceId)
+    {
+        var log = await _context.AssetMaintenanceLogs.FindAsync(maintenanceId);
+        if (log != null && log.AssetId == id)
+        {
+            _context.AssetMaintenanceLogs.Remove(log);
+            await _context.SaveChangesAsync();
+        }
+        TempData["Success"] = "Maintenance entry deleted.";
+        return RedirectToAction(nameof(Details), new { id, tab = "maintenance" });
+    }
+
+    // ── Checkout / Checkin ────────────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CheckOut(int id, int? employeeId, DateTime dueDate, string? notes)
+    {
+        var asset = await _context.Assets.FindAsync(id);
+        if (asset == null) return NotFound();
+
+        var active = await _context.AssetCheckouts
+            .AnyAsync(c => c.AssetId == id && c.ReturnedDate == null);
+        if (active)
+        {
+            TempData["Error"] = "This asset is already checked out. Check it in first.";
+            return RedirectToAction(nameof(Details), new { id, tab = "checkout" });
+        }
+
+        _context.AssetCheckouts.Add(new AssetCheckout
+        {
+            AssetId           = id,
+            CheckedOutToId    = employeeId,
+            CheckedOutByEmail = User.Identity?.Name ?? "system",
+            CheckoutDate      = DateTime.UtcNow,
+            DueDate           = dueDate == default ? DateTime.Today.AddDays(7) : dueDate,
+            Notes             = notes?.Trim(),
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Asset checked out successfully.";
+        return RedirectToAction(nameof(Details), new { id, tab = "checkout" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CheckIn(int id, int checkoutId, string? returnNotes)
+    {
+        var checkout = await _context.AssetCheckouts.FindAsync(checkoutId);
+        if (checkout == null || checkout.AssetId != id) return NotFound();
+
+        checkout.ReturnedDate = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(returnNotes))
+            checkout.Notes = (checkout.Notes + "\n" + returnNotes).Trim();
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Asset checked in.";
+        return RedirectToAction(nameof(Details), new { id, tab = "checkout" });
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

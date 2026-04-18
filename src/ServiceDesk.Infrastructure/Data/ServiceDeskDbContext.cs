@@ -21,6 +21,13 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<AssetCredential> AssetCredentials => Set<AssetCredential>();
     public DbSet<AssetAttachment> AssetAttachments => Set<AssetAttachment>();
     public DbSet<AssetRelationship> AssetRelationships => Set<AssetRelationship>();
+    public DbSet<AssetMaintenanceLog> AssetMaintenanceLogs => Set<AssetMaintenanceLog>();
+    public DbSet<AssetCheckout> AssetCheckouts => Set<AssetCheckout>();
+
+    // Software licenses & consumables
+    public DbSet<SoftwareLicense> SoftwareLicenses => Set<SoftwareLicense>();
+    public DbSet<ConsumableItem> ConsumableItems => Set<ConsumableItem>();
+    public DbSet<ConsumableTransaction> ConsumableTransactions => Set<ConsumableTransaction>();
 
     // Employee credential vault
     public DbSet<EmployeeCredential> EmployeeCredentials => Set<EmployeeCredential>();
@@ -219,6 +226,34 @@ public class ServiceDeskDbContext : DbContext
             .WithMany(a => a.RelatedTickets)
             .HasForeignKey(t => t.AssetId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // AssetMaintenanceLog -> Asset
+        modelBuilder.Entity<AssetMaintenanceLog>()
+            .HasOne(m => m.Asset)
+            .WithMany(a => a.MaintenanceLogs)
+            .HasForeignKey(m => m.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetCheckout -> Asset
+        modelBuilder.Entity<AssetCheckout>()
+            .HasOne(c => c.Asset)
+            .WithMany(a => a.Checkouts)
+            .HasForeignKey(c => c.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetCheckout -> CheckedOutTo (Employee, restrict)
+        modelBuilder.Entity<AssetCheckout>()
+            .HasOne(c => c.CheckedOutTo)
+            .WithMany()
+            .HasForeignKey(c => c.CheckedOutToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // ConsumableTransaction -> ConsumableItem
+        modelBuilder.Entity<ConsumableTransaction>()
+            .HasOne(t => t.ConsumableItem)
+            .WithMany(i => i.Transactions)
+            .HasForeignKey(t => t.ConsumableItemId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Unique constraint on Employee Email
         modelBuilder.Entity<Employee>()

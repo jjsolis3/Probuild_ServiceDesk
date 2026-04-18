@@ -24,3 +24,22 @@ public enum AssetStatus
     Lost,
     Disposed
 }
+
+public enum LicenseType
+{
+    Perpetual,
+    Subscription,
+    OpenSource,
+    Trial,
+    OEM,
+    Volume
+}
+
+public enum ConsumableTransactionType
+{
+    Received,
+    Used,
+    Adjustment,
+    Disposed,
+    Returned
+}

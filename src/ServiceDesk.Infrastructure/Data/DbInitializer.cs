@@ -1018,6 +1018,105 @@ public static class DbInitializer
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'LastGoogleSignatureSync')
                     ALTER TABLE dbo.Employees ADD LastGoogleSignatureSync DATETIME2 NULL;");
+
+            // 35. Asset Manager upgrades — Maintenance logs, Checkouts, Software Licenses, Consumables
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetMaintenanceLogs')
+                BEGIN
+                    CREATE TABLE dbo.AssetMaintenanceLogs (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        AssetId         INT             NOT NULL
+                            CONSTRAINT FK_AssetMaintenanceLogs_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        ServiceDate     DATE            NOT NULL,
+                        ServiceType     NVARCHAR(100)   NOT NULL,
+                        Description     NVARCHAR(1000)  NOT NULL,
+                        Cost            DECIMAL(18,2)   NULL,
+                        Vendor          NVARCHAR(200)   NULL,
+                        PerformedBy     NVARCHAR(200)   NULL,
+                        NextServiceDate DATE            NULL,
+                        CreatedByEmail  NVARCHAR(200)   NOT NULL DEFAULT '',
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetCheckouts')
+                BEGIN
+                    CREATE TABLE dbo.AssetCheckouts (
+                        Id                  INT           NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        AssetId             INT           NOT NULL
+                            CONSTRAINT FK_AssetCheckouts_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        CheckedOutToId      INT           NULL
+                            CONSTRAINT FK_AssetCheckouts_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        CheckedOutByEmail   NVARCHAR(200) NULL,
+                        CheckoutDate        DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+                        DueDate             DATE          NOT NULL,
+                        ReturnedDate        DATE          NULL,
+                        Notes               NVARCHAR(500) NULL
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SoftwareLicenses')
+                BEGIN
+                    CREATE TABLE dbo.SoftwareLicenses (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        ProductName         NVARCHAR(200)   NOT NULL,
+                        Publisher           NVARCHAR(200)   NULL,
+                        LicenseKey          NVARCHAR(500)   NULL,
+                        LicenseType         INT             NOT NULL DEFAULT 0,
+                        TotalSeats          INT             NOT NULL DEFAULT 1,
+                        SeatsInUse          INT             NOT NULL DEFAULT 0,
+                        CostPerSeat         DECIMAL(18,2)   NULL,
+                        PurchaseDate        DATE            NULL,
+                        ExpiryDate          DATE            NULL,
+                        Vendor              NVARCHAR(200)   NULL,
+                        PurchaseOrderNumber NVARCHAR(100)   NULL,
+                        Notes               NVARCHAR(1000)  NULL,
+                        IsActive            BIT             NOT NULL DEFAULT 1,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ConsumableItems')
+                BEGIN
+                    CREATE TABLE dbo.ConsumableItems (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name            NVARCHAR(200)   NOT NULL,
+                        Category        NVARCHAR(100)   NOT NULL,
+                        Manufacturer    NVARCHAR(100)   NULL,
+                        PartNumber      NVARCHAR(100)   NULL,
+                        QuantityOnHand  INT             NOT NULL DEFAULT 0,
+                        ReorderPoint    INT             NULL,
+                        UnitCost        DECIMAL(18,2)   NULL,
+                        Notes           NVARCHAR(1000)  NULL,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ConsumableTransactions')
+                BEGIN
+                    CREATE TABLE dbo.ConsumableTransactions (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        ConsumableItemId    INT             NOT NULL
+                            CONSTRAINT FK_ConsumableTransactions_Items
+                            REFERENCES dbo.ConsumableItems(Id) ON DELETE CASCADE,
+                        TransactionType     INT             NOT NULL DEFAULT 0,
+                        Quantity            INT             NOT NULL,
+                        QuantityBefore      INT             NOT NULL,
+                        QuantityAfter       INT             NOT NULL,
+                        Notes               NVARCHAR(500)   NULL,
+                        PerformedByEmail    NVARCHAR(200)   NULL,
+                        TransactionDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
         }
         catch (Exception ex)
         {

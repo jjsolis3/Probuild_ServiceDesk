@@ -284,22 +284,94 @@ public class ReportsController : Controller
             .Include(a => a.AssignedTo)
             .ToListAsync();
 
+        var today = DateTime.Today;
+
+        // Age distribution
+        var ageDistribution = new Dictionary<string, int>
+        {
+            ["< 1 year"]  = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays < 365),
+            ["1–3 years"] = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays is >= 365 and < 365 * 3),
+            ["3–5 years"] = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays is >= 365 * 3 and < 365 * 5),
+            ["5+ years"]  = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays >= 365 * 5),
+            ["Unknown"]   = assets.Count(a => !a.PurchaseDate.HasValue),
+        };
+
+        // Refresh cycle planner — recommended life by type
+        var lifespans = new Dictionary<AssetType, int>
+        {
+            [AssetType.Laptop]          = 3,
+            [AssetType.Desktop]         = 4,
+            [AssetType.Monitor]         = 6,
+            [AssetType.Printer]         = 5,
+            [AssetType.Phone]           = 3,
+            [AssetType.Tablet]          = 3,
+            [AssetType.Server]          = 5,
+            [AssetType.NetworkEquipment]= 5,
+        };
+        var refreshRows = lifespans.Select(kv =>
+        {
+            var typeAssets = assets.Where(a => a.AssetType == kv.Key && a.Status != AssetStatus.Retired && a.Status != AssetStatus.Disposed).ToList();
+            var overdue = typeAssets.Where(a => a.PurchaseDate.HasValue
+                && (today - a.PurchaseDate.Value).TotalDays > kv.Value * 365).ToList();
+            var dueSoon = typeAssets.Where(a => a.PurchaseDate.HasValue
+                && !overdue.Contains(a)
+                && (today - a.PurchaseDate.Value).TotalDays > (kv.Value - 1) * 365).ToList();
+            return new RefreshCycleRow
+            {
+                Type                 = kv.Key,
+                RecommendedLifeYears = kv.Value,
+                TotalCount           = typeAssets.Count,
+                OverdueCount         = overdue.Count,
+                DueSoonCount         = dueSoon.Count,
+                OverdueAssets        = overdue.OrderBy(a => a.PurchaseDate).Take(10).ToList(),
+            };
+        }).Where(r => r.TotalCount > 0).OrderByDescending(r => r.OverdueCount).ToList();
+
+        // Cost center breakdown
+        var costCenterRows = assets
+            .Where(a => a.AssignedTo != null)
+            .GroupBy(a => a.AssignedTo!.Department)
+            .Select(g => new CostCenterRow
+            {
+                Department = g.Key,
+                AssetCount = g.Count(),
+                TotalCost  = g.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
+            })
+            .OrderByDescending(r => r.TotalCost)
+            .ToList();
+
+        // Hardware standardization (top make+model combos by type)
+        var hardwareRows = assets
+            .Where(a => !string.IsNullOrEmpty(a.Manufacturer) && !string.IsNullOrEmpty(a.Model))
+            .GroupBy(a => new { a.Manufacturer, a.Model, a.AssetType })
+            .Select(g => new HardwareStdRow
+            {
+                Make  = g.Key.Manufacturer!,
+                Model = g.Key.Model!,
+                Type  = g.Key.AssetType,
+                Count = g.Count(),
+            })
+            .OrderBy(r => r.Type).ThenByDescending(r => r.Count)
+            .ToList();
+
         var model = new AssetReportViewModel
         {
             TotalAssets = assets.Count,
-            TotalValue = assets.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
-            ByType = assets.GroupBy(a => a.AssetType)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ByStatus = assets.GroupBy(a => a.Status)
-                .ToDictionary(g => g.Key, g => g.Count()),
+            TotalValue  = assets.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
+            ByType      = assets.GroupBy(a => a.AssetType).ToDictionary(g => g.Key, g => g.Count()),
+            ByStatus    = assets.GroupBy(a => a.Status).ToDictionary(g => g.Key, g => g.Count()),
             ExpiringWarranties = assets
-                .Where(a => a.WarrantyExpiry.HasValue && a.WarrantyExpiry.Value <= DateTime.UtcNow.AddMonths(3) && a.WarrantyExpiry.Value >= DateTime.UtcNow)
-                .OrderBy(a => a.WarrantyExpiry)
-                .ToList(),
-            ByDepartment = assets
-                .Where(a => a.AssignedTo != null)
-                .GroupBy(a => a.AssignedTo!.Department)
-                .ToDictionary(g => g.Key, g => g.Count())
+                .Where(a => a.WarrantyExpiry.HasValue
+                         && a.WarrantyExpiry.Value <= DateTime.UtcNow.AddMonths(3)
+                         && a.WarrantyExpiry.Value >= DateTime.UtcNow)
+                .OrderBy(a => a.WarrantyExpiry).ToList(),
+            ByDepartment          = assets.Where(a => a.AssignedTo != null)
+                                          .GroupBy(a => a.AssignedTo!.Department)
+                                          .ToDictionary(g => g.Key, g => g.Count()),
+            AgeDistribution       = ageDistribution,
+            RefreshCyclePlanner   = refreshRows,
+            CostCenterBreakdown   = costCenterRows,
+            HardwareStandardization = hardwareRows,
         };
 
         return View(model);

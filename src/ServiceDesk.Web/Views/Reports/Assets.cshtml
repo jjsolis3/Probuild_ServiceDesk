@@ -209,4 +209,195 @@
         }
     </div>
 </div>
+
+<!-- Age Distribution -->
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-hourglass-split me-1"></i> Asset Age Distribution</div>
+    <div class="card-body p-0">
+        <table class="table table-striped mb-0 ss-datatable-compact">
+            <thead class="table-light">
+                <tr>
+                    <th>Age Range</th>
+                    <th class="text-end">Count</th>
+                    <th style="width:40%">Distribution</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var totalKnown = Model.AgeDistribution.Where(kv => kv.Key != "Unknown").Sum(kv => kv.Value); }
+                @foreach (var kv in Model.AgeDistribution)
+                {
+                    var pct = totalKnown > 0 && kv.Key != "Unknown" ? kv.Value * 100 / totalKnown : 0;
+                    var barColor = kv.Key switch {
+                        "< 1 year"  => "bg-success",
+                        "1–3 years" => "bg-primary",
+                        "3–5 years" => "bg-warning",
+                        "5+ years"  => "bg-danger",
+                        _ => "bg-secondary"
+                    };
+                    <tr>
+                        <td>@kv.Key</td>
+                        <td class="text-end fw-bold">@kv.Value</td>
+                        <td>
+                            @if (pct > 0)
+                            {
+                                <div class="progress" style="height:8px;">
+                                    <div class="progress-bar @barColor" style="width:@pct%"></div>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Refresh Cycle Planner -->
+@if (Model.RefreshCyclePlanner.Any())
+{
+    <div class="card mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-arrow-repeat text-warning"></i>
+            Refresh Cycle Planner
+            @{ var totalOverdue = Model.RefreshCyclePlanner.Sum(r => r.OverdueCount); }
+            @if (totalOverdue > 0)
+            {
+                <span class="badge bg-danger ms-1">@totalOverdue overdue</span>
+            }
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0 ss-datatable-compact">
+                <thead class="table-light">
+                    <tr>
+                        <th>Asset Type</th>
+                        <th class="text-center">Recommended Life</th>
+                        <th class="text-center">Total Active</th>
+                        <th class="text-center">Due Soon (within 1yr)</th>
+                        <th class="text-center">Overdue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.RefreshCyclePlanner)
+                    {
+                        <tr class="@(r.OverdueCount > 0 ? "table-danger" : r.DueSoonCount > 0 ? "table-warning" : "")">
+                            <td class="fw-semibold">@r.Type</td>
+                            <td class="text-center text-muted">@r.RecommendedLifeYears yrs</td>
+                            <td class="text-center">@r.TotalCount</td>
+                            <td class="text-center">
+                                @if (r.DueSoonCount > 0)
+                                { <span class="badge bg-warning text-dark">@r.DueSoonCount</span> }
+                                else { <span class="text-muted">—</span> }
+                            </td>
+                            <td class="text-center">
+                                @if (r.OverdueCount > 0)
+                                {
+                                    <button class="btn btn-link btn-sm p-0 text-danger fw-semibold"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#refresh_@r.Type">
+                                        @r.OverdueCount <i class="bi bi-chevron-down small"></i>
+                                    </button>
+                                }
+                                else { <span class="text-muted">—</span> }
+                            </td>
+                        </tr>
+                        @if (r.OverdueAssets.Any())
+                        {
+                            <tr class="collapse" id="refresh_@r.Type">
+                                <td colspan="5" class="p-0">
+                                    <table class="table table-sm mb-0 bg-danger bg-opacity-10">
+                                        <thead><tr class="table-light"><th>Tag</th><th>Name</th><th>Purchase Date</th><th>Age</th><th>Location</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var a in r.OverdueAssets)
+                                            {
+                                                var ageYrs = a.PurchaseDate.HasValue ? Math.Round((DateTime.Today - a.PurchaseDate.Value).TotalDays / 365.25, 1) : 0;
+                                                <tr>
+                                                    <td><a asp-controller="Assets" asp-action="Details" asp-route-id="@a.Id"><code>@a.AssetTag</code></a></td>
+                                                    <td>@a.Name</td>
+                                                    <td class="text-muted small">@(a.PurchaseDate?.ToString("MMM yyyy") ?? "—")</td>
+                                                    <td class="text-danger fw-semibold">@ageYrs yrs</td>
+                                                    <td class="text-muted small">@a.Location</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Cost Center Breakdown -->
+@if (Model.CostCenterBreakdown.Any())
+{
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-cash-stack me-1"></i> Cost Center Breakdown</div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0 ss-datatable-compact">
+                <thead class="table-light">
+                    <tr>
+                        <th>Department</th>
+                        <th class="text-end">Assets</th>
+                        <th class="text-end">Total Cost</th>
+                        <th class="text-end">Avg Cost / Asset</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.CostCenterBreakdown)
+                    {
+                        <tr>
+                            <td>@r.Department</td>
+                            <td class="text-end">@r.AssetCount</td>
+                            <td class="text-end fw-semibold">@r.TotalCost.ToString("C0")</td>
+                            <td class="text-end text-muted">@r.AvgCost.ToString("C0")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td>Total</td>
+                        <td class="text-end">@Model.CostCenterBreakdown.Sum(r => r.AssetCount)</td>
+                        <td class="text-end">@Model.CostCenterBreakdown.Sum(r => r.TotalCost).ToString("C0")</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Hardware Standardization -->
+@if (Model.HardwareStandardization.Any())
+{
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-cpu me-1"></i> Hardware Standardization</div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0 ss-datatable-compact">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Manufacturer</th>
+                        <th>Model</th>
+                        <th class="text-end">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.HardwareStandardization)
+                    {
+                        <tr>
+                            <td><span class="badge bg-light text-dark border">@r.Type</span></td>
+                            <td>@r.Make</td>
+                            <td>@r.Model</td>
+                            <td class="text-end fw-bold">@r.Count</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 </div><!-- /ss-export-target -->

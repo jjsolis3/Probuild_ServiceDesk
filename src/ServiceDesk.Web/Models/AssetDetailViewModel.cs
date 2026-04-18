@@ -13,6 +13,8 @@ public class AssetDetailViewModel
     public List<AssetRelationship> RelationshipsFrom { get; set; } = new();
     public List<AssetRelationship> RelationshipsTo { get; set; } = new();
     public List<Ticket> RelatedTickets { get; set; } = new();
+    public List<AssetMaintenanceLog> MaintenanceLogs { get; set; } = new();
+    public List<AssetCheckout> Checkouts { get; set; } = new();
 
     /// <summary>All assets except this one, for the Add Relationship dropdown.</summary>
     public List<Asset> AllOtherAssets { get; set; } = new();

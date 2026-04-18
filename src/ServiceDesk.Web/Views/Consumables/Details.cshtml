@@ -1,0 +1,198 @@
+@using ServiceDesk.Core.Enums
+@model ServiceDesk.Core.Models.ConsumableItem
+@{
+    ViewData["Title"] = Model.Name;
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Consumables</a></li>
+        <li class="breadcrumb-item active">@Model.Name</li>
+    </ol>
+</nav>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="fs-3 fw-bold mb-1">
+            <i class="bi bi-stack text-primary me-2"></i>@Model.Name
+        </h1>
+        @if (!string.IsNullOrEmpty(Model.Category))
+        { <span class="badge bg-info text-dark">@Model.Category</span> }
+        @if (Model.IsLowStock)
+        { <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Low Stock</span> }
+        @if (Model.QuantityOnHand == 0)
+        { <span class="badge bg-danger ms-1">Out of Stock</span> }
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Edit
+        </a>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#adjustModal">
+            <i class="bi bi-plus-slash-minus me-1"></i>Adjust Qty
+        </button>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-5">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold"><i class="bi bi-card-list me-2"></i>Item Details</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-5 text-muted small">Manufacturer</dt>
+                    <dd class="col-sm-7">@(Model.Manufacturer ?? "—")</dd>
+                    <dt class="col-sm-5 text-muted small">Part Number</dt>
+                    <dd class="col-sm-7"><code class="small">@(Model.PartNumber ?? "—")</code></dd>
+                    <dt class="col-sm-5 text-muted small">Unit Cost</dt>
+                    <dd class="col-sm-7">@(Model.UnitCost?.ToString("C") ?? "—")</dd>
+                    <dt class="col-sm-5 text-muted small">Stock Value</dt>
+                    <dd class="col-sm-7 fw-semibold">@(Model.UnitCost.HasValue ? (Model.UnitCost.Value * Model.QuantityOnHand).ToString("C") : "—")</dd>
+                    @if (!string.IsNullOrEmpty(Model.Notes))
+                    {
+                        <dt class="col-sm-5 text-muted small">Notes</dt>
+                        <dd class="col-sm-7">@Model.Notes</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold"><i class="bi bi-boxes me-2"></i>Stock Level</div>
+            <div class="card-body text-center">
+                <div class="display-4 fw-bold @(Model.QuantityOnHand == 0 ? "text-danger" : Model.IsLowStock ? "text-warning" : "text-success")">
+                    @Model.QuantityOnHand
+                </div>
+                <div class="text-muted mb-3">units on hand</div>
+                @if (Model.ReorderPoint > 0)
+                {
+                    <div class="progress mb-2" style="height:10px;">
+                        @{
+                            var pct = Model.ReorderPoint > 0
+                                ? Math.Min(100, Model.QuantityOnHand * 100 / (Model.ReorderPoint * 3))
+                                : 0;
+                        }
+                        <div class="progress-bar @(Model.IsLowStock ? "bg-warning" : "bg-success")"
+                             style="width:@pct%"></div>
+                    </div>
+                    <small class="text-muted">Reorder point: @Model.ReorderPoint units</small>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transaction History -->
+<h5 class="fw-semibold mb-3"><i class="bi bi-clock-history me-2"></i>Transaction History</h5>
+@if (!Model.Transactions.Any())
+{
+    <p class="text-muted text-center py-4">No transactions yet.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-hover ss-datatable">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Qty Change</th>
+                    <th>Before</th>
+                    <th>After</th>
+                    <th>Notes</th>
+                    <th>By</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tx in Model.Transactions.OrderByDescending(t => t.TransactionDate))
+                {
+                    <tr>
+                        <td class="text-nowrap text-muted small">@tx.TransactionDate.ToString("MMM d, yyyy HH:mm")</td>
+                        <td>
+                            <span class="badge @(tx.Quantity > 0 ? "bg-success" : "bg-danger")">
+                                @tx.TransactionType
+                            </span>
+                        </td>
+                        <td class="fw-semibold @(tx.Quantity > 0 ? "text-success" : "text-danger")">
+                            @(tx.Quantity > 0 ? "+" : "")@tx.Quantity
+                        </td>
+                        <td class="text-muted">@tx.QuantityBefore</td>
+                        <td>@tx.QuantityAfter</td>
+                        <td class="text-muted small">@tx.Notes</td>
+                        <td class="text-muted small">@tx.PerformedByEmail</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- Adjust Qty Modal -->
+<div class="modal fade" id="adjustModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-slash-minus me-2"></i>Adjust Quantity</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form asp-action="AdjustQuantity" asp-route-id="@Model.Id" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Transaction Type</label>
+                        <select name="transactionType" class="form-select" id="txType" onchange="updateDeltaLabel()">
+                            @foreach (var t in Enum.GetValues<ConsumableTransactionType>())
+                            { <option value="@t">@t</option> }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" id="qtyLabel">Quantity</label>
+                        <input type="number" name="quantity" class="form-control" min="1" value="1" required />
+                        <div class="form-text" id="qtyHint">
+                            Positive number. Used/Disposed will subtract; Received/Returned will add.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Notes</label>
+                        <input type="text" name="notes" class="form-control"
+                               placeholder="Reason / PO# / reference" maxlength="500" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Apply</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function updateDeltaLabel() {
+    const type = document.getElementById('txType').value;
+    const hint = document.getElementById('qtyHint');
+    const deduct = ['Used', 'Disposed'];
+    const adj = type === 'Adjustment';
+    hint.textContent = adj
+        ? 'Enter positive to add, negative to subtract.'
+        : (deduct.includes(type) ? `Stock will decrease by the quantity entered.` : `Stock will increase by the quantity entered.`);
+    document.querySelector('input[name="quantity"]').min = adj ? '' : '1';
+}
+</script>
+}
