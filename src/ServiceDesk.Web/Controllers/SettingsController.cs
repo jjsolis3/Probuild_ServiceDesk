@@ -1952,6 +1952,20 @@ public class SettingsController : Controller
         return View(groups);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> WorkspaceAudit()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings == null || !settings.IsConfigured)
+        {
+            TempData["Error"] = "Google Workspace is not configured. Please set it up first.";
+            return RedirectToAction(nameof(GoogleWorkspace));
+        }
+        var (ok, users, err) = await _googleWorkspace.GetOrgUsersSecurityAsync();
+        ViewBag.Error = ok ? null : err;
+        return View(users);
+    }
+
     // ==================== CSAT SURVEYS ====================
 
     // GET: Settings/Csat

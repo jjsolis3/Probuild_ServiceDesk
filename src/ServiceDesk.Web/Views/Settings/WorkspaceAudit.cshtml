@@ -1,0 +1,178 @@
+@model List<ServiceDesk.Web.Services.GoogleWorkspaceService.UserSecurityInfo>
+@{
+    ViewData["Title"] = "Workspace Security Audit";
+    var users = Model ?? new List<ServiceDesk.Web.Services.GoogleWorkspaceService.UserSecurityInfo>();
+
+    int no2fa      = users.Count(u => !u.Suspended && !u.IsEnrolledIn2Sv);
+    int suspended  = users.Count(u => u.Suspended);
+    int mustChange = users.Count(u => !u.Suspended && u.MustChangePassword);
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="GoogleWorkspace">Google Workspace</a></li>
+        <li class="breadcrumb-item active">Security Audit</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-shield-lock-fill text-danger me-2"></i>Workspace Security Audit
+        </h1>
+        <p class="text-muted mb-0">Org-wide view of user account security posture — 2FA, suspended accounts, and password status.</p>
+    </div>
+    <a asp-action="WorkspaceAudit" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </a>
+</div>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-1"></i>@ViewBag.Error</div>
+}
+
+@if (users.Count > 0)
+{
+    <!-- KPI summary row -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-3">
+                <div class="fs-2 fw-bold text-primary">@users.Count</div>
+                <div class="small text-muted">Total Users</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-3 @(no2fa > 0 ? "border-danger border-2" : "")">
+                <div class="fs-2 fw-bold @(no2fa > 0 ? "text-danger" : "text-success")">@no2fa</div>
+                <div class="small text-muted">No 2FA (active)</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-3">
+                <div class="fs-2 fw-bold text-warning">@suspended</div>
+                <div class="small text-muted">Suspended</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-3 @(mustChange > 0 ? "border-warning border-2" : "")">
+                <div class="fs-2 fw-bold @(mustChange > 0 ? "text-warning" : "text-secondary")">@mustChange</div>
+                <div class="small text-muted">Must Change Password</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk alerts -->
+    @if (no2fa > 0)
+    {
+        <div class="alert alert-danger mb-3 small">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong>@no2fa active user@(no2fa == 1 ? "" : "s") without 2-Step Verification.</strong>
+            Enforce 2SV in <a href="https://admin.google.com/ac/security/2sv" target="_blank" class="alert-link">Google Admin → Security → 2-Step Verification</a>.
+        </div>
+    }
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-people me-2"></i>All Users</span>
+            <span class="badge bg-primary">@users.Count</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 ss-datatable" data-export-title="Workspace Security Audit">
+                    <thead class="table-light">
+                        <tr>
+                            <th>User</th>
+                            <th>Org Unit</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">2FA</th>
+                            <th class="text-center">Admin</th>
+                            <th class="text-center">Pw Change</th>
+                            <th>Last Login</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in users.OrderBy(x => x.FullName))
+                        {
+                            var rowClass = (!u.Suspended && !u.IsEnrolledIn2Sv) ? "table-warning" : "";
+                            <tr class="@rowClass">
+                                <td>
+                                    <div class="fw-semibold small">@u.FullName</div>
+                                    <div class="text-muted small"><code>@u.Email</code></div>
+                                </td>
+                                <td class="small text-muted">@(u.OrgUnit ?? "/")</td>
+                                <td class="text-center">
+                                    @if (u.Suspended)
+                                    {
+                                        <span class="badge bg-secondary"><i class="bi bi-pause-circle me-1"></i>Suspended</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Active</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (u.IsEnrolledIn2Sv)
+                                    {
+                                        <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Enabled</span>
+                                    }
+                                    else if (u.Suspended)
+                                    {
+                                        <span class="badge bg-secondary">—</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger"><i class="bi bi-shield-x me-1"></i>No 2FA</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (u.IsAdmin)
+                                    {
+                                        <span class="badge bg-danger">Admin</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (u.MustChangePassword)
+                                    {
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-key me-1"></i>Required</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                                <td class="small text-muted">
+                                    @(u.LastLoginTime.HasValue ? u.LastLoginTime.Value.ToString("MMM d, yyyy") : "Never")
+                                </td>
+                                <td class="small text-muted">
+                                    @(u.CreationTime.HasValue ? u.CreationTime.Value.ToString("MMM d, yyyy") : "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-3 small">
+        <i class="bi bi-info-circle me-1"></i>
+        Data is fetched live from the Google Directory API. Rows highlighted in yellow indicate active users without 2-Step Verification.
+        To view per-user OAuth apps or login activity, open the employee's <strong>Details → Workspace</strong> tab.
+    </div>
+}
+else if (ViewBag.Error == null)
+{
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="bi bi-people display-4 d-block mb-3 opacity-25"></i>
+            <p class="mb-0">No users found. Make sure your DWD scopes include <code>admin.directory.user</code>.</p>
+        </div>
+    </div>
+}

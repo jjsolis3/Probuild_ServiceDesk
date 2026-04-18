@@ -659,6 +659,165 @@ public class EmployeesController : Controller
         return Json(new { success = ok, message = ok ? $"Removed from {groupEmail}." : err });
     }
 
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ProvisionWorkspaceAccount(int id, string? orgUnit)
+    {
+        var employee = await _context.Employees.Include(e => e.Branch).FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, message = "Employee has no email address on file." });
+
+        var ou = string.IsNullOrWhiteSpace(orgUnit) ? "/" : orgUnit.Trim();
+        var (ok, pw, err) = await _googleWorkspace.CreateGoogleUserAsync(
+            employee.FirstName, employee.LastName, employee.Email, ou);
+
+        return Json(new
+        {
+            success = ok,
+            message = ok ? $"Google account created for {employee.Email}." : err,
+            tempPassword = pw
+        });
+    }
+
+    // ── Offboarding ───────────────────────────────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RunOffboarding(int id,
+        bool suspend         = true,
+        bool removeGroups    = true,
+        bool setOoo          = true,
+        string? oooSubject   = null,
+        string? oooBody      = null,
+        bool revokeTokens    = true,
+        bool transferDrive   = false,
+        string? transferToEmail = null)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var email   = employee.Email;
+        var steps   = new List<object>();
+        bool anyFail = false;
+
+        // 1. Suspend
+        if (suspend)
+        {
+            var (ok, err) = await _googleWorkspace.SetSuspendedAsync(email, true);
+            steps.Add(new { step = "Suspend account", ok, message = ok ? "Account suspended." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 2. Revoke OAuth tokens
+        if (revokeTokens)
+        {
+            var (ok, err) = await _googleWorkspace.RevokeAllTokensAsync(email);
+            steps.Add(new { step = "Revoke OAuth tokens", ok, message = ok ? "All app access revoked." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 3. Remove from all groups
+        if (removeGroups)
+        {
+            var (grpOk, grps, _) = await _googleWorkspace.GetUserGroupsAsync(email);
+            int removed = 0, grpFail = 0;
+            if (grpOk)
+                foreach (var g in grps)
+                {
+                    var (ok2, _) = await _googleWorkspace.RemoveFromGroupAsync(g.Email, email);
+                    if (ok2) removed++; else grpFail++;
+                }
+            steps.Add(new { step = "Remove from groups",
+                ok = grpFail == 0,
+                message = grpOk ? $"Removed from {removed} group(s)." : "Groups API unavailable." });
+        }
+
+        // 4. OOO Responder
+        if (setOoo)
+        {
+            var vac = new GoogleWorkspaceService.VacationResponder(
+                EnableAutoReply:    true,
+                ResponseSubject:    oooSubject ?? $"{employee.FullName} is no longer with the company.",
+                ResponseBodyHtml:   oooBody    ?? $"<p>{employee.FullName} is no longer available. Please contact your account manager.</p>",
+                StartTime:          null,
+                EndTime:            null,
+                RestrictToContacts: false,
+                RestrictToDomain:   false);
+            var (ok, err) = await _googleWorkspace.SetVacationResponderAsync(email, vac);
+            steps.Add(new { step = "Set out-of-office", ok, message = ok ? "OOO auto-reply enabled." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 5. Drive transfer
+        if (transferDrive && !string.IsNullOrWhiteSpace(transferToEmail))
+        {
+            var (ok, transferId, err) = await _googleWorkspace.StartDriveTransferAsync(email, transferToEmail);
+            steps.Add(new
+            {
+                step    = "Transfer Drive files",
+                ok,
+                message = ok ? $"Drive transfer initiated (ID: {transferId}). Files will appear in {transferToEmail}'s Drive shortly." : err
+            });
+            if (!ok) anyFail = true;
+        }
+
+        return Json(new
+        {
+            success = !anyFail,
+            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully.",
+            steps
+        });
+    }
+
+    // ── Security ──────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetOAuthApps(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (ok, tokens, err) = await _googleWorkspace.GetUserTokensAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+
+        return Json(new
+        {
+            success = true,
+            tokens  = tokens.Select(t => new { t.AppName, t.ClientId, scopeCount = t.Scopes.Count, t.Scopes })
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetLoginActivity(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (ok, events, err) = await _googleWorkspace.GetUserLoginActivityAsync(employee.Email, 25);
+        if (!ok) return Json(new { success = false, error = err });
+
+        return Json(new
+        {
+            success = true,
+            events  = events.Select(e => new
+            {
+                time      = e.Time.ToString("MMM d, yyyy h:mm tt"),
+                eventName = e.EventName,
+                ip        = e.IpAddress
+            })
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ListSharedDrives()
+    {
+        var (ok, drives, err) = await _googleWorkspace.ListSharedDrivesAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true, drives = drives.Select(d => new { d.Id, d.Name }) });
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetSignatureTemplate(int id)
     {

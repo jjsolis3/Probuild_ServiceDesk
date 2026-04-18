@@ -19,16 +19,22 @@ public class GoogleWorkspaceService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<GoogleWorkspaceService> _logger;
 
-    private const string TokenEndpoint  = "https://oauth2.googleapis.com/token";
-    private const string GmailApiBase   = "https://gmail.googleapis.com/gmail/v1/users";
-    private const string AdminApiBase   = "https://admin.googleapis.com/admin/directory/v1";
-    private const string ReportsApiBase = "https://admin.googleapis.com/admin/reports/v1";
+    private const string TokenEndpoint    = "https://oauth2.googleapis.com/token";
+    private const string GmailApiBase     = "https://gmail.googleapis.com/gmail/v1/users";
+    private const string AdminApiBase     = "https://admin.googleapis.com/admin/directory/v1";
+    private const string ReportsApiBase   = "https://admin.googleapis.com/admin/reports/v1";
+    private const string DriveApiBase     = "https://www.googleapis.com/drive/v3";
+    private const string DataTransferBase = "https://admin.googleapis.com/admin/datatransfer/v1";
 
     private const string SignatureScope = "https://www.googleapis.com/auth/gmail.settings.basic";
     private const string AdminScope     =
         "https://www.googleapis.com/auth/admin.directory.user " +
         "https://www.googleapis.com/auth/admin.directory.group " +
-        "https://www.googleapis.com/auth/admin.reports.usage.readonly";
+        "https://www.googleapis.com/auth/admin.reports.usage.readonly " +
+        "https://www.googleapis.com/auth/admin.directory.user.security " +
+        "https://www.googleapis.com/auth/admin.datatransfer " +
+        "https://www.googleapis.com/auth/admin.reports.audit.readonly " +
+        "https://www.googleapis.com/auth/drive.readonly";
 
     public GoogleWorkspaceService(
         IServiceScopeFactory scopeFactory,
@@ -691,6 +697,346 @@ public class GoogleWorkspaceService
         return (true, null);
     }
 
+    // ── Admin Directory — User provisioning (Onboarding) ─────────────────────
+
+    /// <summary>
+    /// Create a new Google Workspace user account for an employee.
+    /// The account will be set to require a password change on first login.
+    /// </summary>
+    public async Task<(bool Success, string? TempPassword, string? Error)> CreateGoogleUserAsync(
+        string firstName, string lastName, string email, string orgUnit, string? tempPassword = null)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, null, "Admin service account not configured or auth failed.");
+
+        var pw = tempPassword ?? GenerateTempPassword();
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            name = new { givenName = firstName, familyName = lastName },
+            primaryEmail = email,
+            password = pw,
+            changePasswordAtNextLogin = true,
+            orgUnitPath = orgUnit.StartsWith('/') ? orgUnit : "/" + orgUnit
+        });
+
+        var resp = await client.PostAsync($"{AdminApiBase}/users",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("CreateGoogleUser failed for {Email}: {Error}", email, err);
+            return (false, null, $"API error {(int)resp.StatusCode}: {err}");
+        }
+        return (true, pw, null);
+    }
+
+    // ── Offboarding helpers ───────────────────────────────────────────────────
+
+    /// <summary>Revoke all OAuth 2.0 access tokens issued to the user (removes all third-party app access).</summary>
+    public async Task<(bool Success, string? Error)> RevokeAllTokensAsync(string userEmail)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, "Admin service account not configured or auth failed.");
+
+        // List all tokens first
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var listUrl  = $"{AdminApiBase}/users/{Uri.EscapeDataString(userEmail)}/tokens";
+        var listResp = await client.GetAsync(listUrl);
+        if (!listResp.IsSuccessStatusCode)
+        {
+            if ((int)listResp.StatusCode == 404)
+                return (true, null); // No tokens found — success
+            var err = await listResp.Content.ReadAsStringAsync();
+            return (false, $"Token list error {(int)listResp.StatusCode}: {err}");
+        }
+
+        using var doc  = JsonDocument.Parse(await listResp.Content.ReadAsStringAsync());
+        var items      = doc.RootElement.TryGetProperty("items", out var arr) ? arr : default;
+        if (items.ValueKind != JsonValueKind.Array) return (true, null);
+
+        int errors = 0;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (!item.TryGetProperty("clientId", out var cid)) continue;
+            var clientId = Uri.EscapeDataString(cid.GetString() ?? "");
+            if (string.IsNullOrEmpty(clientId)) continue;
+
+            var delUrl  = $"{AdminApiBase}/users/{Uri.EscapeDataString(userEmail)}/tokens/{clientId}";
+            var delResp = await client.DeleteAsync(delUrl);
+            if (!delResp.IsSuccessStatusCode) errors++;
+        }
+
+        return errors == 0
+            ? (true, null)
+            : (false, $"{errors} token(s) could not be revoked.");
+    }
+
+    /// <summary>List available shared drives in the domain (used for Drive transfer destination picker).</summary>
+    public async Task<(bool Success, List<SharedDriveInfo> Drives, string? Error)> ListSharedDrivesAsync()
+    {
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, [], "Google Workspace not configured.");
+
+        // Drive API requires impersonating a user; use the admin account
+        var token = await GetAccessTokenAsync(settings.AdminEmail,
+            "https://www.googleapis.com/auth/drive.readonly");
+        if (token == null) return (false, [], "Drive access token failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var url  = $"{DriveApiBase}/drives?pageSize=100&useDomainAdminAccess=true";
+        var resp = await client.GetAsync(url);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"Drive API error {(int)resp.StatusCode}: {err}");
+        }
+
+        var list = new List<SharedDriveInfo>();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        if (doc.RootElement.TryGetProperty("drives", out var drives))
+        {
+            foreach (var d in drives.EnumerateArray())
+            {
+                var id   = d.TryGetProperty("id",   out var di) ? di.GetString() ?? "" : "";
+                var name = d.TryGetProperty("name", out var dn) ? dn.GetString() ?? "" : "";
+                if (!string.IsNullOrEmpty(id))
+                    list.Add(new SharedDriveInfo(id, name));
+            }
+        }
+        return (true, list, null);
+    }
+
+    /// <summary>
+    /// Initiate a Google Data Transfer to move a departing user's Drive files to another user or shared drive.
+    /// <paramref name="toUserEmail"/> — destination email (user-to-user transfer).
+    /// Returns the transfer ID for status polling.
+    /// </summary>
+    public async Task<(bool Success, string? TransferId, string? Error)> StartDriveTransferAsync(
+        string fromEmail, string toUserEmail)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, null, "Admin service account not configured or auth failed.");
+
+        // Resolve destination user to their Google ID
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var userResp = await client.GetAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(toUserEmail)}?fields=id");
+        if (!userResp.IsSuccessStatusCode)
+            return (false, null, $"Could not resolve destination user {toUserEmail}.");
+
+        using var userDoc = JsonDocument.Parse(await userResp.Content.ReadAsStringAsync());
+        var destId = userDoc.RootElement.TryGetProperty("id", out var uid) ? uid.GetString() : null;
+        if (string.IsNullOrEmpty(destId)) return (false, null, "Destination user Google ID not found.");
+
+        // Resolve source user Google ID
+        var fromResp = await client.GetAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(fromEmail)}?fields=id");
+        if (!fromResp.IsSuccessStatusCode)
+            return (false, null, $"Could not resolve source user {fromEmail}.");
+
+        using var fromDoc = JsonDocument.Parse(await fromResp.Content.ReadAsStringAsync());
+        var fromId = fromDoc.RootElement.TryGetProperty("id", out var fuid) ? fuid.GetString() : null;
+        if (string.IsNullOrEmpty(fromId)) return (false, null, "Source user Google ID not found.");
+
+        // Data Transfer — Drive application ID is 55656082996
+        var payload = JsonSerializer.Serialize(new
+        {
+            oldOwnerUserId = fromId,
+            newOwnerUserId = destId,
+            applicationDataTransfers = new[]
+            {
+                new { applicationId = "55656082996" } // Google Drive
+            }
+        });
+
+        var resp = await client.PostAsync($"{DataTransferBase}/transfers",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("StartDriveTransfer {From}→{To} failed: {Error}", fromEmail, toUserEmail, err);
+            return (false, null, $"Data Transfer API error {(int)resp.StatusCode}: {err}");
+        }
+
+        using var respDoc  = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var transferId     = respDoc.RootElement.TryGetProperty("id", out var tid) ? tid.GetString() : null;
+        return (true, transferId, null);
+    }
+
+    // ── Security Audit ────────────────────────────────────────────────────────
+
+    /// <summary>List OAuth 2.0 tokens / authorized apps for a user.</summary>
+    public async Task<(bool Success, List<OAuthTokenInfo> Tokens, string? Error)> GetUserTokensAsync(string userEmail)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(userEmail)}/tokens");
+        if (!resp.IsSuccessStatusCode)
+        {
+            if ((int)resp.StatusCode == 404) return (true, [], null); // user has no tokens
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        var list = new List<OAuthTokenInfo>();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        if (doc.RootElement.TryGetProperty("items", out var items))
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                var displayText  = item.TryGetProperty("displayText",  out var dt)  ? dt.GetString()  ?? "" : "";
+                var clientId     = item.TryGetProperty("clientId",     out var cid) ? cid.GetString() ?? "" : "";
+                var scopes       = new List<string>();
+                if (item.TryGetProperty("scopes", out var sc))
+                    foreach (var s in sc.EnumerateArray())
+                    {
+                        var sv = s.GetString();
+                        if (!string.IsNullOrEmpty(sv)) scopes.Add(sv);
+                    }
+                list.Add(new OAuthTokenInfo(displayText, clientId, scopes));
+            }
+        }
+        return (true, list, null);
+    }
+
+    /// <summary>
+    /// Fetch recent login events for a user from the Admin Reports Audit API.
+    /// </summary>
+    public async Task<(bool Success, List<LoginEvent> Events, string? Error)> GetUserLoginActivityAsync(
+        string userEmail, int maxResults = 20)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var url  = $"{ReportsApiBase}/activity/users/{Uri.EscapeDataString(userEmail)}/applications/login" +
+                   $"?maxResults={maxResults}";
+        var resp = await client.GetAsync(url);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"Reports API error {(int)resp.StatusCode}: {err}");
+        }
+
+        var list = new List<LoginEvent>();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        if (doc.RootElement.TryGetProperty("items", out var items))
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                var time = item.TryGetProperty("id", out var idEl) &&
+                           idEl.TryGetProperty("time", out var t) &&
+                           DateTimeOffset.TryParse(t.GetString(), out var dto) ? dto : DateTimeOffset.MinValue;
+
+                string eventName = "", ipAddress = "";
+                if (item.TryGetProperty("events", out var evts) && evts.GetArrayLength() > 0)
+                {
+                    var ev = evts[0];
+                    eventName = ev.TryGetProperty("name", out var en) ? en.GetString() ?? "" : "";
+                    if (ev.TryGetProperty("parameters", out var parms))
+                        foreach (var p in parms.EnumerateArray())
+                        {
+                            var pname = p.TryGetProperty("name", out var pn) ? pn.GetString() : "";
+                            if (pname == "ip_address" && p.TryGetProperty("value", out var ip))
+                                ipAddress = ip.GetString() ?? "";
+                        }
+                }
+
+                list.Add(new LoginEvent(time, eventName, ipAddress));
+            }
+        }
+        return (true, list, null);
+    }
+
+    /// <summary>
+    /// Fetch org-wide user security summary: suspended status, 2FA enrollment, org unit.
+    /// Used for the Workspace Security Audit page.
+    /// </summary>
+    public async Task<(bool Success, List<UserSecurityInfo> Users, string? Error)> GetOrgUsersSecurityAsync()
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+
+        var settings = await GetSettingsAsync();
+        if (settings == null) return (false, [], "Google Workspace not configured.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var list       = new List<UserSecurityInfo>();
+        string? pageToken = null;
+
+        do
+        {
+            var url = $"{AdminApiBase}/users?domain={Uri.EscapeDataString(settings.Domain)}" +
+                      "&maxResults=500&projection=full&fields=nextPageToken,users(primaryEmail,name,suspended," +
+                      "isEnrolledIn2Sv,isAdmin,orgUnitPath,lastLoginTime,creationTime,changePasswordAtNextLogin)";
+            if (pageToken != null) url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
+
+            // Re-create client on each page to avoid header accumulation issues
+            using var pageClient = _httpClientFactory.CreateClient();
+            pageClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var resp = await pageClient.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                return (false, list, $"API error {(int)resp.StatusCode}: {err}");
+            }
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            pageToken = doc.RootElement.TryGetProperty("nextPageToken", out var npt) ? npt.GetString() : null;
+
+            if (!doc.RootElement.TryGetProperty("users", out var users)) break;
+            foreach (var u in users.EnumerateArray())
+            {
+                var email      = u.TryGetProperty("primaryEmail",            out var pe)  ? pe.GetString()  ?? "" : "";
+                var fullName   = u.TryGetProperty("name", out var nameEl) &&
+                                 nameEl.TryGetProperty("fullName",           out var fn)  ? fn.GetString()  ?? "" : "";
+                var suspended  = u.TryGetProperty("suspended",               out var sus) && sus.GetBoolean();
+                var has2fa     = u.TryGetProperty("isEnrolledIn2Sv",         out var e2s) && e2s.GetBoolean();
+                var isAdmin    = u.TryGetProperty("isAdmin",                 out var adm) && adm.GetBoolean();
+                var orgUnit    = u.TryGetProperty("orgUnitPath",             out var ou)  ? ou.GetString()  : null;
+                var mustChange = u.TryGetProperty("changePasswordAtNextLogin",out var cp) && cp.GetBoolean();
+                DateTimeOffset? lastLogin = null;
+                if (u.TryGetProperty("lastLoginTime", out var llt) && DateTimeOffset.TryParse(llt.GetString(), out var lldto))
+                    lastLogin = lldto;
+                DateTimeOffset? created = null;
+                if (u.TryGetProperty("creationTime", out var ct) && DateTimeOffset.TryParse(ct.GetString(), out var ctdto))
+                    created = ctdto;
+
+                list.Add(new UserSecurityInfo(email, fullName, suspended, has2fa, isAdmin, orgUnit, lastLogin, created, mustChange));
+            }
+        } while (pageToken != null);
+
+        return (true, list, null);
+    }
+
     // ── Test connection ───────────────────────────────────────────────────────
 
     /// <summary>Verify DWD by fetching the admin user's send-as list. Returns (passed, message).</summary>
@@ -829,6 +1175,23 @@ public class GoogleWorkspaceService
 
     public sealed record GroupInfo(string Email, string Name, string? Description, int MemberCount);
 
+    public sealed record SharedDriveInfo(string Id, string Name);
+
+    public sealed record OAuthTokenInfo(string AppName, string ClientId, List<string> Scopes);
+
+    public sealed record LoginEvent(DateTimeOffset Time, string EventName, string IpAddress);
+
+    public sealed record UserSecurityInfo(
+        string Email,
+        string FullName,
+        bool Suspended,
+        bool IsEnrolledIn2Sv,
+        bool IsAdmin,
+        string? OrgUnit,
+        DateTimeOffset? LastLoginTime,
+        DateTimeOffset? CreationTime,
+        bool MustChangePassword
+    );
 
     private sealed class ServiceAccountKey
     {

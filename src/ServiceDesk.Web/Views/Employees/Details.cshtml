@@ -760,6 +760,94 @@
                     </div>
                 </div>
 
+                <!-- ── Onboarding ─────────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100 border-start border-success border-4">
+                        <div class="card-header fw-semibold small bg-success bg-opacity-10">
+                            <i class="bi bi-person-plus me-2 text-success"></i>Onboarding — Provision Account
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Create a new Google Workspace account for this employee. A temporary password will be generated and the employee will be required to change it on first sign-in.</p>
+                            <div class="mb-3">
+                                <label class="form-label small">Organizational Unit <span class="text-muted">(optional)</span></label>
+                                <input type="text" class="form-control form-control-sm font-monospace" id="wsOrgUnitInput" placeholder="/ or /Sales" />
+                                <div class="form-text">Leave blank for root OU. E.g. <code>/Engineering</code></div>
+                            </div>
+                            <div id="wsProvisionResult" class="d-none mb-3">
+                                <div class="alert alert-success py-2 small mb-2" id="wsProvisionMsg"></div>
+                                <div id="wsNewPwBox" class="d-none">
+                                    <label class="form-label small fw-semibold">Temporary Password (shown once)</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control font-monospace fw-bold" id="wsNewPw" readonly />
+                                        <button class="btn btn-outline-secondary" onclick="copyNewPw()" title="Copy"><i class="bi bi-clipboard"></i></button>
+                                    </div>
+                                    <div class="small text-warning mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Copy and share this securely — it will not be shown again.</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-success" onclick="provisionAccount()">
+                                <i class="bi bi-person-plus me-1"></i>Provision Google Account
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Offboarding ────────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100 border-start border-danger border-4">
+                        <div class="card-header fw-semibold small bg-danger bg-opacity-10">
+                            <i class="bi bi-person-dash me-2 text-danger"></i>Offboarding
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-2">Run automated offboarding steps for this employee's Google account.</p>
+                            <div class="mb-2">
+                                <div class="form-check"><input type="checkbox" class="form-check-input" id="offSuspend" checked /><label class="form-check-label small" for="offSuspend">Suspend account</label></div>
+                                <div class="form-check"><input type="checkbox" class="form-check-input" id="offRevoke" checked /><label class="form-check-label small" for="offRevoke">Revoke all OAuth app access</label></div>
+                                <div class="form-check"><input type="checkbox" class="form-check-input" id="offGroups" checked /><label class="form-check-label small" for="offGroups">Remove from all groups</label></div>
+                                <div class="form-check"><input type="checkbox" class="form-check-input" id="offOoo" checked /><label class="form-check-label small" for="offOoo">Enable out-of-office auto-reply</label></div>
+                                <div class="form-check"><input type="checkbox" class="form-check-input" id="offTransfer" /><label class="form-check-label small" for="offTransfer">Transfer Drive files to:</label></div>
+                                <div class="ms-4 mt-1" id="offTransferDest" style="display:none;">
+                                    <input type="email" class="form-control form-control-sm" id="offTransferEmail" placeholder="recipient@domain.com" />
+                                    <div class="form-text">Enter the destination user's email address.</div>
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small">OOO Subject <span class="text-muted">(optional)</span></label>
+                                <input type="text" class="form-control form-control-sm" id="offOooSubject" placeholder="This employee is no longer with the company." />
+                                <label class="form-label small mt-1">OOO Message</label>
+                                <textarea class="form-control form-control-sm" rows="2" id="offOooBody" placeholder="<p>Please contact your account manager for assistance.</p>"></textarea>
+                            </div>
+                            <div id="offboardingResult" class="d-none mb-2"></div>
+                            <button class="btn btn-sm btn-danger" onclick="runOffboarding()">
+                                <i class="bi bi-box-arrow-right me-1"></i>Run Offboarding
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Security: OAuth Apps + Login Activity ───────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-shield-lock me-2"></i>Security</span>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadOAuthApps()"><i class="bi bi-app me-1"></i>Load OAuth Apps</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadLoginActivity()"><i class="bi bi-clock-history me-1"></i>Load Login Activity</button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="wsOAuthSection" class="p-3 d-none">
+                                <h6 class="small fw-semibold mb-2"><i class="bi bi-app me-1 text-primary"></i>Authorized OAuth Apps</h6>
+                                <div id="wsOAuthList"></div>
+                            </div>
+                            <div id="wsLoginSection" class="p-3 d-none">
+                                <h6 class="small fw-semibold mb-2"><i class="bi bi-clock-history me-1 text-primary"></i>Recent Login Activity</h6>
+                                <div id="wsLoginList"></div>
+                            </div>
+                            <div id="wsSecurityPlaceholder" class="text-muted small p-3">Click a button above to load security data.</div>
+                        </div>
+                    </div>
+                </div>
+
             </div><!-- /row -->
         </div><!-- /wsContent -->
     </div><!-- /workspace pane -->
@@ -1154,6 +1242,147 @@
             .then(function (d) {
                 wsAlert(d.message, d.success ? 'success' : 'danger');
                 if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    window.provisionAccount = function () {
+        if (!confirm('Create a new Google Workspace account for @Html.Raw(Model.Email ?? Model.FullName)?\n\nMake sure this account does not already exist in your domain.')) return;
+        var ou = document.getElementById('wsOrgUnitInput').value.trim();
+        post('@Url.Action("ProvisionWorkspaceAccount","Employees",new{id=Model.Id})', { orgUnit: ou })
+            .then(function (d) {
+                var res = document.getElementById('wsProvisionResult');
+                var msg = document.getElementById('wsProvisionMsg');
+                res.classList.remove('d-none');
+                msg.textContent = d.message;
+                msg.className   = 'alert py-2 small mb-2 ' + (d.success ? 'alert-success' : 'alert-danger');
+                if (d.success && d.tempPassword) {
+                    var box = document.getElementById('wsNewPwBox');
+                    box.classList.remove('d-none');
+                    document.getElementById('wsNewPw').value = d.tempPassword;
+                }
+            });
+    };
+
+    window.copyNewPw = function () {
+        navigator.clipboard?.writeText(document.getElementById('wsNewPw').value);
+        wsAlert('Password copied to clipboard.', 'success');
+    };
+
+    // Toggle Drive transfer destination
+    document.getElementById('offTransfer')?.addEventListener('change', function () {
+        document.getElementById('offTransferDest').style.display = this.checked ? '' : 'none';
+    });
+
+    // ── Offboarding ───────────────────────────────────────────────────────────
+
+    window.runOffboarding = function () {
+        if (!confirm('Run offboarding steps for this employee? This will apply the selected actions to their Google account.')) return;
+        var data = {
+            suspend:          document.getElementById('offSuspend').checked,
+            removeGroups:     document.getElementById('offGroups').checked,
+            setOoo:           document.getElementById('offOoo').checked,
+            oooSubject:       document.getElementById('offOooSubject').value,
+            oooBody:          document.getElementById('offOooBody').value,
+            revokeTokens:     document.getElementById('offRevoke').checked,
+            transferDrive:    document.getElementById('offTransfer').checked,
+            transferToEmail:  document.getElementById('offTransferEmail')?.value ?? ''
+        };
+        var btn = document.querySelector('[onclick="runOffboarding()"]');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running…';
+
+        post('@Url.Action("RunOffboarding","Employees",new{id=Model.Id})', data)
+            .then(function (d) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Run Offboarding';
+
+                var resultEl = document.getElementById('offboardingResult');
+                resultEl.classList.remove('d-none');
+                var rows = (d.steps || []).map(function (s) {
+                    var icon = s.ok
+                        ? '<i class="bi bi-check-circle-fill text-success me-1"></i>'
+                        : '<i class="bi bi-x-circle-fill text-danger me-1"></i>';
+                    return '<li class="list-group-item py-1 small d-flex justify-content-between align-items-start">' +
+                           '<span>' + icon + escHtml(s.step) + '</span>' +
+                           '<span class="text-muted small ms-2">' + escHtml(s.message || '') + '</span></li>';
+                }).join('');
+                resultEl.innerHTML =
+                    '<div class="alert alert-' + (d.success ? 'success' : 'warning') + ' py-2 small mb-2">' +
+                    escHtml(d.message) + '</div>' +
+                    (rows ? '<ul class="list-group list-group-flush border rounded">' + rows + '</ul>' : '');
+            }).catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Run Offboarding';
+                wsAlert('Request failed. Check your network and try again.', 'danger');
+            });
+    };
+
+    // ── Security ──────────────────────────────────────────────────────────────
+
+    window.loadOAuthApps = function () {
+        var sec = document.getElementById('wsSecurityPlaceholder');
+        sec.classList.add('d-none');
+        var el = document.getElementById('wsOAuthSection');
+        el.classList.remove('d-none');
+        el.querySelector('#wsOAuthList').innerHTML =
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small">Loading…</span>';
+
+        fetch('@Url.Action("GetOAuthApps","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) {
+                    el.querySelector('#wsOAuthList').innerHTML = '<p class="text-danger small">' + escHtml(d.error) + '</p>';
+                    return;
+                }
+                if (!d.tokens || d.tokens.length === 0) {
+                    el.querySelector('#wsOAuthList').innerHTML = '<p class="text-muted small">No authorized apps found.</p>';
+                    return;
+                }
+                var rows = d.tokens.map(function (t) {
+                    return '<tr><td class="fw-semibold small">' + escHtml(t.appName) + '</td>' +
+                           '<td><code class="small">' + escHtml(t.clientId) + '</code></td>' +
+                           '<td class="text-end"><span class="badge bg-secondary">' + t.scopeCount + ' scope(s)</span></td></tr>';
+                }).join('');
+                el.querySelector('#wsOAuthList').innerHTML =
+                    '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+                    '<tr><th>App</th><th>Client ID</th><th class="text-end">Scopes</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody></table></div>';
+            });
+    };
+
+    window.loadLoginActivity = function () {
+        var sec = document.getElementById('wsSecurityPlaceholder');
+        sec.classList.add('d-none');
+        var el = document.getElementById('wsLoginSection');
+        el.classList.remove('d-none');
+        el.querySelector('#wsLoginList').innerHTML =
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small">Loading…</span>';
+
+        fetch('@Url.Action("GetLoginActivity","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) {
+                    el.querySelector('#wsLoginList').innerHTML = '<p class="text-danger small">' + escHtml(d.error) + '</p>';
+                    return;
+                }
+                if (!d.events || d.events.length === 0) {
+                    el.querySelector('#wsLoginList').innerHTML = '<p class="text-muted small">No login events found.</p>';
+                    return;
+                }
+                var eventIcons = { 'login_success': 'bi-check-circle text-success',
+                    'login_failure': 'bi-x-circle text-danger', 'logout': 'bi-box-arrow-right text-secondary' };
+                var rows = d.events.map(function (e) {
+                    var icon = eventIcons[e.eventName] || 'bi-circle text-muted';
+                    return '<tr><td class="small">' + escHtml(e.time) + '</td>' +
+                           '<td><i class="bi ' + icon + ' me-1"></i><span class="small">' + escHtml(e.eventName) + '</span></td>' +
+                           '<td><code class="small">' + escHtml(e.ip || '—') + '</code></td></tr>';
+                }).join('');
+                el.querySelector('#wsLoginList').innerHTML =
+                    '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+                    '<tr><th>Time</th><th>Event</th><th>IP Address</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody></table></div>';
             });
     };
 
