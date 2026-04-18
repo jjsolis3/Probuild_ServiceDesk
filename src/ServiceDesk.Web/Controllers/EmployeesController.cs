@@ -540,39 +540,62 @@ public class EmployeesController : Controller
     [HttpGet]
     public async Task<IActionResult> GetWorkspaceInfo(int id)
     {
-        var employee = await _context.Employees.FindAsync(id);
-        if (employee == null) return NotFound();
-
-        var (userOk, user, userErr) = await _googleWorkspace.GetGoogleUserAsync(employee.Email);
-        var (vacOk,  vac,  vacErr)  = await _googleWorkspace.GetVacationResponderAsync(employee.Email);
-        var (grpOk,  grps, grpErr)  = await _googleWorkspace.GetUserGroupsAsync(employee.Email);
-
-        return Json(new
+        try
         {
-            user = userOk ? new
-            {
-                suspended  = user!.Suspended,
-                mustChange = user.ChangePasswordAtNextLogin,
-                orgUnit    = user.OrgUnit,
-                error      = (string?)null
-            } : new { suspended = false, mustChange = false, orgUnit = (string?)null, error = userErr },
+            var employee = await _context.Employees.FindAsync(id);
+            if (employee == null) return NotFound();
 
-            vacation = vacOk ? new
-            {
-                enabled  = vac!.EnableAutoReply,
-                subject  = vac.ResponseSubject,
-                body     = vac.ResponseBodyHtml,
-                start    = vac.StartTime?.ToString("yyyy-MM-dd"),
-                end      = vac.EndTime?.ToString("yyyy-MM-dd"),
-                contacts = vac.RestrictToContacts,
-                domain   = vac.RestrictToDomain,
-                error    = (string?)null
-            } : (object)new { error = vacErr },
+            if (string.IsNullOrWhiteSpace(employee.Email))
+                return Json(new
+                {
+                    user     = new { suspended = false, mustChange = false, orgUnit = (string?)null,
+                                     error = "No email address is set for this employee." },
+                    vacation = (object)new { error = "No email address." },
+                    groups   = (object)new { error = "No email address." }
+                });
 
-            groups = grpOk
-                ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
-                : (object)new { error = grpErr }
-        });
+            var (userOk, user, userErr) = await _googleWorkspace.GetGoogleUserAsync(employee.Email);
+            var (vacOk,  vac,  vacErr)  = await _googleWorkspace.GetVacationResponderAsync(employee.Email);
+            var (grpOk,  grps, grpErr)  = await _googleWorkspace.GetUserGroupsAsync(employee.Email);
+
+            return Json(new
+            {
+                user = userOk ? new
+                {
+                    suspended  = user!.Suspended,
+                    mustChange = user.ChangePasswordAtNextLogin,
+                    orgUnit    = user.OrgUnit,
+                    error      = (string?)null
+                } : new { suspended = false, mustChange = false, orgUnit = (string?)null, error = userErr },
+
+                vacation = vacOk ? new
+                {
+                    enabled  = vac!.EnableAutoReply,
+                    subject  = vac.ResponseSubject,
+                    body     = vac.ResponseBodyHtml,
+                    start    = vac.StartTime?.ToString("yyyy-MM-dd"),
+                    end      = vac.EndTime?.ToString("yyyy-MM-dd"),
+                    contacts = vac.RestrictToContacts,
+                    domain   = vac.RestrictToDomain,
+                    error    = (string?)null
+                } : (object)new { error = vacErr },
+
+                groups = grpOk
+                    ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
+                    : (object)new { error = grpErr }
+            });
+        }
+        catch (Exception ex)
+        {
+            // Always return JSON so the client shows a readable error rather than an HTML 500 page
+            return Json(new
+            {
+                user     = new { suspended = false, mustChange = false, orgUnit = (string?)null,
+                                 error = "Server error: " + ex.Message },
+                vacation = (object)new { error = ex.Message },
+                groups   = (object)new { error = ex.Message }
+            });
+        }
     }
 
     [HttpPost, ValidateAntiForgeryToken]

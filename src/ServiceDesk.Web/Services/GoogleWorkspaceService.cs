@@ -387,6 +387,9 @@ public class GoogleWorkspaceService
     /// <summary>Fetch the Google account state (suspended flag, name, org unit) for a user.</summary>
     public async Task<(bool Success, GoogleUserInfo? User, string? Error)> GetGoogleUserAsync(string userEmail)
     {
+        if (string.IsNullOrWhiteSpace(userEmail))
+            return (false, null, "Employee has no email address.");
+
         var token = await GetAdminAccessTokenAsync();
         if (token == null) return (false, null, "Admin service account not configured or auth failed.");
 
@@ -478,6 +481,9 @@ public class GoogleWorkspaceService
     /// <summary>Get the current vacation / out-of-office responder settings for a user.</summary>
     public async Task<(bool Success, VacationResponder? Settings, string? Error)> GetVacationResponderAsync(string userEmail)
     {
+        if (string.IsNullOrWhiteSpace(userEmail))
+            return (false, null, "Employee has no email address.");
+
         var token = await GetAccessTokenAsync(userEmail);
         if (token == null) return (false, null, "Service account not configured or auth failed.");
 
@@ -494,10 +500,16 @@ public class GoogleWorkspaceService
 
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
         var r         = doc.RootElement;
-        DateTimeOffset? start = r.TryGetProperty("startTime", out var st) && st.TryGetInt64(out var stMs)
-            ? DateTimeOffset.FromUnixTimeMilliseconds(stMs) : null;
-        DateTimeOffset? end = r.TryGetProperty("endTime", out var et) && et.TryGetInt64(out var etMs)
-            ? DateTimeOffset.FromUnixTimeMilliseconds(etMs) : null;
+        DateTimeOffset? start = null;
+        DateTimeOffset? end   = null;
+        try
+        {
+            if (r.TryGetProperty("startTime", out var st) && st.TryGetInt64(out var stMs) && stMs > 0)
+                start = DateTimeOffset.FromUnixTimeMilliseconds(stMs);
+            if (r.TryGetProperty("endTime",   out var et) && et.TryGetInt64(out var etMs) && etMs > 0)
+                end   = DateTimeOffset.FromUnixTimeMilliseconds(etMs);
+        }
+        catch { /* ignore out-of-range timestamps */ }
 
         var vac = new VacationResponder(
             EnableAutoReply:    r.TryGetProperty("enableAutoReply",    out var ear)  && ear.GetBoolean(),
@@ -610,6 +622,9 @@ public class GoogleWorkspaceService
     /// <summary>List all groups the user belongs to.</summary>
     public async Task<(bool Success, List<GroupInfo> Groups, string? Error)> GetUserGroupsAsync(string userEmail)
     {
+        if (string.IsNullOrWhiteSpace(userEmail))
+            return (false, [], "Employee has no email address.");
+
         var token = await GetAdminAccessTokenAsync();
         if (token == null) return (false, [], "Admin service account not configured or auth failed.");
 
