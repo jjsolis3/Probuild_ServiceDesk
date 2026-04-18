@@ -89,6 +89,11 @@
             <i class="bi bi-pen me-1"></i>Signature
         </a>
     </li>
+    <li class="nav-item">
+        <a class="@TabClass("workspace")" href="?tab=workspace">
+            <i class="bi bi-google me-1"></i>Workspace
+        </a>
+    </li>
 </ul>
 
 <div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
@@ -609,6 +614,156 @@
         </div>
     </div>
 
+
+    <!-- ═══ WORKSPACE ════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("workspace")" id="workspacePane">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-google me-2 text-primary"></i>Google Workspace Admin</h6>
+                <div class="text-muted small">Manage <strong>@Model.Email</strong> in your Workspace domain.</div>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadWorkspaceInfo()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+        </div>
+
+        <div id="wsAlert" class="d-none mb-3"></div>
+        <div id="wsLoader" class="text-center py-4 d-none">
+            <div class="spinner-border text-primary"></div><p class="mt-2 text-muted small">Loading Workspace data…</p>
+        </div>
+
+        <div id="wsContent" class="d-none">
+            <div class="row g-4">
+
+                <!-- ── Account Status ──────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small"><i class="bi bi-person-check me-2"></i>Account Status</div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-3 mb-3">
+                                <div id="wsStatusBadge"><span class="badge bg-secondary">Loading…</span></div>
+                                <div class="small text-muted" id="wsOrgUnit"></div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-warning" id="wsSuspendBtn" onclick="toggleSuspend(true)">
+                                    <i class="bi bi-pause-circle me-1"></i>Suspend Account
+                                </button>
+                                <button class="btn btn-sm btn-success d-none" id="wsUnsuspendBtn" onclick="toggleSuspend(false)">
+                                    <i class="bi bi-play-circle me-1"></i>Unsuspend Account
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Password Reset ──────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small"><i class="bi bi-key me-2"></i>Password Reset</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Generate a secure temporary password. The employee will be required to change it on next sign-in.</p>
+                            <div id="wsTempPwBox" class="d-none mb-3">
+                                <label class="form-label small fw-semibold">Temporary Password (shown once)</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control font-monospace fw-bold" id="wsTempPw" readonly />
+                                    <button class="btn btn-outline-secondary" onclick="copyTempPw()" title="Copy">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <div class="small text-muted mt-1"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Copy and share this password securely. It will not be shown again.</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="resetPassword()">
+                                <i class="bi bi-key me-1"></i>Reset Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Drive & Gmail Storage ───────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small d-flex justify-content-between">
+                            <span><i class="bi bi-hdd me-2"></i>Storage Usage</span>
+                            <button class="btn btn-link btn-sm p-0 text-muted" onclick="loadStorage()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body" id="wsStorageCard">
+                            <div class="text-muted small">Click refresh to load storage data.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Out of Office ───────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-calendar-x me-2"></i>Out of Office</span>
+                            <span class="badge" id="wsOooBadge">Loading…</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Start Date</label>
+                                    <input type="date" class="form-control form-control-sm" id="wsOooStart" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">End Date <span class="text-muted">(optional)</span></label>
+                                    <input type="date" class="form-control form-control-sm" id="wsOooEnd" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">Subject</label>
+                                    <input type="text" class="form-control form-control-sm" id="wsOooSubject"
+                                           placeholder="Out of office: I'll be back soon" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">Message Body (HTML)</label>
+                                    <textarea class="form-control form-control-sm font-monospace" rows="3"
+                                              id="wsOooBody" placeholder="<p>I'm currently out of office…</p>"></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="wsOooDomain" />
+                                        <label class="form-check-label small" for="wsOooDomain">Only reply to people in my domain</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="saveOoo(true)">
+                                    <i class="bi bi-calendar-check me-1"></i>Enable OOO
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="saveOoo(false)">
+                                    <i class="bi bi-calendar-x me-1"></i>Disable
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Group Memberships ───────────────────────────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-people me-2"></i>Group Memberships</span>
+                            <div class="d-flex gap-2 align-items-center">
+                                <select class="form-select form-select-sm" id="wsGroupSelect" style="max-width:280px;">
+                                    <option value="">— Select a group to add —</option>
+                                </select>
+                                <button class="btn btn-sm btn-primary" onclick="addToGroup()">
+                                    <i class="bi bi-plus-lg me-1"></i>Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0" id="wsGroupsList">
+                            <div class="text-muted small p-3">Loading groups…</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /row -->
+        </div><!-- /wsContent -->
+    </div><!-- /workspace pane -->
+
 </div>
 
 <!-- ═══ TICKET VIEWER MODAL ══════════════════════════════════════════════ -->
@@ -797,6 +952,226 @@
         })
         .catch(function(){ showStatus('Network error saving signature.', 'danger'); });
     };
+})();
+
+// ── Google Workspace Tab ──────────────────────────────────────────────────
+(function () {
+    var wsLoaded    = false;
+    var wsState     = { suspended: false, groups: [] };
+    var antiForgery = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+
+    function wsAlert(msg, type) {
+        var el = document.getElementById('wsAlert');
+        el.className = 'alert alert-' + type + ' py-2 small mb-3';
+        el.textContent = msg;
+        el.classList.remove('d-none');
+        if (type === 'success') setTimeout(function () { el.classList.add('d-none'); }, 4000);
+    }
+
+    function post(url, extra) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgery);
+        Object.entries(extra || {}).forEach(function ([k, v]) { fd.append(k, v); });
+        return fetch(url, { method: 'POST', headers: { 'RequestVerificationToken': antiForgery }, body: fd })
+            .then(function (r) { return r.json(); });
+    }
+
+    window.loadWorkspaceInfo = function () {
+        document.getElementById('wsLoader').classList.remove('d-none');
+        document.getElementById('wsContent').classList.add('d-none');
+        document.getElementById('wsAlert').classList.add('d-none');
+
+        Promise.all([
+            fetch('@Url.Action("GetWorkspaceInfo","Employees",new{id=Model.Id})').then(r => r.json()),
+            fetch('@Url.Action("GetDomainGroups","Employees")').then(r => r.json())
+        ]).then(function ([info, domGrps]) {
+            document.getElementById('wsLoader').classList.add('d-none');
+            document.getElementById('wsContent').classList.remove('d-none');
+
+            // Account status
+            wsState.suspended = info.user?.suspended ?? false;
+            var badge = document.getElementById('wsStatusBadge');
+            badge.innerHTML = wsState.suspended
+                ? '<span class="badge bg-danger fs-6"><i class="bi bi-pause-circle me-1"></i>Suspended</span>'
+                : '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Active</span>';
+            document.getElementById('wsOrgUnit').textContent = info.user?.orgUnit ?? '';
+            document.getElementById('wsSuspendBtn').classList.toggle('d-none', wsState.suspended);
+            document.getElementById('wsUnsuspendBtn').classList.toggle('d-none', !wsState.suspended);
+
+            // OOO
+            var vac = info.vacation;
+            var oooBadge = document.getElementById('wsOooBadge');
+            if (vac && !vac.error) {
+                oooBadge.textContent = vac.enabled ? 'Active' : 'Off';
+                oooBadge.className   = 'badge ' + (vac.enabled ? 'bg-warning text-dark' : 'bg-secondary');
+                if (vac.subject) document.getElementById('wsOooSubject').value = vac.subject;
+                if (vac.body)    document.getElementById('wsOooBody').value    = vac.body;
+                if (vac.start)   document.getElementById('wsOooStart').value   = vac.start;
+                if (vac.end)     document.getElementById('wsOooEnd').value     = vac.end;
+                document.getElementById('wsOooDomain').checked = vac.domain ?? false;
+            } else {
+                oooBadge.textContent = 'Unavailable'; oooBadge.className = 'badge bg-secondary';
+            }
+
+            // Groups
+            wsState.groups = Array.isArray(info.groups) ? info.groups : [];
+            renderGroups(wsState.groups);
+
+            // Domain group dropdown
+            var sel = document.getElementById('wsGroupSelect');
+            sel.innerHTML = '<option value="">— Select a group to add —</option>';
+            if (domGrps.success && Array.isArray(domGrps.groups)) {
+                domGrps.groups.forEach(function (g) {
+                    var already = wsState.groups.some(function (m) { return m.Email === g.Email; });
+                    if (!already) {
+                        var o = document.createElement('option');
+                        o.value = g.Email; o.textContent = g.Name + ' (' + g.Email + ')';
+                        sel.appendChild(o);
+                    }
+                });
+            }
+
+            wsLoaded = true;
+        }).catch(function (e) {
+            document.getElementById('wsLoader').classList.add('d-none');
+            wsAlert('Failed to load Workspace data: ' + e, 'danger');
+        });
+    };
+
+    function renderGroups(grps) {
+        var el = document.getElementById('wsGroupsList');
+        if (!grps || grps.length === 0) {
+            el.innerHTML = '<p class="text-muted small p-3 mb-0">Not a member of any groups.</p>';
+            return;
+        }
+        var rows = grps.map(function (g) {
+            return '<tr><td><code class="small">' + escHtml(g.Email) + '</code></td>' +
+                   '<td>' + escHtml(g.Name) + '</td>' +
+                   '<td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="removeFromGroup(' +
+                   "'" + escHtml(g.Email) + "'" + ')"><i class="bi bi-x-lg"></i></button></td></tr>';
+        }).join('');
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+            '<tr><th>Email</th><th>Name</th><th class="text-end">Remove</th></tr></thead><tbody>' +
+            rows + '</tbody></table></div>';
+    }
+
+    window.toggleSuspend = function (suspend) {
+        if (!confirm((suspend ? 'Suspend' : 'Unsuspend') + ' this Google account?')) return;
+        post('@Url.Action("SuspendUser","Employees",new{id=Model.Id})', { suspended: suspend })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) {
+                    wsState.suspended = suspend;
+                    document.getElementById('wsStatusBadge').innerHTML = suspend
+                        ? '<span class="badge bg-danger fs-6"><i class="bi bi-pause-circle me-1"></i>Suspended</span>'
+                        : '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Active</span>';
+                    document.getElementById('wsSuspendBtn').classList.toggle('d-none', suspend);
+                    document.getElementById('wsUnsuspendBtn').classList.toggle('d-none', !suspend);
+                }
+            });
+    };
+
+    window.resetPassword = function () {
+        if (!confirm('Generate a new temporary password for this account?')) return;
+        post('@Url.Action("ResetWorkspacePassword","Employees",new{id=Model.Id})')
+            .then(function (d) {
+                if (d.success) {
+                    document.getElementById('wsTempPwBox').classList.remove('d-none');
+                    document.getElementById('wsTempPw').value = d.tempPassword;
+                    wsAlert('Password reset. Share the temporary password securely with the employee.', 'warning');
+                } else {
+                    wsAlert('Reset failed: ' + d.message, 'danger');
+                }
+            });
+    };
+
+    window.copyTempPw = function () {
+        var pw = document.getElementById('wsTempPw').value;
+        navigator.clipboard?.writeText(pw);
+        wsAlert('Password copied to clipboard.', 'success');
+    };
+
+    window.loadStorage = function () {
+        var card = document.getElementById('wsStorageCard');
+        card.innerHTML = '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small text-muted">Loading storage data…</span>';
+        fetch('@Url.Action("GetStorageInfo","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) { card.innerHTML = '<p class="text-muted small mb-0">' + escHtml(d.error) + '</p>'; return; }
+                var totalUsedMb = d.gmailMb + d.driveMb;
+                var pct = d.totalMb > 0 ? Math.min(100, Math.round(totalUsedMb / d.totalMb * 100)) : 0;
+                var barClass = pct > 85 ? 'bg-danger' : pct > 60 ? 'bg-warning' : 'bg-primary';
+                card.innerHTML =
+                    '<div class="mb-2"><div class="d-flex justify-content-between small mb-1">' +
+                    '<span>' + totalUsedMb.toLocaleString() + ' MB used</span>' +
+                    '<span class="text-muted">' + d.totalMb.toLocaleString() + ' MB total</span>' +
+                    '</div><div class="progress" style="height:10px;">' +
+                    '<div class="progress-bar ' + barClass + '" style="width:' + pct + '%"></div></div>' +
+                    '<div class="small text-muted mt-1">' + pct + '% used</div></div>' +
+                    '<div class="row g-2 mt-1"><div class="col-6 text-center border-end">' +
+                    '<div class="fw-bold">' + d.gmailMb.toLocaleString() + ' MB</div>' +
+                    '<div class="small text-muted">Gmail</div></div>' +
+                    '<div class="col-6 text-center"><div class="fw-bold">' + d.driveMb.toLocaleString() + ' MB</div>' +
+                    '<div class="small text-muted">Drive</div></div></div>' +
+                    (d.asOf ? '<div class="small text-muted mt-2"><i class="bi bi-clock me-1"></i>Data as of ' + escHtml(d.asOf) + '</div>' : '');
+            });
+    };
+
+    window.saveOoo = function (enable) {
+        var data = {
+            enabled:          enable,
+            subject:          document.getElementById('wsOooSubject').value,
+            body:             document.getElementById('wsOooBody').value,
+            startDate:        document.getElementById('wsOooStart').value,
+            endDate:          document.getElementById('wsOooEnd').value,
+            restrictToDomain: document.getElementById('wsOooDomain').checked
+        };
+        post('@Url.Action("SetVacationResponder","Employees",new{id=Model.Id})', data)
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) {
+                    var b = document.getElementById('wsOooBadge');
+                    b.textContent = enable ? 'Active' : 'Off';
+                    b.className   = 'badge ' + (enable ? 'bg-warning text-dark' : 'bg-secondary');
+                }
+            });
+    };
+
+    window.addToGroup = function () {
+        var sel = document.getElementById('wsGroupSelect');
+        var grp = sel.value;
+        if (!grp) return;
+        post('@Url.Action("AddToGroup","Employees",new{id=Model.Id})', { groupEmail: grp })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    window.removeFromGroup = function (grpEmail) {
+        if (!confirm('Remove from ' + grpEmail + '?')) return;
+        post('@Url.Action("RemoveFromGroup","Employees",new{id=Model.Id})', { groupEmail: grpEmail })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Auto-load when workspace tab is clicked
+    document.querySelectorAll('a[href="?tab=workspace"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            if (!wsLoaded) setTimeout(loadWorkspaceInfo, 80);
+        });
+    });
+
+    // Auto-load if workspace is the active tab on page load
+    if (window.location.search.includes('tab=workspace')) {
+        setTimeout(loadWorkspaceInfo, 200);
+    }
 })();
 
 // ── Ticket Viewer Modal ────────────────────────────────────────────────────

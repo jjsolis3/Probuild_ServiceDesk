@@ -535,6 +535,130 @@ public class EmployeesController : Controller
         return Json(new { success = false, message = errorMsg ?? "Unknown error." });
     }
 
+    // ── Google Workspace Admin Actions ────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetWorkspaceInfo(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (userOk, user, userErr) = await _googleWorkspace.GetGoogleUserAsync(employee.Email);
+        var (vacOk,  vac,  vacErr)  = await _googleWorkspace.GetVacationResponderAsync(employee.Email);
+        var (grpOk,  grps, grpErr)  = await _googleWorkspace.GetUserGroupsAsync(employee.Email);
+
+        return Json(new
+        {
+            user = userOk ? new
+            {
+                suspended  = user!.Suspended,
+                mustChange = user.ChangePasswordAtNextLogin,
+                orgUnit    = user.OrgUnit,
+                error      = (string?)null
+            } : new { suspended = false, mustChange = false, orgUnit = (string?)null, error = userErr },
+
+            vacation = vacOk ? new
+            {
+                enabled  = vac!.EnableAutoReply,
+                subject  = vac.ResponseSubject,
+                body     = vac.ResponseBodyHtml,
+                start    = vac.StartTime?.ToString("yyyy-MM-dd"),
+                end      = vac.EndTime?.ToString("yyyy-MM-dd"),
+                contacts = vac.RestrictToContacts,
+                domain   = vac.RestrictToDomain,
+                error    = (string?)null
+            } : (object)new { error = vacErr },
+
+            groups = grpOk
+                ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
+                : (object)new { error = grpErr }
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuspendUser(int id, bool suspended)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.SetSuspendedAsync(employee.Email, suspended);
+        return Json(new { success = ok,
+            message = ok ? $"Account {(suspended ? "suspended" : "unsuspended")} successfully." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetWorkspacePassword(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, pw, err) = await _googleWorkspace.ResetPasswordAsync(employee.Email);
+        return Json(new { success = ok, tempPassword = pw, message = err });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetStorageInfo(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, info, err) = await _googleWorkspace.GetStorageAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new
+        {
+            success    = true,
+            gmailMb    = info!.GmailUsedMb,
+            driveMb    = info.DriveUsedMb,
+            totalMb    = info.TotalQuotaMb,
+            asOf       = info.AsOfDate?.ToString("MMM d, yyyy")
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetVacationResponder(int id,
+        bool enabled, string? subject, string? body,
+        string? startDate, string? endDate,
+        bool restrictToContacts = false, bool restrictToDomain = false)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        DateTimeOffset? start = DateTime.TryParse(startDate, out var sd)
+            ? new DateTimeOffset(sd, TimeSpan.Zero) : null;
+        DateTimeOffset? end = DateTime.TryParse(endDate, out var ed)
+            ? new DateTimeOffset(ed, TimeSpan.Zero) : null;
+
+        var settings = new GoogleWorkspaceService.VacationResponder(
+            enabled, subject, body, start, end, restrictToContacts, restrictToDomain);
+        var (ok, err) = await _googleWorkspace.SetVacationResponderAsync(employee.Email, settings);
+        return Json(new { success = ok,
+            message = ok ? (enabled ? "Out-of-office responder enabled." : "Out-of-office responder disabled.") : err });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDomainGroups()
+    {
+        var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            groups = groups.Select(g => new { g.Email, g.Name, g.MemberCount }) });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddToGroup(int id, string groupEmail)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.AddToGroupAsync(groupEmail, employee.Email);
+        return Json(new { success = ok, message = ok ? $"Added to {groupEmail}." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveFromGroup(int id, string groupEmail)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveFromGroupAsync(groupEmail, employee.Email);
+        return Json(new { success = ok, message = ok ? $"Removed from {groupEmail}." : err });
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetSignatureTemplate(int id)
     {

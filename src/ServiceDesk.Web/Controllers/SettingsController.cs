@@ -1936,6 +1936,22 @@ public class SettingsController : Controller
         return Json(new { success = true, successCount, failedCount, skippedCount, results });
     }
 
+    // ── Google Groups management ──────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GoogleGroups()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings == null || !settings.IsConfigured)
+        {
+            TempData["Error"] = "Google Workspace is not configured. Please set it up first.";
+            return RedirectToAction(nameof(GoogleWorkspace));
+        }
+        var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
+        ViewBag.Error = ok ? null : err;
+        return View(groups);
+    }
+
     // ==================== CSAT SURVEYS ====================
 
     // GET: Settings/Csat

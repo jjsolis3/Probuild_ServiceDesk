@@ -74,12 +74,17 @@
         <div class="card shadow-sm border-0 h-100">
             <div class="card-header fw-semibold"><i class="bi bi-list-ol me-2"></i>Setup Checklist</div>
             <div class="card-body">
-                <ol class="ps-3 mb-0" style="line-height:2;">
-                    <li>In <strong>Google Cloud Console</strong>, enable the <em>Gmail API</em> for your project.</li>
+                <ol class="ps-3 mb-0" style="line-height:2.1;">
+                    <li>In <strong>Google Cloud Console</strong>, enable the <em>Gmail API</em> and <em>Admin SDK API</em> for your project.</li>
                     <li>Create a <strong>Service Account</strong> and download its JSON key.</li>
                     <li>In the Service Account details, enable <strong>Domain-Wide Delegation</strong> and copy the Client ID.</li>
-                    <li>In <strong>Google Admin Console</strong> → Security → API Controls → Domain-wide Delegation, paste the Client ID and add the scope:<br>
-                        <code class="small">https://www.googleapis.com/auth/gmail.settings.basic</code>
+                    <li>In <strong>Google Admin Console</strong> → Security → API Controls → Domain-wide Delegation, paste the Client ID and add <strong>all four scopes</strong>:
+                        <ul class="mt-1 mb-1 ps-3 small" style="line-height:2;">
+                            <li><code>https://www.googleapis.com/auth/gmail.settings.basic</code> <span class="text-muted">(signatures, OOO)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.directory.user</code> <span class="text-muted">(suspend, password reset)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.directory.group</code> <span class="text-muted">(group memberships)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.reports.usage.readonly</code> <span class="text-muted">(Drive/Gmail storage)</span></li>
+                        </ul>
                     </li>
                     <li>Upload the JSON key below and click <strong>Save</strong>.</li>
                     <li>Click <strong>Test Connection</strong> to verify.</li>
