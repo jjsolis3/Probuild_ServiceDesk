@@ -501,16 +501,38 @@ public class EmployeesController : Controller
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> UpdateSignature(int id, string html)
+    public async Task<IActionResult> UpdateSignature(int id, string html, bool includeAliases = false)
     {
         var employee = await _context.Employees.FindAsync(id);
         if (employee == null) return NotFound();
 
-        var (success, error) = await _googleWorkspace.UpdateSignatureAsync(employee.Email, html ?? "");
-        if (success)
-            return Json(new { success = true, message = $"Signature updated for {employee.FullName}." });
+        bool ok;
+        string? errorMsg;
+        int addressesUpdated = 1;
 
-        return Json(new { success = false, message = error ?? "Unknown error." });
+        if (includeAliases)
+        {
+            var (s, updated, _, err) = await _googleWorkspace.UpdateSignatureAllAddressesAsync(employee.Email, html ?? "");
+            ok = s; errorMsg = err; addressesUpdated = updated;
+        }
+        else
+        {
+            var (s, err) = await _googleWorkspace.UpdateSignatureAsync(employee.Email, html ?? "");
+            ok = s; errorMsg = err;
+        }
+
+        if (ok)
+        {
+            employee.LastGoogleSignatureSync = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            var msg = includeAliases
+                ? $"Signature applied to {addressesUpdated} address(es) for {employee.FullName}."
+                : $"Signature updated for {employee.FullName}.";
+            return Json(new { success = true, message = msg,
+                syncDate = employee.LastGoogleSignatureSync!.Value.ToString("MMM d, yyyy h:mm tt") });
+        }
+
+        return Json(new { success = false, message = errorMsg ?? "Unknown error." });
     }
 
     [HttpGet]

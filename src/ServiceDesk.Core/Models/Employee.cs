@@ -50,6 +50,9 @@ public class Employee
     [Display(Name = "Branch / Location")]
     public int? BranchId { get; set; }
 
+    [Display(Name = "Last Signature Sync")]
+    public DateTime? LastGoogleSignatureSync { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();

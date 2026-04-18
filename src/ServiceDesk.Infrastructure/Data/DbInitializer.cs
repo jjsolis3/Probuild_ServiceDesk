@@ -1014,6 +1014,10 @@ public static class DbInitializer
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                     VALUES ('CsatSurveyEnabled', 'false', 'Surveys',
                             'Send a post-resolution satisfaction survey (1–5 stars) to the ticket requester when a ticket is closed');");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'LastGoogleSignatureSync')
+                    ALTER TABLE dbo.Employees ADD LastGoogleSignatureSync DATETIME2 NULL;");
         }
         catch (Exception ex)
         {

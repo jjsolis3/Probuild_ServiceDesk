@@ -1907,6 +1907,35 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(GoogleWorkspace));
     }
 
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkApplySignatures(bool includeAliases = false, bool activeOnly = true)
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings?.SignatureTemplate == null)
+            return Json(new { success = false, message = "No signature template configured. Add one in the Default Signature Template field above." });
+
+        var query = _context.Employees.Include(e => e.Branch).AsQueryable();
+        if (activeOnly) query = query.Where(e => e.IsActive);
+        var employees = await query.ToListAsync();
+
+        if (employees.Count == 0)
+            return Json(new { success = false, message = "No employees found." });
+
+        var (successCount, failedCount, skippedCount, results) =
+            await _googleWorkspace.BulkApplySignatureAsync(employees, settings.SignatureTemplate, includeAliases);
+
+        // Stamp sync date on successful employees
+        var successEmails = results.Where(r => r.Status == "success").Select(r => r.Email)
+                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var now = DateTime.UtcNow;
+        foreach (var emp in employees.Where(e => successEmails.Contains(e.Email)))
+            emp.LastGoogleSignatureSync = now;
+        if (successEmails.Count > 0)
+            await _context.SaveChangesAsync();
+
+        return Json(new { success = true, successCount, failedCount, skippedCount, results });
+    }
+
     // ==================== CSAT SURVEYS ====================
 
     // GET: Settings/Csat

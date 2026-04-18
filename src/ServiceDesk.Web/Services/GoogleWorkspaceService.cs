@@ -212,6 +212,130 @@ public class GoogleWorkspaceService
         return (true, null);
     }
 
+    /// <summary>List all send-as addresses (primary + verified aliases) for <paramref name="userEmail"/>.</summary>
+    public async Task<(bool Success, List<string> Addresses, string? Error)> GetSendAsAddressesAsync(string userEmail)
+    {
+        var token = await GetAccessTokenAsync(userEmail);
+        if (token == null)
+            return (false, [], "Service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var url  = $"{GmailApiBase}/{Uri.EscapeDataString(userEmail)}/settings/sendAs";
+        var resp = await client.GetAsync(url);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("GetSendAs failed for {User}: {Error}", userEmail, err);
+            return (false, [], $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        using var doc  = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var addresses  = new List<string>();
+
+        if (doc.RootElement.TryGetProperty("sendAs", out var arr))
+        {
+            foreach (var entry in arr.EnumerateArray())
+            {
+                if (entry.TryGetProperty("sendAsEmail", out var emailProp))
+                {
+                    var addr = emailProp.GetString();
+                    if (!string.IsNullOrEmpty(addr))
+                        addresses.Add(addr);
+                }
+            }
+        }
+
+        return (true, addresses, null);
+    }
+
+    /// <summary>
+    /// Set <paramref name="html"/> as the signature on the primary address AND every verified alias.
+    /// Returns how many addresses were updated vs failed.
+    /// </summary>
+    public async Task<(bool Success, int Updated, int Failed, string? Error)> UpdateSignatureAllAddressesAsync(
+        string userEmail, string html)
+    {
+        var (listOk, addresses, _) = await GetSendAsAddressesAsync(userEmail);
+
+        // Fall back to primary-only if listing fails
+        if (!listOk || addresses.Count == 0)
+            addresses = [userEmail];
+
+        // Ensure primary is included
+        if (!addresses.Contains(userEmail, StringComparer.OrdinalIgnoreCase))
+            addresses.Insert(0, userEmail);
+
+        var token = await GetAccessTokenAsync(userEmail);
+        if (token == null)
+            return (false, 0, addresses.Count, "Service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        int updated = 0, failed = 0;
+
+        foreach (var addr in addresses)
+        {
+            var url     = $"{GmailApiBase}/{Uri.EscapeDataString(userEmail)}/settings/sendAs/{Uri.EscapeDataString(addr)}";
+            var payload = JsonSerializer.Serialize(new { signature = html });
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            var req     = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
+            var resp    = await client.SendAsync(req);
+
+            if (resp.IsSuccessStatusCode)
+                updated++;
+            else
+            {
+                failed++;
+                var err = await resp.Content.ReadAsStringAsync();
+                _logger.LogWarning("UpdateSignature failed for {User}/{Addr}: {Error}", userEmail, addr, err);
+            }
+        }
+
+        return (updated > 0, updated, failed,
+            failed > 0 ? $"{failed} address(es) could not be updated." : null);
+    }
+
+    /// <summary>Render and push the signature template for every employee in <paramref name="employees"/>.</summary>
+    public async Task<(int Success, int Failed, int Skipped, List<BulkSignatureResult> Results)>
+        BulkApplySignatureAsync(IList<Employee> employees, string template, bool includeAliases)
+    {
+        int success = 0, failed = 0, skipped = 0;
+        var results = new List<BulkSignatureResult>();
+
+        foreach (var emp in employees)
+        {
+            if (string.IsNullOrWhiteSpace(emp.Email))
+            {
+                skipped++;
+                results.Add(new BulkSignatureResult(emp.FullName, "", "skipped", "No email address."));
+                continue;
+            }
+
+            var html = await RenderTemplateAsync(template, emp);
+
+            if (includeAliases)
+            {
+                var (ok, updated, _, err) = await UpdateSignatureAllAddressesAsync(emp.Email, html);
+                if (ok) { success++; results.Add(new BulkSignatureResult(emp.FullName, emp.Email, "success", $"Updated {updated} address(es).")); }
+                else    { failed++;  results.Add(new BulkSignatureResult(emp.FullName, emp.Email, "failed",  err ?? "Unknown error.")); }
+            }
+            else
+            {
+                var (ok, err) = await UpdateSignatureAsync(emp.Email, html);
+                if (ok) { success++; results.Add(new BulkSignatureResult(emp.FullName, emp.Email, "success", "Signature updated.")); }
+                else    { failed++;  results.Add(new BulkSignatureResult(emp.FullName, emp.Email, "failed",  err ?? "Unknown error.")); }
+            }
+        }
+
+        return (success, failed, skipped, results);
+    }
+
     // ── Template rendering ────────────────────────────────────────────────────
 
     public Task<string> RenderTemplateAsync(string template, Employee employee)
@@ -294,6 +418,8 @@ public class GoogleWorkspaceService
             .Replace('/', '_');
 
     // ── Inner types ───────────────────────────────────────────────────────────
+
+    public sealed record BulkSignatureResult(string Name, string Email, string Status, string Message);
 
     private sealed class ServiceAccountKey
     {

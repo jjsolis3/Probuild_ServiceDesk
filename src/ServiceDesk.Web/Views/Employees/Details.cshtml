@@ -502,8 +502,20 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
                 <h6 class="mb-0 fw-semibold"><i class="bi bi-pen me-2"></i>Gmail Email Signature</h6>
-                <div class="text-muted small">
-                    View and update the Gmail signature for <strong>@Model.Email</strong> via Google Workspace.
+                <div class="text-muted small d-flex align-items-center gap-2 flex-wrap mt-1">
+                    <span>Signature for <strong>@Model.Email</strong> via Google Workspace.</span>
+                    @if (Model.LastGoogleSignatureSync.HasValue)
+                    {
+                        <span class="badge bg-success" id="sigSyncBadge" title="Last pushed to Gmail">
+                            <i class="bi bi-cloud-check me-1"></i>Synced @Model.LastGoogleSignatureSync.Value.ToString("MMM d, yyyy h:mm tt")
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary" id="sigSyncBadge">
+                            <i class="bi bi-cloud-slash me-1"></i>Never synced
+                        </span>
+                    }
                 </div>
             </div>
             <div class="d-flex gap-2">
@@ -535,13 +547,27 @@
                                   placeholder="HTML signature will appear here. Click 'Load Current' to fetch from Gmail or 'Apply Template' to use the configured template."></textarea>
                         <div id="sigPreview" class="p-3 d-none" style="min-height:200px;font-family:Arial,sans-serif;font-size:14px;"></div>
                     </div>
-                    <div class="card-footer d-flex gap-2">
-                        <button class="btn btn-primary btn-sm" onclick="saveSignature()">
-                            <i class="bi bi-cloud-upload me-1"></i>Save to Gmail
-                        </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="clearEditor()">
-                            <i class="bi bi-trash me-1"></i>Clear
-                        </button>
+                    <div class="card-footer">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button class="btn btn-primary btn-sm" onclick="saveSignature()">
+                                <i class="bi bi-cloud-upload me-1"></i>Save to Gmail
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearEditor()">
+                                <i class="bi bi-trash me-1"></i>Clear
+                            </button>
+                            <div class="form-check form-switch ms-2 mb-0 d-flex align-items-center gap-1">
+                                <input class="form-check-input" type="checkbox" id="sigIncludeAliases"
+                                       role="switch" style="width:2.2em;height:1.2em;" checked />
+                                <label class="form-check-label small" for="sigIncludeAliases">
+                                    Include aliases
+                                    <span class="text-muted">(e.g. .com)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Signature applies to <strong>new emails, replies &amp; forwards</strong> automatically.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -747,10 +773,12 @@
     };
 
     window.saveSignature = function() {
-        var html = editor.value.trim();
+        var html           = editor.value.trim();
+        var includeAliases = document.getElementById('sigIncludeAliases')?.checked ?? false;
         showStatus('Saving signature to Gmail…', 'info');
         var fd = new FormData();
         fd.append('html', html);
+        fd.append('includeAliases', includeAliases);
         fetch('@Url.Action("UpdateSignature", "Employees", new { id = Model.Id })', {
             method: 'POST',
             headers: { 'RequestVerificationToken': token },
@@ -759,6 +787,13 @@
         .then(function(r){ return r.json(); })
         .then(function(d) {
             showStatus(d.message, d.success ? 'success' : 'danger');
+            if (d.success && d.syncDate) {
+                var badge = document.getElementById('sigSyncBadge');
+                if (badge) {
+                    badge.className = 'badge bg-success';
+                    badge.innerHTML = '<i class="bi bi-cloud-check me-1"></i>Synced ' + d.syncDate;
+                }
+            }
         })
         .catch(function(){ showStatus('Network error saving signature.', 'danger'); });
     };
