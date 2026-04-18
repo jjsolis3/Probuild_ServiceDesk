@@ -26,15 +26,20 @@ public class GoogleWorkspaceService
     private const string DriveApiBase     = "https://www.googleapis.com/drive/v3";
     private const string DataTransferBase = "https://admin.googleapis.com/admin/datatransfer/v1";
 
-    private const string SignatureScope = "https://www.googleapis.com/auth/gmail.settings.basic";
-    private const string AdminScope     =
+    private const string SignatureScope   = "https://www.googleapis.com/auth/gmail.settings.basic";
+
+    // Core Admin SDK scopes — these 3 must be in DWD for basic Workspace features to work
+    private const string AdminScope =
         "https://www.googleapis.com/auth/admin.directory.user " +
         "https://www.googleapis.com/auth/admin.directory.group " +
-        "https://www.googleapis.com/auth/admin.reports.usage.readonly " +
-        "https://www.googleapis.com/auth/admin.directory.user.security " +
+        "https://www.googleapis.com/auth/admin.reports.usage.readonly";
+
+    // Extended scopes — each added to DWD separately to unlock advanced features
+    private const string SecurityTokensScope = "https://www.googleapis.com/auth/admin.directory.user.security";
+    private const string AuditReportScope    = "https://www.googleapis.com/auth/admin.reports.audit.readonly";
+    private const string DataTransferScope   =
         "https://www.googleapis.com/auth/admin.datatransfer " +
-        "https://www.googleapis.com/auth/admin.reports.audit.readonly " +
-        "https://www.googleapis.com/auth/drive.readonly";
+        "https://www.googleapis.com/auth/admin.directory.user";
 
     public GoogleWorkspaceService(
         IServiceScopeFactory scopeFactory,
@@ -756,8 +761,11 @@ public class GoogleWorkspaceService
     /// <summary>Revoke all OAuth 2.0 access tokens issued to the user (removes all third-party app access).</summary>
     public async Task<(bool Success, string? Error)> RevokeAllTokensAsync(string userEmail)
     {
-        var token = await GetAdminAccessTokenAsync();
-        if (token == null) return (false, "Admin service account not configured or auth failed.");
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, "Admin service account not configured or auth failed.");
+        var token = await GetAccessTokenAsync(settings.AdminEmail, SecurityTokensScope);
+        if (token == null) return (false, "Auth failed — ensure the 'admin.directory.user.security' scope is added to DWD.");
 
         // List all tokens first
         using var client = _httpClientFactory.CreateClient();
@@ -842,8 +850,11 @@ public class GoogleWorkspaceService
     public async Task<(bool Success, string? TransferId, string? Error)> StartDriveTransferAsync(
         string fromEmail, string toUserEmail)
     {
-        var token = await GetAdminAccessTokenAsync();
-        if (token == null) return (false, null, "Admin service account not configured or auth failed.");
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, null, "Admin service account not configured or auth failed.");
+        var token = await GetAccessTokenAsync(settings.AdminEmail, DataTransferScope);
+        if (token == null) return (false, null, "Auth failed — ensure 'admin.datatransfer' is added to DWD.");
 
         // Resolve destination user to their Google ID
         using var client = _httpClientFactory.CreateClient();
@@ -898,8 +909,11 @@ public class GoogleWorkspaceService
     /// <summary>List OAuth 2.0 tokens / authorized apps for a user.</summary>
     public async Task<(bool Success, List<OAuthTokenInfo> Tokens, string? Error)> GetUserTokensAsync(string userEmail)
     {
-        var token = await GetAdminAccessTokenAsync();
-        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, [], "Admin service account not configured or auth failed.");
+        var token = await GetAccessTokenAsync(settings.AdminEmail, SecurityTokensScope);
+        if (token == null) return (false, [], "Auth failed — add 'admin.directory.user.security' scope to DWD.");
 
         using var client = _httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Authorization =
@@ -940,8 +954,11 @@ public class GoogleWorkspaceService
     public async Task<(bool Success, List<LoginEvent> Events, string? Error)> GetUserLoginActivityAsync(
         string userEmail, int maxResults = 20)
     {
-        var token = await GetAdminAccessTokenAsync();
-        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, [], "Admin service account not configured or auth failed.");
+        var token = await GetAccessTokenAsync(settings.AdminEmail, AuditReportScope);
+        if (token == null) return (false, [], "Auth failed — add 'admin.reports.audit.readonly' scope to DWD.");
 
         using var client = _httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Authorization =

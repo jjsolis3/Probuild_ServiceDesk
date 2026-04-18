@@ -78,13 +78,29 @@
                     <li>In <strong>Google Cloud Console</strong>, enable the <em>Gmail API</em> and <em>Admin SDK API</em> for your project.</li>
                     <li>Create a <strong>Service Account</strong> and download its JSON key.</li>
                     <li>In the Service Account details, enable <strong>Domain-Wide Delegation</strong> and copy the Client ID.</li>
-                    <li>In <strong>Google Admin Console</strong> → Security → API Controls → Domain-wide Delegation, paste the Client ID and add <strong>all four scopes</strong>:
-                        <ul class="mt-1 mb-1 ps-3 small" style="line-height:2;">
+                    <li>In <strong>Google Admin Console</strong> → Security → API Controls → Domain-wide Delegation, paste the Client ID and add the scopes below.
+                        <div class="mt-2 mb-1">
+                            <span class="badge bg-primary me-1">Required</span> — core features (signatures, suspend, groups, storage):
+                        </div>
+                        <ul class="mt-1 mb-2 ps-3 small" style="line-height:2;">
                             <li><code>https://www.googleapis.com/auth/gmail.settings.basic</code> <span class="text-muted">(signatures, OOO)</span></li>
-                            <li><code>https://www.googleapis.com/auth/admin.directory.user</code> <span class="text-muted">(suspend, password reset)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.directory.user</code> <span class="text-muted">(user info, suspend, password reset, 2FA status)</span></li>
                             <li><code>https://www.googleapis.com/auth/admin.directory.group</code> <span class="text-muted">(group memberships)</span></li>
-                            <li><code>https://www.googleapis.com/auth/admin.reports.usage.readonly</code> <span class="text-muted">(Drive/Gmail storage)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.reports.usage.readonly</code> <span class="text-muted">(Drive/Gmail storage usage)</span></li>
                         </ul>
+                        <div class="mt-1 mb-1">
+                            <span class="badge bg-secondary me-1">Optional</span> — advanced features (add when needed):
+                        </div>
+                        <ul class="mt-1 mb-1 ps-3 small" style="line-height:2;">
+                            <li><code>https://www.googleapis.com/auth/admin.directory.user.security</code> <span class="text-muted">(OAuth app audit &amp; token revocation)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.reports.audit.readonly</code> <span class="text-muted">(login activity)</span></li>
+                            <li><code>https://www.googleapis.com/auth/admin.datatransfer</code> <span class="text-muted">(offboarding Drive file transfer)</span></li>
+                            <li><code>https://www.googleapis.com/auth/drive.readonly</code> <span class="text-muted">(list shared drives for transfer picker)</span></li>
+                        </ul>
+                        <div class="alert alert-warning py-1 small mt-2 mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            <strong>Important:</strong> Each scope set must be saved as one comma-separated entry for the same Client ID. Adding even one unauthorized scope to a JWT breaks <em>all</em> API calls that use that token.
+                        </div>
                     </li>
                     <li>Upload the JSON key below and click <strong>Save</strong>.</li>
                     <li>Click <strong>Test Connection</strong> to verify.</li>
