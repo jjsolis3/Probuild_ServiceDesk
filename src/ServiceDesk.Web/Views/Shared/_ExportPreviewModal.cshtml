@@ -49,13 +49,11 @@
     </div>
 </div>
 
-<script>
-    var __ssBranding = @Html.Raw(brandingJson);
-</script>
+<script type="application/json" id="__ssBrandingData">@Html.Raw(brandingJson)</script>
 <script>
 (function () {
     /* ── branding ── */
-    var B = window.__ssBranding;
+    var B = JSON.parse(document.getElementById('__ssBrandingData').textContent);
 
     /* ── public API ── */
     window.ssExport = {
