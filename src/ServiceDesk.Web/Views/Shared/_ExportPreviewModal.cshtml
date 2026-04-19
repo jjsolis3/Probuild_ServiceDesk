@@ -13,6 +13,21 @@
         ssLogo  = Url.Content("~/images/logo.png"),
         ssDark  = Url.Content("~/images/logo_Dark.png")
     });
+
+    // Build the print-window HTML template in C# — keeps ALL tag strings out of <script>
+    string printStyles =
+        "body{font-family:Arial,sans-serif;font-size:13px;margin:24px;color:#222;}" +
+        "table{border-collapse:collapse;width:100%;font-size:12px;}" +
+        "th,td{border:1px solid #ccc;padding:4px 7px;vertical-align:top;}" +
+        "th{background:#f0f4fa;font-weight:700;}" +
+        "img{max-width:100%;height:auto;}" +
+        "hr{border:none;border-top:1px solid #1a3a6b;}" +
+        "@page{margin:12mm;}";
+
+    var printTplJson = JsonSerializer.Serialize(new {
+        head = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{TITLE}</title><style>" + printStyles + "</style></head><body>",
+        foot = "</body></html>"
+    });
 }
 
 <!-- ─── Export / Print Preview Modal ─────────────────────────────── -->
@@ -50,6 +65,7 @@
 </div>
 
 <script type="application/json" id="__ssBrandingData">@Html.Raw(brandingJson)</script>
+<script type="application/json" id="__ssPrintTemplate">@Html.Raw(printTplJson)</script>
 <script>
 (function () {
     /* ── branding ── */
@@ -251,22 +267,9 @@
         var page = document.getElementById('ssExportPage');
         var win = window.open('', '_blank', 'width=1100,height=800');
         if (!win) { alert('Please allow pop-ups to use the Print feature.'); return; }
-        win.document.write(
-            '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-            '<title>' + escHtml(window.ssExport._title) + '</title>' +
-            '<style>' +
-              'body{font-family:Arial,sans-serif;font-size:13px;margin:24px;color:#222;}' +
-              'table{border-collapse:collapse;width:100%;font-size:12px;}' +
-              'th,td{border:1px solid #ccc;padding:4px 7px;vertical-align:top;}' +
-              'th{background:#f0f4fa;font-weight:700;}' +
-              'img{max-width:100%;height:auto;}' +
-              'hr{border:none;border-top:1px solid #1a3a6b;}' +
-              '@@page{margin:12mm;}' +
-            '</style>' +
-            '</head><body>' +
-            page.innerHTML +
-            '</body></html>'
-        );
+        var tpl = JSON.parse(document.getElementById('__ssPrintTemplate').textContent);
+        var head = tpl.head.replace('{TITLE}', escHtml(window.ssExport._title));
+        win.document.write(head + buildHeader(window.ssExport._title) + page.innerHTML + buildFooter() + tpl.foot);
         win.document.close();
         win.focus();
         setTimeout(function () { win.print(); }, 600);
