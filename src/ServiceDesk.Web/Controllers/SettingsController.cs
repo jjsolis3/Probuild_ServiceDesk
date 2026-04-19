@@ -1516,6 +1516,19 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(Ai));
     }
 
+    // POST: Settings/TestOllama — ping Ollama and return diagnostic JSON
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestOllama()
+    {
+        var ollama = HttpContext.RequestServices.GetService<OllamaService>();
+        if (ollama == null)
+            return Json(new { ok = false, message = "OllamaService is not registered.", models = Array.Empty<string>() });
+
+        var (ok, message, models) = await ollama.TestConnectionAsync();
+        return Json(new { ok, message, models });
+    }
+
     // GET: Settings/AiDashboard — AI statistics dashboard
     public async Task<IActionResult> AiDashboard()
     {

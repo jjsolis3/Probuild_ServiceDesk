@@ -97,13 +97,61 @@ public class OllamaService
         return await GenerateAsync(prompt, ct);
     }
 
+    /// <summary>
+    /// Tests the Ollama connection and returns a diagnostic result.
+    /// Does not require Ollama to be enabled — tests the raw connection.
+    /// </summary>
+    public async Task<(bool Ok, string Message, string[] Models)> TestConnectionAsync(
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var (_, url, configuredModel) = await LoadSettingsAsync();
+            var client = _httpClientFactory.CreateClient("Ollama");
+
+            using var tagsResponse = await client.GetAsync($"{url.TrimEnd('/')}/api/tags", ct);
+            if (!tagsResponse.IsSuccessStatusCode)
+                return (false, $"Ollama server at {url} returned HTTP {(int)tagsResponse.StatusCode}.", []);
+
+            var json = await tagsResponse.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+
+            var names = new List<string>();
+            if (doc.RootElement.TryGetProperty("models", out var modelsArr))
+            {
+                foreach (var m in modelsArr.EnumerateArray())
+                {
+                    if (m.TryGetProperty("name", out var nameProp))
+                        names.Add(nameProp.GetString() ?? "");
+                }
+            }
+
+            var modelFound = names.Any(n => n.StartsWith(configuredModel, StringComparison.OrdinalIgnoreCase));
+            var msg = modelFound
+                ? $"Connected to Ollama at {url}. Model '{configuredModel}' is available."
+                : $"Connected to Ollama at {url}, but model '{configuredModel}' was NOT found. Available: {string.Join(", ", names.DefaultIfEmpty("(none)"))}";
+
+            return (modelFound, msg, names.ToArray());
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"Cannot reach Ollama server: {ex.Message}", []);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Connection test failed: {ex.Message}", []);
+        }
+    }
+
     // ── Core generation ──────────────────────────────────────────────────────
 
     private async Task<string?> GenerateAsync(string prompt, CancellationToken ct)
     {
+        string url = "http://localhost:11434", model = "phi";
         try
         {
-            var (enabled, url, model) = await LoadSettingsAsync();
+            bool enabled;
+            (enabled, url, model) = await LoadSettingsAsync();
             if (!enabled) return null;
 
             var client = _httpClientFactory.CreateClient("Ollama");
@@ -125,7 +173,9 @@ public class OllamaService
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("[Ollama] Non-success response {Code}", (int)response.StatusCode);
+                var errBody = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("[Ollama] HTTP {Code} from {Url} with model '{Model}'. Body: {Body}",
+                    (int)response.StatusCode, url, model, errBody);
                 return null;
             }
 
@@ -141,9 +191,14 @@ public class OllamaService
         {
             return null;
         }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[Ollama] Cannot reach server at {Url}.", url);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Ollama] Generation failed.");
+            _logger.LogError(ex, "[Ollama] Generation failed (url={Url}, model={Model}).", url, model);
             return null;
         }
     }
@@ -162,7 +217,7 @@ public class OllamaService
         var enabled = settings.TryGetValue("OllamaEnabled", out var e)
                       && string.Equals(e, "true", StringComparison.OrdinalIgnoreCase);
         var url   = settings.TryGetValue("OllamaUrl",   out var u) && !string.IsNullOrWhiteSpace(u) ? u : "http://localhost:11434";
-        var model = settings.TryGetValue("OllamaModel", out var m) && !string.IsNullOrWhiteSpace(m) ? m : "phi3";
+        var model = settings.TryGetValue("OllamaModel", out var m) && !string.IsNullOrWhiteSpace(m) ? m : "phi";
 
         return (enabled, url, model);
     }

@@ -357,7 +357,8 @@ public class TicketsController : Controller
     {
         if (id == null) return NotFound();
 
-        var ticket = await _context.Tickets
+        var ticketTask = _context.Tickets
+            .AsNoTracking()
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
@@ -370,12 +371,24 @@ public class TicketsController : Controller
             .Include(t => t.TimeEntries.OrderByDescending(e => e.WorkDate))
             .FirstOrDefaultAsync(t => t.Id == id);
 
+        var ollamaEnabledTask = _context.AppSettings
+            .Where(s => s.Key == "OllamaEnabled")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+
+        await Task.WhenAll(ticketTask, ollamaEnabledTask);
+
+        var ticket = ticketTask.Result;
         if (ticket == null) return NotFound();
+
+        ViewBag.OllamaEnabled = string.Equals(ollamaEnabledTask.Result, "true", StringComparison.OrdinalIgnoreCase);
+        ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
 
         // Submitter's assigned assets for quick reference.
         if (ticket.SubmittedById > 0)
         {
             ViewBag.SubmitterAssets = await _context.Assets
+                .AsNoTracking()
                 .Where(a => a.AssignedToId == ticket.SubmittedById)
                 .OrderBy(a => a.AssetTag)
                 .Take(20)
@@ -524,28 +537,27 @@ public class TicketsController : Controller
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
-        // Load pending AI recommendation (if any) so the view can render the triage card
-        var pendingRec = await _context.AiRecommendations
+        // Parallel: AI recommendation + Ollama flag + SLA baseline
+        var pendingRecTask = _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
-        ViewBag.AiRecommendation = pendingRec;
 
-        // Load Ollama feature flag so the view can show/hide the "Draft AI Reply" button
-        var ollamaEnabled = await _context.AppSettings
+        var ollamaEnabledTask = _context.AppSettings
             .Where(s => s.Key == "OllamaEnabled")
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
-        ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
 
-        // SLA risk for this specific ticket
-        await _slaRisk.EnsureBaselinesBuiltAsync();
+        var slaBaselineTask = _slaRisk.EnsureBaselinesBuiltAsync();
+
+        await Task.WhenAll(pendingRecTask, ollamaEnabledTask, slaBaselineTask);
+
+        ViewBag.AiRecommendation  = pendingRecTask.Result;
+        ViewBag.OllamaEnabled     = string.Equals(ollamaEnabledTask.Result, "true", StringComparison.OrdinalIgnoreCase);
         ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
         ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
-
-        // Note count for the "Summarize Thread" button visibility check
-        ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
+        ViewBag.NoteCount         = ticket.Notes?.Count ?? 0;
 
         PopulateDropdowns(ticket);
         return View(ticket);
