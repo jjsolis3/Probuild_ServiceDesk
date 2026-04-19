@@ -102,6 +102,100 @@
                 </div>
             </div>
         }
+
+        @{
+            var timeEntries = Model.TimeEntries?.OrderByDescending(e => e.WorkDate).ToList()
+                              ?? new List<TicketTimeEntry>();
+            var totalHours = (decimal)(ViewBag.TimeTotalHours ?? 0m);
+            var billableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
+        }
+        <div class="card mt-3" id="timeTrackingCard">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-stopwatch me-1 text-primary"></i>Time Tracking</span>
+                <span class="small text-muted">
+                    Total: <strong>@totalHours.ToString("0.##")h</strong>
+                    · Billable: <strong>@billableHours.ToString("0.##")h</strong>
+                </span>
+            </div>
+            <div class="card-body">
+                <form asp-action="AddTimeEntry" asp-route-id="@Model.Id" method="post" class="row g-2 align-items-end mb-3">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Date</label>
+                        <input type="date" name="workDate" class="form-control form-control-sm"
+                               value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Hours</label>
+                        <input type="number" name="hours" step="0.25" min="0.25" max="999"
+                               class="form-control form-control-sm" placeholder="0.00" required />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small mb-1">Description</label>
+                        <input type="text" name="description" class="form-control form-control-sm"
+                               maxlength="1000" placeholder="What did you work on?" />
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="billableChk" />
+                            <label class="form-check-label small" for="billableChk">Billable</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">
+                            <i class="bi bi-plus-lg"></i> Log
+                        </button>
+                    </div>
+                </form>
+
+                @if (timeEntries.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Hours</th>
+                                    <th>Description</th>
+                                    <th>Billable</th>
+                                    <th>By</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in timeEntries)
+                                {
+                                    <tr>
+                                        <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
+                                        <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
+                                        <td class="small">@e.Description</td>
+                                        <td>
+                                            @if (e.IsBillable)
+                                            { <span class="badge bg-success">Billable</span> }
+                                            else
+                                            { <span class="text-muted small">—</span> }
+                                        </td>
+                                        <td class="small text-muted">@e.LoggedByEmail</td>
+                                        <td class="text-end">
+                                            <form asp-action="DeleteTimeEntry" asp-route-id="@Model.Id" method="post"
+                                                  class="d-inline" onsubmit="return confirm('Delete this time entry?');">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="entryId" value="@e.Id" />
+                                                <button type="submit" class="btn btn-link btn-sm text-danger p-0" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted small mb-0">No time logged yet.</p>
+                }
+            </div>
+        </div>
     </div>
 
     <div class="col-md-4 d-flex flex-column gap-3">
@@ -205,6 +299,44 @@
                 </dl>
             </div>
         </div>
+
+        @{
+            var submitterAssets = ViewBag.SubmitterAssets as List<Asset> ?? new List<Asset>();
+        }
+        @if (submitterAssets.Any())
+        {
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-laptop me-1 text-primary"></i>Submitter's Assets</span>
+                    <span class="badge bg-secondary">@submitterAssets.Count</span>
+                </div>
+                <ul class="list-group list-group-flush small">
+                    @foreach (var asset in submitterAssets)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <div class="text-truncate" style="max-width: 220px;">
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="text-decoration-none">
+                                    <strong>@asset.AssetTag</strong>
+                                    <span class="text-muted">— @asset.Name</span>
+                                </a>
+                                <div class="text-muted small">@asset.AssetType</div>
+                            </div>
+                            @if (Model.AssetId == asset.Id)
+                            {
+                                <span class="badge bg-success">Linked</span>
+                            }
+                            else
+                            {
+                                <a asp-action="Edit" asp-route-id="@Model.Id" asp-route-presetAssetId="@asset.Id"
+                                   class="btn btn-link btn-sm p-0" title="Link this asset to the ticket">
+                                    <i class="bi bi-link-45deg"></i>
+                                </a>
+                            }
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
     </div>
 </div>
 

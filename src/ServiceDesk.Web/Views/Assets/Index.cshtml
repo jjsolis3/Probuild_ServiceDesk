@@ -52,6 +52,9 @@
         <button type="button" class="btn btn-sm btn-outline-primary" onclick="submitBulk('status')">Set Status</button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulk('delete')"
                 data-confirm="Delete all selected assets?">Delete Selected</button>
+        <button type="button" class="btn btn-sm btn-outline-dark" onclick="printSelectedLabels()">
+            <i class="bi bi-qr-code me-1"></i>Print QR Labels
+        </button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">Clear</button>
     </form>
 </div>
@@ -416,6 +419,12 @@ function submitBulk(action) {
         container.appendChild(inp);
     });
     form.submit();
+}
+function printSelectedLabels() {
+    const ids = Array.from(document.querySelectorAll('.asset-cb:checked')).map(cb => cb.value);
+    if (ids.length === 0) { alert('No assets selected.'); return; }
+    const url = '@Url.Action("QrLabelSheet", "Assets")?' + ids.map(i => 'ids=' + encodeURIComponent(i)).join('&');
+    window.open(url, '_blank');
 }
 
 // ── QR Code ────────────────────────────────────────────────────────────────

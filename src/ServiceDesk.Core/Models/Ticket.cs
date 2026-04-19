@@ -106,6 +106,7 @@ public class Ticket
     public ICollection<TicketEmail> Emails { get; set; } = new List<TicketEmail>();
     public ICollection<TicketAttachment> Attachments { get; set; } = new List<TicketAttachment>();
     public ICollection<TicketHistory> History { get; set; } = new List<TicketHistory>();
+    public ICollection<TicketTimeEntry> TimeEntries { get; set; } = new List<TicketTimeEntry>();
 
     // ── Escalation ────────────────────────────────────────────────────────────
     /// <summary>True once an agent has manually escalated this ticket.</summary>

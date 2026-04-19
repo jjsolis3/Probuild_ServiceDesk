@@ -1117,6 +1117,103 @@ public static class DbInitializer
                         TransactionDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
                     );
                 END");
+
+            // 36. Ticket time tracking, License seat assignments, Onboarding / Offboarding tasks
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                BEGIN
+                    CREATE TABLE dbo.TicketTimeEntries (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId            INT             NOT NULL
+                            CONSTRAINT FK_TicketTimeEntries_Tickets
+                            REFERENCES dbo.Tickets(Id) ON DELETE CASCADE,
+                        LoggedByEmail       NVARCHAR(200)   NULL,
+                        LoggedByEmployeeId  INT             NULL
+                            CONSTRAINT FK_TicketTimeEntries_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        WorkDate            DATE            NOT NULL,
+                        Hours               DECIMAL(6,2)    NOT NULL,
+                        Description         NVARCHAR(1000)  NULL,
+                        IsBillable          BIT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_TicketTimeEntries_Ticket_Date
+                        ON dbo.TicketTimeEntries (TicketId, WorkDate);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LicenseSeats')
+                BEGIN
+                    CREATE TABLE dbo.LicenseSeats (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        SoftwareLicenseId   INT             NOT NULL
+                            CONSTRAINT FK_LicenseSeats_Licenses
+                            REFERENCES dbo.SoftwareLicenses(Id) ON DELETE CASCADE,
+                        EmployeeId          INT             NULL
+                            CONSTRAINT FK_LicenseSeats_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        AssetId             INT             NULL
+                            CONSTRAINT FK_LicenseSeats_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE SET NULL,
+                        AssignedDate        DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        AssignedByEmail     NVARCHAR(200)   NULL,
+                        RevokedDate         DATETIME2       NULL,
+                        RevokedByEmail      NVARCHAR(200)   NULL,
+                        Notes               NVARCHAR(500)   NULL
+                    );
+
+                    CREATE INDEX IX_LicenseSeats_License_Revoked
+                        ON dbo.LicenseSeats (SoftwareLicenseId, RevokedDate);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeTaskTemplates')
+                BEGIN
+                    CREATE TABLE dbo.EmployeeTaskTemplates (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Title                   NVARCHAR(200)   NOT NULL,
+                        Description             NVARCHAR(1000)  NULL,
+                        Category                NVARCHAR(100)   NULL,
+                        TaskType                INT             NOT NULL DEFAULT 0,
+                        DefaultAssigneeEmail    NVARCHAR(200)   NULL,
+                        DueInDays               INT             NULL,
+                        SortOrder               INT             NOT NULL DEFAULT 0,
+                        IsActive                BIT             NOT NULL DEFAULT 1,
+                        CreatedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_EmployeeTaskTemplates_Type_Active_Sort
+                        ON dbo.EmployeeTaskTemplates (TaskType, IsActive, SortOrder);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeTasks')
+                BEGIN
+                    CREATE TABLE dbo.EmployeeTasks (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        EmployeeId          INT             NOT NULL
+                            CONSTRAINT FK_EmployeeTasks_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE CASCADE,
+                        Title               NVARCHAR(200)   NOT NULL,
+                        Description         NVARCHAR(1000)  NULL,
+                        Category            NVARCHAR(100)   NULL,
+                        TaskType            INT             NOT NULL DEFAULT 0,
+                        Status              INT             NOT NULL DEFAULT 0,
+                        AssignedToEmail     NVARCHAR(200)   NULL,
+                        DueDate             DATE            NULL,
+                        CompletedDate       DATETIME2       NULL,
+                        CompletedByEmail    NVARCHAR(200)   NULL,
+                        Notes               NVARCHAR(1000)  NULL,
+                        SortOrder           INT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_EmployeeTasks_Employee_Type_Status
+                        ON dbo.EmployeeTasks (EmployeeId, TaskType, Status);
+                END");
         }
         catch (Exception ex)
         {

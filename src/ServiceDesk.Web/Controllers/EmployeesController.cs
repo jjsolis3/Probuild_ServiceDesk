@@ -115,6 +115,12 @@ public class EmployeesController : Controller
             ?.Where(x => x.Count >= 3 && x.OpenCount > 0)
             .ToList();
 
+        // Onboarding / Offboarding checklist
+        ViewBag.EmployeeTasks = await _context.EmployeeTasks
+            .Where(t => t.EmployeeId == id)
+            .OrderBy(t => t.TaskType).ThenBy(t => t.SortOrder).ThenBy(t => t.Title)
+            .ToListAsync();
+
         return View(employee);
     }
 

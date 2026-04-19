@@ -94,6 +94,16 @@
             <i class="bi bi-google me-1"></i>Workspace
         </a>
     </li>
+    <li class="nav-item">
+        <a class="@TabClass("checklist")" href="?tab=checklist">
+            <i class="bi bi-list-check me-1"></i>Checklist
+            @{
+                var tabTasks = ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>();
+                var tabOpen = tabTasks.Count(t => t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
+            }
+            @if (tabOpen > 0) { <span class="badge bg-warning text-dark ms-1">@tabOpen</span> }
+        </a>
+    </li>
 </ul>
 
 <div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
@@ -851,6 +861,166 @@
             </div><!-- /row -->
         </div><!-- /wsContent -->
     </div><!-- /workspace pane -->
+
+    <!-- ═══ CHECKLIST ════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("checklist")" id="checklistPane">
+        @{
+            var tasks        = ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>();
+            var onTasks      = tasks.Where(t => t.TaskType == EmployeeTaskType.Onboarding).ToList();
+            var offTasks     = tasks.Where(t => t.TaskType == EmployeeTaskType.Offboarding).ToList();
+            int DoneCount(List<EmployeeTask> list) => list.Count(t => t.Status == EmployeeTaskStatus.Completed);
+            int Pct(List<EmployeeTask> list) => list.Count == 0 ? 0 : DoneCount(list) * 100 / list.Count;
+        }
+
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-list-check me-2 text-primary"></i>Onboarding &amp; Offboarding Checklist</h6>
+                <div class="text-muted small">Track provisioning and separation tasks. Templates managed in Settings.</div>
+            </div>
+            @if (User.IsInRole("Admin"))
+            {
+                <a asp-controller="EmployeeTasks" asp-action="Templates" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-gear me-1"></i>Manage Templates
+                </a>
+            }
+        </div>
+
+        <div class="row g-3">
+            @{
+                async Task RenderChecklist(string title, string icon, string badgeCls, EmployeeTaskType type, List<EmployeeTask> list)
+                {
+                    var done = DoneCount(list);
+                    var pct  = Pct(list);
+                    <div class="col-lg-6">
+                        <div class="card shadow-sm h-100 border-0">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold"><i class="bi @icon me-2"></i>@title</span>
+                                <span class="badge @badgeCls">@done / @list.Count complete</span>
+                            </div>
+                            <div class="card-body">
+                                @if (list.Any())
+                                {
+                                    <div class="progress mb-3" style="height:8px;">
+                                        <div class="progress-bar bg-success" style="width:@pct%"></div>
+                                    </div>
+                                }
+
+                                <form asp-controller="EmployeeTasks" asp-action="ApplyTemplate" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="employeeId" value="@Model.Id" />
+                                    <input type="hidden" name="taskType" value="@type" />
+                                    <button type="submit" class="btn btn-sm btn-outline-primary mb-3">
+                                        <i class="bi bi-magic me-1"></i>Apply @title Template
+                                    </button>
+                                </form>
+
+                                @if (!list.Any())
+                                {
+                                    <p class="text-muted small mb-0">No @title.ToLower() tasks yet. Apply the template or add a custom task below.</p>
+                                }
+                                else
+                                {
+                                    <ul class="list-group list-group-flush mb-3">
+                                        @foreach (var task in list.OrderBy(t => t.SortOrder).ThenBy(t => t.Title))
+                                        {
+                                            var isDone = task.Status == EmployeeTaskStatus.Completed;
+                                            var isSkipped = task.Status == EmployeeTaskStatus.Skipped;
+                                            <li class="list-group-item px-0 py-2">
+                                                <div class="d-flex align-items-start gap-2">
+                                                    <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post" class="mt-1">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="taskId" value="@task.Id" />
+                                                        <input type="hidden" name="status" value="@(isDone ? EmployeeTaskStatus.Pending : EmployeeTaskStatus.Completed)" />
+                                                        <button type="submit" class="btn btn-link p-0 border-0" title="@(isDone ? "Mark as pending" : "Mark as done")">
+                                                            @if (isDone)
+                                                            { <i class="bi bi-check-square-fill text-success fs-5"></i> }
+                                                            else
+                                                            { <i class="bi bi-square fs-5 text-muted"></i> }
+                                                        </button>
+                                                    </form>
+                                                    <div class="flex-grow-1">
+                                                        <div class="@(isDone ? "text-decoration-line-through text-muted" : "")">
+                                                            <strong>@task.Title</strong>
+                                                            @if (!string.IsNullOrEmpty(task.Category))
+                                                            { <span class="badge bg-light text-dark small ms-1">@task.Category</span> }
+                                                            @if (isSkipped)
+                                                            { <span class="badge bg-secondary ms-1">Skipped</span> }
+                                                            else if (task.IsOverdue)
+                                                            { <span class="badge bg-danger ms-1">Overdue</span> }
+                                                        </div>
+                                                        @if (!string.IsNullOrEmpty(task.Description))
+                                                        { <div class="small text-muted">@task.Description</div> }
+                                                        <div class="small text-muted d-flex flex-wrap gap-3 mt-1">
+                                                            @if (!string.IsNullOrEmpty(task.AssignedToEmail))
+                                                            { <span><i class="bi bi-person me-1"></i>@task.AssignedToEmail</span> }
+                                                            @if (task.DueDate.HasValue)
+                                                            { <span><i class="bi bi-calendar me-1"></i>Due @task.DueDate.Value.ToString("MMM d, yyyy")</span> }
+                                                            @if (task.CompletedDate.HasValue)
+                                                            { <span><i class="bi bi-check-circle me-1"></i>Completed @task.CompletedDate.Value.ToString("MMM d, yyyy") @(string.IsNullOrEmpty(task.CompletedByEmail) ? "" : $"by {task.CompletedByEmail}")</span> }
+                                                        </div>
+                                                    </div>
+                                                    <div class="d-flex gap-1">
+                                                        @if (!isSkipped)
+                                                        {
+                                                            <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post">
+                                                                @Html.AntiForgeryToken()
+                                                                <input type="hidden" name="taskId" value="@task.Id" />
+                                                                <input type="hidden" name="status" value="@EmployeeTaskStatus.Skipped" />
+                                                                <button type="submit" class="btn btn-link btn-sm p-0 text-muted" title="Skip">
+                                                                    <i class="bi bi-dash-circle"></i>
+                                                                </button>
+                                                            </form>
+                                                        }
+                                                        <form asp-controller="EmployeeTasks" asp-action="DeleteTask" method="post"
+                                                              onsubmit="return confirm('Delete this task?');">
+                                                            @Html.AntiForgeryToken()
+                                                            <input type="hidden" name="taskId" value="@task.Id" />
+                                                            <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+
+                                <details>
+                                    <summary class="small text-primary">+ Add custom task</summary>
+                                    <form asp-controller="EmployeeTasks" asp-action="AddTask" method="post" class="mt-2">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="employeeId" value="@Model.Id" />
+                                        <input type="hidden" name="taskType" value="@type" />
+                                        <div class="row g-2">
+                                            <div class="col-12">
+                                                <input name="title" class="form-control form-control-sm" maxlength="200" placeholder="Task title" required />
+                                            </div>
+                                            <div class="col-12">
+                                                <textarea name="description" rows="2" class="form-control form-control-sm" maxlength="1000" placeholder="Description (optional)"></textarea>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input name="assignedToEmail" type="email" class="form-control form-control-sm" placeholder="Assigned to email" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input name="dueDate" type="date" class="form-control form-control-sm" />
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-sm btn-primary mt-2">
+                                            <i class="bi bi-plus-lg me-1"></i>Add Task
+                                        </button>
+                                    </form>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            @{ await RenderChecklist("Onboarding", "bi-person-plus", "bg-success", EmployeeTaskType.Onboarding, onTasks); }
+            @{ await RenderChecklist("Offboarding", "bi-person-dash", "bg-warning text-dark", EmployeeTaskType.Offboarding, offTasks); }
+        </div>
+    </div><!-- /checklist pane -->
 
 </div>
 

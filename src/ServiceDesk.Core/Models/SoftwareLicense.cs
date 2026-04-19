@@ -55,6 +55,9 @@ public class SoftwareLicense
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedDate { get; set; } = DateTime.UtcNow;
 
+    // Navigation
+    public ICollection<LicenseSeat> Seats { get; set; } = new List<LicenseSeat>();
+
     // Computed
     public int     AvailableSeats => TotalSeats - SeatsInUse;
     public decimal? TotalCost     => CostPerSeat.HasValue ? CostPerSeat * TotalSeats : null;

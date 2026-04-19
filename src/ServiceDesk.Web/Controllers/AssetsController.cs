@@ -508,6 +508,21 @@ public class AssetsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    // ── Bulk QR Label Sheet ─────────────────────────────────────────────────
+    [HttpGet]
+    public async Task<IActionResult> QrLabelSheet(int[]? ids)
+    {
+        IQueryable<Asset> query = _context.Assets;
+        if (ids != null && ids.Length > 0)
+            query = query.Where(a => ids.Contains(a.Id));
+
+        var assets = await query
+            .OrderBy(a => a.AssetTag)
+            .ToListAsync();
+
+        return View(assets);
+    }
+
     // ── Quick Edit (inline) ───────────────────────────────────────────────────
 
     [HttpPost]

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -72,9 +73,87 @@ public class SoftwareLicensesController : Controller
     public async Task<IActionResult> Details(int? id)
     {
         if (id == null) return NotFound();
-        var license = await _context.SoftwareLicenses.FindAsync(id);
+        var license = await _context.SoftwareLicenses
+            .Include(l => l.Seats.OrderByDescending(s => s.AssignedDate))
+                .ThenInclude(s => s.Employee)
+            .Include(l => l.Seats)
+                .ThenInclude(s => s.Asset)
+            .FirstOrDefaultAsync(l => l.Id == id);
         if (license == null) return NotFound();
+
+        ViewBag.Employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+            .ToListAsync();
+
+        ViewBag.Assets = await _context.Assets
+            .OrderBy(a => a.AssetTag)
+            .Select(a => new { a.Id, a.AssetTag, a.Name })
+            .ToListAsync();
+
         return View(license);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AssignSeat(int id, int? employeeId, int? assetId, string? notes)
+    {
+        var license = await _context.SoftwareLicenses
+            .Include(l => l.Seats)
+            .FirstOrDefaultAsync(l => l.Id == id);
+        if (license == null) return NotFound();
+
+        if (employeeId == null && assetId == null)
+        {
+            TempData["Error"] = "Select an employee or asset to assign the seat to.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var activeCount = license.Seats.Count(s => s.RevokedDate == null);
+        if (activeCount >= license.TotalSeats)
+        {
+            TempData["Error"] = "No available seats remaining. Increase the total seat count first.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var seat = new LicenseSeat
+        {
+            SoftwareLicenseId = id,
+            EmployeeId = employeeId,
+            AssetId = assetId,
+            AssignedDate = DateTime.UtcNow,
+            AssignedByEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name,
+            Notes = notes
+        };
+        _context.LicenseSeats.Add(seat);
+
+        license.SeatsInUse = activeCount + 1;
+        license.UpdatedDate = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Seat assigned.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevokeSeat(int id, int seatId)
+    {
+        var license = await _context.SoftwareLicenses
+            .Include(l => l.Seats)
+            .FirstOrDefaultAsync(l => l.Id == id);
+        if (license == null) return NotFound();
+
+        var seat = license.Seats.FirstOrDefault(s => s.Id == seatId);
+        if (seat == null || seat.RevokedDate != null) return NotFound();
+
+        seat.RevokedDate = DateTime.UtcNow;
+        seat.RevokedByEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        license.SeatsInUse = license.Seats.Count(s => s.RevokedDate == null);
+        license.UpdatedDate = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Seat revoked.";
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     public async Task<IActionResult> Edit(int? id)

@@ -1111,7 +1111,7 @@ public class SettingsController : Controller
         // Only show employees who can actually be assigned tickets:
         // those with an active portal account whose role has ManageTickets permission.
         var staffRoleIds = await _context.Roles
-            .Where(r => r.Permissions.Contains("ManageTickets"))
+            .Where(r => r.Permissions != null && r.Permissions.Contains("ManageTickets"))
             .Select(r => r.Id)
             .ToListAsync();
         var staffEmpIds = await _context.PortalUsers

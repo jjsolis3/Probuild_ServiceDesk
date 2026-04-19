@@ -367,11 +367,82 @@ public class TicketsController : Controller
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
+            .Include(t => t.TimeEntries.OrderByDescending(e => e.WorkDate))
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (ticket == null) return NotFound();
 
+        // Submitter's assigned assets for quick reference.
+        if (ticket.SubmittedById > 0)
+        {
+            ViewBag.SubmitterAssets = await _context.Assets
+                .Where(a => a.AssignedToId == ticket.SubmittedById)
+                .OrderBy(a => a.AssetTag)
+                .Take(20)
+                .ToListAsync();
+        }
+
+        ViewBag.TimeTotalHours = ticket.TimeEntries.Sum(e => e.Hours);
+        ViewBag.TimeBillableHours = ticket.TimeEntries.Where(e => e.IsBillable).Sum(e => e.Hours);
+
         return View(ticket);
+    }
+
+    // ──────────────────────────── Time Tracking ────────────────────────────
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
+        string? description, bool isBillable)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+        int? empId = null;
+        if (!string.IsNullOrWhiteSpace(userEmail))
+        {
+            empId = await _context.Employees
+                .Where(e => e.Email == userEmail)
+                .Select(e => (int?)e.Id)
+                .FirstOrDefaultAsync();
+        }
+
+        var entry = new TicketTimeEntry
+        {
+            TicketId = id,
+            WorkDate = workDate.Date == default ? DateTime.UtcNow.Date : workDate.Date,
+            Hours = hours,
+            Description = description,
+            IsBillable = isBillable,
+            LoggedByEmail = userEmail,
+            LoggedByEmployeeId = empId,
+            CreatedDate = DateTime.UtcNow
+        };
+
+        _context.TicketTimeEntries.Add(entry);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Logged {hours:0.##} hours.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteTimeEntry(int id, int entryId)
+    {
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
+        if (entry == null) return NotFound();
+
+        _context.TicketTimeEntries.Remove(entry);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Time entry removed.";
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     [HttpGet]

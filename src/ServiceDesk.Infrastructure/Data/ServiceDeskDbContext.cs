@@ -81,6 +81,16 @@ public class ServiceDeskDbContext : DbContext
     // CSAT surveys
     public DbSet<CsatSurvey> CsatSurveys => Set<CsatSurvey>();
 
+    // Ticket time tracking
+    public DbSet<TicketTimeEntry> TicketTimeEntries => Set<TicketTimeEntry>();
+
+    // Software license seat assignments
+    public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
+
+    // Employee onboarding / offboarding checklists
+    public DbSet<EmployeeTaskTemplate> EmployeeTaskTemplates => Set<EmployeeTaskTemplate>();
+    public DbSet<EmployeeTask> EmployeeTasks => Set<EmployeeTask>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -498,5 +508,60 @@ public class ServiceDeskDbContext : DbContext
         // Index on ticket + status for fast pending lookup
         modelBuilder.Entity<AiRecommendation>()
             .HasIndex(r => new { r.TicketId, r.Status });
+
+        // TicketTimeEntry -> Ticket (cascade)
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.Ticket)
+            .WithMany(t => t.TimeEntries)
+            .HasForeignKey(e => e.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.LoggedByEmployee)
+            .WithMany()
+            .HasForeignKey(e => e.LoggedByEmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .Property(e => e.Hours)
+            .HasPrecision(6, 2);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasIndex(e => new { e.TicketId, e.WorkDate });
+
+        // LicenseSeat -> SoftwareLicense (cascade)
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.SoftwareLicense)
+            .WithMany(l => l.Seats)
+            .HasForeignKey(s => s.SoftwareLicenseId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.Employee)
+            .WithMany(e => e.LicenseSeats)
+            .HasForeignKey(s => s.EmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.Asset)
+            .WithMany()
+            .HasForeignKey(s => s.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasIndex(s => new { s.SoftwareLicenseId, s.RevokedDate });
+
+        // EmployeeTask -> Employee (cascade)
+        modelBuilder.Entity<EmployeeTask>()
+            .HasOne(t => t.Employee)
+            .WithMany(e => e.Tasks)
+            .HasForeignKey(t => t.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EmployeeTask>()
+            .HasIndex(t => new { t.EmployeeId, t.TaskType, t.Status });
+
+        modelBuilder.Entity<EmployeeTaskTemplate>()
+            .HasIndex(t => new { t.TaskType, t.IsActive, t.SortOrder });
     }
 }
