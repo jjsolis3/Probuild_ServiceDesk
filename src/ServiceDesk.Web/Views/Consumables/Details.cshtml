@@ -79,18 +79,15 @@
                     @Model.QuantityOnHand
                 </div>
                 <div class="text-muted mb-3">units on hand</div>
-                @if (Model.ReorderPoint > 0)
+                @if (Model.ReorderPoint.HasValue && Model.ReorderPoint.Value > 0)
                 {
+                    var reorder = Model.ReorderPoint.Value;
+                    var pct = Math.Min(100, Model.QuantityOnHand * 100 / (reorder * 3));
                     <div class="progress mb-2" style="height:10px;">
-                        @{
-                            var pct = Model.ReorderPoint > 0
-                                ? Math.Min(100, Model.QuantityOnHand * 100 / (Model.ReorderPoint * 3))
-                                : 0;
-                        }
                         <div class="progress-bar @(Model.IsLowStock ? "bg-warning" : "bg-success")"
                              style="width:@pct%"></div>
                     </div>
-                    <small class="text-muted">Reorder point: @Model.ReorderPoint units</small>
+                    <small class="text-muted">Reorder point: @reorder units</small>
                 }
             </div>
         </div>
