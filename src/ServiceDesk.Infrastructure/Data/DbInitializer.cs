@@ -1019,6 +1019,10 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'LastGoogleSignatureSync')
                     ALTER TABLE dbo.Employees ADD LastGoogleSignatureSync DATETIME2 NULL;");
 
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'ScheduledOffboardingDate')
+                    ALTER TABLE dbo.Employees ADD ScheduledOffboardingDate DATETIME2 NULL;");
+
             // 35. Asset Manager upgrades — Maintenance logs, Checkouts, Software Licenses, Consumables
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetMaintenanceLogs')

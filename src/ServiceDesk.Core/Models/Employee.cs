@@ -53,6 +53,10 @@ public class Employee
     [Display(Name = "Last Signature Sync")]
     public DateTime? LastGoogleSignatureSync { get; set; }
 
+    [Display(Name = "Scheduled Offboarding Date")]
+    [DataType(DataType.Date)]
+    public DateTime? ScheduledOffboardingDate { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();

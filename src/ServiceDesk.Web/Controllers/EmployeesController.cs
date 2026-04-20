@@ -867,12 +867,36 @@ public class EmployeesController : Controller
             if (!ok) anyFail = true;
         }
 
+        // Mark employee inactive on success and clear scheduled date
+        if (!anyFail)
+        {
+            employee.IsActive                 = false;
+            employee.ScheduledOffboardingDate = null;
+            await _context.SaveChangesAsync();
+        }
+
         return Json(new
         {
             success = !anyFail,
-            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully.",
+            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully. Employee marked inactive.",
             steps
         });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetOffboardingDate(int id, DateTime? scheduledDate)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        employee.ScheduledOffboardingDate = scheduledDate;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = scheduledDate.HasValue
+            ? $"Offboarding scheduled for {scheduledDate.Value:MMM dd, yyyy}."
+            : "Scheduled offboarding date cleared.";
+
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     // ── Security ──────────────────────────────────────────────────────────────
