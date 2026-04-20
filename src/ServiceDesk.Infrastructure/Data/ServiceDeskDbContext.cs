@@ -438,6 +438,19 @@ public class ServiceDeskDbContext : DbContext
             .Property(t => t.DescriptionHtml)
             .HasColumnType("nvarchar(max)");
 
+        // Decimal precision — prevents silent truncation and suppresses EF warnings
+        modelBuilder.Entity<AssetMaintenanceLog>()
+            .Property(m => m.Cost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ConsumableItem>()
+            .Property(i => i.UnitCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<SoftwareLicense>()
+            .Property(l => l.CostPerSeat)
+            .HasPrecision(18, 2);
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)

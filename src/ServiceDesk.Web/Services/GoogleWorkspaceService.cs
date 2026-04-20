@@ -59,7 +59,7 @@ public class GoogleWorkspaceService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-        return await db.GoogleWorkspaceSettings.FirstOrDefaultAsync();
+        return await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
     }
 
     /// <summary>Save (or update) the settings record. Encrypts the service account JSON if provided.</summary>
@@ -69,7 +69,7 @@ public class GoogleWorkspaceService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
 
-        var settings = await db.GoogleWorkspaceSettings.FirstOrDefaultAsync()
+        var settings = await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync()
                        ?? new GoogleWorkspaceSettings();
 
         settings.AdminEmail        = adminEmail.Trim();
@@ -1106,7 +1106,7 @@ public class GoogleWorkspaceService
         // Persist test result
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-        var s = await db.GoogleWorkspaceSettings.FirstOrDefaultAsync();
+        var s = await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
         if (s != null)
         {
             s.LastTestedDate  = DateTime.UtcNow;

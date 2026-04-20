@@ -76,6 +76,7 @@ public class EmployeesController : Controller
         // Load employee without ticket collections — counts/lists come from targeted queries below
         var employee = await _context.Employees
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(e => e.AssignedAssets)
             .Include(e => e.Credentials)
             .Include(e => e.Branch)
