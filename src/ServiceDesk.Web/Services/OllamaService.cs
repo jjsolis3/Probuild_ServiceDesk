@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
 using System.Text;
@@ -95,6 +96,41 @@ public class OllamaService
             noteBlock;
 
         return await GenerateAsync(prompt, ct);
+    }
+
+    /// <summary>
+    /// Generates a polished Knowledge Base article draft from a resolved ticket.
+    /// Returns (Problem, Solution) paragraphs parsed from the LLM output.
+    /// Returns (null, null) when Ollama is unavailable or the ticket has no resolution notes.
+    /// </summary>
+    public async Task<(string? Problem, string? Solution)> GenerateKbDraftAsync(
+        string title, string description, string? resolutionNotes,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(resolutionNotes))
+            return (null, null);
+
+        var prompt =
+            "You are an IT knowledge base editor. A support ticket has been resolved. " +
+            "Rewrite it as a clean, searchable knowledge base article. " +
+            "Return EXACTLY two labeled sections and nothing else:\n" +
+            "PROBLEM: (one short paragraph describing the symptom or error a user would search for)\n" +
+            "SOLUTION: (numbered step-by-step instructions to resolve the issue)\n\n" +
+            $"Ticket title: {title}\n" +
+            $"Issue description:\n{description}\n\n" +
+            $"Agent resolution notes:\n{resolutionNotes}\n\n" +
+            "Write only the two labeled sections.";
+
+        var result = await GenerateAsync(prompt, ct);
+        if (result == null) return (null, null);
+
+        var problemMatch  = Regex.Match(result, @"PROBLEM:\s*(.+?)(?=SOLUTION:|$)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var solutionMatch = Regex.Match(result, @"SOLUTION:\s*(.+)$",              RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+        var problem  = problemMatch.Success  ? problemMatch.Groups[1].Value.Trim()  : null;
+        var solution = solutionMatch.Success ? solutionMatch.Groups[1].Value.Trim() : null;
+
+        return (problem, solution);
     }
 
     /// <summary>

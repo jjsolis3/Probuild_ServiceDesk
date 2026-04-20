@@ -379,29 +379,58 @@ public class ReportsController : Controller
 
     public async Task<IActionResult> Users()
     {
+        // Project employee base data — no SubmittedTickets Include
         var employees = await _context.Employees
-            .Include(e => e.SubmittedTickets)
-            .Include(e => e.AssignedAssets)
+            .AsNoTracking()
             .Where(e => e.IsActive)
+            .Select(e => new {
+                e.Id,
+                FullName       = e.FirstName + " " + e.LastName,
+                Department     = e.Department ?? "—",
+                BranchName     = e.Branch != null ? e.Branch.Name : "—",
+                AssetsAssigned = e.AssignedAssets.Count()
+            })
             .ToListAsync();
+
+        var empIds = employees.Select(e => e.Id).ToList();
+
+        // Single DB query aggregates all ticket stats grouped by submitter
+        var ticketStats = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => t.SubmittedById.HasValue && empIds.Contains(t.SubmittedById.Value))
+            .GroupBy(t => t.SubmittedById!.Value)
+            .Select(g => new {
+                EmployeeId = g.Key,
+                Total    = g.Count(),
+                Open     = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress),
+                Resolved = g.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+            })
+            .ToDictionaryAsync(x => x.EmployeeId);
+
+        var userStats = employees.Select(e => {
+            ticketStats.TryGetValue(e.Id, out var s);
+            return new UserTicketStats {
+                EmployeeName     = e.FullName,
+                Department       = e.Department,
+                Branch           = e.BranchName,
+                TicketsSubmitted = s?.Total    ?? 0,
+                TicketsOpen      = s?.Open     ?? 0,
+                TicketsResolved  = s?.Resolved ?? 0,
+                AssetsAssigned   = e.AssetsAssigned
+            };
+        })
+        .OrderByDescending(u => u.TicketsSubmitted)
+        .ToList();
 
         var model = new UserReportViewModel
         {
-            UserStats = employees.Select(e => new UserTicketStats
-            {
-                EmployeeName = e.FullName,
-                Department = e.Department,
-                TicketsSubmitted = e.SubmittedTickets.Count,
-                TicketsOpen = e.SubmittedTickets.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress),
-                TicketsResolved = e.SubmittedTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed),
-                AssetsAssigned = e.AssignedAssets.Count
-            })
-            .OrderByDescending(u => u.TicketsSubmitted)
-            .ToList(),
-
-            TicketsByDepartment = employees
-                .GroupBy(e => e.Department)
-                .ToDictionary(g => g.Key, g => g.Sum(e => e.SubmittedTickets.Count))
+            UserStats = userStats,
+            TicketsByDepartment = userStats
+                .GroupBy(u => u.Department)
+                .ToDictionary(g => g.Key, g => g.Sum(u => u.TicketsSubmitted)),
+            TicketsByBranch = userStats
+                .GroupBy(u => u.Branch)
+                .ToDictionary(g => g.Key, g => g.Sum(u => u.TicketsSubmitted))
         };
 
         return View(model);

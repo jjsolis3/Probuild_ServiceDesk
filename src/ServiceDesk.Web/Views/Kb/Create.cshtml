@@ -18,8 +18,17 @@
         <span class="badge bg-info">
             <i class="bi bi-ticket me-1"></i>Promoted from Ticket #@Model.SourceTicketId
         </span>
+        <button type="button" id="btnGenerateKbAi" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-robot me-1"></i>Generate with AI
+        </button>
     }
 </div>
+@if (isFromTicket)
+{
+    <div id="aiKbResult" class="alert alert-info py-2 small mb-3" style="display:none;">
+        <i class="bi bi-robot me-1"></i><span id="aiKbMsg"></span>
+    </div>
+}
 
 @if (TempData["Success"] != null)
 {
@@ -89,4 +98,53 @@
 
 @section Scripts {
     @await Html.PartialAsync("_ValidationScriptsPartial")
+    @if (isFromTicket)
+    {
+        <script>
+        (function () {
+            var btn    = document.getElementById('btnGenerateKbAi');
+            var result = document.getElementById('aiKbResult');
+            var msg    = document.getElementById('aiKbMsg');
+            if (!btn) return;
+
+            var ticketId = @Model.SourceTicketId;
+            var token    = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+            btn.addEventListener('click', function () {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating…';
+                result.style.display = 'none';
+
+                var fd = new FormData();
+                fd.append('__RequestVerificationToken', token);
+                fd.append('ticketId', ticketId);
+
+                fetch('/Kb/GenerateKbDraft', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Generate with AI';
+                        if (data.success) {
+                            document.getElementById('Problem').value  = data.problem;
+                            document.getElementById('Solution').value = data.solution;
+                            result.className = 'alert alert-success py-2 small mb-3';
+                            msg.textContent  = 'AI draft applied — review and edit before saving.';
+                            result.style.display = '';
+                        } else {
+                            result.className = 'alert alert-warning py-2 small mb-3';
+                            msg.textContent  = data.error || 'AI generation failed.';
+                            result.style.display = '';
+                        }
+                    })
+                    .catch(function () {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Generate with AI';
+                        result.className = 'alert alert-danger py-2 small mb-3';
+                        msg.textContent  = 'Request failed — check that Ollama is running.';
+                        result.style.display = '';
+                    });
+            });
+        })();
+        </script>
+    }
 }

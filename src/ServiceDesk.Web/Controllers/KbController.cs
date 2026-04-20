@@ -7,6 +7,7 @@ using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -165,6 +166,36 @@ public class KbController : Controller
         }
         await PopulateCategoryViewBagAsync();
         return View(model);
+    }
+
+    // -------------------------------------------------------
+    // POST /Kb/GenerateKbDraft  (IT only) — AI-generated article draft
+    // -------------------------------------------------------
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> GenerateKbDraft(int ticketId)
+    {
+        var ticket = await _context.Tickets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == ticketId);
+
+        if (ticket == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(ticket.ResolutionNotes))
+            return Json(new { success = false, error = "This ticket has no Resolution Notes. Add resolution notes before generating a KB draft." });
+
+        var ollama = HttpContext.RequestServices.GetService<OllamaService>();
+        if (ollama == null)
+            return Json(new { success = false, error = "AI service not registered." });
+
+        var (problem, solution) = await ollama.GenerateKbDraftAsync(
+            ticket.Title, ticket.Description ?? string.Empty, ticket.ResolutionNotes);
+
+        if (problem == null || solution == null)
+            return Json(new { success = false, error = "Ollama did not return a usable response. Check Settings → AI to verify Ollama is running and the model name matches." });
+
+        return Json(new { success = true, problem, solution });
     }
 
     // -------------------------------------------------------
