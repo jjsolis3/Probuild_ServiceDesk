@@ -397,8 +397,8 @@ public class ReportsController : Controller
         // Single DB query aggregates all ticket stats grouped by submitter
         var ticketStats = await _context.Tickets
             .AsNoTracking()
-            .Where(t => t.SubmittedById.HasValue && empIds.Contains(t.SubmittedById.Value))
-            .GroupBy(t => t.SubmittedById!.Value)
+            .Where(t => empIds.Contains(t.SubmittedById))
+            .GroupBy(t => t.SubmittedById)
             .Select(g => new {
                 EmployeeId = g.Key,
                 Total    = g.Count(),
