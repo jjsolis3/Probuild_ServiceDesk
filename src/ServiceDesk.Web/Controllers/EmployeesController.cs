@@ -301,7 +301,23 @@ public class EmployeesController : Controller
 
         if (ModelState.IsValid)
         {
-            _context.Update(employee);
+            var existing = await _context.Employees.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.FirstName    = employee.FirstName;
+            existing.LastName     = employee.LastName;
+            existing.Email        = employee.Email;
+            existing.BranchId     = employee.BranchId;
+            existing.Phone        = employee.Phone;
+            existing.Extension    = employee.Extension;
+            existing.Department   = employee.Department;
+            existing.JobTitle     = employee.JobTitle;
+            existing.HireDate     = employee.HireDate;
+            existing.IsActive     = employee.IsActive;
+            existing.ManagerEmail = employee.ManagerEmail;
+            existing.EmployeeType = employee.EmployeeType;
+            existing.FloorSection = employee.FloorSection;
+
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
@@ -880,6 +896,34 @@ public class EmployeesController : Controller
             success = !anyFail,
             message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully. Employee marked inactive.",
             steps
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SyncWorkspaceProfile(int id)
+    {
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        var (ok, err) = await _googleWorkspace.UpdateUserInfoAsync(
+            userEmail:    employee.Email,
+            jobTitle:     employee.JobTitle,
+            department:   employee.Department,
+            costCenter:   employee.Branch?.CostCenter,
+            employeeType: employee.EmployeeType,
+            buildingId:   employee.Branch?.BuildingId,
+            floorName:    employee.Branch?.Name,
+            floorSection: employee.FloorSection,
+            managerEmail: employee.ManagerEmail);
+
+        return Json(new
+        {
+            success = ok,
+            message = ok
+                ? "Google Workspace profile updated successfully."
+                : $"Update failed: {err}"
         });
     }
 

@@ -426,6 +426,75 @@ public class GoogleWorkspaceService
         return (true, info, null);
     }
 
+    /// <summary>Update Google Workspace user profile fields (org info, location, manager).</summary>
+    public async Task<(bool Success, string? Error)> UpdateUserInfoAsync(string userEmail,
+        string? jobTitle, string? department, string? costCenter, string? employeeType,
+        string? buildingId, string? floorName, string? floorSection, string? managerEmail)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var payload = new Dictionary<string, object>();
+
+        if (jobTitle != null || department != null || costCenter != null || employeeType != null)
+        {
+            payload["organizations"] = new[]
+            {
+                new
+                {
+                    title        = jobTitle       ?? "",
+                    department   = department     ?? "",
+                    costCenter   = costCenter     ?? "",
+                    type         = string.IsNullOrWhiteSpace(employeeType) ? "unknown" : employeeType,
+                    primary      = true
+                }
+            };
+        }
+
+        if (buildingId != null || floorName != null || floorSection != null)
+        {
+            payload["locations"] = new[]
+            {
+                new
+                {
+                    type         = "desk",
+                    buildingId   = buildingId   ?? "",
+                    floorName    = floorName    ?? "",
+                    floorSection = floorSection ?? ""
+                }
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(managerEmail))
+        {
+            payload["relations"] = new[]
+            {
+                new { value = managerEmail, type = "manager" }
+            };
+        }
+
+        if (payload.Count == 0) return (true, null);
+
+        var url     = $"{AdminApiBase}/users/{Uri.EscapeDataString(userEmail)}";
+        var json    = JsonSerializer.Serialize(payload);
+        var req     = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        var resp    = await client.SendAsync(req);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("UpdateUserInfo failed for {User}: {Error}", userEmail, err);
+            return (false, $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        return (true, null);
+    }
+
     /// <summary>Suspend or unsuspend a Google Workspace user account.</summary>
     public async Task<(bool Success, string? Error)> SetSuspendedAsync(string userEmail, bool suspended)
     {

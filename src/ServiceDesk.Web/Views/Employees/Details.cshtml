@@ -660,6 +660,58 @@
             </button>
         </div>
 
+        <!-- ── Sync Profile to Google ─────────────────────────────────────── -->
+        <div class="card border-0 shadow-sm mb-4 border-start border-primary border-3">
+            <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person-badge me-2 text-primary"></i>Employee Profile — Google Directory</span>
+                <button class="btn btn-sm btn-primary" id="btnSyncProfile" onclick="syncProfile()">
+                    <i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google
+                </button>
+            </div>
+            <div class="card-body py-2">
+                <div id="syncProfileResult" class="d-none mb-2"></div>
+                <div class="row g-3 small">
+                    <div class="col-md-3">
+                        <span class="text-muted">Job Title</span><br />
+                        <strong>@(Model.JobTitle ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Department</span><br />
+                        <strong>@Model.Department</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Employee Type</span><br />
+                        <strong>@(Model.EmployeeType ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Manager Email</span><br />
+                        <strong>@(Model.ManagerEmail ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Cost Center</span><br />
+                        <strong>@(Model.Branch?.CostCenter ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Building ID</span><br />
+                        <strong>@(Model.Branch?.BuildingId ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Floor Name (Branch)</span><br />
+                        <strong>@(Model.Branch?.Name ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Floor Section / Team</span><br />
+                        <strong>@(Model.FloorSection ?? "—")</strong>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">
+                    <i class="bi bi-pencil me-1"></i>
+                    To change these values, <a asp-action="Edit" asp-route-id="@Model.Id">edit the employee</a>.
+                    Branch codes (Cost Center, Building ID) are set in <a asp-controller="Settings" asp-action="Branches">Settings → Branches</a>.
+                </div>
+            </div>
+        </div>
+
         <div id="wsAlert" class="d-none mb-3"></div>
         <div id="wsLoader" class="text-center py-4 d-none">
             <div class="spinner-border text-primary"></div><p class="mt-2 text-muted small">Loading Workspace data…</p>
@@ -1286,6 +1338,7 @@
 
 // ── Gmail Signature ───────────────────────────────────────────────────────
 (function () {
+    var token       = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     var editor      = document.getElementById('sigEditor');
     var livePreview = document.getElementById('sigLivePreview');
     var preview     = document.getElementById('sigPreview');
@@ -1734,6 +1787,31 @@
     document.getElementById('offTransfer')?.addEventListener('change', function () {
         document.getElementById('offTransferDest').style.display = this.checked ? '' : 'none';
     });
+
+    // ── Sync Profile to Google ────────────────────────────────────────────────
+    window.syncProfile = function () {
+        var btn    = document.getElementById('btnSyncProfile');
+        var result = document.getElementById('syncProfileResult');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing…';
+
+        post('@Url.Action("SyncWorkspaceProfile","Employees",new{id=Model.Id})', {})
+            .then(function (d) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google';
+                result.className = 'alert py-2 small mb-2 ' + (d.success ? 'alert-success' : 'alert-danger');
+                result.textContent = d.message;
+                result.classList.remove('d-none');
+                if (d.success) setTimeout(function () { result.classList.add('d-none'); }, 5000);
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google';
+                result.className = 'alert alert-danger py-2 small mb-2';
+                result.textContent = 'Request failed — check your connection and try again.';
+                result.classList.remove('d-none');
+            });
+    };
 })();
 
 // ── Ticket Viewer Modal ────────────────────────────────────────────────────
