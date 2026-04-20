@@ -5,9 +5,12 @@
     var categoryBreakdown   = ViewBag.CategoryBreakdown   as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
     var monthlyTrend        = ViewBag.MonthlyTrend        as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
     var recurringCategories = ViewBag.RecurringCategories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
-    int totalSubmitted = Model.SubmittedTickets.Count;
-    int openCount      = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress);
-    int resolvedCount  = Model.SubmittedTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+    var recentSubmitted     = ViewBag.RecentSubmitted     as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var recentAssigned      = ViewBag.RecentAssigned      as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    int totalSubmitted = (int)(ViewBag.TotalSubmitted ?? 0);
+    int openCount      = (int)(ViewBag.OpenCount      ?? 0);
+    int resolvedCount  = (int)(ViewBag.ResolvedCount  ?? 0);
+    int totalAssigned  = (int)(ViewBag.TotalAssigned  ?? 0);
 
     var activeTab = Context.Request.Query["tab"].ToString();
     if (string.IsNullOrEmpty(activeTab)) activeTab = "overview";
@@ -382,39 +385,45 @@
         <ul class="nav nav-pills mb-3" id="ticketSubTabs">
             <li class="nav-item">
                 <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabSubmitted">
-                    Submitted (@Model.SubmittedTickets.Count)
+                    Submitted (@totalSubmitted)
                 </button>
             </li>
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabAssigned">
-                    Assigned to Them (@Model.AssignedTickets.Count)
+                    Assigned to Them (@totalAssigned)
                 </button>
             </li>
         </ul>
         <div class="tab-content">
             <div class="tab-pane fade show active" id="tabSubmitted">
-                @if (!Model.SubmittedTickets.Any())
+                @if (!recentSubmitted.Any())
                 {
                     <p class="text-muted text-center py-4">No submitted tickets.</p>
                 }
                 else
                 {
+                    @if (totalSubmitted > 100)
+                    {
+                        <div class="alert alert-info py-2 small mb-2">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Showing 100 most recent of @totalSubmitted total.
+                            <a asp-controller="Tickets" asp-action="Index" asp-route-submittedById="@Model.Id" class="alert-link ms-1">View all</a>
+                        </div>
+                    }
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0 ss-datatable-compact">
                             <thead class="table-light">
                                 <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var t in Model.SubmittedTickets.OrderByDescending(t => t.CreatedDate))
+                                @foreach (var t in recentSubmitted)
                                 {
                                     <tr>
                                         <td class="text-muted">#@t.Id</td>
-                                        <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a>
-                                        </td>
+                                        <td><a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a></td>
                                         <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
                                         <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
-                                        <td class="text-muted small">@t.CreatedDate.ToString("MMM dd, yyyy")</td>
+                                        <td class="text-muted small">@((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -423,28 +432,33 @@
                 }
             </div>
             <div class="tab-pane fade" id="tabAssigned">
-                @if (!Model.AssignedTickets.Any())
+                @if (!recentAssigned.Any())
                 {
                     <p class="text-muted text-center py-4">No tickets assigned to this employee.</p>
                 }
                 else
                 {
+                    @if (totalAssigned > 100)
+                    {
+                        <div class="alert alert-info py-2 small mb-2">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Showing 100 most recent of @totalAssigned total.
+                        </div>
+                    }
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0 ss-datatable-compact">
                             <thead class="table-light">
                                 <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var t in Model.AssignedTickets.OrderByDescending(t => t.CreatedDate))
+                                @foreach (var t in recentAssigned)
                                 {
                                     <tr>
                                         <td class="text-muted">#@t.Id</td>
-                                        <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a>
-                                        </td>
+                                        <td><a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a></td>
                                         <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
                                         <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
-                                        <td class="text-muted small">@t.CreatedDate.ToString("MMM dd, yyyy")</td>
+                                        <td class="text-muted small">@((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -1575,14 +1589,15 @@
 
 // ── Ticket Viewer Modal ────────────────────────────────────────────────────
 var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
-    Model.SubmittedTickets.Select(t => new {
-        id          = t.Id,
-        title       = t.Title,
+    ((IEnumerable<dynamic>)(ViewBag.RecentSubmitted ?? Enumerable.Empty<dynamic>()))
+    .Select(t => new {
+        id          = (int)t.Id,
+        title       = (string)t.Title,
         statusInt   = (int)t.Status,
-        status      = t.Status.ToString(),
-        priority    = t.Priority.ToString(),
-        category    = t.Category,
-        createdDate = t.CreatedDate.ToString("MMM dd, yyyy")
+        status      = ((object)t.Status).ToString(),
+        priority    = ((object)t.Priority).ToString(),
+        category    = (int)t.Category,
+        createdDate = ((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")
     })
 ));
 

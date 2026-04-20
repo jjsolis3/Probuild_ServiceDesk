@@ -225,24 +225,17 @@
                             @Html.AntiForgeryToken()
                             <div class="mb-3">
                                 <label class="form-label small fw-semibold">Assign To</label>
-                                <select name="employeeId" class="form-select form-select-sm">
-                                    <option value="">— Unassigned —</option>
-                                    @foreach (var emp in Model.ActiveEmployees)
-                                    {
-                                        if (a.AssignedToId == emp.Id)
-                                        {
-                                            <option value="@emp.Id" selected="selected">
-                                                @emp.FullName
-                                            </option>
-                                        }
-                                        else
-                                        {
-                                            <option value="@emp.Id">
-                                                @emp.FullName
-                                            </option>
-                                        }
-                                    }
-                                </select>
+                                <input type="hidden" name="employeeId" id="assignEmpId"
+                                       value="@(a.AssignedToId?.ToString() ?? "")" />
+                                <input type="text" id="assignEmpSearch" class="form-control form-control-sm"
+                                       placeholder="Type name to search employees…"
+                                       value="@(a.AssignedTo?.FullName ?? "")"
+                                       autocomplete="off" />
+                                <div id="assignEmpDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:220px;"></div>
+                                <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-danger"
+                                        onclick="document.getElementById('assignEmpId').value='';document.getElementById('assignEmpSearch').value='';">
+                                    <i class="bi bi-x-circle me-1"></i>Clear (Unassign)
+                                </button>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small fw-semibold">Notes</label>
@@ -568,13 +561,12 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Target Asset <span class="text-danger">*</span></label>
-                                <select name="targetAssetId" class="form-select" required>
-                                    <option value="">— Select asset —</option>
-                                    @foreach (var other in Model.AllOtherAssets)
-                                    {
-                                        <option value="@other.Id">@other.AssetTag — @other.Name</option>
-                                    }
-                                </select>
+                                <input type="hidden" name="targetAssetId" id="relTargetId" required />
+                                <input type="text" id="relTargetSearch" class="form-control"
+                                       placeholder="Type tag or name to search assets…"
+                                       autocomplete="off" />
+                                <div id="relTargetDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:260px;"></div>
+                                <div class="form-text text-muted">Start typing an asset tag or name.</div>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Notes</label>
@@ -823,15 +815,13 @@
                     <form asp-action="CheckOut" asp-route-id="@a.Id" method="post">
                         @Html.AntiForgeryToken()
                         <div class="row g-3">
-                            <div class="col-md-5">
+                            <div class="col-md-5 position-relative">
                                 <label class="form-label fw-semibold">Check Out To</label>
-                                <select name="employeeId" class="form-select form-select-sm">
-                                    <option value="">— Guest / External —</option>
-                                    @foreach (var emp in Model.ActiveEmployees)
-                                    {
-                                        <option value="@emp.Id">@emp.FullName</option>
-                                    }
-                                </select>
+                                <input type="hidden" name="employeeId" id="checkoutEmpId" />
+                                <input type="text" id="checkoutEmpSearch" class="form-control form-select-sm"
+                                       placeholder="Type name (leave blank for guest)…"
+                                       autocomplete="off" />
+                                <div id="checkoutEmpDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:220px;"></div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Due Date <span class="text-danger">*</span></label>
@@ -1068,6 +1058,66 @@
         inp.type = inp.type === 'password' ? 'text' : 'password';
         ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
     };
+})();
+</script>
+
+<script>
+// ── AJAX typeaheads for employee/asset search ─────────────────────────────
+(function () {
+    var assetId = @a.Id;
+
+    function makeTypeahead(inputId, dropId, hiddenId, fetchUrl, labelKey) {
+        var input  = document.getElementById(inputId);
+        var drop   = document.getElementById(dropId);
+        var hidden = document.getElementById(hiddenId);
+        if (!input) return;
+
+        var timer;
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            var q = input.value.trim();
+            if (q.length < 1) { drop.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                fetch(fetchUrl + encodeURIComponent(q))
+                    .then(function (r) { return r.json(); })
+                    .then(function (items) {
+                        drop.innerHTML = '';
+                        if (!items.length) {
+                            drop.innerHTML = '<span class="list-group-item list-group-item-action disabled small text-muted">No results</span>';
+                        } else {
+                            items.forEach(function (item) {
+                                var btn = document.createElement('button');
+                                btn.type = 'button';
+                                btn.className = 'list-group-item list-group-item-action small py-1';
+                                btn.textContent = item[labelKey] || item.name || item.label;
+                                btn.addEventListener('mousedown', function (e) {
+                                    e.preventDefault();
+                                    hidden.value = item.id;
+                                    input.value  = btn.textContent;
+                                    drop.style.display = 'none';
+                                });
+                                drop.appendChild(btn);
+                            });
+                        }
+                        drop.style.display = '';
+                    });
+            }, 220);
+        });
+
+        input.addEventListener('blur', function () {
+            setTimeout(function () { drop.style.display = 'none'; }, 200);
+        });
+        input.addEventListener('focus', function () {
+            if (drop.innerHTML && input.value.trim()) drop.style.display = '';
+        });
+    }
+
+    makeTypeahead('assignEmpSearch',   'assignEmpDrop',   'assignEmpId',
+                  '/Employees/Search?q=', 'name');
+    makeTypeahead('checkoutEmpSearch', 'checkoutEmpDrop', 'checkoutEmpId',
+                  '/Employees/Search?q=', 'name');
+    makeTypeahead('relTargetSearch',   'relTargetDrop',   'relTargetId',
+                  '/Assets/Search?excludeId=' + assetId + '&q=', 'label');
 })();
 </script>
 }

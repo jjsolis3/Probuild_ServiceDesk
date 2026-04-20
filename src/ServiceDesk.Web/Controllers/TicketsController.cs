@@ -359,6 +359,7 @@ public class TicketsController : Controller
 
         var ticket = await _context.Tickets
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
