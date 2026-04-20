@@ -357,7 +357,7 @@ public class TicketsController : Controller
     {
         if (id == null) return NotFound();
 
-        var ticketTask = _context.Tickets
+        var ticket = await _context.Tickets
             .AsNoTracking()
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
@@ -371,17 +371,14 @@ public class TicketsController : Controller
             .Include(t => t.TimeEntries.OrderByDescending(e => e.WorkDate))
             .FirstOrDefaultAsync(t => t.Id == id);
 
-        var ollamaEnabledTask = _context.AppSettings
+        if (ticket == null) return NotFound();
+
+        var ollamaEnabled = await _context.AppSettings
             .Where(s => s.Key == "OllamaEnabled")
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
 
-        await Task.WhenAll(ticketTask, ollamaEnabledTask);
-
-        var ticket = ticketTask.Result;
-        if (ticket == null) return NotFound();
-
-        ViewBag.OllamaEnabled = string.Equals(ollamaEnabledTask.Result, "true", StringComparison.OrdinalIgnoreCase);
+        ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
         ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
 
         // Submitter's assigned assets for quick reference.
@@ -526,6 +523,9 @@ public class TicketsController : Controller
     {
         if (id == null) return NotFound();
 
+        // Start SLA baseline early — uses its own DbContext scope, safe to overlap
+        var slaBaselineTask = _slaRisk.EnsureBaselinesBuiltAsync();
+
         var ticket = await _context.Tickets
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
@@ -537,24 +537,22 @@ public class TicketsController : Controller
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
-        // Parallel: AI recommendation + Ollama flag + SLA baseline
-        var pendingRecTask = _context.AiRecommendations
+        // Sequential _context queries — DbContext is not thread-safe
+        var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
 
-        var ollamaEnabledTask = _context.AppSettings
+        var ollamaEnabled = await _context.AppSettings
             .Where(s => s.Key == "OllamaEnabled")
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
 
-        var slaBaselineTask = _slaRisk.EnsureBaselinesBuiltAsync();
+        await slaBaselineTask;
 
-        await Task.WhenAll(pendingRecTask, ollamaEnabledTask, slaBaselineTask);
-
-        ViewBag.AiRecommendation  = pendingRecTask.Result;
-        ViewBag.OllamaEnabled     = string.Equals(ollamaEnabledTask.Result, "true", StringComparison.OrdinalIgnoreCase);
+        ViewBag.AiRecommendation  = pendingRec;
+        ViewBag.OllamaEnabled     = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
         ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
         ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
         ViewBag.NoteCount         = ticket.Notes?.Count ?? 0;
