@@ -367,8 +367,10 @@ public class GoogleWorkspaceService
 
     public Task<string> RenderTemplateAsync(string template, Employee employee)
     {
-        var branchName  = employee.Branch?.Name  ?? "";
-        var branchPhone = employee.Branch?.Phone ?? "";
+        var branchName    = employee.Branch?.Name       ?? "";
+        var branchPhone   = employee.Branch?.Phone      ?? "";
+        var costCenter    = employee.Branch?.CostCenter ?? "";
+        var buildingId    = employee.Branch?.BuildingId ?? "";
 
         static string Slug(string s) => s.Replace(" ", "_");
 
@@ -384,7 +386,9 @@ public class GoogleWorkspaceService
             .Replace("{PHONE}",           employee.Phone     ?? "")
             .Replace("{DEPARTMENT}",      employee.Department)
             .Replace("{BRANCH}",          branchName)
-            .Replace("{BRANCH_PHONE}",    branchPhone));
+            .Replace("{BRANCH_PHONE}",    branchPhone)
+            .Replace("{COST_CENTER}",     costCenter)
+            .Replace("{BUILDING_ID}",     buildingId));
     }
 
     // ── Admin Directory — User management ────────────────────────────────────

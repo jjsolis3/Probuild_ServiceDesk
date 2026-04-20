@@ -639,6 +639,8 @@
                                 <tr><td><code>{DEPARTMENT}</code></td><td class="text-muted">@Model.Department</td></tr>
                                 <tr><td><code>{BRANCH}</code></td><td class="text-muted">@(Model.Branch?.Name ?? "—")</td></tr>
                                 <tr><td><code>{BRANCH_PHONE}</code></td><td class="text-muted">@(Model.Branch?.Phone ?? "—")</td></tr>
+                                <tr><td><code>{COST_CENTER}</code></td><td class="text-muted">@(Model.Branch?.CostCenter ?? "—")</td></tr>
+                                <tr><td><code>{BUILDING_ID}</code></td><td class="text-muted">@(Model.Branch?.BuildingId ?? "—")</td></tr>
                             </tbody>
                         </table>
                     </div>
