@@ -42,6 +42,31 @@ public class TicketsController : Controller
         _slaRisk            = slaRisk;
     }
 
+    /// <summary>
+    /// Lightweight poll — returns the count of tickets created after <paramref name="since"/>.
+    /// Called every 30 s by the Tickets Index page; shows a "new tickets" banner without auto-refresh.
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> PollNewTickets(string since)
+    {
+        if (!DateTime.TryParse(since, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var sinceDate))
+            return Json(new { count = 0 });
+
+        var count = await _context.Tickets
+            .CountAsync(t => t.CreatedDate > sinceDate);
+
+        var preview = await _context.Tickets
+            .Where(t => t.CreatedDate > sinceDate)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(3)
+            .Select(t => new { t.Id, t.Title, priority = t.Priority.ToString() })
+            .ToListAsync();
+
+        return Json(new { count, preview });
+    }
+
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
     public async Task<IActionResult> Index(
         TicketStatus[]?  statuses,    int[]? categories,
@@ -503,6 +528,35 @@ public class TicketsController : Controller
             // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
             _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
 
+            // Check for possible duplicate tickets (>80% TF-IDF similarity) — post an internal note if found
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var similar = await _similarity.FindSimilarAsync(
+                        ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
+                    var duplicates = similar.Where(s => s.ScorePct >= 80).ToList();
+                    if (duplicates.Count == 0) return;
+
+                    var links = string.Join(", ", duplicates.Select(d => $"#{d.TicketId} ({d.ScorePct:F0}% match)"));
+                    using var scope = HttpContext.RequestServices.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = ticket.Id,
+                        AuthorName  = "AI Duplicate Detector",
+                        AuthorEmail = null,
+                        Content     = $"🔁 Possible duplicate detected. Similar open tickets: {links}. "
+                                    + "Consider merging or linking before working this ticket.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                }
+                catch { }
+            });
+
             // Notify assigned agent (fire-and-forget)
             if (ticket.AssignedToId != null)
                 _ = Task.Run(async () =>
@@ -768,6 +822,42 @@ public class TicketsController : Controller
         ticket.UpdatedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
+        // Fire escalation detection in background for public (non-internal) comments on active tickets
+        if (!isInternal
+            && ticket.Status != TicketStatus.Resolved
+            && ticket.Status != TicketStatus.Closed
+            && ticket.Status != TicketStatus.Cancelled)
+        {
+            var capturedContent  = content;
+            var capturedTicketId = id;
+            var capturedUser     = User.Identity?.Name ?? "System";
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var (escalating, reason) = await _ollama.DetectEscalationAsync(capturedContent);
+                    if (!escalating) return;
+
+                    // Post an internal alert note so the assigned agent sees it immediately
+                    using var scope = HttpContext.RequestServices.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = capturedTicketId,
+                        AuthorName  = "AI Escalation Monitor",
+                        AuthorEmail = null,
+                        Content     = $"⚠️ Escalation signal detected in customer reply: {reason}. "
+                                    + "Review this ticket promptly and consider prioritizing or escalating.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                }
+                catch { /* non-critical — never block the response */ }
+            });
+        }
+
         return Json(new
         {
             success = true,
@@ -1018,6 +1108,57 @@ public class TicketsController : Controller
         return Json(responses);
     }
 
+    // GET: Tickets/RankedCannedResponses?ticketId=N
+    // Same as CannedResponses but ranked by token overlap with the ticket's title + description.
+    // Responses with score > 0 are marked isRecommended = true and sorted to the top.
+    [HttpGet]
+    public async Task<IActionResult> RankedCannedResponses(int ticketId)
+    {
+        var responses = await _context.CannedResponses
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Title)
+            .Select(r => new { r.Id, r.Title, r.Content, r.Category })
+            .ToListAsync();
+
+        if (ticketId <= 0) return Json(responses.Select(r => new
+            { r.Id, r.Title, r.Content, r.Category, isRecommended = false, score = 0 }));
+
+        var ticket = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => t.Id == ticketId)
+            .Select(t => new { t.Title, t.Description })
+            .FirstOrDefaultAsync();
+
+        if (ticket == null) return Json(responses);
+
+        var ticketTokens = Tokenize(ticket.Title + " " + (ticket.Description ?? ""));
+
+        var ranked = responses
+            .Select(r =>
+            {
+                var rTokens = Tokenize(r.Title + " " + r.Content);
+                var overlap = ticketTokens.Intersect(rTokens).Count();
+                return new { r.Id, r.Title, r.Content, r.Category, isRecommended = overlap > 0, score = overlap };
+            })
+            .OrderByDescending(r => r.score)
+            .ThenBy(r => r.Title)
+            .ToList();
+
+        return Json(ranked);
+    }
+
+    private static HashSet<string> Tokenize(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var stopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "the","a","an","is","it","in","on","at","to","for","of","and","or","with","this","that",
+              "i","we","you","my","your","our","be","am","are","was","were","has","have","had",
+              "not","no","can","will","do","did","get","got","please","hi","hello","dear","team" };
+        return System.Text.RegularExpressions.Regex.Split(text.ToLowerInvariant(), @"\W+")
+            .Where(w => w.Length > 2 && !stopwords.Contains(w))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     // ── Ticket Escalation ────────────────────────────────────────────────────
 
     [HttpPost]
@@ -1173,7 +1314,9 @@ public class TicketsController : Controller
             catch { /* swallow — notification is non-critical */ }
         });
 
-        return Json(new { success = true });
+        // Suggest KB article creation when resolution notes are present
+        var suggestKb = !string.IsNullOrWhiteSpace(ticket.ResolutionNotes);
+        return Json(new { success = true, ticketId = id, suggestKb });
     }
 
     // ── AI Triage endpoints ──────────────────────────────────────────────────

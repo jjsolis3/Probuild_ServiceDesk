@@ -159,6 +159,37 @@ public class OllamaService
     }
 
     /// <summary>
+    /// Detects whether a customer comment signals frustration or escalation intent
+    /// (anger, repeated requests, deadline pressure, mention of manager/legal/news).
+    /// Returns (IsEscalating: true, Reason: short phrase) or (false, "").
+    /// Fast — uses a single yes/no prompt so it completes in a few seconds.
+    /// </summary>
+    public async Task<(bool IsEscalating, string Reason)> DetectEscalationAsync(
+        string commentText, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(commentText)) return (false, "");
+
+        var prompt =
+            "You are an IT help desk supervisor assistant. Read the following customer comment " +
+            "and decide if it signals escalation: frustration, anger, urgency, a deadline, " +
+            "mentions of a manager, legal action, public review, or repeated unresolved requests.\n\n" +
+            "Reply with EXACTLY one of these two formats:\n" +
+            "ESCALATING: <short reason under 10 words>\n" +
+            "NOT_ESCALATING\n\n" +
+            $"Comment:\n{commentText.Length > 500 ? commentText[..500] : commentText}";
+
+        var result = await GenerateAsync(prompt, ct);
+        if (result == null) return (false, "");
+
+        if (result.TrimStart().StartsWith("ESCALATING:", StringComparison.OrdinalIgnoreCase))
+        {
+            var reason = result.TrimStart()[11..].Trim();
+            return (true, reason.Length > 120 ? reason[..120] : reason);
+        }
+        return (false, "");
+    }
+
+    /// <summary>
     /// Tests the Ollama connection and returns a diagnostic result.
     /// Does not require Ollama to be enabled — tests the raw connection.
     /// </summary>

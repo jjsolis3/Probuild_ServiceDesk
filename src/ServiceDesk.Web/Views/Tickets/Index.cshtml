@@ -329,6 +329,31 @@
   </div>
 </div>
 
+<!-- KB article suggestion banner (appears after resolving a ticket with resolution notes) -->
+<div id="kbSuggestionBanner" class="alert alert-success alert-dismissible d-none mb-2 py-2 border-0 shadow-sm" role="alert">
+    <div class="d-flex align-items-center gap-3">
+        <i class="bi bi-journal-plus text-success flex-shrink-0" style="font-size:1.1rem;"></i>
+        <span class="flex-grow-1 small fw-medium">This ticket has resolution notes — add it to the Knowledge Base?</span>
+        <a id="kbSuggestionLink" href="#" class="btn btn-sm btn-success py-0 px-2 flex-shrink-0">
+            <i class="bi bi-plus-lg me-1"></i>Create KB Article
+        </a>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+</div>
+
+<!-- New ticket notification banner (driven by 30-second JS poll, never auto-refreshes) -->
+<div id="newTicketsBanner" class="alert alert-dismissible d-none mb-2 py-2 border-0 shadow-sm"
+     role="alert" style="background:linear-gradient(135deg,#dbeafe,#e0f2fe);">
+    <div class="d-flex align-items-center gap-3">
+        <i class="bi bi-bell-fill text-primary flex-shrink-0"></i>
+        <span id="newTicketsBannerText" class="flex-grow-1 small fw-medium"></span>
+        <button type="button" class="btn btn-sm btn-primary py-0 px-2 flex-shrink-0" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+</div>
+
 <!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
 <div id="ticketsTableContainer">
     @await Html.PartialAsync("_TicketsTable", Model)
@@ -578,6 +603,21 @@
     const toast = new bootstrap.Toast(document.getElementById('quickEditToast'), { delay: 2500 });
     const toastMsg = document.getElementById('quickEditToastMsg');
 
+    function showKbSuggestionBanner(ticketId) {
+        var banner = document.getElementById('kbSuggestionBanner');
+        var link   = document.getElementById('kbSuggestionLink');
+        if (!banner || !link) return;
+        link.href = '/Tickets/SuggestToKb/' + ticketId;
+        link.onclick = function (e) {
+            e.preventDefault();
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', antiForgeryToken);
+            fetch('/Tickets/SuggestToKb/' + ticketId, { method: 'POST', body: fd })
+                .then(function (r) { if (r.redirected) window.location.href = r.url; });
+        };
+        banner.classList.remove('d-none');
+    }
+
     function showToast(msg, isError) {
         const el = document.getElementById('quickEditToast');
         el.classList.toggle('text-bg-success', !isError);
@@ -646,6 +686,9 @@
                             _pendingResolveOpt.classList.add('active');
                         }
                         showToast('Ticket resolved successfully.');
+                        if (data.suggestKb && data.ticketId) {
+                            showKbSuggestionBanner(data.ticketId);
+                        }
                     } else {
                         showToast(data.error || 'Resolution failed.', true);
                     }
@@ -1318,6 +1361,40 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
         renderDropdown();
     };
+})();
+</script>
+
+<script>
+// ── New ticket notification polling ───────────────────────────────────────
+// Polls every 30 s. Shows a banner if new tickets arrive — never auto-refreshes.
+(function () {
+    var since      = new Date().toISOString();
+    var banner     = document.getElementById('newTicketsBanner');
+    var bannerText = document.getElementById('newTicketsBannerText');
+    if (!banner || !bannerText) return;
+
+    var dismissed = false;
+    banner.addEventListener('closed.bs.alert', function () { dismissed = true; });
+
+    function poll() {
+        fetch('/Tickets/PollNewTickets?since=' + encodeURIComponent(since))
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || data.count === 0 || dismissed) return;
+                var noun  = data.count === 1 ? '1 new ticket' : data.count + ' new tickets';
+                var parts = (data.preview || []).slice(0, 2).map(function (t) {
+                    var title = t.title.length > 55 ? t.title.substring(0, 55) + '…' : t.title;
+                    return '<strong>#' + t.id + '</strong> — ' + title;
+                });
+                bannerText.innerHTML = noun + ' received'
+                    + (parts.length ? ': ' + parts.join('; ') : '')
+                    + (data.count > 2 ? ' &amp; more' : '');
+                banner.classList.remove('d-none');
+            })
+            .catch(function () {}); // silent — non-critical
+    }
+
+    setInterval(poll, 30000); // every 30 s — faster than the 5-min email ingest
 })();
 </script>
 }

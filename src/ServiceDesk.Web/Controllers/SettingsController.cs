@@ -23,10 +23,11 @@ public class SettingsController : Controller
     private readonly IMemoryCache _cache;
     private readonly IWebHostEnvironment _env;
     private readonly GoogleWorkspaceService _googleWorkspace;
+    private readonly OllamaService _ollama;
 
     public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
         EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
-        GoogleWorkspaceService googleWorkspace)
+        GoogleWorkspaceService googleWorkspace, OllamaService ollama)
     {
         _context          = context;
         _gmailApiService  = gmailApiService;
@@ -34,6 +35,7 @@ public class SettingsController : Controller
         _cache            = cache;
         _env              = env;
         _googleWorkspace  = googleWorkspace;
+        _ollama           = ollama;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -1718,6 +1720,73 @@ public class SettingsController : Controller
         vm.TicketsAwaitingTriage = openTicketIds.Count - ticketsWithPendingRec.Count;
 
         return View(vm);
+    }
+
+    // POST: Settings/BulkKbExtraction — generate KB draft articles from resolved tickets
+    // Processes up to 20 resolved tickets that have resolution notes but no KB article yet.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkKbExtraction()
+    {
+        var currentUser = User.Identity?.Name ?? "System";
+
+        // Find eligible tickets: Resolved/Closed, has resolution notes, no existing KB article
+        var existingSourceIds = await _context.KbArticles
+            .Where(k => k.SourceTicketId.HasValue)
+            .Select(k => k.SourceTicketId!.Value)
+            .ToListAsync();
+
+        var candidates = await _context.Tickets
+            .Where(t => (t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
+                      || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed)
+                     && !string.IsNullOrEmpty(t.ResolutionNotes)
+                     && !existingSourceIds.Contains(t.Id))
+            .OrderByDescending(t => t.ResolvedDate ?? t.UpdatedDate)
+            .Take(20)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+        {
+            TempData["Info"] = "No eligible tickets found. All resolved tickets with resolution notes already have KB articles, or none exist yet.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        int created = 0, skipped = 0;
+        foreach (var ticket in candidates)
+        {
+            var (problem, solution) = await _ollama.GenerateKbDraftAsync(
+                ticket.Title, ticket.Description, ticket.ResolutionNotes);
+
+            if (string.IsNullOrWhiteSpace(problem) || string.IsNullOrWhiteSpace(solution))
+            {
+                skipped++;
+                continue;
+            }
+
+            _context.KbArticles.Add(new ServiceDesk.Core.Models.KbArticle
+            {
+                Title          = ticket.Title,
+                Problem        = problem,
+                Solution       = solution,
+                Category       = (int)ticket.Category,
+                SourceTicketId = ticket.Id,
+                IsPublished    = false,   // drafts — require manual review before publishing
+                CreatedBy      = currentUser,
+                CreatedDate    = DateTime.UtcNow,
+            });
+            created++;
+        }
+
+        if (created > 0)
+            await _context.SaveChangesAsync();
+
+        TempData["Success"] = created > 0
+            ? $"Created {created} KB draft article{(created == 1 ? "" : "s")} from resolved tickets. "
+              + $"Review and publish them in the Knowledge Base."
+              + (skipped > 0 ? $" ({skipped} skipped — Ollama returned empty output.)" : "")
+            : $"Ollama returned empty output for all {skipped} candidates. Ensure Ollama is running.";
+
+        return RedirectToAction(nameof(AiDashboard));
     }
 
     // POST: Settings/AiBatchRetriage — queue AI triage for all open tickets without a pending rec

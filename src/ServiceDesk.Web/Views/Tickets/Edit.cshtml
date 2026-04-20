@@ -177,6 +177,22 @@
             </div>
         </div>
 
+        @if (Context.Request.Query["suggestKb"] == "1" && !string.IsNullOrWhiteSpace(Model.ResolutionNotes))
+        {
+            <div class="alert alert-success alert-dismissible border-0 shadow-sm mb-3 py-2" role="alert">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-journal-plus text-success flex-shrink-0" style="font-size:1.1rem;"></i>
+                    <span class="flex-grow-1 small fw-medium">This ticket has resolution notes — turn it into a Knowledge Base article?</span>
+                    <form asp-action="SuggestToKb" asp-route-id="@Model.Id" method="post" class="flex-shrink-0">
+                        <button type="submit" class="btn btn-sm btn-success py-0 px-2">
+                            <i class="bi bi-plus-lg me-1"></i>Create KB Article
+                        </button>
+                    </form>
+                    <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        }
+
         <!-- ===== AI TRIAGE CARD ===== -->
         @{
             var aiRec       = ViewBag.AiRecommendation as ServiceDesk.Core.Models.AiRecommendation;
@@ -963,16 +979,50 @@ function filterSelectOptions(input) {
         }
     });
 
-    // --- Canned Responses picker ---
+    // --- Canned Responses picker (ranked by ticket relevance) ---
     (function () {
         const btn = document.getElementById('btnCannedResponses');
         const menu = document.getElementById('cannedResponsesMenu');
         if (!btn || !menu) return;
+        const ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
         let loaded = false;
+
+        function buildItem(t) {
+            const li = document.createElement('li');
+            const a  = document.createElement('a');
+            a.className = 'dropdown-item small d-flex align-items-center gap-1';
+            a.href = '#';
+            if (t.isRecommended) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-primary me-1';
+                badge.style.fontSize = '0.65em';
+                badge.textContent = '★';
+                badge.title = 'Recommended based on ticket content';
+                a.appendChild(badge);
+            }
+            const span = document.createElement('span');
+            span.textContent = t.title;
+            a.appendChild(span);
+            a.title = t.content.substring(0, 120);
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                const ta = document.getElementById('newCommentText');
+                if (ta) {
+                    ta.value = ta.value ? ta.value + '\n\n' + t.content : t.content;
+                    ta.focus();
+                }
+            });
+            li.appendChild(a);
+            return li;
+        }
+
         btn.addEventListener('click', function () {
             if (loaded) return;
             loaded = true;
-            fetch('/Tickets/CannedResponses')
+            var url = ticketId
+                ? '/Tickets/RankedCannedResponses?ticketId=' + ticketId
+                : '/Tickets/CannedResponses';
+            fetch(url)
                 .then(r => r.json())
                 .then(items => {
                     menu.innerHTML = '';
@@ -980,41 +1030,32 @@ function filterSelectOptions(input) {
                         menu.innerHTML = '<li><span class="dropdown-item text-muted small">No templates available</span></li>';
                         return;
                     }
+                    const recommended = items.filter(t => t.isRecommended);
+                    const rest        = items.filter(t => !t.isRecommended);
+
+                    if (recommended.length > 0) {
+                        menu.innerHTML = '<li><h6 class="dropdown-header text-primary">★ Suggested for this ticket</h6></li>';
+                        recommended.forEach(t => menu.appendChild(buildItem(t)));
+                        menu.innerHTML += '<li><hr class="dropdown-divider"></li>';
+                    }
+
                     const groups = {};
-                    items.forEach(t => {
+                    rest.forEach(t => {
                         const cat = t.category || 'General';
                         if (!groups[cat]) groups[cat] = [];
                         groups[cat].push(t);
                     });
-                    Object.keys(groups).sort().forEach(cat => {
+                    Object.keys(groups).sort().forEach((cat, i, arr) => {
                         const header = document.createElement('li');
                         header.innerHTML = `<h6 class="dropdown-header">${cat}</h6>`;
                         menu.appendChild(header);
-                        groups[cat].forEach(t => {
-                            const li = document.createElement('li');
-                            const a = document.createElement('a');
-                            a.className = 'dropdown-item small';
-                            a.href = '#';
-                            a.textContent = t.title;
-                            a.title = t.content.substring(0, 120);
-                            a.addEventListener('click', function (e) {
-                                e.preventDefault();
-                                const ta = document.getElementById('newCommentText');
-                                if (ta) {
-                                    const cur = ta.value;
-                                    ta.value = cur ? cur + '\n\n' + t.content : t.content;
-                                    ta.focus();
-                                }
-                            });
-                            li.appendChild(a);
-                            menu.appendChild(li);
-                        });
-                        const divider = document.createElement('li');
-                        divider.innerHTML = '<hr class="dropdown-divider">';
-                        menu.appendChild(divider);
+                        groups[cat].forEach(t => menu.appendChild(buildItem(t)));
+                        if (i < arr.length - 1) {
+                            const div = document.createElement('li');
+                            div.innerHTML = '<hr class="dropdown-divider">';
+                            menu.appendChild(div);
+                        }
                     });
-                    // remove trailing divider
-                    if (menu.lastChild) menu.removeChild(menu.lastChild);
                 })
                 .catch(() => {
                     menu.innerHTML = '<li><span class="dropdown-item text-muted small">Failed to load templates</span></li>';
@@ -1603,7 +1644,10 @@ function filterSelectOptions(input) {
             .then(function (data) {
                 if (data.success) {
                     resolveModal.hide();
-                    window.location.reload();
+                    // If there are resolution notes, reload with a flag that triggers the KB suggestion banner
+                    var reloadUrl = window.location.pathname
+                        + (data.suggestKb ? '?suggestKb=1' : '');
+                    window.location.href = reloadUrl;
                 } else {
                     btn.disabled = false;
                     btn.innerHTML = origHtml;
