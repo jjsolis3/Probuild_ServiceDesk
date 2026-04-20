@@ -74,6 +74,31 @@ public class OllamaService
     }
 
     /// <summary>
+    /// Streams a draft reply token by token using Ollama's streaming API.
+    /// Yields each text fragment as it arrives so callers can forward to an SSE response.
+    /// </summary>
+    public async IAsyncEnumerable<string> StreamDraftReplyAsync(
+        string title, string description,
+        string? resolutionNotes = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var resolutionPart = string.IsNullOrWhiteSpace(resolutionNotes)
+            ? string.Empty
+            : $"\n\nResolution notes provided by the IT agent:\n{resolutionNotes}";
+
+        var prompt =
+            $"You are an IT help desk agent. Write a professional, friendly reply to a " +
+            $"support ticket submitter. Keep it concise (3-5 sentences). Do not use " +
+            $"placeholder text like [Your Name].\n\n" +
+            $"Ticket title: {title}\n\nIssue description:\n{description}" +
+            resolutionPart +
+            $"\n\nWrite only the reply body — no subject line, no signatures.";
+
+        await foreach (var token in StreamInternalAsync(prompt, ct))
+            yield return token;
+    }
+
+    /// <summary>
     /// Summarizes the full ticket thread (description + agent notes) into a concise paragraph.
     /// Returns null when Ollama is disabled or the server is unavailable.
     /// </summary>
@@ -179,7 +204,99 @@ public class OllamaService
         }
     }
 
-    // ── Core generation ──────────────────────────────────────────────────────
+    // ── Streaming core ───────────────────────────────────────────────────────
+
+    private async IAsyncEnumerable<string> StreamInternalAsync(
+        string prompt,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        bool enabled; string url, model;
+        (enabled, url, model) = await LoadSettingsAsync();
+        if (!enabled) yield break;
+
+        var client = _httpClientFactory.CreateClient("Ollama");
+        var bodyJson = JsonSerializer.Serialize(new { model, prompt, stream = true });
+
+        var (resp, connected) = await TryConnectOllamaStreamAsync(client, url, model, bodyJson, ct);
+        if (!connected || resp == null) yield break;
+
+        using (resp)
+        {
+            var responseStream = await resp.Content.ReadAsStreamAsync(ct);
+            using (responseStream)
+            using var reader = new StreamReader(responseStream);
+            while (!ct.IsCancellationRequested)
+            {
+                var (line, eof) = await SafeReadLineAsync(reader, ct);
+                if (eof) yield break;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var (token, done) = ParseOllamaStreamLine(line);
+                if (token is not null) yield return token;
+                if (done) yield break;
+            }
+        }
+    }
+
+    private async Task<(HttpResponseMessage? Resp, bool Connected)> TryConnectOllamaStreamAsync(
+        HttpClient client, string url, string model, string bodyJson, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{url.TrimEnd('/')}/api/generate")
+            {
+                Content = new StringContent(bodyJson, Encoding.UTF8, "application/json")
+            };
+            req.Headers.Add("Accept", "application/json");
+            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[Ollama] Stream HTTP {Code} from {Url} model={Model}.",
+                    (int)resp.StatusCode, url, model);
+                resp.Dispose();
+                return (null, false);
+            }
+            return (resp, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Ollama] Stream connect failed to {Url}.", url);
+            return (null, false);
+        }
+    }
+
+    private static async ValueTask<(string? Line, bool Eof)> SafeReadLineAsync(
+        StreamReader reader, CancellationToken ct)
+    {
+        try
+        {
+            var line = await reader.ReadLineAsync(ct);
+            return (line, line is null);
+        }
+        catch
+        {
+            return (null, true);
+        }
+    }
+
+    private static (string? Token, bool Done) ParseOllamaStreamLine(string line)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            string? token = null;
+            bool done = false;
+            if (doc.RootElement.TryGetProperty("response", out var r)) token = r.GetString();
+            if (doc.RootElement.TryGetProperty("done", out var d)) done = d.GetBoolean();
+            return (token, done);
+        }
+        catch
+        {
+            return (null, false);
+        }
+    }
+
+    // ── Core generation (non-streaming) ─────────────────────────────────────
 
     private async Task<string?> GenerateAsync(string prompt, CancellationToken ct)
     {

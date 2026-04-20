@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -1276,6 +1277,37 @@ public class TicketsController : Controller
             return Json(new { success = false, error = "Ollama is not available or returned an empty response." });
 
         return Json(new { success = true, draft });
+    }
+
+    /// <summary>
+    /// Server-Sent Events endpoint that streams the AI draft reply token by token.
+    /// Uses GET so the browser's EventSource API can connect without an antiforgery token.
+    /// The user is already authenticated via session cookie; this is a read-only operation.
+    /// </summary>
+    [HttpGet]
+    public async Task DraftAiReplyStream(int id, CancellationToken ct)
+    {
+        var ticket = await _context.Tickets.FindAsync(new object[] { id }, ct);
+        if (ticket == null)
+        {
+            Response.StatusCode = 404;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers["Cache-Control"] = "no-cache, no-transform";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        await foreach (var token in _ollama.StreamDraftReplyAsync(
+            ticket.Title, ticket.Description, ticket.ResolutionNotes, ct))
+        {
+            var data = JsonSerializer.Serialize(token);
+            await Response.WriteAsync($"data: {data}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        await Response.WriteAsync("data: [DONE]\n\n", ct);
+        await Response.Body.FlushAsync(ct);
     }
 
     /// <summary>

@@ -1175,51 +1175,165 @@ function filterSelectOptions(input) {
 })();
 </script>
 
+@if (ollamaOn)
+{
+<div class="modal fade" id="aiDraftModal" tabindex="-1" aria-labelledby="aiDraftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aiDraftModalLabel">
+                    <i class="bi bi-robot me-2 text-info"></i>AI Draft Reply
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="aiDraftStatus" class="small text-muted mb-2">
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span id="aiDraftStatusText">Connecting to Ollama...</span>
+                    <span id="aiDraftTimer" class="ms-2"></span>
+                </div>
+                <div id="aiDraftError" class="alert alert-danger d-none small"></div>
+                <textarea id="aiDraftText" class="form-control" rows="8"
+                          style="resize:vertical;font-family:inherit;"
+                          placeholder="Draft will stream here as it is generated..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <span id="aiDraftComplete" class="text-muted small me-auto d-none">
+                    <i class="bi bi-check-circle text-success me-1"></i>Complete — review and insert below
+                </span>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="btnUseDraft" class="btn btn-primary" disabled>
+                    <i class="bi bi-arrow-down-circle me-1"></i>Insert into reply
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+}
+
 <script>
-// ── Ollama "Draft AI Reply" button ────────────────────────────────────────
+// ── Ollama "Draft AI Reply" button — streaming via EventSource ────────────
 (function () {
     var btn = document.getElementById('btnDraftAiReply');
     if (!btn) return;
 
-    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var ticketId   = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var modalEl    = document.getElementById('aiDraftModal');
+    var modal      = modalEl ? new bootstrap.Modal(modalEl) : null;
+    var draftText  = document.getElementById('aiDraftText');
+    var draftError = document.getElementById('aiDraftError');
+    var draftStatus    = document.getElementById('aiDraftStatus');
+    var draftStatusTxt = document.getElementById('aiDraftStatusText');
+    var draftTimer = document.getElementById('aiDraftTimer');
+    var draftComplete  = document.getElementById('aiDraftComplete');
+    var btnUse     = document.getElementById('btnUseDraft');
+    var replyBox   = document.getElementById('newCommentText');
+
+    var evtSource = null;
+    var timerHandle = null;
+    var startTime = 0;
+
+    function stopTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
+
+    function startTimer() {
+        startTime = Date.now();
+        timerHandle = setInterval(function () {
+            var sec = Math.round((Date.now() - startTime) / 1000);
+            if (draftTimer) draftTimer.textContent = '(' + sec + 's elapsed)';
+        }, 1000);
+    }
+
+    function resetModal() {
+        if (draftText)     { draftText.value = ''; draftText.removeAttribute('readonly'); }
+        if (draftError)    { draftError.textContent = ''; draftError.classList.add('d-none'); }
+        if (draftStatus)   draftStatus.classList.remove('d-none');
+        if (draftStatusTxt) draftStatusTxt.textContent = 'Connecting to Ollama...';
+        if (draftTimer)    draftTimer.textContent = '';
+        if (draftComplete) draftComplete.classList.add('d-none');
+        if (btnUse)        btnUse.disabled = true;
+        if (evtSource)     { evtSource.close(); evtSource = null; }
+        stopTimer();
+    }
+
+    function markComplete() {
+        stopTimer();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        if (draftStatus)   draftStatus.classList.add('d-none');
+        if (draftComplete) draftComplete.classList.remove('d-none');
+        if (btnUse)        btnUse.disabled = !draftText || draftText.value.trim().length === 0;
+    }
+
+    function showError(msg) {
+        stopTimer();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        if (draftStatus) draftStatus.classList.add('d-none');
+        if (draftError)  { draftError.textContent = msg; draftError.classList.remove('d-none'); }
+        if (btnUse)      btnUse.disabled = true;
+    }
 
     btn.addEventListener('click', function () {
-        var origHtml = btn.innerHTML;
+        if (!ticketId) { alert('Cannot determine ticket ID.'); return; }
+        resetModal();
+        if (modal) modal.show();
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Drafting...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating...';
 
-        var fd = new FormData();
-        fd.append('__RequestVerificationToken', antiForgeryToken);
+        evtSource = new EventSource('/Tickets/DraftAiReplyStream/' + ticketId);
 
-        fetch('/Tickets/DraftAiReply/' + ticketId, {
-            method: 'POST',
-            body: fd
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            btn.disabled = false;
-            btn.innerHTML = origHtml;
-            if (data.success && data.draft) {
-                var replyBox = document.getElementById('noteContent');
-                if (replyBox) {
-                    replyBox.value = data.draft;
-                    replyBox.focus();
-                    // Switch to Comments tab if not already active
-                    var commentsTab = document.getElementById('comments-tab');
-                    if (commentsTab && !commentsTab.classList.contains('active'))
-                        commentsTab.click();
-                }
-            } else {
-                alert(data.error || 'Ollama returned an empty response. Ensure Ollama is running and configured in Settings.');
+        evtSource.onopen = function () {
+            if (draftStatusTxt)
+                draftStatusTxt.textContent = 'Generating\u2014this may take 30\u201360 seconds with a local model\u2026';
+            startTimer();
+        };
+
+        evtSource.onmessage = function (e) {
+            if (e.data === '[DONE]') {
+                evtSource.close(); evtSource = null;
+                markComplete();
+                return;
             }
-        })
-        .catch(function() {
-            btn.disabled = false;
-            btn.innerHTML = origHtml;
-            alert('Failed to reach the server. Please try again.');
-        });
+            try {
+                var token = JSON.parse(e.data);
+                if (draftText) {
+                    draftText.value += token;
+                    draftText.scrollTop = draftText.scrollHeight;
+                }
+            } catch (_) {}
+        };
+
+        evtSource.onerror = function () {
+            if (evtSource) { evtSource.close(); evtSource = null; }
+            if (draftText && draftText.value.trim().length > 0) {
+                markComplete();
+            } else {
+                showError('Could not reach Ollama or the request failed. Check Settings \u2192 AI and confirm Ollama is running.');
+            }
+        };
     });
+
+    if (btnUse) {
+        btnUse.addEventListener('click', function () {
+            if (replyBox && draftText) {
+                replyBox.value = draftText.value;
+                replyBox.focus();
+                var commentsTab = document.getElementById('comments-tab');
+                if (commentsTab && !commentsTab.classList.contains('active'))
+                    commentsTab.click();
+            }
+            if (modal) modal.hide();
+        });
+    }
+
+    if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (evtSource) { evtSource.close(); evtSource = null; }
+            stopTimer();
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        });
+    }
 })();
 </script>
 
