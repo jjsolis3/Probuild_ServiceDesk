@@ -615,3 +615,39 @@ body[data-sidebar-style="icon-hover"] .ss-brand-logo img {
     flex-direction: column;
     align-items: center;
 }
+
+/* =====================================================================
+   Layout scroll fix — Jobick sets body { height: 100% } which, combined
+   with #main-wrapper { overflow: hidden }, clips page content to the
+   viewport height with no scrollbar.  Allow the body to grow naturally.
+   ===================================================================== */
+html,
+body {
+    height: auto !important;
+    min-height: 100% !important;
+}
+
+/* =====================================================================
+   Employee Details — tab pane content bounds
+   Prevents tall tab content (e.g. signature rendered preview, long
+   checklists) from overflowing the page and hiding below the footer.
+   ===================================================================== */
+
+/* Signature tab: cap the live preview so it doesn't grow unboundedly
+   when a rich HTML signature is loaded.  Adds internal scroll. */
+#sigLivePreview {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+/* Signature tab: the rendered preview toggle (sigPreview) similarly */
+#sigPreview {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+/* Ensure all tab panes on the Employee Details page have a comfortable
+   bottom gap so the last card never sits flush against the footer. */
+.tab-content > .tab-pane {
+    padding-bottom: 1.5rem;
+}
