@@ -149,6 +149,7 @@ public class EmployeesController : Controller
                 t.Id, t.Title,
                 Status   = t.Status,
                 Priority = t.Priority,
+                Category = t.Category,
                 t.CreatedDate
             })
             .ToListAsync();
@@ -161,6 +162,7 @@ public class EmployeesController : Controller
                 t.Id, t.Title,
                 Status   = t.Status,
                 Priority = t.Priority,
+                Category = t.Category,
                 t.CreatedDate
             })
             .ToListAsync();
