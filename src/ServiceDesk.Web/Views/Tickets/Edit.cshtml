@@ -376,7 +376,7 @@
                                         <iframe id="note-frame-@note.Id"
                                                 srcdoc="@(_noteDocPrefix + note.ContentHtml + _noteDocSuffix)"
                                                 style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
-                                                sandbox="allow-same-origin"
+                                                sandbox="allow-scripts allow-same-origin"
                                                 title="Email comment"
                                                 onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;['.gmail_quote','.gmail_attr','blockquote[type=&quot;cite&quot;]','#divRplyFwdMsg','#divRFW','.yahoo_quoted'].forEach(function(s){try{d.querySelectorAll(s).forEach(function(e){e.style.display='none'});}catch(x){}});function r(){f.style.height=Math.min(500,Math.max(80,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
                                     }
@@ -450,7 +450,7 @@
                             <div class="border rounded overflow-hidden" style="min-height:120px;">
                                 <iframe srcdoc="@(_noteDocPrefix + Model.DescriptionHtml + _noteDocSuffix)"
                                         style="width:100%;border:none;min-height:120px;max-height:600px;display:block;"
-                                        sandbox="allow-same-origin"
+                                        sandbox="allow-scripts allow-same-origin"
                                         title="Email description"
                                         onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;function r(){f.style.height=Math.min(600,Math.max(120,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
                             </div>

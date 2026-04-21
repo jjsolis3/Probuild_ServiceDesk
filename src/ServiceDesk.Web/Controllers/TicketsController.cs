@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -1440,6 +1441,10 @@ public class TicketsController : Controller
         Response.ContentType = "text/event-stream; charset=utf-8";
         Response.Headers["Cache-Control"] = "no-cache, no-transform";
         Response.Headers["X-Accel-Buffering"] = "no";
+        Response.Headers["Connection"] = "keep-alive";
+
+        // Disable IIS output buffering so SSE tokens reach the client immediately
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
         await foreach (var token in _ollama.StreamDraftReplyAsync(
             ticket.Title, ticket.Description, ticket.ResolutionNotes, ct))
