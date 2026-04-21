@@ -839,6 +839,7 @@
 </div>
 
 @section Scripts {
+@{ var ollamaOn = (bool)(ViewBag.OllamaEnabled ?? false); }
 <script>
 // ── Searchable select: filters visible <option> elements by text ──────────
 function filterSelectOptions(input) {

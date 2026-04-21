@@ -361,7 +361,7 @@ public class GmailApiService : BackgroundService
                 {
                     using var triageScope = _serviceProvider.CreateScope();
                     var triage = triageScope.ServiceProvider.GetRequiredService<AiTriageService>();
-                    await triage.TriageAndSaveAsync(ticket.Id);
+                    await triage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description ?? "", ticket.BranchId);
                 }
                 catch (Exception ex)
                 {
