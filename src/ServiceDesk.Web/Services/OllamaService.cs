@@ -176,7 +176,7 @@ public class OllamaService
             "Reply with EXACTLY one of these two formats:\n" +
             "ESCALATING: <short reason under 10 words>\n" +
             "NOT_ESCALATING\n\n" +
-            $"Comment:\n{commentText.Length > 500 ? commentText[..500] : commentText}";
+            $"Comment:\n{(commentText.Length > 500 ? commentText[..500] : commentText)}";
 
         var result = await GenerateAsync(prompt, ct);
         if (result == null) return (false, "");
@@ -255,16 +255,18 @@ public class OllamaService
         {
             var responseStream = await resp.Content.ReadAsStreamAsync(ct);
             using (responseStream)
-            using var reader = new StreamReader(responseStream);
-            while (!ct.IsCancellationRequested)
             {
-                var (line, eof) = await SafeReadLineAsync(reader, ct);
-                if (eof) yield break;
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                using var reader = new StreamReader(responseStream);
+                while (!ct.IsCancellationRequested)
+                {
+                    var (line, eof) = await SafeReadLineAsync(reader, ct);
+                    if (eof) yield break;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
 
-                var (token, done) = ParseOllamaStreamLine(line);
-                if (token is not null) yield return token;
-                if (done) yield break;
+                    var (token, done) = ParseOllamaStreamLine(line);
+                    if (token is not null) yield return token;
+                    if (done) yield break;
+                }
             }
         }
     }
