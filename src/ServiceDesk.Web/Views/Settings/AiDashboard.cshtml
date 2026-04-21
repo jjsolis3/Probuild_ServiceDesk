@@ -91,6 +91,62 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 }
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["KbExtractionSkipped"] is string skippedJson && !string.IsNullOrEmpty(skippedJson))
+{
+    var skippedItems = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, System.Text.Json.JsonElement>>>(skippedJson)
+                       ?? new List<Dictionary<string, System.Text.Json.JsonElement>>();
+    if (skippedItems.Count > 0)
+    {
+        <div class="card border-warning shadow-sm mb-4">
+            <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#kbSkippedList"
+                 style="cursor:pointer;" aria-expanded="true">
+                <div>
+                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                    <strong>@skippedItems.Count ticket@(skippedItems.Count == 1 ? "" : "s") skipped during KB extraction</strong>
+                </div>
+                <i class="bi bi-chevron-down"></i>
+            </div>
+            <div id="kbSkippedList" class="collapse show">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 90px;">Ticket</th>
+                                <th>Title</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in skippedItems)
+                            {
+                                var tid = item.TryGetValue("id", out var idEl) ? idEl.GetInt32() : 0;
+                                var ttitle = item.TryGetValue("title", out var tEl) ? tEl.GetString() ?? "" : "";
+                                var treason = item.TryGetValue("reason", out var rEl) ? rEl.GetString() ?? "" : "";
+                                <tr>
+                                    <td>
+                                        <a asp-controller="Tickets" asp-action="Details" asp-route-id="@tid" target="_blank">
+                                            #@tid
+                                        </a>
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 400px;" title="@ttitle">@ttitle</td>
+                                    <td class="text-muted small">@treason</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
 
 <!-- ── Model status banner ────────────────────────────────────────────────── -->
 @if (!Model.ModelIsTrained)
@@ -99,8 +155,8 @@
         <i class="bi bi-exclamation-triangle-fill fs-5"></i>
         <div>
             <strong>Model not yet trained.</strong>
-            The AI model needs at least the configured minimum of resolved tickets before it can make predictions.
-            You currently have <strong>@Model.TotalTrainingTickets</strong> resolved/closed tickets available.
+            The AI model needs at least <strong>@Model.MinTrainingTickets</strong> resolved/closed tickets to train.
+            You currently have <strong>@Model.TotalTrainingTickets</strong> available.
             <a asp-action="Ai" class="alert-link ms-1">Configure training settings</a> or click Retrain above.
         </div>
     </div>
@@ -245,21 +301,27 @@
                 <div class="mb-3">
                     <div class="d-flex justify-content-between small mb-1">
                         <span>Resolved / Closed Tickets</span>
-                        <strong>@Model.TotalTrainingTickets</strong>
+                        <strong>@Model.TotalTrainingTickets <span class="text-muted fw-normal">/ @Model.MinTrainingTickets min</span></strong>
                     </div>
                     @{
-                        var trainPct = Model.TotalTrainingTickets >= 100 ? 100
-                                     : Model.TotalTrainingTickets * 100 / 100;
+                        var trainTarget = Math.Max(Model.MinTrainingTickets * 5, 100);
+                        var trainPct = Model.TotalTrainingTickets >= trainTarget ? 100
+                                     : (int)((double)Model.TotalTrainingTickets / trainTarget * 100);
+                        var trainColor = Model.TotalTrainingTickets < Model.MinTrainingTickets
+                                       ? "bg-danger"
+                                       : Model.TotalTrainingTickets < Model.MinTrainingTickets * 2
+                                         ? "bg-warning"
+                                         : "bg-success";
                     }
                     <div class="progress" style="height:8px;">
-                        <div class="progress-bar bg-success" style="width:@trainPct%"></div>
+                        <div class="progress-bar @trainColor" style="width:@trainPct%"></div>
                     </div>
                     <div class="text-muted" style="font-size:0.7rem;">
-                        @if (Model.TotalTrainingTickets < 20)
+                        @if (Model.TotalTrainingTickets < Model.MinTrainingTickets)
                         {
-                            <span class="text-danger">Need at least 20 resolved tickets to train</span>
+                            <span class="text-danger">Need at least @Model.MinTrainingTickets resolved tickets to train</span>
                         }
-                        else if (Model.TotalTrainingTickets < 50)
+                        else if (Model.TotalTrainingTickets < Model.MinTrainingTickets * 2)
                         {
                             <span class="text-warning">Good start — more resolved tickets improve accuracy</span>
                         }

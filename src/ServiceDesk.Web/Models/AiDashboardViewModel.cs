@@ -25,6 +25,8 @@ public class AiDashboardViewModel
     // ── Model status ──────────────────────────────────────────────────────────
     public bool ModelIsTrained { get; set; }
     public int TotalTrainingTickets { get; set; }
+    /// <summary>Configured minimum training tickets from AppSettings.AiMinTrainingTickets (default 20).</summary>
+    public int MinTrainingTickets { get; set; } = 20;
 
     // ── Confidence bands (count of recs in each band) ─────────────────────────
     public int ConfUnder50 { get; set; }

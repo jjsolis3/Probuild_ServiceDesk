@@ -24,6 +24,8 @@ public class TicketsController : Controller
     private readonly OllamaService _ollama;
     private readonly TicketSimilarityService _similarity;
     private readonly SlaRiskService _slaRisk;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<TicketsController> _logger;
 
     public TicketsController(
         ServiceDeskDbContext context,
@@ -32,7 +34,9 @@ public class TicketsController : Controller
         AiTriageService aiTriage,
         OllamaService ollama,
         TicketSimilarityService similarity,
-        SlaRiskService slaRisk)
+        SlaRiskService slaRisk,
+        IServiceScopeFactory scopeFactory,
+        ILogger<TicketsController> logger)
     {
         _context            = context;
         _assignmentResolver = assignmentResolver;
@@ -41,6 +45,8 @@ public class TicketsController : Controller
         _ollama             = ollama;
         _similarity         = similarity;
         _slaRisk            = slaRisk;
+        _scopeFactory       = scopeFactory;
+        _logger             = logger;
     }
 
     /// <summary>
@@ -540,7 +546,7 @@ public class TicketsController : Controller
                     if (duplicates.Count == 0) return;
 
                     var links = string.Join(", ", duplicates.Select(d => $"#{d.TicketId} ({d.ScorePct:F0}% match)"));
-                    using var scope = HttpContext.RequestServices.CreateScope();
+                    using var scope = _scopeFactory.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
                     db.TicketNotes.Add(new TicketNote
                     {
@@ -554,8 +560,12 @@ public class TicketsController : Controller
                         CreatedDate = DateTime.UtcNow,
                     });
                     await db.SaveChangesAsync();
+                    _logger.LogInformation("[DuplicateDetection] Flagged Ticket #{Id} against {Matches}", ticket.Id, links);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[DuplicateDetection] Background detection failed for Ticket #{Id}.", ticket.Id);
+                }
             });
 
             // Notify assigned agent (fire-and-forget)
@@ -839,8 +849,8 @@ public class TicketsController : Controller
                     var (escalating, reason) = await _ollama.DetectEscalationAsync(capturedContent);
                     if (!escalating) return;
 
-                    // Post an internal alert note so the assigned agent sees it immediately
-                    using var scope = HttpContext.RequestServices.CreateScope();
+                    // Use the scope factory — HttpContext may be disposed by the time this runs
+                    using var scope = _scopeFactory.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
                     db.TicketNotes.Add(new TicketNote
                     {
@@ -854,8 +864,12 @@ public class TicketsController : Controller
                         CreatedDate = DateTime.UtcNow,
                     });
                     await db.SaveChangesAsync();
+                    _logger.LogInformation("[Escalation] Detected on Ticket #{Id}: {Reason}", capturedTicketId, reason);
                 }
-                catch { /* non-critical — never block the response */ }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Escalation] Background detection failed for Ticket #{Id}.", capturedTicketId);
+                }
             });
         }
 

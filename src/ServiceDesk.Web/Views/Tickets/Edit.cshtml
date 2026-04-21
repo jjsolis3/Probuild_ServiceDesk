@@ -1333,7 +1333,11 @@ function filterSelectOptions(input) {
         evtSource.onmessage = function (e) {
             if (e.data === '[DONE]') {
                 evtSource.close(); evtSource = null;
-                markComplete();
+                if (!draftText || draftText.value.trim().length === 0) {
+                    showError('Ollama returned an empty response. Check Settings → AI and confirm the configured model is loaded and able to generate text.');
+                } else {
+                    markComplete();
+                }
                 return;
             }
             try {

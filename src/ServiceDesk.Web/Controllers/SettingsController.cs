@@ -1468,6 +1468,15 @@ public class SettingsController : Controller
             .CountAsync(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
                           || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed);
 
+        // Live model status — reflects whether engines are currently loaded in memory
+        var aiTriage = HttpContext.RequestServices
+            .GetService<ServiceDesk.Web.Services.AiTriageService>();
+        ViewBag.ModelIsTrained = aiTriage?.IsModelTrained ?? false;
+
+        // Configured minimum training tickets (falls back to 20)
+        var minSetting = settings.FirstOrDefault(s => s.Key == "AiMinTrainingTickets")?.Value;
+        ViewBag.MinTrainingTickets = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
         return View(settings);
     }
 
@@ -1537,12 +1546,19 @@ public class SettingsController : Controller
         var aiTriage = HttpContext.RequestServices
             .GetService<ServiceDesk.Web.Services.AiTriageService>();
 
+        var minSetting = await _context.AppSettings
+            .Where(s => s.Key == "AiMinTrainingTickets")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        var minTraining = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
         var vm = new ServiceDesk.Web.Models.AiDashboardViewModel
         {
             ModelIsTrained = aiTriage?.IsModelTrained ?? false,
             TotalTrainingTickets = await _context.Tickets
                 .CountAsync(t => t.Status == TicketStatus.Resolved
-                              || t.Status == TicketStatus.Closed)
+                              || t.Status == TicketStatus.Closed),
+            MinTrainingTickets = minTraining
         };
 
         // Load all recommendations with ticket titles
@@ -1751,40 +1767,66 @@ public class SettingsController : Controller
             return RedirectToAction(nameof(AiDashboard));
         }
 
-        int created = 0, skipped = 0;
+        var created = new List<(int Id, string Title)>();
+        var skipped = new List<(int Id, string Title, string Reason)>();
+
         foreach (var ticket in candidates)
         {
-            var (problem, solution) = await _ollama.GenerateKbDraftAsync(
-                ticket.Title, ticket.Description, ticket.ResolutionNotes);
-
-            if (string.IsNullOrWhiteSpace(problem) || string.IsNullOrWhiteSpace(solution))
+            try
             {
-                skipped++;
-                continue;
+                var (problem, solution) = await _ollama.GenerateKbDraftAsync(
+                    ticket.Title, ticket.Description, ticket.ResolutionNotes);
+
+                if (string.IsNullOrWhiteSpace(problem) && string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama returned no output — check that the configured model is running"));
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(problem) || string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama output did not include both PROBLEM: and SOLUTION: sections"));
+                    continue;
+                }
+
+                _context.KbArticles.Add(new ServiceDesk.Core.Models.KbArticle
+                {
+                    Title          = ticket.Title,
+                    Problem        = problem,
+                    Solution       = solution,
+                    Category       = (int)ticket.Category,
+                    SourceTicketId = ticket.Id,
+                    IsPublished    = false,   // drafts — require manual review before publishing
+                    CreatedBy      = currentUser,
+                    CreatedDate    = DateTime.UtcNow,
+                });
+                created.Add((ticket.Id, ticket.Title));
             }
-
-            _context.KbArticles.Add(new ServiceDesk.Core.Models.KbArticle
+            catch (Exception ex)
             {
-                Title          = ticket.Title,
-                Problem        = problem,
-                Solution       = solution,
-                Category       = (int)ticket.Category,
-                SourceTicketId = ticket.Id,
-                IsPublished    = false,   // drafts — require manual review before publishing
-                CreatedBy      = currentUser,
-                CreatedDate    = DateTime.UtcNow,
-            });
-            created++;
+                skipped.Add((ticket.Id, ticket.Title, $"Error: {ex.Message}"));
+            }
         }
 
-        if (created > 0)
+        if (created.Count > 0)
             await _context.SaveChangesAsync();
 
-        TempData["Success"] = created > 0
-            ? $"Created {created} KB draft article{(created == 1 ? "" : "s")} from resolved tickets. "
-              + $"Review and publish them in the Knowledge Base."
-              + (skipped > 0 ? $" ({skipped} skipped — Ollama returned empty output.)" : "")
-            : $"Ollama returned empty output for all {skipped} candidates. Ensure Ollama is running.";
+        if (created.Count > 0)
+        {
+            TempData["Success"] = $"Created {created.Count} KB draft article{(created.Count == 1 ? "" : "s")} "
+                + $"from resolved tickets (of {candidates.Count} processed). "
+                + "Review and publish them in the Knowledge Base.";
+        }
+        else
+        {
+            TempData["Error"] = $"No KB drafts were created from {candidates.Count} candidate ticket{(candidates.Count == 1 ? "" : "s")}. "
+                + "See the skipped list below for details. Verify Ollama is running and that the configured model responds with PROBLEM:/SOLUTION: sections.";
+        }
+
+        if (skipped.Count > 0)
+        {
+            TempData["KbExtractionSkipped"] = System.Text.Json.JsonSerializer.Serialize(
+                skipped.Select(s => new { id = s.Id, title = s.Title, reason = s.Reason }).ToList());
+        }
 
         return RedirectToAction(nameof(AiDashboard));
     }
