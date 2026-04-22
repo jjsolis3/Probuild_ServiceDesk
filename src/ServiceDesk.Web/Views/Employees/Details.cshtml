@@ -1636,7 +1636,7 @@
     // ── Onboarding ────────────────────────────────────────────────────────────
 
     window.provisionAccount = function () {
-        if (!confirm('Create a new Google Workspace account for @Html.Raw(Model.Email ?? Model.FullName)?\n\nMake sure this account does not already exist in your domain.')) return;
+        if (!confirm('Create a new Google Workspace account for @(System.Web.HttpUtility.JavaScriptStringEncode(Model.Email ?? Model.FullName))?\n\nMake sure this account does not already exist in your domain.')) return;
         var ou = document.getElementById('wsOrgUnitInput').value.trim();
         post('@Url.Action("ProvisionWorkspaceAccount","Employees",new{id=Model.Id})', { orgUnit: ou })
             .then(function (d) {

@@ -396,6 +396,10 @@ public class EmployeesController : Controller
             return View();
         }
 
+        // Clean up any previous abandoned temp file from this session before creating a new one
+        if (TempData.Peek("ImportEmployeeTempPath") is string prevEmpPath && System.IO.File.Exists(prevEmpPath))
+            System.IO.File.Delete(prevEmpPath);
+
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_employee_{Guid.NewGuid():N}.dat");
         await using (var fs = System.IO.File.Create(tempPath))

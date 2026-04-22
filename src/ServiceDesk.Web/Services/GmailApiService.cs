@@ -775,7 +775,7 @@ public class GmailApiService : BackgroundService
         // Get initial historyId by listing a single message
         try
         {
-            var hc = new HttpClient();
+            using var hc = _httpClientFactory.CreateClient();
             hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.GmailAccessToken);
             var profileResp = await hc.GetAsync("https://gmail.googleapis.com/gmail/v1/users/me/profile", ct);
             if (profileResp.IsSuccessStatusCode)
