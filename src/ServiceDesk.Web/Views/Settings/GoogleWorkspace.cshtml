@@ -159,10 +159,12 @@
                             <code>{EMAIL}</code> <code>{EMAIL_DISPLAY}</code>
                             <code>{PHONE}</code> <code>{DEPARTMENT}</code>
                             <code>{BRANCH}</code> <code>{BRANCH_PHONE}</code>
+                            <code>{COST_CENTER}</code> <code>{BUILDING_ID}</code>
                             <div class="mt-1 text-muted" style="font-size:0.8rem;">
                                 <i class="bi bi-info-circle me-1"></i>
                                 <code>{FIRST_NAME_SLUG}</code> / <code>{LAST_NAME_SLUG}</code> replace spaces with underscores (e.g. <em>Mary_Jane</em>) — use these in image file paths.
                                 <code>{EMAIL_DISPLAY}</code> converts <em>.org</em> → <em>.com</em>.
+                                <code>{COST_CENTER}</code> is the branch cost center code (e.g. <em>LAX</em>); <code>{BUILDING_ID}</code> is the branch building ID (e.g. <em>LA</em>).
                             </div>
                         </div>
                         <textarea name="signatureTemplate" class="form-control font-monospace"
@@ -202,10 +204,12 @@
                             .Replace("{PHONE}",           "(555) 000-1234")
                             .Replace("{DEPARTMENT}",      "Information Technology")
                             .Replace("{BRANCH}",          "Main Office")
-                            .Replace("{BRANCH_PHONE}",    "(555) 000-0000");
+                            .Replace("{BRANCH_PHONE}",    "(555) 000-0000")
+                            .Replace("{COST_CENTER}",     "LAX")
+                            .Replace("{BUILDING_ID}",     "LA");
                     }
                     <div class="border rounded p-3 bg-light" style="font-family:Arial,sans-serif;font-size:14px;">
-                        @Html.Raw(preview)
+                        @Html.Raw(new Ganss.Xss.HtmlSanitizer().Sanitize(preview))
                     </div>
                 </div>
             </div>

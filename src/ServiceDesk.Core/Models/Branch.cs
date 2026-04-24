@@ -26,6 +26,14 @@ public class Branch
     [StringLength(20)]
     public string? Phone { get; set; }
 
+    [StringLength(20)]
+    [Display(Name = "Cost Center Code")]
+    public string? CostCenter { get; set; }
+
+    [StringLength(20)]
+    [Display(Name = "Building ID")]
+    public string? BuildingId { get; set; }
+
     [Display(Name = "Site Manager")]
     public int? SiteManagerId { get; set; }
 

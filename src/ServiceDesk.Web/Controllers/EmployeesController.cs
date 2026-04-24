@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
@@ -72,56 +73,130 @@ public class EmployeesController : Controller
     {
         if (id == null) return NotFound();
 
+        // Load employee without ticket collections — counts/lists come from targeted queries below
         var employee = await _context.Employees
-            .Include(e => e.SubmittedTickets)
-            .Include(e => e.AssignedTickets)
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(e => e.AssignedAssets)
             .Include(e => e.Credentials)
+            .Include(e => e.Branch)
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (employee == null) return NotFound();
 
-        // Trend analytics: category breakdown of submitted tickets
-        var submitted = employee.SubmittedTickets.ToList();
-        var categoryIds = submitted.Select(t => t.Category).Distinct().ToList();
-        var categoryNames = await _context.TicketCategories
-            .Where(c => categoryIds.Contains(c.Id))
-            .ToDictionaryAsync(c => c.Id, c => c.Name);
+        // ── DB-side counts (single COUNT per query, no entity hydration) ──────
+        var totalSubmitted = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id);
+        var openCount = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id
+                          && (t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress));
+        var resolvedCount = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id
+                          && (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed));
+        var totalAssigned = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.AssignedToId == id);
 
-        ViewBag.CategoryBreakdown = submitted
+        // ── Category breakdown aggregated in SQL ─────────────────────────────
+        var categoryStats = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id)
             .GroupBy(t => t.Category)
             .Select(g => new {
-                CategoryId   = g.Key,
-                CategoryName = categoryNames.GetValueOrDefault(g.Key, $"Category {g.Key}"),
-                Count        = g.Count(),
-                OpenCount    = g.Count(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Open
-                                         || t.Status == ServiceDesk.Core.Enums.TicketStatus.InProgress),
+                CategoryId = g.Key,
+                Count      = g.Count(),
+                OpenCount  = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress)
+            })
+            .ToListAsync();
+
+        var catIds = categoryStats.Select(x => x.CategoryId).ToList();
+        var categoryNames = catIds.Count > 0
+            ? await _context.TicketCategories.AsNoTracking()
+                .Where(c => catIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Name)
+            : new Dictionary<int, string>();
+
+        ViewBag.CategoryBreakdown = categoryStats
+            .Select(g => new {
+                g.CategoryId,
+                CategoryName = categoryNames.GetValueOrDefault(g.CategoryId, $"Category {g.CategoryId}"),
+                g.Count,
+                g.OpenCount
             })
             .OrderByDescending(x => x.Count)
             .ToList();
 
+        // ── Monthly trend aggregated in SQL ───────────────────────────────────
         var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);
-        ViewBag.MonthlyTrend = submitted
-            .Where(t => t.CreatedDate >= sixMonthsAgo)
+        var monthlyRaw = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id && t.CreatedDate >= sixMonthsAgo)
             .GroupBy(t => new { t.CreatedDate.Year, t.CreatedDate.Month })
-            .Select(g => new {
-                Label = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yy"),
-                Count = g.Count()
-            })
+            .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+            .ToListAsync();
+
+        ViewBag.MonthlyTrend = monthlyRaw
+            .Select(x => new { Label = new DateTime(x.Year, x.Month, 1).ToString("MMM yy"), x.Count })
             .OrderBy(x => x.Label)
             .ToList();
 
-        ViewBag.RecurringCategories = (ViewBag.CategoryBreakdown as IEnumerable<dynamic>)
-            ?.Where(x => x.Count >= 3 && x.OpenCount > 0)
+        ViewBag.RecurringCategories = ((IEnumerable<dynamic>)ViewBag.CategoryBreakdown)
+            .Where(x => x.Count >= 3 && x.OpenCount > 0)
             .ToList();
 
-        // Onboarding / Offboarding checklist
+        // ── Recent tickets for the Tickets tab (capped at 100 rows) ──────────
+        ViewBag.RecentSubmitted = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(100)
+            .Select(t => new {
+                t.Id, t.Title,
+                Status   = t.Status,
+                Priority = t.Priority,
+                Category = t.Category,
+                t.CreatedDate
+            })
+            .ToListAsync();
+
+        ViewBag.RecentAssigned = await _context.Tickets.AsNoTracking()
+            .Where(t => t.AssignedToId == id)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(100)
+            .Select(t => new {
+                t.Id, t.Title,
+                Status   = t.Status,
+                Priority = t.Priority,
+                Category = t.Category,
+                t.CreatedDate
+            })
+            .ToListAsync();
+
+        ViewBag.TotalSubmitted = totalSubmitted;
+        ViewBag.OpenCount      = openCount;
+        ViewBag.ResolvedCount  = resolvedCount;
+        ViewBag.TotalAssigned  = totalAssigned;
+
+        // ── Onboarding / Offboarding checklist ───────────────────────────────
         ViewBag.EmployeeTasks = await _context.EmployeeTasks
+            .AsNoTracking()
             .Where(t => t.EmployeeId == id)
             .OrderBy(t => t.TaskType).ThenBy(t => t.SortOrder).ThenBy(t => t.Title)
             .ToListAsync();
 
         return View(employee);
+    }
+
+    // ── AJAX Search (used by Asset Details typeahead) ─────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> Search(string? q)
+    {
+        var results = await _context.Employees
+            .AsNoTracking()
+            .Where(e => e.IsActive && (string.IsNullOrEmpty(q)
+                || e.FirstName.Contains(q) || e.LastName.Contains(q) || e.Email.Contains(q)))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Take(25)
+            .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+        return Json(results);
     }
 
     // ── Employee Credential Vault ─────────────────────────────────────────────
@@ -226,7 +301,23 @@ public class EmployeesController : Controller
 
         if (ModelState.IsValid)
         {
-            _context.Update(employee);
+            var existing = await _context.Employees.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.FirstName    = employee.FirstName;
+            existing.LastName     = employee.LastName;
+            existing.Email        = employee.Email;
+            existing.BranchId     = employee.BranchId;
+            existing.Phone        = employee.Phone;
+            existing.Extension    = employee.Extension;
+            existing.Department   = employee.Department;
+            existing.JobTitle     = employee.JobTitle;
+            existing.HireDate     = employee.HireDate;
+            existing.IsActive     = employee.IsActive;
+            existing.ManagerEmail = employee.ManagerEmail;
+            existing.EmployeeType = employee.EmployeeType;
+            existing.FloorSection = employee.FloorSection;
+
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
@@ -304,6 +395,10 @@ public class EmployeesController : Controller
             ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
             return View();
         }
+
+        // Clean up any previous abandoned temp file from this session before creating a new one
+        if (TempData.Peek("ImportEmployeeTempPath") is string prevEmpPath && System.IO.File.Exists(prevEmpPath))
+            System.IO.File.Delete(prevEmpPath);
 
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_employee_{Guid.NewGuid():N}.dat");
@@ -792,12 +887,64 @@ public class EmployeesController : Controller
             if (!ok) anyFail = true;
         }
 
+        // Mark employee inactive on success and clear scheduled date
+        if (!anyFail)
+        {
+            employee.IsActive                 = false;
+            employee.ScheduledOffboardingDate = null;
+            await _context.SaveChangesAsync();
+        }
+
         return Json(new
         {
             success = !anyFail,
-            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully.",
+            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully. Employee marked inactive.",
             steps
         });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SyncWorkspaceProfile(int id)
+    {
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        var (ok, err) = await _googleWorkspace.UpdateUserInfoAsync(
+            userEmail:    employee.Email,
+            jobTitle:     employee.JobTitle,
+            department:   employee.Department,
+            costCenter:   employee.Branch?.CostCenter,
+            employeeType: employee.EmployeeType,
+            buildingId:   employee.Branch?.BuildingId,
+            floorName:    employee.Branch?.Name,
+            floorSection: employee.FloorSection,
+            managerEmail: employee.ManagerEmail);
+
+        return Json(new
+        {
+            success = ok,
+            message = ok
+                ? "Google Workspace profile updated successfully."
+                : $"Update failed: {err}"
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetOffboardingDate(int id, DateTime? scheduledDate)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        employee.ScheduledOffboardingDate = scheduledDate;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = scheduledDate.HasValue
+            ? $"Offboarding scheduled for {scheduledDate.Value:MMM dd, yyyy}."
+            : "Scheduled offboarding date cleared.";
+
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     // ── Security ──────────────────────────────────────────────────────────────

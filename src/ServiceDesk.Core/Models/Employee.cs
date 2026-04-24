@@ -53,6 +53,23 @@ public class Employee
     [Display(Name = "Last Signature Sync")]
     public DateTime? LastGoogleSignatureSync { get; set; }
 
+    [Display(Name = "Scheduled Offboarding Date")]
+    [DataType(DataType.Date)]
+    public DateTime? ScheduledOffboardingDate { get; set; }
+
+    [StringLength(200)]
+    [Display(Name = "Manager Email")]
+    [EmailAddress]
+    public string? ManagerEmail { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Employee Type")]
+    public string? EmployeeType { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Team / Floor Section")]
+    public string? FloorSection { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();

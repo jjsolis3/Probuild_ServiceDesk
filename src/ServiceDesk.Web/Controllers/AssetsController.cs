@@ -125,17 +125,28 @@ public class AssetsController : Controller
                 .Include(c => c.CheckedOutTo)
                 .OrderByDescending(c => c.CheckoutDate)
                 .ToListAsync(),
-            AllOtherAssets = await _context.Assets
-                .Where(a => a.Id != id)
-                .OrderBy(a => a.AssetTag)
-                .ToListAsync(),
-            ActiveEmployees = await _context.Employees
-                .Where(e => e.IsActive)
-                .OrderBy(e => e.LastName)
-                .ToListAsync(),
+            AllOtherAssets  = new List<Asset>(),     // populated on demand via /Assets/Search
+            ActiveEmployees = new List<Employee>(),   // populated on demand via /Employees/Search
         };
 
         return View(vm);
+    }
+
+    // ── AJAX Search endpoints (typeahead in Asset Details view) ──────────────
+
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> Search(string? q, int excludeId = 0)
+    {
+        var results = await _context.Assets
+            .AsNoTracking()
+            .Where(a => a.Id != excludeId && (string.IsNullOrEmpty(q)
+                || a.AssetTag.Contains(q) || a.Name.Contains(q)))
+            .OrderBy(a => a.AssetTag)
+            .Take(25)
+            .Select(a => new { id = a.Id, label = a.AssetTag + " — " + a.Name })
+            .ToListAsync();
+        return Json(results);
     }
 
     // ── Create ────────────────────────────────────────────────────────────────

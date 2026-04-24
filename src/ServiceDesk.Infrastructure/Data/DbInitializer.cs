@@ -1019,6 +1019,24 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'LastGoogleSignatureSync')
                     ALTER TABLE dbo.Employees ADD LastGoogleSignatureSync DATETIME2 NULL;");
 
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'ScheduledOffboardingDate')
+                    ALTER TABLE dbo.Employees ADD ScheduledOffboardingDate DATETIME2 NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'ManagerEmail')
+                    ALTER TABLE dbo.Employees ADD ManagerEmail NVARCHAR(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'EmployeeType')
+                    ALTER TABLE dbo.Employees ADD EmployeeType NVARCHAR(100) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'FloorSection')
+                    ALTER TABLE dbo.Employees ADD FloorSection NVARCHAR(100) NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Branches') AND name = 'CostCenter')
+                    ALTER TABLE dbo.Branches ADD CostCenter NVARCHAR(20) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Branches') AND name = 'BuildingId')
+                    ALTER TABLE dbo.Branches ADD BuildingId NVARCHAR(20) NULL;");
+
             // 35. Asset Manager upgrades — Maintenance logs, Checkouts, Software Licenses, Consumables
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetMaintenanceLogs')
@@ -1214,6 +1232,20 @@ public static class DbInitializer
                     CREATE INDEX IX_EmployeeTasks_Employee_Type_Status
                         ON dbo.EmployeeTasks (EmployeeId, TaskType, Status);
                 END");
+
+        context.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Status ON dbo.Tickets (Status);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Priority ON dbo.Tickets (Priority);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_CreatedDate' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_CreatedDate ON dbo.Tickets (CreatedDate);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_AssignedToId' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_AssignedToId ON dbo.Tickets (AssignedToId);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_SubmittedById' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_SubmittedById ON dbo.Tickets (SubmittedById);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Status_Priority ON dbo.Tickets (Status, Priority);");
         }
         catch (Exception ex)
         {

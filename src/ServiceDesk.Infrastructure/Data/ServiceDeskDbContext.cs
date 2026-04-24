@@ -438,6 +438,19 @@ public class ServiceDeskDbContext : DbContext
             .Property(t => t.DescriptionHtml)
             .HasColumnType("nvarchar(max)");
 
+        // Decimal precision — prevents silent truncation and suppresses EF warnings
+        modelBuilder.Entity<AssetMaintenanceLog>()
+            .Property(m => m.Cost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ConsumableItem>()
+            .Property(i => i.UnitCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<SoftwareLicense>()
+            .Property(l => l.CostPerSeat)
+            .HasPrecision(18, 2);
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)
@@ -456,6 +469,20 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<TicketCategoryEntry>()
             .Property(c => c.Id)
             .ValueGeneratedNever();
+
+        // Indexes on Tickets for the most-common filter/sort columns (list page, dashboard, reports)
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.Status);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.Priority);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.CreatedDate);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.AssignedToId);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.SubmittedById);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => new { t.Status, t.Priority });
 
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()

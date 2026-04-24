@@ -23,10 +23,14 @@ public class SettingsController : Controller
     private readonly IMemoryCache _cache;
     private readonly IWebHostEnvironment _env;
     private readonly GoogleWorkspaceService _googleWorkspace;
+    private readonly OllamaService _ollama;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
         EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
-        GoogleWorkspaceService googleWorkspace)
+        GoogleWorkspaceService googleWorkspace, OllamaService ollama,
+        IServiceScopeFactory scopeFactory, ILogger<SettingsController> logger)
     {
         _context          = context;
         _gmailApiService  = gmailApiService;
@@ -34,6 +38,9 @@ public class SettingsController : Controller
         _cache            = cache;
         _env              = env;
         _googleWorkspace  = googleWorkspace;
+        _ollama           = ollama;
+        _scopeFactory     = scopeFactory;
+        _logger           = logger;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -673,7 +680,22 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
         var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
-        _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
+        var capturedResetEmail = user.Email;
+        var capturedResetName  = user.FullName;
+        var capturedResetUrl   = resetUrl;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                await email.SendPasswordResetEmail(capturedResetEmail, capturedResetName, capturedResetUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Notification] Admin password reset email failed for {Email}.", capturedResetEmail);
+            }
+        });
         TempData["Success"] = $"Password reset email sent to {user.Email}.";
         return RedirectToAction(nameof(EditUser), new { id });
     }
@@ -1466,6 +1488,15 @@ public class SettingsController : Controller
             .CountAsync(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
                           || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed);
 
+        // Live model status — reflects whether engines are currently loaded in memory
+        var aiTriage = HttpContext.RequestServices
+            .GetService<ServiceDesk.Web.Services.AiTriageService>();
+        ViewBag.ModelIsTrained = aiTriage?.IsModelTrained ?? false;
+
+        // Configured minimum training tickets (falls back to 20)
+        var minSetting = settings.FirstOrDefault(s => s.Key == "AiMinTrainingTickets")?.Value;
+        ViewBag.MinTrainingTickets = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
         return View(settings);
     }
 
@@ -1516,18 +1547,38 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(Ai));
     }
 
+    // POST: Settings/TestOllama — ping Ollama and return diagnostic JSON
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestOllama()
+    {
+        var ollama = HttpContext.RequestServices.GetService<OllamaService>();
+        if (ollama == null)
+            return Json(new { ok = false, message = "OllamaService is not registered.", models = Array.Empty<string>() });
+
+        var (ok, message, models) = await ollama.TestConnectionAsync();
+        return Json(new { ok, message, models });
+    }
+
     // GET: Settings/AiDashboard — AI statistics dashboard
     public async Task<IActionResult> AiDashboard()
     {
         var aiTriage = HttpContext.RequestServices
             .GetService<ServiceDesk.Web.Services.AiTriageService>();
 
+        var minSetting = await _context.AppSettings
+            .Where(s => s.Key == "AiMinTrainingTickets")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        var minTraining = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
         var vm = new ServiceDesk.Web.Models.AiDashboardViewModel
         {
             ModelIsTrained = aiTriage?.IsModelTrained ?? false,
             TotalTrainingTickets = await _context.Tickets
                 .CountAsync(t => t.Status == TicketStatus.Resolved
-                              || t.Status == TicketStatus.Closed)
+                              || t.Status == TicketStatus.Closed),
+            MinTrainingTickets = minTraining
         };
 
         // Load all recommendations with ticket titles
@@ -1705,6 +1756,99 @@ public class SettingsController : Controller
         vm.TicketsAwaitingTriage = openTicketIds.Count - ticketsWithPendingRec.Count;
 
         return View(vm);
+    }
+
+    // POST: Settings/BulkKbExtraction — generate KB draft articles from resolved tickets
+    // Processes up to 20 resolved tickets that have resolution notes but no KB article yet.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkKbExtraction()
+    {
+        var currentUser = User.Identity?.Name ?? "System";
+
+        // Find eligible tickets: Resolved/Closed, has resolution notes, no existing KB article
+        var existingSourceIds = await _context.KbArticles
+            .Where(k => k.SourceTicketId.HasValue)
+            .Select(k => k.SourceTicketId!.Value)
+            .ToListAsync();
+
+        var candidates = await _context.Tickets
+            .Where(t => (t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
+                      || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed)
+                     && !string.IsNullOrEmpty(t.ResolutionNotes)
+                     && !existingSourceIds.Contains(t.Id))
+            .OrderByDescending(t => t.ResolvedDate ?? t.UpdatedDate)
+            .Take(20)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+        {
+            TempData["Info"] = "No eligible tickets found. All resolved tickets with resolution notes already have KB articles, or none exist yet.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        var created = new List<(int Id, string Title)>();
+        var skipped = new List<(int Id, string Title, string Reason)>();
+
+        foreach (var ticket in candidates)
+        {
+            try
+            {
+                var (problem, solution) = await _ollama.GenerateKbDraftAsync(
+                    ticket.Title, ticket.Description, ticket.ResolutionNotes);
+
+                if (string.IsNullOrWhiteSpace(problem) && string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama returned no output — check that the configured model is running"));
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(problem) || string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama output did not include both PROBLEM: and SOLUTION: sections"));
+                    continue;
+                }
+
+                _context.KbArticles.Add(new ServiceDesk.Core.Models.KbArticle
+                {
+                    Title          = ticket.Title,
+                    Problem        = problem,
+                    Solution       = solution,
+                    Category       = (int)ticket.Category,
+                    SourceTicketId = ticket.Id,
+                    IsPublished    = false,   // drafts — require manual review before publishing
+                    CreatedBy      = currentUser,
+                    CreatedDate    = DateTime.UtcNow,
+                });
+                created.Add((ticket.Id, ticket.Title));
+            }
+            catch (Exception ex)
+            {
+                skipped.Add((ticket.Id, ticket.Title, $"Error: {ex.Message}"));
+            }
+        }
+
+        if (created.Count > 0)
+            await _context.SaveChangesAsync();
+
+        if (created.Count > 0)
+        {
+            TempData["Success"] = $"Created {created.Count} KB draft article{(created.Count == 1 ? "" : "s")} "
+                + $"from resolved tickets (of {candidates.Count} processed). "
+                + "Review and publish them in the Knowledge Base.";
+        }
+        else
+        {
+            TempData["Error"] = $"No KB drafts were created from {candidates.Count} candidate ticket{(candidates.Count == 1 ? "" : "s")}. "
+                + "See the skipped list below for details. Verify Ollama is running and that the configured model responds with PROBLEM:/SOLUTION: sections.";
+        }
+
+        if (skipped.Count > 0)
+        {
+            TempData["KbExtractionSkipped"] = System.Text.Json.JsonSerializer.Serialize(
+                skipped.Select(s => new { id = s.Id, title = s.Title, reason = s.Reason }).ToList());
+        }
+
+        return RedirectToAction(nameof(AiDashboard));
     }
 
     // POST: Settings/AiBatchRetriage — queue AI triage for all open tickets without a pending rec

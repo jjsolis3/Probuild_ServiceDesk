@@ -59,7 +59,7 @@ public class GoogleWorkspaceService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-        return await db.GoogleWorkspaceSettings.FirstOrDefaultAsync();
+        return await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
     }
 
     /// <summary>Save (or update) the settings record. Encrypts the service account JSON if provided.</summary>
@@ -69,7 +69,7 @@ public class GoogleWorkspaceService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
 
-        var settings = await db.GoogleWorkspaceSettings.FirstOrDefaultAsync()
+        var settings = await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync()
                        ?? new GoogleWorkspaceSettings();
 
         settings.AdminEmail        = adminEmail.Trim();
@@ -367,8 +367,10 @@ public class GoogleWorkspaceService
 
     public Task<string> RenderTemplateAsync(string template, Employee employee)
     {
-        var branchName  = employee.Branch?.Name  ?? "";
-        var branchPhone = employee.Branch?.Phone ?? "";
+        var branchName    = employee.Branch?.Name       ?? "";
+        var branchPhone   = employee.Branch?.Phone      ?? "";
+        var costCenter    = employee.Branch?.CostCenter ?? "";
+        var buildingId    = employee.Branch?.BuildingId ?? "";
 
         static string Slug(string s) => s.Replace(" ", "_");
 
@@ -384,7 +386,9 @@ public class GoogleWorkspaceService
             .Replace("{PHONE}",           employee.Phone     ?? "")
             .Replace("{DEPARTMENT}",      employee.Department)
             .Replace("{BRANCH}",          branchName)
-            .Replace("{BRANCH_PHONE}",    branchPhone));
+            .Replace("{BRANCH_PHONE}",    branchPhone)
+            .Replace("{COST_CENTER}",     costCenter)
+            .Replace("{BUILDING_ID}",     buildingId));
     }
 
     // ── Admin Directory — User management ────────────────────────────────────
@@ -424,6 +428,75 @@ public class GoogleWorkspaceService
             OrgUnit:                   root.TryGetProperty("orgUnitPath", out var ou) ? ou.GetString() : null
         );
         return (true, info, null);
+    }
+
+    /// <summary>Update Google Workspace user profile fields (org info, location, manager).</summary>
+    public async Task<(bool Success, string? Error)> UpdateUserInfoAsync(string userEmail,
+        string? jobTitle, string? department, string? costCenter, string? employeeType,
+        string? buildingId, string? floorName, string? floorSection, string? managerEmail)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var payload = new Dictionary<string, object>();
+
+        if (jobTitle != null || department != null || costCenter != null || employeeType != null)
+        {
+            payload["organizations"] = new[]
+            {
+                new
+                {
+                    title        = jobTitle       ?? "",
+                    department   = department     ?? "",
+                    costCenter   = costCenter     ?? "",
+                    type         = string.IsNullOrWhiteSpace(employeeType) ? "unknown" : employeeType,
+                    primary      = true
+                }
+            };
+        }
+
+        if (buildingId != null || floorName != null || floorSection != null)
+        {
+            payload["locations"] = new[]
+            {
+                new
+                {
+                    type         = "desk",
+                    buildingId   = buildingId   ?? "",
+                    floorName    = floorName    ?? "",
+                    floorSection = floorSection ?? ""
+                }
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(managerEmail))
+        {
+            payload["relations"] = new[]
+            {
+                new { value = managerEmail, type = "manager" }
+            };
+        }
+
+        if (payload.Count == 0) return (true, null);
+
+        var url     = $"{AdminApiBase}/users/{Uri.EscapeDataString(userEmail)}";
+        var json    = JsonSerializer.Serialize(payload);
+        var req     = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        var resp    = await client.SendAsync(req);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("UpdateUserInfo failed for {User}: {Error}", userEmail, err);
+            return (false, $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        return (true, null);
     }
 
     /// <summary>Suspend or unsuspend a Google Workspace user account.</summary>
@@ -1106,7 +1179,7 @@ public class GoogleWorkspaceService
         // Persist test result
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-        var s = await db.GoogleWorkspaceSettings.FirstOrDefaultAsync();
+        var s = await db.GoogleWorkspaceSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
         if (s != null)
         {
             s.LastTestedDate  = DateTime.UtcNow;

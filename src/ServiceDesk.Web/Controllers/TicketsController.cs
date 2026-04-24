@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +24,8 @@ public class TicketsController : Controller
     private readonly OllamaService _ollama;
     private readonly TicketSimilarityService _similarity;
     private readonly SlaRiskService _slaRisk;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<TicketsController> _logger;
 
     public TicketsController(
         ServiceDeskDbContext context,
@@ -30,7 +34,9 @@ public class TicketsController : Controller
         AiTriageService aiTriage,
         OllamaService ollama,
         TicketSimilarityService similarity,
-        SlaRiskService slaRisk)
+        SlaRiskService slaRisk,
+        IServiceScopeFactory scopeFactory,
+        ILogger<TicketsController> logger)
     {
         _context            = context;
         _assignmentResolver = assignmentResolver;
@@ -39,6 +45,33 @@ public class TicketsController : Controller
         _ollama             = ollama;
         _similarity         = similarity;
         _slaRisk            = slaRisk;
+        _scopeFactory       = scopeFactory;
+        _logger             = logger;
+    }
+
+    /// <summary>
+    /// Lightweight poll — returns the count of tickets created after <paramref name="since"/>.
+    /// Called every 30 s by the Tickets Index page; shows a "new tickets" banner without auto-refresh.
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent,Viewer")]
+    public async Task<IActionResult> PollNewTickets(string since)
+    {
+        if (!DateTime.TryParse(since, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var sinceDate))
+            return Json(new { count = 0 });
+
+        var count = await _context.Tickets
+            .CountAsync(t => t.CreatedDate > sinceDate);
+
+        var preview = await _context.Tickets
+            .Where(t => t.CreatedDate > sinceDate)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(3)
+            .Select(t => new { t.Id, t.Title, priority = t.Priority.ToString() })
+            .ToListAsync();
+
+        return Json(new { count, preview });
     }
 
     [Authorize(Roles = "Admin,IT Agent,Viewer")]
@@ -374,10 +407,19 @@ public class TicketsController : Controller
 
         if (ticket == null) return NotFound();
 
+        var ollamaEnabled = await _context.AppSettings
+            .Where(s => s.Key == "OllamaEnabled")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+
+        ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
+        ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
+
         // Submitter's assigned assets for quick reference.
         if (ticket.SubmittedById > 0)
         {
             ViewBag.SubmitterAssets = await _context.Assets
+                .AsNoTracking()
                 .Where(a => a.AssignedToId == ticket.SubmittedById)
                 .OrderBy(a => a.AssetTag)
                 .Take(20)
@@ -494,17 +536,59 @@ public class TicketsController : Controller
             // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
             _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
 
-            // Notify assigned agent (fire-and-forget)
+            // Check for possible duplicate tickets (>80% TF-IDF similarity) — post an internal note if found
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var similar = await _similarity.FindSimilarAsync(
+                        ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
+                    var duplicates = similar.Where(s => s.ScorePct >= 80).ToList();
+                    if (duplicates.Count == 0) return;
+
+                    var links = string.Join(", ", duplicates.Select(d => $"#{d.TicketId} ({d.ScorePct:F0}% match)"));
+                    using var scope = _scopeFactory.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = ticket.Id,
+                        AuthorName  = "AI Duplicate Detector",
+                        AuthorEmail = null,
+                        Content     = $"🔁 Possible duplicate detected. Similar open tickets: {links}. "
+                                    + "Consider merging or linking before working this ticket.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                    _logger.LogInformation("[DuplicateDetection] Flagged Ticket #{Id} against {Matches}", ticket.Id, links);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[DuplicateDetection] Background detection failed for Ticket #{Id}.", ticket.Id);
+                }
+            });
+
+            // Notify assigned agent (fire-and-forget; use scope factory — HTTP scope may be disposed before this runs)
             if (ticket.AssignedToId != null)
+            {
+                var capturedNewTicketId = ticket.Id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == ticket.Id);
-                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                        using var scope = _scopeFactory.CreateScope();
+                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedNewTicketId);
+                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
                     }
-                    catch { /* email errors must not break ticket creation */ }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedNewTicketId);
+                    }
                 });
+            }
 
             return RedirectToAction(nameof(Index));
         }
@@ -515,6 +599,9 @@ public class TicketsController : Controller
     public async Task<IActionResult> Edit(int? id)
     {
         if (id == null) return NotFound();
+
+        // Start SLA baseline early — uses its own DbContext scope, safe to overlap
+        var slaBaselineTask = _slaRisk.EnsureBaselinesBuiltAsync();
 
         var ticket = await _context.Tickets
             .AsNoTracking()
@@ -529,28 +616,25 @@ public class TicketsController : Controller
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
-        // Load pending AI recommendation (if any) so the view can render the triage card
+        // Sequential _context queries — DbContext is not thread-safe
         var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
-        ViewBag.AiRecommendation = pendingRec;
 
-        // Load Ollama feature flag so the view can show/hide the "Draft AI Reply" button
         var ollamaEnabled = await _context.AppSettings
             .Where(s => s.Key == "OllamaEnabled")
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
-        ViewBag.OllamaEnabled = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
 
-        // SLA risk for this specific ticket
-        await _slaRisk.EnsureBaselinesBuiltAsync();
+        await slaBaselineTask;
+
+        ViewBag.AiRecommendation  = pendingRec;
+        ViewBag.OllamaEnabled     = string.Equals(ollamaEnabled, "true", StringComparison.OrdinalIgnoreCase);
         ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
         ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
-
-        // Note count for the "Summarize Thread" button visibility check
-        ViewBag.NoteCount = ticket.Notes?.Count ?? 0;
+        ViewBag.NoteCount         = ticket.Notes?.Count ?? 0;
 
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -610,15 +694,24 @@ public class TicketsController : Controller
 
             // Notify new assignee if assignment changed
             if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
+            {
+                var capturedEditId = id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
-                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                        using var scope = _scopeFactory.CreateScope();
+                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedEditId);
+                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedEditId);
+                    }
                 });
+            }
 
             return RedirectToAction(nameof(Index));
         }
@@ -712,28 +805,45 @@ public class TicketsController : Controller
         }
 
         if (notifyAssignment)
+        {
+            var capturedQUAssignId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
-                    if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
+                    using var scope = _scopeFactory.CreateScope();
+                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                    var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedQUAssignId);
+                    if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedQUAssignId);
+                }
             });
+        }
 
         if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
+        {
+            var capturedQUStatusId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var t = await _context.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == id);
+                    using var scope = _scopeFactory.CreateScope();
+                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                    var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedQUStatusId);
                     if (t?.SubmittedBy?.Email != null)
-                        await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email,
-                            $"Status changed to: {t.Status}");
+                        await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, $"Status changed to: {t.Status}");
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Notification] Status-change notification failed for Ticket #{Id}.", capturedQUStatusId);
+                }
             });
+        }
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
     }
@@ -761,6 +871,46 @@ public class TicketsController : Controller
         ticket.UpdatedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
+        // Fire escalation detection in background for public (non-internal) comments on active tickets
+        if (!isInternal
+            && ticket.Status != TicketStatus.Resolved
+            && ticket.Status != TicketStatus.Closed
+            && ticket.Status != TicketStatus.Cancelled)
+        {
+            var capturedContent  = content;
+            var capturedTicketId = id;
+            var capturedUser     = User.Identity?.Name ?? "System";
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var (escalating, reason) = await _ollama.DetectEscalationAsync(capturedContent);
+                    if (!escalating) return;
+
+                    // Use the scope factory — HttpContext may be disposed by the time this runs
+                    using var scope = _scopeFactory.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = capturedTicketId,
+                        AuthorName  = "AI Escalation Monitor",
+                        AuthorEmail = null,
+                        Content     = $"⚠️ Escalation signal detected in customer reply: {reason}. "
+                                    + "Review this ticket promptly and consider prioritizing or escalating.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                    _logger.LogInformation("[Escalation] Detected on Ticket #{Id}: {Reason}", capturedTicketId, reason);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Escalation] Background detection failed for Ticket #{Id}.", capturedTicketId);
+                }
+            });
+        }
+
         return Json(new
         {
             success = true,
@@ -773,6 +923,16 @@ public class TicketsController : Controller
         });
     }
 
+    private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".txt", ".csv", ".log", ".msg",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg",
+        ".zip", ".7z", ".tar", ".gz",
+        ".mp4", ".mov", ".avi", ".mkv",
+        ".json", ".xml", ".html", ".htm",
+    };
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
@@ -782,11 +942,14 @@ public class TicketsController : Controller
         if (file == null || file.Length == 0) return BadRequest(new { error = "No file provided." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { error = "File size exceeds 10 MB limit." });
 
+        var ext = Path.GetExtension(file.FileName);
+        if (!AllowedUploadExtensions.Contains(ext))
+            return BadRequest(new { error = $"File type '{ext}' is not allowed. Please upload a document, image, or archive." });
+
         var uploadDir = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads", "tickets", id.ToString());
         Directory.CreateDirectory(uploadDir);
 
-        var ext = Path.GetExtension(file.FileName);
         var storedName = $"{Guid.NewGuid():N}{ext}";
         var fullPath = Path.Combine(uploadDir, storedName);
 
@@ -1011,6 +1174,57 @@ public class TicketsController : Controller
         return Json(responses);
     }
 
+    // GET: Tickets/RankedCannedResponses?ticketId=N
+    // Same as CannedResponses but ranked by token overlap with the ticket's title + description.
+    // Responses with score > 0 are marked isRecommended = true and sorted to the top.
+    [HttpGet]
+    public async Task<IActionResult> RankedCannedResponses(int ticketId)
+    {
+        var responses = await _context.CannedResponses
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Title)
+            .Select(r => new { r.Id, r.Title, r.Content, r.Category })
+            .ToListAsync();
+
+        if (ticketId <= 0) return Json(responses.Select(r => new
+            { r.Id, r.Title, r.Content, r.Category, isRecommended = false, score = 0 }));
+
+        var ticket = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => t.Id == ticketId)
+            .Select(t => new { t.Title, t.Description })
+            .FirstOrDefaultAsync();
+
+        if (ticket == null) return Json(responses);
+
+        var ticketTokens = Tokenize(ticket.Title + " " + (ticket.Description ?? ""));
+
+        var ranked = responses
+            .Select(r =>
+            {
+                var rTokens = Tokenize(r.Title + " " + r.Content);
+                var overlap = ticketTokens.Intersect(rTokens).Count();
+                return new { r.Id, r.Title, r.Content, r.Category, isRecommended = overlap > 0, score = overlap };
+            })
+            .OrderByDescending(r => r.score)
+            .ThenBy(r => r.Title)
+            .ToList();
+
+        return Json(ranked);
+    }
+
+    private static HashSet<string> Tokenize(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var stopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "the","a","an","is","it","in","on","at","to","for","of","and","or","with","this","that",
+              "i","we","you","my","your","our","be","am","are","was","were","has","have","had",
+              "not","no","can","will","do","did","get","got","please","hi","hello","dear","team" };
+        return System.Text.RegularExpressions.Regex.Split(text.ToLowerInvariant(), @"\W+")
+            .Where(w => w.Length > 2 && !stopwords.Contains(w))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     // ── Ticket Escalation ────────────────────────────────────────────────────
 
     [HttpPost]
@@ -1061,27 +1275,30 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire-and-forget notification
+        var capturedEscalateId = id;
         _ = Task.Run(async () =>
         {
             try
             {
-                var t = await _context.Tickets
+                using var scope = _scopeFactory.CreateScope();
+                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                var t = await db.Tickets
                     .Include(x => x.SubmittedBy)
                     .Include(x => x.AssignedTo)
-                    .FirstOrDefaultAsync(x => x.Id == id);
+                    .FirstOrDefaultAsync(x => x.Id == capturedEscalateId);
                 if (t == null) return;
 
                 var msg = $"Ticket has been escalated to {t.Priority} priority. Reason: {t.EscalationReason ?? "Not specified"}";
-
-                // Notify assignee
                 if (t.AssignedTo?.Email != null)
-                    await _emailService.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
-
-                // Notify requester
+                    await email.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
                 if (t.SubmittedBy?.Email != null)
-                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Notification] Escalation notification failed for Ticket #{Id}.", capturedEscalateId);
+            }
         });
 
         return Json(new { success = true, priority = ticket.Priority.ToString() });
@@ -1154,19 +1371,28 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire status-change notification (resolution notes are internal — not emailed)
+        var capturedResolveId  = id;
+        var capturedResolveMsg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
         _ = Task.Run(async () =>
         {
             try
             {
-                var t = ticket; // capture for closure
-                var msg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
-                if (t.SubmittedBy?.Email != null)
-                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+                using var scope = _scopeFactory.CreateScope();
+                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedResolveId);
+                if (t?.SubmittedBy?.Email != null)
+                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, capturedResolveMsg);
             }
-            catch { /* swallow — notification is non-critical */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Notification] Resolution notification failed for Ticket #{Id}.", capturedResolveId);
+            }
         });
 
-        return Json(new { success = true });
+        // Suggest KB article creation when resolution notes are present
+        var suggestKb = !string.IsNullOrWhiteSpace(ticket.ResolutionNotes);
+        return Json(new { success = true, ticketId = id, suggestKb });
     }
 
     // ── AI Triage endpoints ──────────────────────────────────────────────────
@@ -1270,6 +1496,41 @@ public class TicketsController : Controller
             return Json(new { success = false, error = error ?? "Ollama is not available or returned an empty response." });
 
         return Json(new { success = true, draft });
+    }
+
+    /// <summary>
+    /// Server-Sent Events endpoint that streams the AI draft reply token by token.
+    /// Uses GET so the browser's EventSource API can connect without an antiforgery token.
+    /// The user is already authenticated via session cookie; this is a read-only operation.
+    /// </summary>
+    [HttpGet]
+    public async Task DraftAiReplyStream(int id, CancellationToken ct)
+    {
+        var ticket = await _context.Tickets.FindAsync(new object[] { id }, ct);
+        if (ticket == null)
+        {
+            Response.StatusCode = 404;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers["Cache-Control"] = "no-cache, no-transform";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        Response.Headers["Connection"] = "keep-alive";
+
+        // Disable IIS output buffering so SSE tokens reach the client immediately
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        await foreach (var token in _ollama.StreamDraftReplyAsync(
+            ticket.Title, ticket.Description, ticket.ResolutionNotes, ct))
+        {
+            var data = JsonSerializer.Serialize(token);
+            await Response.WriteAsync($"data: {data}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        await Response.WriteAsync("data: [DONE]\n\n", ct);
+        await Response.Body.FlushAsync(ct);
     }
 
     /// <summary>
@@ -1399,6 +1660,10 @@ public class TicketsController : Controller
             ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
             return View();
         }
+
+        // Clean up any previous abandoned temp file from this session before creating a new one
+        if (TempData.Peek("ImportTempPath") is string prevPath && System.IO.File.Exists(prevPath))
+            System.IO.File.Delete(prevPath);
 
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_ticket_{Guid.NewGuid():N}.dat");

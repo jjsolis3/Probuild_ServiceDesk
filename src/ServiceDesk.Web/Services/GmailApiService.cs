@@ -354,6 +354,53 @@ public class GmailApiService : BackgroundService
 
             _logger.LogInformation("Created new Ticket #{TicketId} from email: {Subject}", ticket.Id, ticket.Title);
 
+            // Run ML.NET triage (category + priority prediction) in background — same as manual create
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var triageScope = _serviceProvider.CreateScope();
+                    var triage = triageScope.ServiceProvider.GetRequiredService<AiTriageService>();
+                    await triage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description ?? "", ticket.BranchId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[EmailTriage] Background triage failed for Ticket #{Id}", ticket.Id);
+                }
+            });
+
+            // Check for possible duplicate tickets (>80% TF-IDF similarity) — post an internal note
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var dupScope = _serviceProvider.CreateScope();
+                    var similarity = dupScope.ServiceProvider.GetRequiredService<TicketSimilarityService>();
+                    var db         = dupScope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    var similar    = await similarity.FindSimilarAsync(
+                        ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
+                    var dupes = similar.Where(s => s.ScorePct >= 80).ToList();
+                    if (dupes.Count == 0) return;
+
+                    var links = string.Join(", ", dupes.Select(d => $"#{d.TicketId} ({d.ScorePct:F0}% match)"));
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = ticket.Id,
+                        AuthorName  = "AI Duplicate Detector",
+                        Content     = $"🔁 Possible duplicate detected. Similar open tickets: {links}. "
+                                    + "Consider merging or linking before working this ticket.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[DuplicateCheck] Failed for Ticket #{Id}", ticket.Id);
+                }
+            });
+
             // Send auto-reply confirmation with ticket reference
             if (config.AutoReplyOnNewTicket)
             {
@@ -728,7 +775,7 @@ public class GmailApiService : BackgroundService
         // Get initial historyId by listing a single message
         try
         {
-            var hc = new HttpClient();
+            using var hc = _httpClientFactory.CreateClient();
             hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.GmailAccessToken);
             var profileResp = await hc.GetAsync("https://gmail.googleapis.com/gmail/v1/users/me/profile", ct);
             if (profileResp.IsSuccessStatusCode)

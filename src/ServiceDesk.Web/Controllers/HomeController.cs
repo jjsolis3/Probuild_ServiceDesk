@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
+using ServiceDesk.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Enums;
@@ -14,10 +15,12 @@ namespace ServiceDesk.Web.Controllers;
 public class HomeController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly SlaRiskService _slaRisk;
 
-    public HomeController(ServiceDeskDbContext context)
+    public HomeController(ServiceDeskDbContext context, SlaRiskService slaRisk)
     {
         _context = context;
+        _slaRisk = slaRisk;
     }
 
     public async Task<IActionResult> Index()
@@ -95,6 +98,46 @@ public class HomeController : Controller
             .Take(10)
             .ToListAsync();
 
+        // SLA risk — load active tickets and score with SlaRiskService
+        await _slaRisk.EnsureBaselinesBuiltAsync();
+        var activeForSla = await _context.Tickets
+            .Where(t => t.Status == TicketStatus.Open
+                     || t.Status == TicketStatus.InProgress
+                     || t.Status == TicketStatus.OnHold)
+            .Include(t => t.AssignedTo)
+            .OrderBy(t => t.CreatedDate)
+            .Take(200)
+            .ToListAsync();
+
+        var slaAtRisk = activeForSla
+            .Select(t =>
+            {
+                var risk = _slaRisk.GetRisk((int)t.Category, (int)t.Priority, t.CreatedDate);
+                return (Ticket: t, Risk: risk);
+            })
+            .Where(x => x.Risk >= SlaRiskLevel.High)
+            .OrderByDescending(x => x.Risk)
+            .ThenBy(x => x.Ticket.CreatedDate)
+            .Take(10)
+            .Select(x =>
+            {
+                var dueLabel = x.Ticket.DueDate.HasValue
+                    ? (x.Ticket.DueDate.Value < DateTime.UtcNow
+                        ? $"Overdue by {(int)(DateTime.UtcNow - x.Ticket.DueDate.Value).TotalHours}h"
+                        : $"Due in {(int)(x.Ticket.DueDate.Value - DateTime.UtcNow).TotalHours}h")
+                    : null;
+                return new SlaAtRiskTicket(
+                    Id: x.Ticket.Id,
+                    Title: x.Ticket.Title,
+                    Priority: x.Ticket.Priority.ToString(),
+                    Status: x.Ticket.Status.ToString(),
+                    AssigneeName: x.Ticket.AssignedTo?.FullName,
+                    RiskLabel: SlaRiskService.RiskLabel(x.Risk),
+                    RiskBadge: SlaRiskService.RiskBadgeClass(x.Risk),
+                    DueLabel: dueLabel);
+            })
+            .ToList();
+
         var model = new DashboardViewModel
         {
             OpenTickets = openTickets,
@@ -119,7 +162,8 @@ public class HomeController : Controller
             PriorityHigh = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.High)?.Count ?? 0,
             PriorityCritical = openByPriority.FirstOrDefault(x => x.Priority == TicketPriority.Critical)?.Count ?? 0,
             ExpiringWarranties = expiringWarranties,
-            SlaBreachCount = slaBreachCount
+            SlaBreachCount = slaBreachCount,
+            SlaAtRiskTickets = slaAtRisk
         };
 
         // Load category names for display in ticket tables

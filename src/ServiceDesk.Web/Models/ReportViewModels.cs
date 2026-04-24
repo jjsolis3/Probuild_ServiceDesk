@@ -144,12 +144,14 @@ public class UserReportViewModel
 {
     public List<UserTicketStats> UserStats { get; set; } = new();
     public Dictionary<string, int> TicketsByDepartment { get; set; } = new();
+    public Dictionary<string, int> TicketsByBranch { get; set; } = new();
 }
 
 public class UserTicketStats
 {
     public string EmployeeName { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
+    public string Branch { get; set; } = string.Empty;
     public int TicketsSubmitted { get; set; }
     public int TicketsOpen { get; set; }
     public int TicketsResolved { get; set; }
