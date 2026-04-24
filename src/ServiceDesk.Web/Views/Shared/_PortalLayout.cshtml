@@ -8,6 +8,7 @@
     var announcementType   = ViewBag.PortalAnnouncementType as string ?? "info";
     bool showKb            = ViewBag.PortalShowKnowledgeBase is bool b ? b : true;
     bool showStore         = ViewBag.PortalShowStore         is bool s ? s : false;
+    bool showOpsHub        = ViewBag.PortalShowOpsHub        is bool o ? o : false;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -67,6 +68,15 @@
                         <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "Store" ? "active fw-semibold" : "")"
                            asp-controller="Store" asp-action="Index">
                             <i class="bi bi-shop me-1"></i>Store
+                        </a>
+                    </li>
+                }
+                @if (showOpsHub)
+                {
+                    <li class="nav-item">
+                        <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "OpsHub" ? "active fw-semibold" : "")"
+                           asp-controller="Store" asp-action="OperationsHub">
+                            <i class="bi bi-boxes me-1"></i>Operations Hub
                         </a>
                     </li>
                 }

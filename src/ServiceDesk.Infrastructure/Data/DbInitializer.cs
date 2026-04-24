@@ -1346,6 +1346,25 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'SelectedColor')
                     ALTER TABLE dbo.StoreOrderItems ADD SelectedColor NVARCHAR(100) NULL;");
 
+            // 43. Quarterly Store — StoreOperationsAccess (operations team hub access)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOperationsAccess')
+                BEGIN
+                    CREATE TABLE dbo.StoreOperationsAccess (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId            INT             NOT NULL
+                            CONSTRAINT FK_StoreOpsAccess_PortalUsers
+                            REFERENCES dbo.PortalUsers(Id) ON DELETE CASCADE,
+                        GrantedByPortalUserId   INT             NULL
+                            CONSTRAINT FK_StoreOpsAccess_GrantedBy
+                            REFERENCES dbo.PortalUsers(Id),
+                        GrantedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        IsActive                BIT             NOT NULL DEFAULT 1
+                    );
+                    CREATE INDEX IX_StoreOpsAccess_User_Active
+                        ON dbo.StoreOperationsAccess (PortalUserId, IsActive);
+                END");
+
         }
         catch (Exception ex)
         {
@@ -1478,6 +1497,30 @@ public static class DbInitializer
                     Description = description
                 });
             }
+        }
+
+        // Seed StoreOrderStatusUpdate email template
+        if (!context.EmailTemplates.Any(t => t.Key == "StoreOrderStatusUpdate"))
+        {
+            context.EmailTemplates.Add(new EmailTemplate
+            {
+                Key             = "StoreOrderStatusUpdate",
+                Name            = "Store Order Status Update",
+                Description     = "Sent to a portal user when the operations team updates their order status.",
+                SubjectTemplate = "Order Update — {{OrderNumber}} is now {{NewStatus}}",
+                BodyTemplate    =
+                    "<h3>Order Status Update</h3>" +
+                    "<p>Hi {{RecipientName}},</p>" +
+                    "<p>{{StatusMessage}}</p>" +
+                    "<table style='width:100%;border-collapse:collapse;margin:15px 0;'>" +
+                    "<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{{OrderNumber}}</td></tr>" +
+                    "<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{{Quarter}}</td></tr>" +
+                    "<tr><td style='padding:8px;font-weight:bold;'>New Status</td><td style='padding:8px;'><strong>{{NewStatus}}</strong></td></tr>" +
+                    "</table>" +
+                    "<p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>",
+                IsActive    = true,
+                UpdatedDate = DateTime.UtcNow
+            });
         }
 
         // Seed StoreOrderConfirmation email template

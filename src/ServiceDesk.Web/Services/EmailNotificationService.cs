@@ -566,6 +566,75 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends an order status update notification to the user who placed the order.
+    /// Called by the Operations Hub when ops staff change an order's status.
+    /// </summary>
+    public async Task SendOrderStatusUpdateAsync(
+        ServiceDesk.Core.Models.StoreOrder order,
+        string recipientEmail,
+        string recipientName,
+        string newStatus)
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+        {
+            _logger.LogWarning("[Store] No active Gmail configuration. Cannot send status update for #{OrderId}.", order.Id);
+            return;
+        }
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("StoreOrderStatusUpdate");
+
+        var statusMessage = newStatus switch
+        {
+            "Confirmed" => "Your order has been reviewed and confirmed by the operations team. It is now being processed.",
+            "Fulfilled" => "Great news! Your order has been fulfilled. Your items are on their way or ready for pickup.",
+            "Cancelled" => "Your order has been cancelled. Please contact the operations team if you have any questions.",
+            _           => $"Your order status has been updated to: <strong>{System.Net.WebUtility.HtmlEncode(newStatus)}</strong>."
+        };
+
+        var tokens = new Dictionary<string, string>
+        {
+            ["OrderNumber"]   = order.OrderNumber,
+            ["NewStatus"]     = System.Net.WebUtility.HtmlEncode(newStatus),
+            ["StatusMessage"] = statusMessage,
+            ["Quarter"]       = $"Q{order.Quarter} {order.Year}",
+            ["RecipientName"] = System.Net.WebUtility.HtmlEncode(recipientName),
+            ["CompanyName"]   = System.Net.WebUtility.HtmlEncode(companyName),
+        };
+
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : $"Order Update — {order.OrderNumber} is now {newStatus}";
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>Order Status Update</h3>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
+            <p>{statusMessage}</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>Q{order.Quarter} {order.Year}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>New Status</td>
+                    <td style='padding:8px;'><strong>{System.Net.WebUtility.HtmlEncode(newStatus)}</strong></td></tr>
+            </table>
+            <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
+            _logger.LogInformation("[Store] Sent status update ({Status}) for order #{OrderNumber} to {Email}", newStatus, order.OrderNumber, recipientEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Store] Failed to send status update for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+        }
+    }
+
+    /// <summary>
     /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
     /// </summary>
     private static string BuildHtmlEmail(

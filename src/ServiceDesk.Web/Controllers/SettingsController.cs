@@ -2315,6 +2315,71 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(StoreAccess));
     }
 
+    // GET: Settings/StoreOperationsAccess
+    public async Task<IActionResult> StoreOperationsAccess()
+    {
+        var accessList = await _context.StoreOperationsAccess
+            .Include(a => a.PortalUser)
+            .Include(a => a.GrantedBy)
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.PortalUser.LastName)
+            .ToListAsync();
+
+        var accessedIds = accessList.Select(a => a.PortalUserId).ToHashSet();
+
+        var allUsers = await _context.PortalUsers
+            .Where(u => u.IsActive && !accessedIds.Contains(u.Id))
+            .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
+            .ToListAsync();
+
+        ViewBag.AccessList = accessList;
+        ViewBag.AllUsers   = allUsers;
+        return View();
+    }
+
+    // POST: Settings/StoreOperationsAccessGrant
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreOperationsAccessGrant(int portalUserId)
+    {
+        var adminIdClaim = User.FindFirst("UserId")?.Value;
+        int.TryParse(adminIdClaim, out var adminId);
+
+        var already = await _context.StoreOperationsAccess
+            .FirstOrDefaultAsync(a => a.PortalUserId == portalUserId && a.IsActive);
+
+        if (already != null)
+        {
+            TempData["Error"] = "That user already has Operations Hub access.";
+            return RedirectToAction(nameof(StoreOperationsAccess));
+        }
+
+        _context.StoreOperationsAccess.Add(new ServiceDesk.Core.Models.StoreOperationsAccess
+        {
+            PortalUserId          = portalUserId,
+            GrantedByPortalUserId = adminId > 0 ? adminId : null,
+            GrantedDate           = DateTime.UtcNow,
+            IsActive              = true
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Operations Hub access granted.";
+        return RedirectToAction(nameof(StoreOperationsAccess));
+    }
+
+    // POST: Settings/StoreOperationsAccessRevoke/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreOperationsAccessRevoke(int id)
+    {
+        var entry = await _context.StoreOperationsAccess.FindAsync(id);
+        if (entry == null) return NotFound();
+
+        entry.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Operations Hub access revoked.";
+        return RedirectToAction(nameof(StoreOperationsAccess));
+    }
+
     // ── Store image helpers ───────────────────────────────────────────────────
 
     private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)

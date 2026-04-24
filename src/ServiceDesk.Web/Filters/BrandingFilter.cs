@@ -46,8 +46,9 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             controller.ViewBag.PortalShowKnowledgeBase = !branding!.GetValueOrDefault("PortalShowKnowledgeBase", "true")
                                                                     .Equals("false", StringComparison.OrdinalIgnoreCase);
 
-            // Inject store access flag for the portal nav link (per-user, not cached)
-            controller.ViewBag.PortalShowStore = false;
+            // Inject store and ops-hub access flags for the portal nav (per-user, not cached)
+            controller.ViewBag.PortalShowStore  = false;
+            controller.ViewBag.PortalShowOpsHub = false;
             var userIdClaim = ctx.HttpContext.User.FindFirst("UserId")?.Value
                            ?? ctx.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (int.TryParse(userIdClaim, out var userId) && userId > 0)
@@ -57,7 +58,17 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
                     controller.ViewBag.PortalShowStore = await context.StoreAccessList
                         .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
                 }
-                catch { /* StoreAccessList table may not exist yet on fresh install */ }
+                catch { /* StoreAccessList table may not exist yet */ }
+
+                try
+                {
+                    var userRole = ctx.HttpContext.User.FindFirst("Role")?.Value;
+                    var isAdminOrAgent = userRole == "Admin" || userRole == "IT Agent";
+                    controller.ViewBag.PortalShowOpsHub = isAdminOrAgent ||
+                        await context.StoreOperationsAccess
+                            .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
+                }
+                catch { /* StoreOperationsAccess table may not exist yet */ }
             }
         }
 

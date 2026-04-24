@@ -199,7 +199,132 @@ public class StoreController : Controller
         return View(order);
     }
 
+    // ── Operations Hub ────────────────────────────────────────────────────────
+
+    // GET /Store/OperationsHub
+    public async Task<IActionResult> OperationsHub(int? year, int? quarter, string? status)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+
+        if (!await CanAccessOpsHubAsync(user.Id))
+        {
+            TempData["Error"] = "You are not authorised to access the Operations Hub.";
+            return RedirectToAction("Index", "Portal");
+        }
+
+        var now = DateTime.UtcNow;
+        year    ??= now.Year;
+        quarter ??= (now.Month - 1) / 3 + 1;
+
+        var baseQuery = _context.StoreOrders
+            .Where(o => o.Year == year && o.Quarter == quarter);
+
+        // Status counts for the summary cards
+        var statusCounts = await baseQuery
+            .GroupBy(o => o.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var query = baseQuery
+            .Include(o => o.PortalUser)
+            .Include(o => o.Items)
+                .ThenInclude(i => i.StoreProduct)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(o => o.Status == status);
+
+        var orders = await query
+            .OrderBy(o => o.Status)
+            .ThenBy(o => o.OrderDate)
+            .ToListAsync();
+
+        // Product totals for the current view
+        var productTotals = orders
+            .SelectMany(o => o.Items)
+            .GroupBy(i => new { i.StoreProductId, i.ProductNameSnapshot, i.ProductCategorySnapshot })
+            .Select(g => new
+            {
+                Name       = g.Key.ProductNameSnapshot,
+                Category   = g.Key.ProductCategorySnapshot,
+                TotalQty   = g.Sum(i => i.Quantity),
+                OrderCount = g.Select(i => i.StoreOrderId).Distinct().Count()
+            })
+            .OrderByDescending(p => p.TotalQty)
+            .ToList();
+
+        ViewBag.Year         = year;
+        ViewBag.Quarter      = quarter;
+        ViewBag.Status       = status;
+        ViewBag.StatusCounts = statusCounts.ToDictionary(x => x.Status, x => x.Count);
+        ViewBag.ProductTotals = productTotals;
+        ViewBag.Statuses     = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+        ViewBag.TotalOrders  = statusCounts.Sum(x => x.Count);
+
+        return View(orders);
+    }
+
+    // POST /Store/OpsUpdateStatus
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsUpdateStatus(
+        int orderId, string newStatus, int year, int quarter, string? returnStatus)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+
+        if (!await CanAccessOpsHubAsync(user.Id))
+            return Forbid();
+
+        var validStatuses = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+        if (!validStatuses.Contains(newStatus))
+        {
+            TempData["Error"] = "Invalid status value.";
+            return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+        }
+
+        var order = await _context.StoreOrders
+            .Include(o => o.PortalUser)
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+
+        if (order == null) return NotFound();
+
+        var oldStatus = order.Status;
+        order.Status = newStatus;
+        await _context.SaveChangesAsync();
+
+        if (oldStatus != newStatus)
+        {
+            try
+            {
+                await _emailNotification.SendOrderStatusUpdateAsync(
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[OpsHub] Failed to send status update email for order #{OrderId}", order.Id);
+            }
+        }
+
+        TempData["Success"] = $"Order {order.OrderNumber} marked as {newStatus}. A notification email has been sent to {order.PortalUser.Email}.";
+        return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private async Task<bool> CanAccessOpsHubAsync(int portalUserId)
+    {
+        var userRole = User.FindFirst("Role")?.Value;
+        if (userRole == "Admin" || userRole == "IT Agent") return true;
+
+        try
+        {
+            return await _context.StoreOperationsAccess
+                .AnyAsync(a => a.PortalUserId == portalUserId && a.IsActive);
+        }
+        catch { return false; }
+    }
 
     private async Task<PortalUser?> GetCurrentPortalUserAsync()
     {
