@@ -2160,8 +2160,11 @@ public class SettingsController : Controller
 
         foreach (var setting in settings)
         {
-            if (form.ContainsKey(setting.Key))
-                setting.Value = form[setting.Key].ToString();
+            if (!form.ContainsKey(setting.Key)) continue;
+
+            // Checkbox + hidden pattern submits both values (e.g. "false,true" when checked).
+            // Take the last value — that's the actual checkbox state.
+            setting.Value = form[setting.Key].LastOrDefault() ?? string.Empty;
         }
 
         await _context.SaveChangesAsync();
