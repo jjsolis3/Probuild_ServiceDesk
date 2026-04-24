@@ -48,7 +48,8 @@ public class OllamaService
             $"details. Do not include greetings.\n\n" +
             $"Title: {title}\n\nDescription:\n{description}";
 
-        return await GenerateAsync(prompt, ct);
+        var result = await GenerateAsync(prompt, ct);
+        return result.Text;
     }
 
     /// <summary>
@@ -70,7 +71,33 @@ public class OllamaService
             resolutionPart +
             $"\n\nWrite only the reply body — no subject line, no signatures.";
 
-        return await GenerateAsync(prompt, ct);
+        var result = await GenerateAsync(prompt, ct);
+        return result.Text;
+    }
+
+    /// <summary>
+    /// Generates a draft reply and returns a user-facing error message when generation fails.
+    /// </summary>
+    public async Task<(string? Draft, string? Error)> DraftReplyWithErrorAsync(
+        string title,
+        string description,
+        string? resolutionNotes = null,
+        CancellationToken ct = default)
+    {
+        var resolutionPart = string.IsNullOrWhiteSpace(resolutionNotes)
+            ? string.Empty
+            : $"\n\nResolution notes provided by the IT agent:\n{resolutionNotes}";
+
+        var prompt =
+            $"You are an IT help desk agent. Write a professional, friendly reply to a " +
+            $"support ticket submitter. Keep it concise (3-5 sentences). Do not use " +
+            $"placeholder text like [Your Name].\n\n" +
+            $"Ticket title: {title}\n\nIssue description:\n{description}" +
+            resolutionPart +
+            $"\n\nWrite only the reply body — no subject line, no signatures.";
+
+        var result = await GenerateAsync(prompt, ct);
+        return (result.Text, result.Error);
     }
 
     /// <summary>
@@ -120,7 +147,33 @@ public class OllamaService
             $"Title: {title}\n\nOriginal description:\n{description}" +
             noteBlock;
 
-        return await GenerateAsync(prompt, ct);
+        var result = await GenerateAsync(prompt, ct);
+        return result.Text;
+    }
+
+    /// <summary>
+    /// Summarizes a full ticket thread and returns a user-facing error message when generation fails.
+    /// </summary>
+    public async Task<(string? Summary, string? Error)> SummarizeThreadWithErrorAsync(
+        string title,
+        string description,
+        IEnumerable<string> noteContents,
+        CancellationToken ct = default)
+    {
+        var notes = noteContents?.ToList() ?? [];
+        var noteBlock = notes.Count > 0
+            ? "\n\nAgent notes (chronological):\n" + string.Join("\n---\n", notes.Select((n, i) => $"[{i + 1}] {n}"))
+            : string.Empty;
+
+        var prompt =
+            $"You are an IT help desk assistant. Summarize the following support ticket " +
+            $"thread in 3-5 sentences, covering the original issue, any troubleshooting " +
+            $"steps taken, and the current state or resolution. Be concise and factual.\n\n" +
+            $"Title: {title}\n\nOriginal description:\n{description}" +
+            noteBlock;
+
+        var result = await GenerateAsync(prompt, ct);
+        return (result.Text, result.Error);
     }
 
     /// <summary>
@@ -331,7 +384,7 @@ public class OllamaService
 
     // ── Core generation (non-streaming) ─────────────────────────────────────
 
-    private async Task<string?> GenerateAsync(string prompt, CancellationToken ct)
+    private async Task<OllamaResult> GenerateAsync(string prompt, CancellationToken ct)
     {
         string url = "http://localhost:11434", model = "phi";
         try
@@ -369,13 +422,13 @@ public class OllamaService
             using var doc = JsonDocument.Parse(json);
 
             if (doc.RootElement.TryGetProperty("response", out var responseProp))
-                return responseProp.GetString()?.Trim();
+                return new OllamaResult(responseProp.GetString()?.Trim(), null);
 
-            return null;
+            return new OllamaResult(null, "Ollama returned an unexpected response format.");
         }
         catch (OperationCanceledException)
         {
-            return null;
+            return new OllamaResult(null, "Ollama request timed out.");
         }
         catch (HttpRequestException ex)
         {
@@ -388,6 +441,8 @@ public class OllamaService
             return null;
         }
     }
+
+    private sealed record OllamaResult(string? Text, string? Error);
 
     private async Task<(bool Enabled, string Url, string Model)> LoadSettingsAsync()
     {

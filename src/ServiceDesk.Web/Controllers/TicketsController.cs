@@ -495,6 +495,7 @@ public class TicketsController : Controller
         if (id == null) return NotFound();
 
         var ticket = await _context.Tickets
+            .AsNoTracking()
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
@@ -603,6 +604,8 @@ public class TicketsController : Controller
         var slaBaselineTask = _slaRisk.EnsureBaselinesBuiltAsync();
 
         var ticket = await _context.Tickets
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.SubmittedBy)
             .Include(t => t.AssignedTo)
             .Include(t => t.CompanyService)
@@ -1486,11 +1489,11 @@ public class TicketsController : Controller
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
 
-        var draft = await _ollama.DraftReplyAsync(
+        var (draft, error) = await _ollama.DraftReplyWithErrorAsync(
             ticket.Title, ticket.Description, ticket.ResolutionNotes);
 
         if (string.IsNullOrWhiteSpace(draft))
-            return Json(new { success = false, error = "Ollama is not available or returned an empty response." });
+            return Json(new { success = false, error = error ?? "Ollama is not available or returned an empty response." });
 
         return Json(new { success = true, draft });
     }
@@ -1598,11 +1601,11 @@ public class TicketsController : Controller
             .Where(n => !string.IsNullOrWhiteSpace(n.Content))
             .Select(n => n.Content!);
 
-        var summary = await _ollama.SummarizeThreadAsync(
+        var (summary, error) = await _ollama.SummarizeThreadWithErrorAsync(
             ticket.Title, ticket.Description ?? string.Empty, noteContents);
 
         if (string.IsNullOrWhiteSpace(summary))
-            return Json(new { success = false, error = "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
 
         return Json(new { success = true, summary });
     }
