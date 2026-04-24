@@ -1,0 +1,36 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace ServiceDesk.Core.Models;
+
+public class StoreProduct
+{
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(2000)]
+    public string? Description { get; set; }
+
+    [StringLength(100)]
+    public string? Category { get; set; }
+
+    [StringLength(500)]
+    public string? ImagePath { get; set; }
+
+    [StringLength(50)]
+    [Display(Name = "Unit of Measure")]
+    public string? UnitOfMeasure { get; set; }
+
+    [Display(Name = "Active")]
+    public bool IsActive { get; set; } = true;
+
+    [Display(Name = "Sort Order")]
+    public int SortOrder { get; set; } = 100;
+
+    [Display(Name = "Created Date")]
+    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+
+    public ICollection<StoreOrderItem> OrderItems { get; set; } = new List<StoreOrderItem>();
+}

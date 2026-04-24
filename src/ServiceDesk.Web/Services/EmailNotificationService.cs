@@ -482,6 +482,90 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends a store order confirmation to the user who placed the order.
+    /// </summary>
+    public async Task SendStoreOrderConfirmationAsync(
+        ServiceDesk.Core.Models.StoreOrder order,
+        string recipientEmail,
+        string recipientName,
+        List<ServiceDesk.Core.Models.StoreOrderItem> items)
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+        {
+            _logger.LogWarning("[Store] No active Gmail configuration. Cannot send order confirmation for #{OrderId}.", order.Id);
+            return;
+        }
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("StoreOrderConfirmation");
+
+        var itemRows = string.Join("\n", items.Select(i =>
+            $"<tr>" +
+            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(i.ProductNameSnapshot)}</td>" +
+            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;'>" +
+            $"{System.Net.WebUtility.HtmlEncode(i.ProductCategorySnapshot ?? "—")}</td>" +
+            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:bold;'>{i.Quantity}</td>" +
+            $"</tr>"));
+
+        var itemsHtml =
+            "<table style='width:100%;border-collapse:collapse;margin:10px 0;'>" +
+            "<thead><tr style='background:#f3f4f6;'>" +
+            "<th style='padding:8px;text-align:left;'>Product</th>" +
+            "<th style='padding:8px;text-align:center;'>Category</th>" +
+            "<th style='padding:8px;text-align:center;'>Qty</th>" +
+            "</tr></thead><tbody>" +
+            itemRows +
+            "</tbody></table>";
+
+        var tokens = new Dictionary<string, string>
+        {
+            ["OrderNumber"]    = order.OrderNumber,
+            ["OrderDate"]      = order.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") + " UTC",
+            ["Quarter"]        = $"Q{order.Quarter} {order.Year}",
+            ["RecipientName"]  = System.Net.WebUtility.HtmlEncode(recipientName),
+            ["CompanyName"]    = System.Net.WebUtility.HtmlEncode(companyName),
+            ["OrderItemsHtml"] = itemsHtml,
+        };
+
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : $"Order Confirmation — {order.OrderNumber}";
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>Order Confirmed — {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h3>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
+            <p>Your order has been received. The operations team will review and process it shortly.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;'>Q{order.Quarter} {order.Year}</td></tr>
+            </table>
+            <h4 style='margin-top:20px;'>Items Ordered</h4>
+            {itemsHtml}
+            <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
+            _logger.LogInformation("[Store] Sent confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+
+            // Mark confirmation sent
+            order.ConfirmationEmailSent = true;
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Store] Failed to send confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+        }
+    }
+
+    /// <summary>
     /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
     /// </summary>
     private static string BuildHtmlEmail(

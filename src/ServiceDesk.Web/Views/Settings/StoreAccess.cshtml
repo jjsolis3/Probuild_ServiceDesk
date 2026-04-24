@@ -1,0 +1,128 @@
+@using ServiceDesk.Core.Models
+@{
+    ViewData["Title"] = "Store Access List";
+    var accessList = ViewBag.AccessList as List<StoreAccessList> ?? new();
+    var allUsers   = ViewBag.AllUsers   as List<PortalUser>      ?? new();
+    var accessedIds = accessList.Select(a => a.PortalUserId).ToHashSet();
+    var available   = allUsers.Where(u => !accessedIds.Contains(u.Id)).ToList();
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="StoreSettings">Store Settings</a></li>
+        <li class="breadcrumb-item active">Access List</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-person-check text-primary me-2"></i>Store Access List</h1>
+        <p class="text-muted small mt-1 mb-0">
+            @accessList.Count designated user(s) can access the store when it is open.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+    <!-- Grant Access -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-plus me-2"></i>Grant Access</h5>
+            </div>
+            <div class="card-body">
+                @if (!available.Any())
+                {
+                    <p class="text-muted small mb-0">All active portal users already have access.</p>
+                }
+                else
+                {
+                    <form method="post" asp-action="StoreAccessGrant" asp-antiforgery="true">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Select User</label>
+                            <select name="portalUserId" class="form-select" required>
+                                <option value="">— choose a user —</option>
+                                @foreach (var u in available)
+                                {
+                                    <option value="@u.Id">@u.FullName (@u.Email)</option>
+                                }
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-person-check me-1"></i>Grant Store Access
+                        </button>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Access List -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Current Access</h5>
+            </div>
+            @if (!accessList.Any())
+            {
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-person-x display-4 d-block mb-2 opacity-25"></i>
+                    No users have been granted store access yet.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th>Granted By</th>
+                                <th>Granted Date</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in accessList)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">@a.PortalUser.FullName</div>
+                                        <div class="text-muted small">@a.PortalUser.Email</div>
+                                    </td>
+                                    <td class="text-muted small">@(a.GrantedBy?.FullName ?? "System")</td>
+                                    <td class="text-muted small">@a.GrantedDate.ToString("MMM d, yyyy")</td>
+                                    <td class="text-end">
+                                        <form method="post" asp-action="StoreAccessRevoke" asp-route-id="@a.Id"
+                                              asp-antiforgery="true" class="d-inline"
+                                              onsubmit="return confirm('Revoke store access for @Html.Raw(a.PortalUser.FullName.Replace("'","\\'")??"")? They will no longer be able to order.');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-person-dash me-1"></i>Revoke
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>

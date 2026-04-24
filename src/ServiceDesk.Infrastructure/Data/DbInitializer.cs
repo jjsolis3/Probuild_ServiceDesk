@@ -1246,6 +1246,84 @@ public static class DbInitializer
                 CREATE INDEX IX_Tickets_SubmittedById ON dbo.Tickets (SubmittedById);
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
                 CREATE INDEX IX_Tickets_Status_Priority ON dbo.Tickets (Status, Priority);");
+
+            // 37. Quarterly Store — StoreProducts
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreProducts')
+                BEGIN
+                    CREATE TABLE dbo.StoreProducts (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name            NVARCHAR(200)   NOT NULL,
+                        Description     NVARCHAR(2000)  NULL,
+                        Category        NVARCHAR(100)   NULL,
+                        ImagePath       NVARCHAR(500)   NULL,
+                        UnitOfMeasure   NVARCHAR(50)    NULL,
+                        IsActive        BIT             NOT NULL DEFAULT 1,
+                        SortOrder       INT             NOT NULL DEFAULT 100,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // 38. Quarterly Store — StoreOrders
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrders')
+                BEGIN
+                    CREATE TABLE dbo.StoreOrders (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        OrderNumber             NVARCHAR(50)    NOT NULL,
+                        PortalUserId            INT             NOT NULL
+                            CONSTRAINT FK_StoreOrders_PortalUsers
+                            REFERENCES dbo.PortalUsers(Id),
+                        OrderDate               DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        Status                  NVARCHAR(50)    NOT NULL DEFAULT 'Pending',
+                        Quarter                 INT             NOT NULL,
+                        Year                    INT             NOT NULL,
+                        ConfirmationEmailSent   BIT             NOT NULL DEFAULT 0,
+                        Notes                   NVARCHAR(1000)  NULL
+                    );
+
+                    CREATE INDEX IX_StoreOrders_User_Year_Quarter
+                        ON dbo.StoreOrders (PortalUserId, Year, Quarter);
+                END");
+
+            // 39. Quarterly Store — StoreOrderItems
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrderItems')
+                BEGIN
+                    CREATE TABLE dbo.StoreOrderItems (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        StoreOrderId            INT             NOT NULL
+                            CONSTRAINT FK_StoreOrderItems_StoreOrders
+                            REFERENCES dbo.StoreOrders(Id) ON DELETE CASCADE,
+                        StoreProductId          INT             NOT NULL
+                            CONSTRAINT FK_StoreOrderItems_StoreProducts
+                            REFERENCES dbo.StoreProducts(Id),
+                        Quantity                INT             NOT NULL,
+                        ProductNameSnapshot     NVARCHAR(200)   NOT NULL,
+                        ProductCategorySnapshot NVARCHAR(100)   NULL
+                    );
+                END");
+
+            // 40. Quarterly Store — StoreAccessList
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreAccessList')
+                BEGIN
+                    CREATE TABLE dbo.StoreAccessList (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId            INT             NOT NULL
+                            CONSTRAINT FK_StoreAccessList_PortalUsers
+                            REFERENCES dbo.PortalUsers(Id) ON DELETE CASCADE,
+                        GrantedByPortalUserId   INT             NULL
+                            CONSTRAINT FK_StoreAccessList_GrantedBy
+                            REFERENCES dbo.PortalUsers(Id),
+                        GrantedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        IsActive                BIT             NOT NULL DEFAULT 1
+                    );
+
+                    CREATE INDEX IX_StoreAccessList_User_Active
+                        ON dbo.StoreAccessList (PortalUserId, IsActive);
+                END");
+
         }
         catch (Exception ex)
         {
@@ -1351,6 +1429,58 @@ public static class DbInitializer
                 CreatedDate = DateTime.UtcNow,
                 RoleId = userRole.Id,
                 EmployeeId = emp?.Id
+            });
+        }
+
+        context.SaveChanges();
+
+        // Seed Store AppSettings
+        var storeSettings = new[]
+        {
+            ("StoreEnabled",        "false",    "Store", "Enables or disables the quarterly store for portal users."),
+            ("StoreOpenDate",       "",         "Store", "Date and time the store opens (UTC, format: yyyy-MM-ddTHH:mm)."),
+            ("StoreCloseDate",      "",         "Store", "Date and time the store closes (UTC, format: yyyy-MM-ddTHH:mm)."),
+            ("StoreWelcomeMessage", "Welcome to the company store! Place your supply orders below.", "Store",
+                "Message shown to users at the top of the store catalog."),
+        };
+
+        foreach (var (key, value, category, description) in storeSettings)
+        {
+            if (!context.AppSettings.Any(s => s.Key == key))
+            {
+                context.AppSettings.Add(new AppSetting
+                {
+                    Key         = key,
+                    Value       = value,
+                    Category    = category,
+                    Description = description
+                });
+            }
+        }
+
+        // Seed StoreOrderConfirmation email template
+        if (!context.EmailTemplates.Any(t => t.Key == "StoreOrderConfirmation"))
+        {
+            context.EmailTemplates.Add(new EmailTemplate
+            {
+                Key             = "StoreOrderConfirmation",
+                Name            = "Store Order Confirmation",
+                Description     = "Sent to a portal user after they successfully place a store order.",
+                SubjectTemplate = "Order Confirmation — {{OrderNumber}}",
+                BodyTemplate    =
+                    "<h3>Order Confirmed — {{OrderNumber}}</h3>" +
+                    "<p>Hi {{RecipientName}},</p>" +
+                    "<p>Your order has been received. The operations team will review and process it shortly.</p>" +
+                    "<table style='width:100%;border-collapse:collapse;margin:15px 0;'>" +
+                    "<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{{OrderNumber}}</td></tr>" +
+                    "<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{{OrderDate}}</td></tr>" +
+                    "<tr><td style='padding:8px;font-weight:bold;'>Quarter</td><td style='padding:8px;'>{{Quarter}}</td></tr>" +
+                    "</table>" +
+                    "<h4 style='margin-top:20px;'>Items Ordered</h4>" +
+                    "{{OrderItemsHtml}}" +
+                    "<p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>",
+                IsActive    = true,
+                UpdatedDate = DateTime.UtcNow
             });
         }
 

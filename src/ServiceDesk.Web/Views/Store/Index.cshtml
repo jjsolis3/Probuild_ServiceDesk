@@ -1,0 +1,177 @@
+@using ServiceDesk.Core.Models
+@model List<StoreProduct>
+@{
+    ViewData["Title"]      = "Company Store";
+    ViewData["ActivePage"] = "Store";
+    Layout = "_PortalLayout";
+
+    var welcome     = ViewBag.WelcomeMessage as string ?? string.Empty;
+    var quarter     = (int)(ViewBag.Quarter ?? 1);
+    var year        = (int)(ViewBag.Year    ?? DateTime.UtcNow.Year);
+    var currentUser = ViewBag.CurrentUser as PortalUser;
+
+    var categories = Model.Select(p => p.Category ?? "General")
+                          .Distinct().OrderBy(c => c).ToList();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-shop me-2 text-primary"></i>Company Store</h2>
+        <p class="text-muted small mb-0">Q@quarter @year Ordering Window</p>
+    </div>
+    <a asp-action="MyOrders" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-clock-history me-1"></i>My Orders
+    </a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(welcome))
+{
+    <div class="alert alert-info border-0 shadow-sm py-2 mb-4">
+        <i class="bi bi-info-circle me-2"></i>@welcome
+    </div>
+}
+
+@if (!Model.Any())
+{
+    <div class="card shadow-sm text-center py-5 text-muted">
+        <i class="bi bi-box display-3 d-block mb-3 opacity-25"></i>
+        <p>No products are available in the catalog at this time.</p>
+    </div>
+}
+else
+{
+    <form method="post" asp-action="PlaceOrder" asp-antiforgery="true" id="storeForm">
+
+        @foreach (var category in categories)
+        {
+            var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
+            <h5 class="fw-bold text-muted text-uppercase small letter-spacing-1 mb-3 mt-4">
+                <i class="bi bi-tag me-1"></i>@category
+            </h5>
+            <div class="row g-3 mb-2">
+                @foreach (var product in catProducts)
+                {
+                    <div class="col-xl-3 col-lg-4 col-md-6">
+                        <div class="card shadow-sm h-100 border-0" id="card-@product.Id">
+                            @if (!string.IsNullOrEmpty(product.ImagePath))
+                            {
+                                <img src="@product.ImagePath" alt="@product.Name"
+                                     class="card-img-top"
+                                     style="height:180px;object-fit:cover;" />
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center justify-content-center bg-light"
+                                     style="height:180px;">
+                                    <i class="bi bi-box display-3 text-muted opacity-25"></i>
+                                </div>
+                            }
+                            <div class="card-body d-flex flex-column">
+                                <h6 class="fw-bold mb-1">@product.Name</h6>
+                                @if (!string.IsNullOrEmpty(product.Description))
+                                {
+                                    <p class="text-muted small mb-2" style="flex:1;">@product.Description</p>
+                                }
+                                @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
+                                {
+                                    <div class="text-muted small mb-2">
+                                        <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
+                                    </div>
+                                }
+                                <div class="mt-auto">
+                                    <label class="form-label small fw-semibold mb-1"
+                                           for="qty_@product.Id">Quantity</label>
+                                    <input type="number" class="form-control form-control-sm qty-input"
+                                           id="qty_@product.Id" name="qty_@product.Id"
+                                           min="0" max="999" value="0"
+                                           data-product-id="@product.Id"
+                                           oninput="updateOrderSummary()" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="card shadow-sm mt-4 border-primary border-2">
+            <div class="card-body">
+                <div class="row align-items-end g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="notes">
+                            Order Notes <span class="text-muted fw-normal small">(optional)</span>
+                        </label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2"
+                                  maxlength="1000"
+                                  placeholder="Any special instructions or notes for the operations team…"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="bg-light rounded p-3 mb-3" id="orderSummaryBox">
+                            <div class="fw-semibold mb-1">
+                                <i class="bi bi-cart me-1 text-primary"></i>Order Summary
+                            </div>
+                            <div id="summaryItems" class="text-muted small">
+                                No items selected yet.
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
+                            <i class="bi bi-check-circle me-1"></i>Place Order
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </form>
+}
+
+@section Scripts {
+<script>
+(function () {
+    var productNames = {
+        @foreach (var p in Model)
+        {
+            <text>'@p.Id': '@Html.Raw(p.Name.Replace("'", "\\'"))',</text>
+        }
+    };
+
+    window.updateOrderSummary = function () {
+        var inputs = document.querySelectorAll('.qty-input');
+        var lines = [];
+        inputs.forEach(function (inp) {
+            var qty = parseInt(inp.value, 10);
+            if (qty > 0) {
+                var id = inp.dataset.productId;
+                lines.push(qty + ' × ' + (productNames[id] || 'Product'));
+                // Highlight selected card
+                document.getElementById('card-' + id)
+                    .classList.add('border', 'border-primary');
+            } else {
+                var id2 = inp.dataset.productId;
+                document.getElementById('card-' + id2)
+                    .classList.remove('border', 'border-primary');
+            }
+        });
+
+        var summaryEl = document.getElementById('summaryItems');
+        var submitBtn = document.getElementById('submitBtn');
+
+        if (lines.length === 0) {
+            summaryEl.textContent = 'No items selected yet.';
+            submitBtn.disabled = true;
+        } else {
+            summaryEl.innerHTML = lines.map(function (l) {
+                return '<div>' + l + '</div>';
+            }).join('');
+            submitBtn.disabled = false;
+        }
+    };
+
+    document.getElementById('storeForm')?.addEventListener('submit', function (e) {
+        var btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Placing Order…';
+    });
+})();
+</script>
+}

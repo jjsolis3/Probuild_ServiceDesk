@@ -1,0 +1,220 @@
+@using ServiceDesk.Core.Models
+@model List<StoreOrder>
+@{
+    ViewData["Title"] = "Store Orders Report";
+
+    int year    = ViewBag.Year    ?? DateTime.UtcNow.Year;
+    int quarter = ViewBag.Quarter ?? (DateTime.UtcNow.Month - 1) / 3 + 1;
+    string? statusFilter = ViewBag.Status as string;
+    var statuses = ViewBag.Statuses as string[] ?? Array.Empty<string>();
+
+    var productTotals = ViewBag.ProductTotals as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+
+    string StatusBadge(string status) => status switch
+    {
+        "Pending"   => "bg-warning text-dark",
+        "Confirmed" => "bg-info text-dark",
+        "Fulfilled" => "bg-success",
+        "Cancelled" => "bg-danger",
+        _           => "bg-secondary"
+    };
+
+    int[] quarters = { 1, 2, 3, 4 };
+    int[] years    = Enumerable.Range(DateTime.UtcNow.Year - 2, 4).ToArray();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-bag-check text-primary me-2"></i>Store Orders</h1>
+        <p class="text-muted small mt-1 mb-0">Q@quarter @year — @Model.Count order(s)</p>
+    </div>
+    <a asp-action="StoreOrdersExport"
+       asp-route-year="@year" asp-route-quarter="@quarter" asp-route-status="@statusFilter"
+       class="btn btn-success">
+        <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Filters -->
+<form method="get" asp-action="StoreOrders" class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-auto">
+                <label class="form-label fw-semibold small">Year</label>
+                <select name="year" class="form-select form-select-sm">
+                    @foreach (var y in years)
+                    {
+                        <option value="@y" selected="@(y == year)">@y</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label fw-semibold small">Quarter</label>
+                <select name="quarter" class="form-select form-select-sm">
+                    @foreach (var q in quarters)
+                    {
+                        <option value="@q" selected="@(q == quarter)">Q@q</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label fw-semibold small">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    @foreach (var s in statuses)
+                    {
+                        <option value="@s" selected="@(s == statusFilter)">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-funnel me-1"></i>Filter
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-4 mb-4">
+    <!-- Product Totals Summary -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Totals by Product</h5>
+            </div>
+            @if (!productTotals.Any())
+            {
+                <div class="card-body text-muted text-center py-4">No orders for this period.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Product</th>
+                                <th class="text-end">Total Qty</th>
+                                <th class="text-end">Orders</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in productTotals)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="small fw-semibold">@p.Name</div>
+                                        @if (p.Category != null)
+                                        {
+                                            <div class="text-muted" style="font-size:11px;">@p.Category</div>
+                                        }
+                                    </td>
+                                    <td class="text-end fw-bold">@p.TotalQty</td>
+                                    <td class="text-end text-muted small">@p.OrderCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Order List -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Orders</h5>
+                <span class="badge bg-secondary">@Model.Count</span>
+            </div>
+
+            @if (!Model.Any())
+            {
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-bag display-3 d-block mb-2 opacity-25"></i>
+                    No orders found for Q@quarter @year.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Order #</th>
+                                <th>User</th>
+                                <th>Date</th>
+                                <th>Items</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var order in Model)
+                            {
+                                <tr>
+                                    <td class="fw-semibold small">@order.OrderNumber</td>
+                                    <td>
+                                        <div class="small">@order.PortalUser.FullName</div>
+                                        <div class="text-muted" style="font-size:11px;">@order.PortalUser.Email</div>
+                                    </td>
+                                    <td class="text-muted small">@order.OrderDate.ToString("MMM d, yyyy")</td>
+                                    <td class="text-muted small">
+                                        @order.Items.Count item(s)
+                                        <span class="text-muted">(qty @order.Items.Sum(i => i.Quantity))</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge @StatusBadge(order.Status)">@order.Status</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                                    type="button" data-bs-toggle="dropdown">
+                                                Update
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                @foreach (var s in statuses)
+                                                {
+                                                    if (s != order.Status)
+                                                    {
+                                                        <li>
+                                                            <form method="post" asp-action="StoreOrderUpdateStatus"
+                                                                  asp-antiforgery="true">
+                                                                <input type="hidden" name="orderId"   value="@order.Id" />
+                                                                <input type="hidden" name="newStatus" value="@s" />
+                                                                <input type="hidden" name="year"      value="@year" />
+                                                                <input type="hidden" name="quarter"   value="@quarter" />
+                                                                <button type="submit" class="dropdown-item">
+                                                                    Mark as @s
+                                                                </button>
+                                                            </form>
+                                                        </li>
+                                                    }
+                                                }
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>

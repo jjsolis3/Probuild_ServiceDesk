@@ -2137,4 +2137,226 @@ public class SettingsController : Controller
         TempData["Success"] = $"CSAT surveys {(csatEnabled ? "enabled" : "disabled")}.";
         return RedirectToAction(nameof(Csat));
     }
+
+    // ==================== QUARTERLY STORE ====================
+
+    // GET: Settings/StoreSettings
+    public async Task<IActionResult> StoreSettings()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Store")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/StoreSettings
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreSettings(IFormCollection form)
+    {
+        var keys = new[] { "StoreEnabled", "StoreOpenDate", "StoreCloseDate", "StoreWelcomeMessage" };
+        var settings = await _context.AppSettings
+            .Where(s => keys.Contains(s.Key))
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+                setting.Value = form[setting.Key].ToString();
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Store settings saved.";
+        return RedirectToAction(nameof(StoreSettings));
+    }
+
+    // GET: Settings/StoreProducts
+    public async Task<IActionResult> StoreProducts()
+    {
+        var products = await _context.StoreProducts
+            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
+            .ToListAsync();
+        return View(products);
+    }
+
+    // GET: Settings/StoreProductCreate
+    public IActionResult StoreProductCreate() => View(new ServiceDesk.Core.Models.StoreProduct());
+
+    // POST: Settings/StoreProductCreate
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductCreate(
+        ServiceDesk.Core.Models.StoreProduct product, IFormFile? imageFile)
+    {
+        if (!ModelState.IsValid) return View(product);
+
+        product.ImagePath = await SaveStoreImageAsync(imageFile, null);
+        product.CreatedDate = DateTime.UtcNow;
+        _context.StoreProducts.Add(product);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
+    // GET: Settings/StoreProductEdit/{id}
+    public async Task<IActionResult> StoreProductEdit(int id)
+    {
+        var product = await _context.StoreProducts.FindAsync(id);
+        if (product == null) return NotFound();
+        return View(product);
+    }
+
+    // POST: Settings/StoreProductEdit/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductEdit(int id,
+        ServiceDesk.Core.Models.StoreProduct product, IFormFile? imageFile, bool clearImage = false)
+    {
+        if (id != product.Id) return BadRequest();
+        if (!ModelState.IsValid) return View(product);
+
+        var existing = await _context.StoreProducts.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.Name          = product.Name;
+        existing.Description   = product.Description;
+        existing.Category      = product.Category;
+        existing.UnitOfMeasure = product.UnitOfMeasure;
+        existing.IsActive      = product.IsActive;
+        existing.SortOrder     = product.SortOrder;
+
+        if (clearImage)
+        {
+            DeleteStoreImage(existing.ImagePath);
+            existing.ImagePath = null;
+        }
+        else
+        {
+            existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
+    // POST: Settings/StoreProductDelete/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductDelete(int id)
+    {
+        var product = await _context.StoreProducts.FindAsync(id);
+        if (product == null) return NotFound();
+
+        // Only deactivate if the product has been ordered; hard-delete if it has not
+        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
+        if (hasOrders)
+        {
+            product.IsActive = false;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
+        }
+        else
+        {
+            DeleteStoreImage(product.ImagePath);
+            _context.StoreProducts.Remove(product);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
+        }
+
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
+    // GET: Settings/StoreAccess
+    public async Task<IActionResult> StoreAccess()
+    {
+        var accessList = await _context.StoreAccessList
+            .Include(a => a.PortalUser)
+            .Include(a => a.GrantedBy)
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.PortalUser.LastName)
+            .ToListAsync();
+
+        var allUsers = await _context.PortalUsers
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.LastName)
+            .ToListAsync();
+
+        ViewBag.AllUsers    = allUsers;
+        ViewBag.AccessList  = accessList;
+        return View();
+    }
+
+    // POST: Settings/StoreAccessGrant
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreAccessGrant(int portalUserId)
+    {
+        var adminIdClaim = User.FindFirst("UserId")?.Value;
+        int.TryParse(adminIdClaim, out var adminId);
+
+        var already = await _context.StoreAccessList
+            .FirstOrDefaultAsync(a => a.PortalUserId == portalUserId && a.IsActive);
+
+        if (already != null)
+        {
+            TempData["Error"] = "That user already has store access.";
+            return RedirectToAction(nameof(StoreAccess));
+        }
+
+        _context.StoreAccessList.Add(new ServiceDesk.Core.Models.StoreAccessList
+        {
+            PortalUserId          = portalUserId,
+            GrantedByPortalUserId = adminId > 0 ? adminId : null,
+            GrantedDate           = DateTime.UtcNow,
+            IsActive              = true
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Store access granted.";
+        return RedirectToAction(nameof(StoreAccess));
+    }
+
+    // POST: Settings/StoreAccessRevoke/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreAccessRevoke(int id)
+    {
+        var entry = await _context.StoreAccessList.FindAsync(id);
+        if (entry == null) return NotFound();
+
+        entry.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Store access revoked.";
+        return RedirectToAction(nameof(StoreAccess));
+    }
+
+    // ── Store image helpers ───────────────────────────────────────────────────
+
+    private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)
+    {
+        if (file == null || file.Length == 0) return existing;
+
+        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowed.Contains(ext)) return existing;
+
+        var dir = Path.Combine(_env.WebRootPath, "images", "store");
+        Directory.CreateDirectory(dir);
+
+        var fileName = $"{Guid.NewGuid()}{ext}";
+        var path = Path.Combine(dir, fileName);
+
+        using var stream = new FileStream(path, FileMode.Create);
+        await file.CopyToAsync(stream);
+
+        if (!string.IsNullOrEmpty(existing))
+            DeleteStoreImage(existing);
+
+        return $"/images/store/{fileName}";
+    }
+
+    private void DeleteStoreImage(string? relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath)) return;
+        var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
+        if (System.IO.File.Exists(full))
+            System.IO.File.Delete(full);
+    }
 }

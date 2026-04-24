@@ -1,0 +1,93 @@
+@using ServiceDesk.Core.Models
+@model StoreOrder
+@{
+    ViewData["Title"] = "Order Confirmed";
+    Layout = "_PortalLayout";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm text-center py-4 mb-4">
+            <div class="card-body">
+                <div class="mb-3">
+                    <i class="bi bi-check-circle-fill display-1 text-success"></i>
+                </div>
+                <h3 class="fw-bold mb-1">Order Placed!</h3>
+                <p class="text-muted mb-0">
+                    Order <strong>@Model.OrderNumber</strong> has been submitted.
+                    A confirmation email is on its way to you.
+                </p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Order Summary</h5>
+                <span class="badge bg-warning text-dark">@Model.Status</span>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Order #</dt>
+                    <dd class="col-sm-8 fw-semibold">@Model.OrderNumber</dd>
+
+                    <dt class="col-sm-4">Date</dt>
+                    <dd class="col-sm-8">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
+
+                    <dt class="col-sm-4">Quarter</dt>
+                    <dd class="col-sm-8">Q@Model.Quarter @Model.Year</dd>
+
+                    @if (!string.IsNullOrEmpty(Model.Notes))
+                    {
+                        <dt class="col-sm-4">Notes</dt>
+                        <dd class="col-sm-8 text-muted">@Model.Notes</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Items Ordered</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Product</th>
+                            <th>Category</th>
+                            <th class="text-end">Qty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Items)
+                        {
+                            <tr>
+                                <td class="fw-semibold">@item.ProductNameSnapshot</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(item.ProductCategorySnapshot))
+                                    {
+                                        <span class="badge bg-light text-dark border">@item.ProductCategorySnapshot</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td class="text-end fw-bold">@item.Quantity</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 justify-content-center">
+            <a asp-action="MyOrders" class="btn btn-outline-primary">
+                <i class="bi bi-clock-history me-1"></i>View All My Orders
+            </a>
+            <a asp-action="Index" class="btn btn-outline-secondary">
+                <i class="bi bi-shop me-1"></i>Back to Store
+            </a>
+        </div>
+    </div>
+</div>

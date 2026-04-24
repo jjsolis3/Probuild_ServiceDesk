@@ -200,10 +200,10 @@ public class OllamaService
             "Write only the two labeled sections.";
 
         var result = await GenerateAsync(prompt, ct);
-        if (result == null) return (null, null);
+        if (result.Text == null) return (null, null);
 
-        var problemMatch  = Regex.Match(result, @"PROBLEM:\s*(.+?)(?=SOLUTION:|$)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-        var solutionMatch = Regex.Match(result, @"SOLUTION:\s*(.+)$",              RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var problemMatch  = Regex.Match(result.Text, @"PROBLEM:\s*(.+?)(?=SOLUTION:|$)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var solutionMatch = Regex.Match(result.Text, @"SOLUTION:\s*(.+)$",              RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
         var problem  = problemMatch.Success  ? problemMatch.Groups[1].Value.Trim()  : null;
         var solution = solutionMatch.Success ? solutionMatch.Groups[1].Value.Trim() : null;
@@ -232,11 +232,11 @@ public class OllamaService
             $"Comment:\n{(commentText.Length > 500 ? commentText[..500] : commentText)}";
 
         var result = await GenerateAsync(prompt, ct);
-        if (result == null) return (false, "");
+        if (result.Text == null) return (false, "");
 
-        if (result.TrimStart().StartsWith("ESCALATING:", StringComparison.OrdinalIgnoreCase))
+        if (result.Text.TrimStart().StartsWith("ESCALATING:", StringComparison.OrdinalIgnoreCase))
         {
-            var reason = result.TrimStart()[11..].Trim();
+            var reason = result.Text.TrimStart()[11..].Trim();
             return (true, reason.Length > 120 ? reason[..120] : reason);
         }
         return (false, "");
@@ -391,7 +391,7 @@ public class OllamaService
         {
             bool enabled;
             (enabled, url, model) = await LoadSettingsAsync();
-            if (!enabled) return null;
+            if (!enabled) return new OllamaResult(null, null);
 
             var client = _httpClientFactory.CreateClient("Ollama");
 
@@ -415,7 +415,7 @@ public class OllamaService
                 var errBody = await response.Content.ReadAsStringAsync(ct);
                 _logger.LogWarning("[Ollama] HTTP {Code} from {Url} with model '{Model}'. Body: {Body}",
                     (int)response.StatusCode, url, model, errBody);
-                return null;
+                return new OllamaResult(null, $"Ollama returned HTTP {(int)response.StatusCode}.");
             }
 
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -433,12 +433,12 @@ public class OllamaService
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "[Ollama] Cannot reach server at {Url}.", url);
-            return null;
+            return new OllamaResult(null, $"Cannot reach Ollama server: {ex.Message}");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Ollama] Generation failed (url={Url}, model={Model}).", url, model);
-            return null;
+            return new OllamaResult(null, $"Ollama generation failed: {ex.Message}");
         }
     }
 

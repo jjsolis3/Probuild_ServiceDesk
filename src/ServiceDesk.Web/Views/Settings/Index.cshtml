@@ -590,6 +590,78 @@
 
 </div>
 
+<!-- QUARTERLY STORE -->
+<div class="settings-section-label visually-hidden">Store Quarterly Supply Order Products Access List</div>
+<div class="row g-4 mb-4 settings-row">
+
+    <!-- Store Settings -->
+    <div class="col-lg-3 col-md-6" data-search-text="store quarterly supply order window open close">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-shop display-6" style="color: #0dcaf0;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Quarterly Store</h5>
+                        <p class="card-text text-muted small">Configure the store window, open/close dates, and welcome message</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="StoreSettings" class="btn btn-sm" style="background-color: #0dcaf0; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store Products -->
+    <div class="col-lg-3 col-md-6" data-search-text="store products catalog items apparel supplies">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-box-seam display-6" style="color: #0dcaf0;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Store Products</h5>
+                        <p class="card-text text-muted small">Add, edit, and manage items displayed in the store catalog</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="StoreProducts" class="btn btn-sm" style="background-color: #0dcaf0; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store Access List -->
+    <div class="col-lg-3 col-md-6" data-search-text="store access designated users permissions ordering">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-person-check display-6" style="color: #0dcaf0;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Store Access List</h5>
+                        <p class="card-text text-muted small">Designate which portal users are allowed to place store orders</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="StoreAccess" class="btn btn-sm" style="background-color: #0dcaf0; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
 @section Scripts {
 <script>
 (function () {

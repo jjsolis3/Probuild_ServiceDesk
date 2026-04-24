@@ -600,4 +600,133 @@ public class ReportsController : Controller
 
         return Json(filtered);
     }
+
+    // ==================== STORE ORDERS REPORT ====================
+
+    // GET: Reports/StoreOrders
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> StoreOrders(
+        int? year = null, int? quarter = null, string? status = null)
+    {
+        var now = DateTime.UtcNow;
+        year    ??= now.Year;
+        quarter ??= (now.Month - 1) / 3 + 1;
+
+        var query = _context.StoreOrders
+            .Include(o => o.PortalUser)
+            .Include(o => o.Items)
+            .AsQueryable();
+
+        query = query.Where(o => o.Year == year && o.Quarter == quarter);
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(o => o.Status == status);
+
+        var orders = await query
+            .OrderBy(o => o.PortalUser.LastName)
+            .ThenBy(o => o.OrderDate)
+            .ToListAsync();
+
+        // Summary rollup per product
+        var productTotals = orders
+            .SelectMany(o => o.Items)
+            .GroupBy(i => new { i.StoreProductId, i.ProductNameSnapshot, i.ProductCategorySnapshot })
+            .Select(g => new
+            {
+                ProductId = g.Key.StoreProductId,
+                Name      = g.Key.ProductNameSnapshot,
+                Category  = g.Key.ProductCategorySnapshot,
+                TotalQty  = g.Sum(i => i.Quantity),
+                OrderCount = g.Select(i => i.StoreOrderId).Distinct().Count()
+            })
+            .OrderBy(p => p.Category).ThenBy(p => p.Name)
+            .ToList();
+
+        ViewBag.Year         = year;
+        ViewBag.Quarter      = quarter;
+        ViewBag.Status       = status;
+        ViewBag.ProductTotals = productTotals;
+        ViewBag.Statuses     = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+
+        return View(orders);
+    }
+
+    // GET: Reports/StoreOrdersExport  — CSV download
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> StoreOrdersExport(int? year, int? quarter, string? status)
+    {
+        var now = DateTime.UtcNow;
+        year    ??= now.Year;
+        quarter ??= (now.Month - 1) / 3 + 1;
+
+        var query = _context.StoreOrders
+            .Include(o => o.PortalUser)
+            .Include(o => o.Items)
+            .Where(o => o.Year == year && o.Quarter == quarter)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(o => o.Status == status);
+
+        var orders = await query.OrderBy(o => o.OrderNumber).ToListAsync();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Order #,User Name,Email,Order Date,Quarter,Year,Status,Product,Category,Qty,Notes");
+
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items)
+            {
+                sb.AppendLine(string.Join(",",
+                    CsvEscape(order.OrderNumber),
+                    CsvEscape(order.PortalUser.FullName),
+                    CsvEscape(order.PortalUser.Email),
+                    CsvEscape(order.OrderDate.ToString("yyyy-MM-dd HH:mm")),
+                    $"Q{order.Quarter}",
+                    order.Year.ToString(),
+                    CsvEscape(order.Status),
+                    CsvEscape(item.ProductNameSnapshot),
+                    CsvEscape(item.ProductCategorySnapshot ?? string.Empty),
+                    item.Quantity.ToString(),
+                    CsvEscape(order.Notes ?? string.Empty)
+                ));
+            }
+        }
+
+        var filename = $"StoreOrders-Q{quarter}-{year}.csv";
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString()))
+            .ToArray();
+
+        return File(bytes, "text/csv", filename);
+    }
+
+    // POST: Reports/StoreOrderUpdateStatus — update order status from the report dashboard
+    [Authorize(Roles = "Admin,IT Agent")]
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreOrderUpdateStatus(int orderId, string newStatus, int year, int quarter)
+    {
+        var order = await _context.StoreOrders.FindAsync(orderId);
+        if (order == null) return NotFound();
+
+        var allowed = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+        if (!allowed.Contains(newStatus))
+        {
+            TempData["Error"] = "Invalid status.";
+            return RedirectToAction(nameof(StoreOrders), new { year, quarter });
+        }
+
+        order.Status = newStatus;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Order {order.OrderNumber} updated to {newStatus}.";
+        return RedirectToAction(nameof(StoreOrders), new { year, quarter });
+    }
+
+    private static string CsvEscape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
 }

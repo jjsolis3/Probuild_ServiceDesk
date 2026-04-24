@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Caching.Memory;
@@ -44,6 +45,20 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             controller.ViewBag.PortalAnnouncementType = branding!.GetValueOrDefault("PortalAnnouncementType", "info");
             controller.ViewBag.PortalShowKnowledgeBase = !branding!.GetValueOrDefault("PortalShowKnowledgeBase", "true")
                                                                     .Equals("false", StringComparison.OrdinalIgnoreCase);
+
+            // Inject store access flag for the portal nav link (per-user, not cached)
+            controller.ViewBag.PortalShowStore = false;
+            var userIdClaim = ctx.HttpContext.User.FindFirst("UserId")?.Value
+                           ?? ctx.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out var userId) && userId > 0)
+            {
+                try
+                {
+                    controller.ViewBag.PortalShowStore = await context.StoreAccessList
+                        .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
+                }
+                catch { /* StoreAccessList table may not exist yet on fresh install */ }
+            }
         }
 
         await next();

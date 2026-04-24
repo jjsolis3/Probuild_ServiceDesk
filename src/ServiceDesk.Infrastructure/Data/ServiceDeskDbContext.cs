@@ -91,6 +91,12 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<EmployeeTaskTemplate> EmployeeTaskTemplates => Set<EmployeeTaskTemplate>();
     public DbSet<EmployeeTask> EmployeeTasks => Set<EmployeeTask>();
 
+    // Quarterly store
+    public DbSet<StoreProduct> StoreProducts => Set<StoreProduct>();
+    public DbSet<StoreOrder> StoreOrders => Set<StoreOrder>();
+    public DbSet<StoreOrderItem> StoreOrderItems => Set<StoreOrderItem>();
+    public DbSet<StoreAccessList> StoreAccessList => Set<StoreAccessList>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -590,5 +596,46 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<EmployeeTaskTemplate>()
             .HasIndex(t => new { t.TaskType, t.IsActive, t.SortOrder });
+
+        // StoreOrder -> PortalUser
+        modelBuilder.Entity<StoreOrder>()
+            .HasOne(o => o.PortalUser)
+            .WithMany()
+            .HasForeignKey(o => o.PortalUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // StoreOrderItem -> StoreOrder
+        modelBuilder.Entity<StoreOrderItem>()
+            .HasOne(i => i.StoreOrder)
+            .WithMany(o => o.Items)
+            .HasForeignKey(i => i.StoreOrderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // StoreOrderItem -> StoreProduct (restrict so products aren't deleted while ordered)
+        modelBuilder.Entity<StoreOrderItem>()
+            .HasOne(i => i.StoreProduct)
+            .WithMany(p => p.OrderItems)
+            .HasForeignKey(i => i.StoreProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // StoreAccessList -> PortalUser
+        modelBuilder.Entity<StoreAccessList>()
+            .HasOne(a => a.PortalUser)
+            .WithMany()
+            .HasForeignKey(a => a.PortalUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // StoreAccessList -> GrantedBy (restrict to avoid multiple cascade paths)
+        modelBuilder.Entity<StoreAccessList>()
+            .HasOne(a => a.GrantedBy)
+            .WithMany()
+            .HasForeignKey(a => a.GrantedByPortalUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StoreAccessList>()
+            .HasIndex(a => new { a.PortalUserId, a.IsActive });
+
+        modelBuilder.Entity<StoreOrder>()
+            .HasIndex(o => new { o.PortalUserId, o.Year, o.Quarter });
     }
 }
