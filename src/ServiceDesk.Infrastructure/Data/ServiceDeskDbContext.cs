@@ -97,6 +97,7 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<StoreOrderItem> StoreOrderItems => Set<StoreOrderItem>();
     public DbSet<StoreAccessList> StoreAccessList => Set<StoreAccessList>();
     public DbSet<StoreOperationsAccess> StoreOperationsAccess => Set<StoreOperationsAccess>();
+    public DbSet<StoreProductImage> StoreProductImages => Set<StoreProductImage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -637,6 +638,16 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<StoreOperationsAccess>()
             .HasIndex(a => new { a.PortalUserId, a.IsActive });
+
+        // StoreProductImage -> StoreProduct (cascade delete)
+        modelBuilder.Entity<StoreProductImage>()
+            .HasOne(i => i.StoreProduct)
+            .WithMany(p => p.Images)
+            .HasForeignKey(i => i.StoreProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<StoreProductImage>()
+            .HasIndex(i => i.StoreProductId);
 
         modelBuilder.Entity<StoreOrder>()
             .HasIndex(o => new { o.PortalUserId, o.Year, o.Quarter });

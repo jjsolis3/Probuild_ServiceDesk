@@ -1365,6 +1365,24 @@ public static class DbInitializer
                         ON dbo.StoreOperationsAccess (PortalUserId, IsActive);
                 END");
 
+            // 44. Quarterly Store — StoreProductImages (gallery images for product modal)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreProductImages')
+                BEGIN
+                    CREATE TABLE dbo.StoreProductImages (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        StoreProductId  INT             NOT NULL
+                            CONSTRAINT FK_StoreProductImages_StoreProducts
+                            REFERENCES dbo.StoreProducts(Id) ON DELETE CASCADE,
+                        ImagePath       NVARCHAR(500)   NOT NULL,
+                        Alt             NVARCHAR(200)   NULL,
+                        SortOrder       INT             NOT NULL DEFAULT 100,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                    CREATE INDEX IX_StoreProductImages_Product
+                        ON dbo.StoreProductImages (StoreProductId);
+                END");
+
         }
         catch (Exception ex)
         {

@@ -45,6 +45,7 @@ public class StoreController : Controller
         }
 
         var products = await _context.StoreProducts
+            .Include(p => p.Images)
             .Where(p => p.IsActive)
             .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
             .ToListAsync();
@@ -63,6 +64,7 @@ public class StoreController : Controller
     }
 
     // POST /Store/PlaceOrder
+    // Accepts a JSON cart payload in the "cartJson" form field, plus optional "notes".
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(IFormCollection form)
     {
@@ -78,31 +80,54 @@ public class StoreController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        // Parse quantities from form: qty_{productId}
-        var products = await _context.StoreProducts
-            .Where(p => p.IsActive)
-            .ToListAsync();
-
-        var lineItems = new List<(StoreProduct Product, int Qty, string? Size, string? Gender, string? Color)>();
-        foreach (var product in products)
+        // Parse the cart JSON payload
+        var cartJson = form["cartJson"].ToString();
+        List<CartLineInput> cartItems;
+        try
         {
-            var key = $"qty_{product.Id}";
-            if (form.ContainsKey(key) &&
-                int.TryParse(form[key], out var qty) && qty > 0)
+            cartItems = System.Text.Json.JsonSerializer.Deserialize<List<CartLineInput>>(
+                string.IsNullOrWhiteSpace(cartJson) ? "[]" : cartJson,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new List<CartLineInput>();
+        }
+        catch
+        {
+            TempData["Error"] = "Your cart could not be read. Please try again.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        cartItems = cartItems.Where(c => c.ProductId > 0 && c.Qty > 0).ToList();
+
+        if (!cartItems.Any())
+        {
+            TempData["Error"] = "Please add at least one item to your cart before submitting.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var productIds = cartItems.Select(c => c.ProductId).Distinct().ToList();
+        var products   = await _context.StoreProducts
+            .Where(p => p.IsActive && productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        var lineItems = new List<StoreOrderItem>();
+        foreach (var c in cartItems)
+        {
+            if (!products.TryGetValue(c.ProductId, out var product)) continue;
+            lineItems.Add(new StoreOrderItem
             {
-                var size   = form.ContainsKey($"size_{product.Id}")   ? form[$"size_{product.Id}"].ToString()   : null;
-                var gender = form.ContainsKey($"gender_{product.Id}") ? form[$"gender_{product.Id}"].ToString() : null;
-                var color  = form.ContainsKey($"color_{product.Id}")  ? form[$"color_{product.Id}"].ToString()  : null;
-                lineItems.Add((product, qty,
-                    string.IsNullOrWhiteSpace(size)   ? null : size.Trim(),
-                    string.IsNullOrWhiteSpace(gender) ? null : gender.Trim(),
-                    string.IsNullOrWhiteSpace(color)  ? null : color.Trim()));
-            }
+                StoreProductId          = product.Id,
+                Quantity                = Math.Clamp(c.Qty, 1, 999),
+                ProductNameSnapshot     = product.Name,
+                ProductCategorySnapshot = product.Category,
+                SelectedSize            = string.IsNullOrWhiteSpace(c.Size)   ? null : c.Size.Trim(),
+                SelectedGender          = string.IsNullOrWhiteSpace(c.Gender) ? null : c.Gender.Trim(),
+                SelectedColor           = string.IsNullOrWhiteSpace(c.Color)  ? null : c.Color.Trim()
+            });
         }
 
         if (!lineItems.Any())
         {
-            TempData["Error"] = "Please add at least one item to your order before submitting.";
+            TempData["Error"] = "No valid items were found in your cart. Please try again.";
             return RedirectToAction(nameof(Index));
         }
 
@@ -118,16 +143,7 @@ public class StoreController : Controller
             Year         = year,
             Notes        = string.IsNullOrEmpty(notes) ? null : notes,
             OrderNumber  = "SO-PENDING",
-            Items = lineItems.Select(li => new StoreOrderItem
-            {
-                StoreProductId          = li.Product.Id,
-                Quantity                = li.Qty,
-                ProductNameSnapshot     = li.Product.Name,
-                ProductCategorySnapshot = li.Product.Category,
-                SelectedSize            = li.Size,
-                SelectedGender          = li.Gender,
-                SelectedColor           = li.Color
-            }).ToList()
+            Items        = lineItems
         };
 
         _context.StoreOrders.Add(order);
@@ -381,5 +397,15 @@ public class StoreController : Controller
         var now = DateTime.UtcNow;
         var q   = (now.Month - 1) / 3 + 1;
         return (q, now.Year);
+    }
+
+    // Cart line item posted as part of the JSON payload from the catalog page
+    private class CartLineInput
+    {
+        public int ProductId { get; set; }
+        public int Qty { get; set; }
+        public string? Size { get; set; }
+        public string? Gender { get; set; }
+        public string? Color { get; set; }
     }
 }

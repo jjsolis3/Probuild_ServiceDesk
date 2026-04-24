@@ -26,7 +26,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h1 class="mb-0"><i class="bi bi-bag-check text-primary me-2"></i>Store Orders</h1>
-        <p class="text-muted small mt-1 mb-0">Q@quarter @year — @Model.Count order(s)</p>
+        <p class="text-muted small mt-1 mb-0">Q@(quarter) @year — @Model.Count order(s)</p>
     </div>
     <a asp-action="StoreOrdersExport"
        asp-route-year="@year" asp-route-quarter="@quarter" asp-route-status="@statusFilter"
@@ -68,7 +68,7 @@
                 <select name="quarter" class="form-select form-select-sm">
                     @foreach (var q in quarters)
                     {
-                        <option value="@q" selected="@(q == quarter)">Q@q</option>
+                        <option value="@q" selected="@(q == quarter)">Q@(q)</option>
                     }
                 </select>
             </div>
@@ -147,7 +147,7 @@
             {
                 <div class="card-body text-center text-muted py-5">
                     <i class="bi bi-bag display-3 d-block mb-2 opacity-25"></i>
-                    No orders found for Q@quarter @year.
+                    No orders found for Q@(quarter) @year.
                 </div>
             }
             else

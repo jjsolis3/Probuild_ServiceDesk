@@ -51,4 +51,7 @@ public class StoreProduct
     public string? AvailableColors { get; set; }  // comma-separated e.g. "Black,White,Navy"
 
     public ICollection<StoreOrderItem> OrderItems { get; set; } = new List<StoreOrderItem>();
+
+    // Additional product images (gallery shown in the catalog modal)
+    public ICollection<StoreProductImage> Images { get; set; } = new List<StoreProductImage>();
 }

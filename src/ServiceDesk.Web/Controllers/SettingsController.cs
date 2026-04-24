@@ -2167,7 +2167,9 @@ public class SettingsController : Controller
     // POST: Settings/StoreProductCreate
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductCreate(
-        ServiceDesk.Core.Models.StoreProduct product, IFormFile? imageFile)
+        ServiceDesk.Core.Models.StoreProduct product,
+        IFormFile? imageFile,
+        List<IFormFile>? galleryFiles)
     {
         if (!ModelState.IsValid) return View(product);
 
@@ -2176,6 +2178,27 @@ public class SettingsController : Controller
         _context.StoreProducts.Add(product);
         await _context.SaveChangesAsync();
 
+        if (galleryFiles != null && galleryFiles.Count > 0)
+        {
+            var sort = 100;
+            foreach (var f in galleryFiles)
+            {
+                var path = await SaveStoreImageAsync(f, null);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
+                    {
+                        StoreProductId = product.Id,
+                        ImagePath      = path,
+                        SortOrder      = sort,
+                        CreatedDate    = DateTime.UtcNow
+                    });
+                    sort += 10;
+                }
+            }
+            await _context.SaveChangesAsync();
+        }
+
         TempData["Success"] = $"Product \"{product.Name}\" created.";
         return RedirectToAction(nameof(StoreProducts));
     }
@@ -2183,7 +2206,9 @@ public class SettingsController : Controller
     // GET: Settings/StoreProductEdit/{id}
     public async Task<IActionResult> StoreProductEdit(int id)
     {
-        var product = await _context.StoreProducts.FindAsync(id);
+        var product = await _context.StoreProducts
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id);
         if (product == null) return NotFound();
         return View(product);
     }
@@ -2191,12 +2216,17 @@ public class SettingsController : Controller
     // POST: Settings/StoreProductEdit/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductEdit(int id,
-        ServiceDesk.Core.Models.StoreProduct product, IFormFile? imageFile, bool clearImage = false)
+        ServiceDesk.Core.Models.StoreProduct product,
+        IFormFile? imageFile,
+        List<IFormFile>? galleryFiles,
+        bool clearImage = false)
     {
         if (id != product.Id) return BadRequest();
         if (!ModelState.IsValid) return View(product);
 
-        var existing = await _context.StoreProducts.FindAsync(id);
+        var existing = await _context.StoreProducts
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id);
         if (existing == null) return NotFound();
 
         existing.Name             = product.Name;
@@ -2221,9 +2251,45 @@ public class SettingsController : Controller
             existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
         }
 
+        if (galleryFiles != null && galleryFiles.Count > 0)
+        {
+            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
+            foreach (var f in galleryFiles)
+            {
+                var path = await SaveStoreImageAsync(f, null);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
+                    {
+                        StoreProductId = existing.Id,
+                        ImagePath      = path,
+                        SortOrder      = sort,
+                        CreatedDate    = DateTime.UtcNow
+                    });
+                    sort += 10;
+                }
+            }
+        }
+
         await _context.SaveChangesAsync();
         TempData["Success"] = $"Product \"{existing.Name}\" updated.";
-        return RedirectToAction(nameof(StoreProducts));
+        return RedirectToAction(nameof(StoreProductEdit), new { id = existing.Id });
+    }
+
+    // POST: Settings/StoreProductImageDelete
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductImageDelete(int imageId)
+    {
+        var img = await _context.StoreProductImages.FindAsync(imageId);
+        if (img == null) return NotFound();
+
+        DeleteStoreImage(img.ImagePath);
+        var productId = img.StoreProductId;
+        _context.StoreProductImages.Remove(img);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Image removed.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id = productId });
     }
 
     // POST: Settings/StoreProductDelete/{id}
