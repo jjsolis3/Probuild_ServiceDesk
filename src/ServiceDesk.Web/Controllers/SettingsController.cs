@@ -24,13 +24,10 @@ public class SettingsController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly GoogleWorkspaceService _googleWorkspace;
     private readonly OllamaService _ollama;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
         EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
-        GoogleWorkspaceService googleWorkspace, OllamaService ollama,
-        IServiceScopeFactory scopeFactory, ILogger<SettingsController> logger)
+        GoogleWorkspaceService googleWorkspace, OllamaService ollama)
     {
         _context          = context;
         _gmailApiService  = gmailApiService;
@@ -39,8 +36,6 @@ public class SettingsController : Controller
         _env              = env;
         _googleWorkspace  = googleWorkspace;
         _ollama           = ollama;
-        _scopeFactory     = scopeFactory;
-        _logger           = logger;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -680,22 +675,7 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
         var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
-        var capturedResetEmail = user.Email;
-        var capturedResetName  = user.FullName;
-        var capturedResetUrl   = resetUrl;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                await email.SendPasswordResetEmail(capturedResetEmail, capturedResetName, capturedResetUrl);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Notification] Admin password reset email failed for {Email}.", capturedResetEmail);
-            }
-        });
+        _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
         TempData["Success"] = $"Password reset email sent to {user.Email}.";
         return RedirectToAction(nameof(EditUser), new { id });
     }

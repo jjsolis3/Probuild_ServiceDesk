@@ -4,7 +4,6 @@ using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Filters;
 using ServiceDesk.Web.Services;
-using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,25 +31,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.Name = "ServiceSphere.Auth";
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-        options.Cookie.SameSite = SameSiteMode.Strict;
-
-        // Revoke sessions immediately when an employee is deactivated/offboarded
-        options.Events = new CookieAuthenticationEvents
-        {
-            OnValidatePrincipal = async ctx =>
-            {
-                var db = ctx.HttpContext.RequestServices.GetRequiredService<ServiceDeskDbContext>();
-                var emailClaim = ctx.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                              ?? ctx.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-                if (emailClaim != null)
-                {
-                    var user = await db.PortalUsers.AsNoTracking()
-                        .FirstOrDefaultAsync(u => u.Email == emailClaim);
-                    if (user == null || !user.IsActive)
-                        ctx.RejectPrincipal();
-                }
-            }
-        };
     });
 
 builder.Services.AddAuthorization(options =>
@@ -109,7 +89,6 @@ using (var scope = app.Services.CreateScope())
     DbInitializer.Seed(context);
 
     // Apply DB-backed SLA hours to the static policy (avoids hard-coded defaults persisting)
-    var slaLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     try
     {
         var slaSettings = context.AppSettings
@@ -123,12 +102,7 @@ using (var scope = app.Services.CreateScope())
             SlaPolicy.Configure(slaCrit, slaHigh, slaMed, slaLow);
         }
     }
-    catch (Exception slaEx)
-    {
-        // On a fresh install the AppSettings table may not exist yet — acceptable. On a running
-        // system this would indicate a corrupt row or DB issue; log it so it's not invisible.
-        slaLogger.LogWarning(slaEx, "SLA policy could not be loaded from AppSettings; hardcoded defaults will be used.");
-    }
+    catch { /* table may not exist on fresh install — safe to skip */ }
 }
 
 // Configure the HTTP request pipeline
