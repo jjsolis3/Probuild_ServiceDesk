@@ -1324,6 +1324,28 @@ public static class DbInitializer
                         ON dbo.StoreAccessList (PortalUserId, IsActive);
                 END");
 
+            // 41. Store product variant support — new columns on StoreProducts
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'HasSizes')
+                    ALTER TABLE dbo.StoreProducts ADD HasSizes BIT NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'HasGenderOption')
+                    ALTER TABLE dbo.StoreProducts ADD HasGenderOption BIT NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'HasColorOptions')
+                    ALTER TABLE dbo.StoreProducts ADD HasColorOptions BIT NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'AvailableSizes')
+                    ALTER TABLE dbo.StoreProducts ADD AvailableSizes NVARCHAR(500) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'AvailableColors')
+                    ALTER TABLE dbo.StoreProducts ADD AvailableColors NVARCHAR(500) NULL;");
+
+            // 42. Store order item variant selections — new columns on StoreOrderItems
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'SelectedSize')
+                    ALTER TABLE dbo.StoreOrderItems ADD SelectedSize NVARCHAR(50) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'SelectedGender')
+                    ALTER TABLE dbo.StoreOrderItems ADD SelectedGender NVARCHAR(50) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'SelectedColor')
+                    ALTER TABLE dbo.StoreOrderItems ADD SelectedColor NVARCHAR(100) NULL;");
+
         }
         catch (Exception ex)
         {

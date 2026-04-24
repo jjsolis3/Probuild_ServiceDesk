@@ -16,7 +16,7 @@
 <h1 class="mb-4"><i class="bi bi-pencil text-primary me-2"></i>Edit Product</h1>
 
 <div class="row">
-    <div class="col-lg-7">
+    <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-body">
                 <form method="post" asp-action="StoreProductEdit" asp-route-id="@Model.Id"
@@ -60,6 +60,55 @@
                         </div>
                     </div>
 
+                    <!-- Variant Options -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2 text-primary"></i>Variant Options</h6>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasGenderOption"
+                                               id="HasGenderOption" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasGenderOption">Gender Selector</label>
+                                    </div>
+                                    <div class="form-text">Men's / Women's / Unisex.</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasSizes"
+                                               id="HasSizes" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasSizes">Size Selector</label>
+                                    </div>
+                                    <div class="form-text">Size buttons.</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasColorOptions"
+                                               id="HasColorOptions" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasColorOptions">Color Selector</label>
+                                    </div>
+                                    <div class="form-text">Color swatches.</div>
+                                </div>
+                            </div>
+
+                            <div id="sizeField" class="mt-3 @(Model.HasSizes ? "" : "d-none")">
+                                <label asp-for="AvailableSizes" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableSizes" class="form-control"
+                                       placeholder="XS,S,M,L,XL,XXL,3XL" />
+                                <div class="form-text">Comma-separated list of sizes.</div>
+                            </div>
+
+                            <div id="colorField" class="mt-3 @(Model.HasColorOptions ? "" : "d-none")">
+                                <label asp-for="AvailableColors" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableColors" class="form-control"
+                                       placeholder="Black,White,Navy,Gray,Red" />
+                                <div class="form-text">Comma-separated list of color names.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Product Image -->
                     <div class="mb-4">
                         <label class="form-label fw-semibold">Product Image</label>
                         @if (!string.IsNullOrEmpty(Model.ImagePath))
@@ -91,3 +140,14 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+<script>
+function toggleVariantFields() {
+    var hasSizes  = document.getElementById('HasSizes').checked;
+    var hasColors = document.getElementById('HasColorOptions').checked;
+    document.getElementById('sizeField').classList.toggle('d-none', !hasSizes);
+    document.getElementById('colorField').classList.toggle('d-none', !hasColors);
+}
+</script>
+}

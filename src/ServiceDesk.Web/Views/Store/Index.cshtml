@@ -6,18 +6,46 @@
     Layout = "_PortalLayout";
 
     var welcome     = ViewBag.WelcomeMessage as string ?? string.Empty;
-    var quarter     = (int)(ViewBag.Quarter ?? 1);
-    var year        = (int)(ViewBag.Year    ?? DateTime.UtcNow.Year);
+    var quarterVal  = ViewBag.Quarter;
+    var yearVal     = ViewBag.Year;
+    int quarter     = quarterVal is int qi ? qi : (quarterVal != null ? (int)quarterVal : ((DateTime.UtcNow.Month - 1) / 3 + 1));
+    int year        = yearVal    is int yi ? yi : (yearVal    != null ? (int)yearVal    : DateTime.UtcNow.Year);
     var currentUser = ViewBag.CurrentUser as PortalUser;
 
     var categories = Model.Select(p => p.Category ?? "General")
                           .Distinct().OrderBy(c => c).ToList();
 }
 
+@section Styles {
+<style>
+.store-product-card { border-radius: 12px; transition: box-shadow .2s; }
+.store-product-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,.12) !important; }
+.product-img { width: 160px; min-width: 160px; height: 160px; object-fit: cover; border-radius: 10px 0 0 10px; background: #f8f9fa; }
+.product-img-placeholder { width: 160px; min-width: 160px; height: 160px; border-radius: 10px 0 0 10px; background: #f1f3f5; display:flex; align-items:center; justify-content:center; }
+.size-btn { border: 2px solid #dee2e6; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: .8rem; font-weight: 600; background: #fff; transition: all .15s; }
+.size-btn.selected, .size-btn:hover { border-color: #0d6efd; background: #e8f0fe; color: #0d6efd; }
+.color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: border-color .15s; display: inline-block; }
+.color-swatch.selected, .color-swatch:hover { border-color: #0d6efd; }
+.gender-pill { border: 2px solid #dee2e6; border-radius: 20px; padding: 3px 14px; cursor: pointer; font-size: .8rem; background: #fff; transition: all .15s; }
+.gender-pill.selected, .gender-pill:hover { border-color: #0d6efd; background: #e8f0fe; color: #0d6efd; }
+.qty-stepper { display: flex; align-items: center; gap: 0; }
+.qty-stepper button { width: 30px; height: 30px; border: 1px solid #dee2e6; background: #f8f9fa; font-size: 1rem; line-height: 1; cursor: pointer; }
+.qty-stepper button:first-child { border-radius: 6px 0 0 6px; }
+.qty-stepper button:last-child  { border-radius: 0 6px 6px 0; }
+.qty-stepper input  { width: 48px; height: 30px; border: 1px solid #dee2e6; border-left: 0; border-right: 0; text-align: center; font-size: .9rem; }
+.qty-stepper input::-webkit-inner-spin-button,
+.qty-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.order-summary-sticky { position: sticky; top: 80px; }
+.summary-item { font-size: .82rem; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+.summary-item:last-child { border-bottom: none; }
+.category-divider { border-left: 4px solid #0d6efd; padding-left: 12px; }
+</style>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h2 class="fw-bold mb-0"><i class="bi bi-shop me-2 text-primary"></i>Company Store</h2>
-        <p class="text-muted small mb-0">Q@quarter @year Ordering Window</p>
+        <p class="text-muted small mb-0">Q@(quarter) @year Ordering Window</p>
     </div>
     <a asp-action="MyOrders" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-clock-history me-1"></i>My Orders
@@ -42,81 +70,180 @@ else
 {
     <form method="post" asp-action="PlaceOrder" asp-antiforgery="true" id="storeForm">
 
-        @foreach (var category in categories)
-        {
-            var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
-            <h5 class="fw-bold text-muted text-uppercase small letter-spacing-1 mb-3 mt-4">
-                <i class="bi bi-tag me-1"></i>@category
-            </h5>
-            <div class="row g-3 mb-2">
-                @foreach (var product in catProducts)
+        <div class="row g-4">
+            <!-- Product Catalog (left) -->
+            <div class="col-lg-8">
+
+                @foreach (var category in categories)
                 {
-                    <div class="col-xl-3 col-lg-4 col-md-6">
-                        <div class="card shadow-sm h-100 border-0" id="card-@product.Id">
-                            @if (!string.IsNullOrEmpty(product.ImagePath))
+                    var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
+
+                    <div class="mb-4">
+                        <h5 class="fw-bold mb-3 category-divider text-uppercase small">
+                            <i class="bi bi-tag me-1"></i>@category
+                        </h5>
+
+                        <div class="d-flex flex-column gap-3">
+                            @foreach (var product in catProducts)
                             {
-                                <img src="@product.ImagePath" alt="@product.Name"
-                                     class="card-img-top"
-                                     style="height:180px;object-fit:cover;" />
-                            }
-                            else
-                            {
-                                <div class="d-flex align-items-center justify-content-center bg-light"
-                                     style="height:180px;">
-                                    <i class="bi bi-box display-3 text-muted opacity-25"></i>
-                                </div>
-                            }
-                            <div class="card-body d-flex flex-column">
-                                <h6 class="fw-bold mb-1">@product.Name</h6>
-                                @if (!string.IsNullOrEmpty(product.Description))
-                                {
-                                    <p class="text-muted small mb-2" style="flex:1;">@product.Description</p>
-                                }
-                                @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
-                                {
-                                    <div class="text-muted small mb-2">
-                                        <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
+                                var sizes  = (product.AvailableSizes  ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                var colors = (product.AvailableColors ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                                <div class="card store-product-card shadow-sm border-0" id="card-@product.Id">
+                                    <div class="card-body p-0 d-flex">
+
+                                        <!-- Product Image -->
+                                        @if (!string.IsNullOrEmpty(product.ImagePath))
+                                        {
+                                            <img src="@product.ImagePath" alt="@product.Name" class="product-img" />
+                                        }
+                                        else
+                                        {
+                                            <div class="product-img-placeholder">
+                                                <i class="bi bi-box display-4 text-muted opacity-25"></i>
+                                            </div>
+                                        }
+
+                                        <!-- Product Details -->
+                                        <div class="p-3 flex-grow-1 d-flex flex-column">
+                                            <h6 class="fw-bold mb-1 fs-6">@product.Name</h6>
+
+                                            @if (!string.IsNullOrEmpty(product.Description))
+                                            {
+                                                <p class="text-muted small mb-2" style="line-height:1.4;">@product.Description</p>
+                                            }
+
+                                            @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
+                                            {
+                                                <div class="text-muted" style="font-size:.75rem;">
+                                                    <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
+                                                </div>
+                                            }
+
+                                            <div class="mt-auto pt-2">
+
+                                                <!-- Gender Option -->
+                                                @if (product.HasGenderOption)
+                                                {
+                                                    <div class="mb-2">
+                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">GENDER</div>
+                                                        <div class="d-flex gap-2 flex-wrap" id="gender-group-@product.Id">
+                                                            @foreach (var g in new[]{"Men's","Women's","Unisex"})
+                                                            {
+                                                                <button type="button" class="gender-pill"
+                                                                        data-product="@product.Id" data-value="@g"
+                                                                        onclick="selectVariant('gender',@product.Id,this)">@g</button>
+                                                            }
+                                                        </div>
+                                                        <input type="hidden" name="gender_@product.Id" id="gender_@product.Id" value="" />
+                                                    </div>
+                                                }
+
+                                                <!-- Color Options -->
+                                                @if (product.HasColorOptions && colors.Length > 0)
+                                                {
+                                                    <div class="mb-2">
+                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">
+                                                            COLOR: <span id="color-label-@product.Id" class="text-dark"></span>
+                                                        </div>
+                                                        <div class="d-flex gap-2 flex-wrap" id="color-group-@product.Id">
+                                                            @foreach (var c in colors)
+                                                            {
+                                                                <button type="button" class="color-swatch"
+                                                                        title="@c"
+                                                                        data-product="@product.Id" data-value="@c"
+                                                                        style="background-color:@ColorNameToCss(c);"
+                                                                        onclick="selectColorVariant(@product.Id, this, '@c')"></button>
+                                                            }
+                                                        </div>
+                                                        <input type="hidden" name="color_@product.Id" id="color_@product.Id" value="" />
+                                                    </div>
+                                                }
+
+                                                <!-- Size Options -->
+                                                @if (product.HasSizes && sizes.Length > 0)
+                                                {
+                                                    <div class="mb-2">
+                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">SIZE</div>
+                                                        <div class="d-flex gap-1 flex-wrap" id="size-group-@product.Id">
+                                                            @foreach (var s in sizes)
+                                                            {
+                                                                <button type="button" class="size-btn"
+                                                                        data-product="@product.Id" data-value="@s"
+                                                                        onclick="selectVariant('size',@product.Id,this)">@s</button>
+                                                            }
+                                                        </div>
+                                                        <input type="hidden" name="size_@product.Id" id="size_@product.Id" value="" />
+                                                    </div>
+                                                }
+
+                                                <!-- Quantity Stepper -->
+                                                <div class="d-flex align-items-center gap-3 mt-2">
+                                                    <div>
+                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">QTY</div>
+                                                        <div class="qty-stepper">
+                                                            <button type="button" onclick="stepQty(@product.Id, -1)">&#8722;</button>
+                                                            <input type="number" class="qty-input"
+                                                                   id="qty_@product.Id" name="qty_@product.Id"
+                                                                   min="0" max="999" value="0"
+                                                                   data-product-id="@product.Id"
+                                                                   oninput="updateOrderSummary()" />
+                                                            <button type="button" onclick="stepQty(@product.Id, 1)">&#43;</button>
+                                                        </div>
+                                                    </div>
+                                                    <div id="added-badge-@product.Id" class="badge bg-success d-none">
+                                                        <i class="bi bi-check-circle me-1"></i>Added
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
                                     </div>
-                                }
-                                <div class="mt-auto">
-                                    <label class="form-label small fw-semibold mb-1"
-                                           for="qty_@product.Id">Quantity</label>
-                                    <input type="number" class="form-control form-control-sm qty-input"
-                                           id="qty_@product.Id" name="qty_@product.Id"
-                                           min="0" max="999" value="0"
-                                           data-product-id="@product.Id"
-                                           oninput="updateOrderSummary()" />
                                 </div>
-                            </div>
+                            }
                         </div>
                     </div>
                 }
-            </div>
-        }
 
-        <div class="card shadow-sm mt-4 border-primary border-2">
-            <div class="card-body">
-                <div class="row align-items-end g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold" for="notes">
-                            Order Notes <span class="text-muted fw-normal small">(optional)</span>
-                        </label>
-                        <textarea class="form-control" id="notes" name="notes" rows="2"
-                                  maxlength="1000"
-                                  placeholder="Any special instructions or notes for the operations team…"></textarea>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="bg-light rounded p-3 mb-3" id="orderSummaryBox">
-                            <div class="fw-semibold mb-1">
-                                <i class="bi bi-cart me-1 text-primary"></i>Order Summary
-                            </div>
-                            <div id="summaryItems" class="text-muted small">
-                                No items selected yet.
-                            </div>
+            </div>
+
+            <!-- Order Summary (right, sticky) -->
+            <div class="col-lg-4">
+                <div class="order-summary-sticky">
+                    <div class="card shadow border-primary border-2">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-cart3 me-2"></i>Order Summary</h5>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
-                            <i class="bi bi-check-circle me-1"></i>Place Order
-                        </button>
+                        <div class="card-body" id="summaryBody">
+                            <p class="text-muted text-center small py-3" id="summaryEmpty">
+                                <i class="bi bi-cart display-4 d-block opacity-25 mb-2"></i>
+                                No items selected yet.<br />Use the quantity stepper to add items.
+                            </p>
+                            <div id="summaryItems" class="d-none"></div>
+                        </div>
+
+                        <div class="card-footer bg-transparent">
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold" for="notes">
+                                    Order Notes <span class="text-muted fw-normal">(optional)</span>
+                                </label>
+                                <textarea class="form-control form-control-sm" id="notes" name="notes" rows="2"
+                                          maxlength="1000"
+                                          placeholder="Special instructions for the operations team…"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
+                                <i class="bi bi-check-circle me-1"></i>Place Order for Q@(quarter) @year
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3 shadow-sm border-0 bg-light">
+                        <div class="card-body py-2 px-3">
+                            <p class="small text-muted mb-0">
+                                <i class="bi bi-info-circle me-1 text-primary"></i>
+                                Orders are fulfilled by the operations team. A confirmation email will be sent once your order is placed.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -128,50 +255,138 @@ else
 @section Scripts {
 <script>
 (function () {
-    var productNames = {
+
+    // Product metadata from server
+    var productMeta = {
         @foreach (var p in Model)
         {
-            <text>'@p.Id': '@Html.Raw(p.Name.Replace("'", "\\'"))',</text>
+            <text>'@p.Id': { name: '@Html.Raw(p.Name.Replace("'", "\\'"))', hasSizes: @p.HasSizes.ToString().ToLower(), hasGender: @p.HasGenderOption.ToString().ToLower(), hasColor: @p.HasColorOptions.ToString().ToLower() },</text>
         }
     };
 
+    // ── Variant selection helpers ─────────────────────────────────────────────
+
+    window.selectVariant = function (type, productId, btn) {
+        var group = document.getElementById(type + '-group-' + productId);
+        if (!group) return;
+        var cls = type === 'size' ? 'size-btn' : 'gender-pill';
+        group.querySelectorAll('.' + cls).forEach(function (b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        document.getElementById(type + '_' + productId).value = btn.dataset.value;
+        updateOrderSummary();
+    };
+
+    window.selectColorVariant = function (productId, btn, colorName) {
+        var group = document.getElementById('color-group-' + productId);
+        if (!group) return;
+        group.querySelectorAll('.color-swatch').forEach(function (b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        document.getElementById('color_' + productId).value = colorName;
+        var lbl = document.getElementById('color-label-' + productId);
+        if (lbl) lbl.textContent = colorName;
+        updateOrderSummary();
+    };
+
+    // ── Quantity stepper ──────────────────────────────────────────────────────
+
+    window.stepQty = function (productId, delta) {
+        var inp = document.getElementById('qty_' + productId);
+        if (!inp) return;
+        var v = parseInt(inp.value, 10) || 0;
+        v = Math.max(0, Math.min(999, v + delta));
+        inp.value = v;
+        updateOrderSummary();
+    };
+
+    // ── Order summary ─────────────────────────────────────────────────────────
+
     window.updateOrderSummary = function () {
-        var inputs = document.querySelectorAll('.qty-input');
-        var lines = [];
+        var inputs  = document.querySelectorAll('.qty-input');
+        var lines   = [];
+        var total   = 0;
+
         inputs.forEach(function (inp) {
-            var qty = parseInt(inp.value, 10);
+            var qty = parseInt(inp.value, 10) || 0;
+            var id  = inp.dataset.productId;
+            var meta = productMeta[id] || {};
+            var badge = document.getElementById('added-badge-' + id);
+
             if (qty > 0) {
-                var id = inp.dataset.productId;
-                lines.push(qty + ' × ' + (productNames[id] || 'Product'));
-                // Highlight selected card
-                document.getElementById('card-' + id)
-                    .classList.add('border', 'border-primary');
+                var size   = meta.hasSizes  ? (document.getElementById('size_'   + id) || {}).value : '';
+                var gender = meta.hasGender ? (document.getElementById('gender_' + id) || {}).value : '';
+                var color  = meta.hasColor  ? (document.getElementById('color_'  + id) || {}).value : '';
+
+                var variants = [gender, size, color].filter(Boolean).join(', ');
+                lines.push({ name: meta.name || 'Product', qty: qty, variants: variants });
+                total += qty;
+                document.getElementById('card-' + id)?.classList.add('border', 'border-primary', 'border-2');
+                if (badge) badge.classList.remove('d-none');
             } else {
-                var id2 = inp.dataset.productId;
-                document.getElementById('card-' + id2)
-                    .classList.remove('border', 'border-primary');
+                document.getElementById('card-' + id)?.classList.remove('border', 'border-primary', 'border-2');
+                if (badge) badge.classList.add('d-none');
             }
         });
 
-        var summaryEl = document.getElementById('summaryItems');
-        var submitBtn = document.getElementById('submitBtn');
+        var summaryEmpty = document.getElementById('summaryEmpty');
+        var summaryItems = document.getElementById('summaryItems');
+        var submitBtn    = document.getElementById('submitBtn');
 
         if (lines.length === 0) {
-            summaryEl.textContent = 'No items selected yet.';
+            summaryEmpty.classList.remove('d-none');
+            summaryItems.classList.add('d-none');
+            summaryItems.innerHTML = '';
             submitBtn.disabled = true;
         } else {
-            summaryEl.innerHTML = lines.map(function (l) {
-                return '<div>' + l + '</div>';
-            }).join('');
+            summaryEmpty.classList.add('d-none');
+            summaryItems.classList.remove('d-none');
+            summaryItems.innerHTML = lines.map(function (l) {
+                var variantBadge = l.variants
+                    ? '<span class="badge bg-light text-dark border ms-1" style="font-size:.7rem;">' + l.variants + '</span>'
+                    : '';
+                return '<div class="summary-item d-flex justify-content-between align-items-start">' +
+                       '<div><span class="fw-semibold">' + l.name + '</span>' + variantBadge + '</div>' +
+                       '<span class="badge bg-primary ms-2">×' + l.qty + '</span></div>';
+            }).join('') +
+            '<div class="pt-2 text-end text-muted small fw-semibold">' + total + ' item(s) total</div>';
             submitBtn.disabled = false;
         }
     };
 
-    document.getElementById('storeForm')?.addEventListener('submit', function (e) {
+    // Disable submit button while submitting
+    document.getElementById('storeForm')?.addEventListener('submit', function () {
         var btn = document.getElementById('submitBtn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Placing Order…';
     });
+
 })();
 </script>
+}
+
+@functions {
+    static string ColorNameToCss(string name)
+    {
+        return name.ToLowerInvariant() switch
+        {
+            "black"       => "#212529",
+            "white"       => "#f8f9fa",
+            "red"         => "#dc3545",
+            "navy" or "navy blue" => "#001f5b",
+            "blue"        => "#0d6efd",
+            "green"       => "#198754",
+            "gray" or "grey" => "#6c757d",
+            "yellow"      => "#ffc107",
+            "orange"      => "#fd7e14",
+            "purple"      => "#6f42c1",
+            "pink"        => "#d63384",
+            "brown"       => "#795548",
+            "teal"        => "#20c997",
+            "gold"        => "#D4AC0D",
+            "silver"      => "#adb5bd",
+            "charcoal"    => "#495057",
+            "khaki"       => "#c3b091",
+            "maroon"      => "#800000",
+            _             => "#dee2e6"
+        };
+    }
 }

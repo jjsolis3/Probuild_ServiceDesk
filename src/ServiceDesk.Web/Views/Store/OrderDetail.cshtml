@@ -45,7 +45,7 @@
                     <dd class="col-sm-7">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
 
                     <dt class="col-sm-5">Quarter</dt>
-                    <dd class="col-sm-7">Q@Model.Quarter @Model.Year</dd>
+                    <dd class="col-sm-7">Q@(Model.Quarter) @Model.Year</dd>
 
                     <dt class="col-sm-5">Status</dt>
                     <dd class="col-sm-7">
@@ -77,13 +77,18 @@
                         <tr>
                             <th style="width:60px;"></th>
                             <th>Product</th>
-                            <th>Category</th>
+                            <th>Variants</th>
                             <th class="text-end">Qty</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var item in Model.Items)
                         {
+                            var vparts = new List<string>();
+                            if (!string.IsNullOrEmpty(item.SelectedGender)) vparts.Add(item.SelectedGender);
+                            if (!string.IsNullOrEmpty(item.SelectedSize))   vparts.Add(item.SelectedSize);
+                            if (!string.IsNullOrEmpty(item.SelectedColor))  vparts.Add(item.SelectedColor);
+
                             <tr>
                                 <td>
                                     @if (!string.IsNullOrEmpty(item.StoreProduct?.ImagePath))
@@ -99,11 +104,17 @@
                                         </div>
                                     }
                                 </td>
-                                <td class="fw-semibold">@item.ProductNameSnapshot</td>
                                 <td>
+                                    <div class="fw-semibold">@item.ProductNameSnapshot</div>
                                     @if (!string.IsNullOrEmpty(item.ProductCategorySnapshot))
                                     {
-                                        <span class="badge bg-light text-dark border">@item.ProductCategorySnapshot</span>
+                                        <span class="badge bg-light text-dark border" style="font-size:.7rem;">@item.ProductCategorySnapshot</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (vparts.Count > 0)
+                                    {
+                                        <span class="text-muted small">@string.Join(" / ", vparts)</span>
                                     }
                                     else
                                     {

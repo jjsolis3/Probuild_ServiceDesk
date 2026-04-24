@@ -177,6 +177,19 @@
                                     <td class="text-muted small">
                                         @order.Items.Count item(s)
                                         <span class="text-muted">(qty @order.Items.Sum(i => i.Quantity))</span>
+                                        @foreach (var item in order.Items.Take(2))
+                                        {
+                                            var vparts = new List<string>();
+                                            if (!string.IsNullOrEmpty(item.SelectedGender)) vparts.Add(item.SelectedGender);
+                                            if (!string.IsNullOrEmpty(item.SelectedSize))   vparts.Add(item.SelectedSize);
+                                            if (!string.IsNullOrEmpty(item.SelectedColor))  vparts.Add(item.SelectedColor);
+                                            if (vparts.Count > 0)
+                                            {
+                                                <div style="font-size:.7rem;" class="text-muted">
+                                                    @item.ProductNameSnapshot — @string.Join(", ", vparts)
+                                                </div>
+                                            }
+                                        }
                                     </td>
                                     <td>
                                         <span class="badge @StatusBadge(order.Status)">@order.Status</span>

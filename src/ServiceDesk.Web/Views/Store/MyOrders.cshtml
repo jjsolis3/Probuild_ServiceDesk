@@ -58,7 +58,7 @@ else
                         <tr>
                             <td class="fw-semibold">@order.OrderNumber</td>
                             <td class="text-muted small">@order.OrderDate.ToString("MMM d, yyyy")</td>
-                            <td class="text-muted small">Q@order.Quarter @order.Year</td>
+                            <td class="text-muted small">Q@(order.Quarter) @order.Year</td>
                             <td>
                                 @{
                                     var totalQty = order.Items.Sum(i => i.Quantity);

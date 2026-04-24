@@ -630,7 +630,7 @@ public class ReportsController : Controller
         var orders = await query.OrderBy(o => o.OrderNumber).ToListAsync();
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Order #,User Name,Email,Order Date,Quarter,Year,Status,Product,Category,Qty,Notes");
+        sb.AppendLine("Order #,User Name,Email,Order Date,Quarter,Year,Status,Product,Category,Gender,Size,Color,Qty,Notes");
 
         foreach (var order in orders)
         {
@@ -646,6 +646,9 @@ public class ReportsController : Controller
                     CsvEscape(order.Status),
                     CsvEscape(item.ProductNameSnapshot),
                     CsvEscape(item.ProductCategorySnapshot ?? string.Empty),
+                    CsvEscape(item.SelectedGender ?? string.Empty),
+                    CsvEscape(item.SelectedSize   ?? string.Empty),
+                    CsvEscape(item.SelectedColor  ?? string.Empty),
                     item.Quantity.ToString(),
                     CsvEscape(order.Notes ?? string.Empty)
                 ));

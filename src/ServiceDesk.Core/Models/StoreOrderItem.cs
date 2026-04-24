@@ -22,6 +22,19 @@ public class StoreOrderItem
     [Display(Name = "Category")]
     public string? ProductCategorySnapshot { get; set; }
 
+    // Selected variant options (populated for apparel products)
+    [StringLength(50)]
+    [Display(Name = "Size")]
+    public string? SelectedSize { get; set; }
+
+    [StringLength(50)]
+    [Display(Name = "Gender")]
+    public string? SelectedGender { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Color")]
+    public string? SelectedColor { get; set; }
+
     // Navigation
     public StoreOrder StoreOrder { get; set; } = null!;
     public StoreProduct StoreProduct { get; set; } = null!;

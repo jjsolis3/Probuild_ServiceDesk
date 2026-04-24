@@ -5,12 +5,13 @@
     Layout = "_PortalLayout";
 }
 
-<div class="row justify-content-center">
-    <div class="col-lg-7">
-        <div class="card shadow-sm text-center py-4 mb-4">
+<div class="d-flex justify-content-center">
+    <div style="max-width:680px; width:100%;">
+
+        <div class="card shadow-sm text-center py-4 mb-4 border-0">
             <div class="card-body">
                 <div class="mb-3">
-                    <i class="bi bi-check-circle-fill display-1 text-success"></i>
+                    <i class="bi bi-check-circle-fill text-success" style="font-size:4rem;"></i>
                 </div>
                 <h3 class="fw-bold mb-1">Order Placed!</h3>
                 <p class="text-muted mb-0">
@@ -20,8 +21,8 @@
             </div>
         </div>
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header d-flex justify-content-between align-items-center bg-light">
                 <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Order Summary</h5>
                 <span class="badge bg-warning text-dark">@Model.Status</span>
             </div>
@@ -34,7 +35,7 @@
                     <dd class="col-sm-8">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
 
                     <dt class="col-sm-4">Quarter</dt>
-                    <dd class="col-sm-8">Q@Model.Quarter @Model.Year</dd>
+                    <dd class="col-sm-8">Q@(Model.Quarter) @Model.Year</dd>
 
                     @if (!string.IsNullOrEmpty(Model.Notes))
                     {
@@ -45,8 +46,8 @@
             </div>
         </div>
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-header">
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-light">
                 <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Items Ordered</h5>
             </div>
             <div class="table-responsive">
@@ -54,7 +55,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Product</th>
-                            <th>Category</th>
+                            <th>Variants</th>
                             <th class="text-end">Qty</th>
                         </tr>
                     </thead>
@@ -62,11 +63,23 @@
                         @foreach (var item in Model.Items)
                         {
                             <tr>
-                                <td class="fw-semibold">@item.ProductNameSnapshot</td>
                                 <td>
+                                    <div class="fw-semibold">@item.ProductNameSnapshot</div>
                                     @if (!string.IsNullOrEmpty(item.ProductCategorySnapshot))
                                     {
-                                        <span class="badge bg-light text-dark border">@item.ProductCategorySnapshot</span>
+                                        <span class="badge bg-light text-dark border" style="font-size:.7rem;">@item.ProductCategorySnapshot</span>
+                                    }
+                                </td>
+                                <td>
+                                    @{
+                                        var parts = new List<string>();
+                                        if (!string.IsNullOrEmpty(item.SelectedGender)) parts.Add(item.SelectedGender);
+                                        if (!string.IsNullOrEmpty(item.SelectedSize))   parts.Add(item.SelectedSize);
+                                        if (!string.IsNullOrEmpty(item.SelectedColor))  parts.Add(item.SelectedColor);
+                                    }
+                                    @if (parts.Count > 0)
+                                    {
+                                        <span class="text-muted small">@string.Join(" / ", parts)</span>
                                     }
                                     else
                                     {
@@ -81,7 +94,7 @@
             </div>
         </div>
 
-        <div class="d-flex gap-2 justify-content-center">
+        <div class="d-flex gap-2 justify-content-center mb-4">
             <a asp-action="MyOrders" class="btn btn-outline-primary">
                 <i class="bi bi-clock-history me-1"></i>View All My Orders
             </a>
@@ -89,5 +102,6 @@
                 <i class="bi bi-shop me-1"></i>Back to Store
             </a>
         </div>
+
     </div>
 </div>

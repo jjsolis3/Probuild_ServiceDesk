@@ -32,5 +32,23 @@ public class StoreProduct
     [Display(Name = "Created Date")]
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
+    // Variant options (primarily for apparel)
+    [Display(Name = "Has Sizes")]
+    public bool HasSizes { get; set; } = false;
+
+    [Display(Name = "Has Gender Option")]
+    public bool HasGenderOption { get; set; } = false;
+
+    [Display(Name = "Has Color Options")]
+    public bool HasColorOptions { get; set; } = false;
+
+    [StringLength(500)]
+    [Display(Name = "Available Sizes")]
+    public string? AvailableSizes { get; set; }  // comma-separated e.g. "XS,S,M,L,XL,XXL"
+
+    [StringLength(500)]
+    [Display(Name = "Available Colors")]
+    public string? AvailableColors { get; set; }  // comma-separated e.g. "Black,White,Navy"
+
     public ICollection<StoreOrderItem> OrderItems { get; set; } = new List<StoreOrderItem>();
 }

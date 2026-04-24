@@ -83,14 +83,20 @@ public class StoreController : Controller
             .Where(p => p.IsActive)
             .ToListAsync();
 
-        var lineItems = new List<(StoreProduct Product, int Qty)>();
+        var lineItems = new List<(StoreProduct Product, int Qty, string? Size, string? Gender, string? Color)>();
         foreach (var product in products)
         {
             var key = $"qty_{product.Id}";
             if (form.ContainsKey(key) &&
                 int.TryParse(form[key], out var qty) && qty > 0)
             {
-                lineItems.Add((product, qty));
+                var size   = form.ContainsKey($"size_{product.Id}")   ? form[$"size_{product.Id}"].ToString()   : null;
+                var gender = form.ContainsKey($"gender_{product.Id}") ? form[$"gender_{product.Id}"].ToString() : null;
+                var color  = form.ContainsKey($"color_{product.Id}")  ? form[$"color_{product.Id}"].ToString()  : null;
+                lineItems.Add((product, qty,
+                    string.IsNullOrWhiteSpace(size)   ? null : size.Trim(),
+                    string.IsNullOrWhiteSpace(gender) ? null : gender.Trim(),
+                    string.IsNullOrWhiteSpace(color)  ? null : color.Trim()));
             }
         }
 
@@ -117,7 +123,10 @@ public class StoreController : Controller
                 StoreProductId          = li.Product.Id,
                 Quantity                = li.Qty,
                 ProductNameSnapshot     = li.Product.Name,
-                ProductCategorySnapshot = li.Product.Category
+                ProductCategorySnapshot = li.Product.Category,
+                SelectedSize            = li.Size,
+                SelectedGender          = li.Gender,
+                SelectedColor           = li.Color
             }).ToList()
         };
 

@@ -2199,12 +2199,17 @@ public class SettingsController : Controller
         var existing = await _context.StoreProducts.FindAsync(id);
         if (existing == null) return NotFound();
 
-        existing.Name          = product.Name;
-        existing.Description   = product.Description;
-        existing.Category      = product.Category;
-        existing.UnitOfMeasure = product.UnitOfMeasure;
-        existing.IsActive      = product.IsActive;
-        existing.SortOrder     = product.SortOrder;
+        existing.Name             = product.Name;
+        existing.Description      = product.Description;
+        existing.Category         = product.Category;
+        existing.UnitOfMeasure    = product.UnitOfMeasure;
+        existing.IsActive         = product.IsActive;
+        existing.SortOrder        = product.SortOrder;
+        existing.HasSizes         = product.HasSizes;
+        existing.HasGenderOption  = product.HasGenderOption;
+        existing.HasColorOptions  = product.HasColorOptions;
+        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes) ? null : product.AvailableSizes.Trim();
+        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors) ? null : product.AvailableColors.Trim();
 
         if (clearImage)
         {
