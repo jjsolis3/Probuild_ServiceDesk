@@ -16,11 +16,16 @@ public class PortalController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailNotification;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<PortalController> _logger;
 
-    public PortalController(ServiceDeskDbContext context, EmailNotificationService emailNotification)
+    public PortalController(ServiceDeskDbContext context, EmailNotificationService emailNotification,
+        IServiceScopeFactory scopeFactory, ILogger<PortalController> logger)
     {
-        _context = context;
+        _context           = context;
         _emailNotification = emailNotification;
+        _scopeFactory      = scopeFactory;
+        _logger            = logger;
     }
 
     // GET: /Portal
@@ -82,6 +87,7 @@ public class PortalController : Controller
             PageSize       = pageSize
         };
 
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "MyTickets";
         return View(model);
     }
@@ -99,7 +105,7 @@ public class PortalController : Controller
         ViewBag.Services = new SelectList(
             await _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name).ToListAsync(),
             "Id", "Name");
-
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "Submit";
         return View(new PortalSubmitTicketViewModel());
     }
@@ -148,18 +154,27 @@ public class PortalController : Controller
             });
             await _context.SaveChangesAsync();
 
-            // Try to send confirmation email (fire-and-forget, don't block)
+            // Try to send confirmation email (fire-and-forget; use scope factory — HTTP scope may be disposed)
             if (employee != null)
             {
+                var capturedTicketId  = ticket.Id;
+                var capturedEmail     = employee.Email;
+                var capturedFullName  = employee.FullName;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        var fullTicket = await _context.Tickets.FindAsync(ticket.Id);
-                        if (fullTicket != null)
-                            await _emailNotification.SendTicketCreatedConfirmation(fullTicket, employee.Email, employee.FullName);
+                        using var scope = _scopeFactory.CreateScope();
+                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                        var t = await db.Tickets.FindAsync(capturedTicketId);
+                        if (t != null)
+                            await email.SendTicketCreatedConfirmation(t, capturedEmail, capturedFullName);
                     }
-                    catch { /* ignore email errors */ }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Notification] Portal ticket-created confirmation failed for Ticket #{Id}.", capturedTicketId);
+                    }
                 });
             }
 
@@ -170,6 +185,7 @@ public class PortalController : Controller
         ViewBag.Services = new SelectList(
             await _context.CompanyServices.Where(s => s.Status == ServiceStatus.Active).OrderBy(s => s.Name).ToListAsync(),
             "Id", "Name");
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "Submit";
         return View(model);
     }
@@ -200,6 +216,7 @@ public class PortalController : Controller
             CurrentUser = portalUser
         };
 
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "MyTickets";
         return View(model);
     }
@@ -246,10 +263,25 @@ public class PortalController : Controller
         // Notify assigned agent (if any)
         if (ticket.AssignedTo != null)
         {
+            var capturedNoteTicketId  = ticket.Id;
+            var capturedNoteId        = note.Id;
+            var capturedAssigneeEmail = ticket.AssignedTo.Email;
             _ = Task.Run(async () =>
             {
-                try { await _emailNotification.NotifyNoteAdded(ticket, note, ticket.AssignedTo.Email); }
-                catch { }
+                try
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                    var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedNoteTicketId);
+                    var n = await db.TicketNotes.FindAsync(capturedNoteId);
+                    if (t != null && n != null)
+                        await email.NotifyNoteAdded(t, n, capturedAssigneeEmail);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Notification] Portal note-added notification failed for Ticket #{Id}.", capturedNoteTicketId);
+                }
             });
         }
 
@@ -274,7 +306,7 @@ public class PortalController : Controller
         }
 
         if (category.HasValue)
-            query = query.Where(a => (int)a.Category == category.Value);
+            query = query.Where(a => a.Category == category.Value);
 
         var articles = await query
             .OrderByDescending(a => a.CreatedDate)
@@ -282,11 +314,33 @@ public class PortalController : Controller
 
         ViewBag.SearchQuery = q;
         ViewBag.SelectedCategory = category;
+        await LoadCategoryViewBagAsync();
         ViewData["ActivePage"] = "KB";
         return View(articles);
     }
 
     // -------------------------------------------------------
+    private async Task LoadCategoryViewBagAsync()
+    {
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+            ViewBag.CategorySelectList = new Microsoft.AspNetCore.Mvc.Rendering.SelectList(cats, "Id", "Name");
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
+            ViewBag.CategoriesById     = cats.ToDictionary(c => c.Id, c => c.Name);
+            ViewBag.CategorySelectList = new Microsoft.AspNetCore.Mvc.Rendering.SelectList(cats, "Id", "Name");
+        }
+    }
+
     private async Task<ServiceDesk.Core.Models.PortalUser?> GetCurrentPortalUserAsync()
     {
         var userId = User.FindFirstValue("UserId");

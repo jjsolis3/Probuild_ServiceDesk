@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -12,10 +15,16 @@ namespace ServiceDesk.Web.Controllers;
 public class EmployeesController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly IDataProtector _protector;
+    private readonly GoogleWorkspaceService _googleWorkspace;
 
-    public EmployeesController(ServiceDeskDbContext context)
+    public EmployeesController(ServiceDeskDbContext context,
+        IDataProtectionProvider dpProvider,
+        GoogleWorkspaceService googleWorkspace)
     {
-        _context = context;
+        _context         = context;
+        _protector       = dpProvider.CreateProtector("EmployeeCredentials.v1");
+        _googleWorkspace = googleWorkspace;
     }
 
     public async Task<IActionResult> Index(string[]? departments, bool? active, int[]? branchIds, bool? hasLogin, string? q)
@@ -54,7 +63,9 @@ public class EmployeesController : Controller
         ViewBag.Branches            = await _context.Branches
             .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
 
-        var employees = await query.OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
+        var employees = await query
+            .Include(e => e.Branch)
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();
         return View(employees);
     }
 
@@ -62,18 +73,197 @@ public class EmployeesController : Controller
     {
         if (id == null) return NotFound();
 
+        // Load employee without ticket collections — counts/lists come from targeted queries below
         var employee = await _context.Employees
-            .Include(e => e.SubmittedTickets)
-            .Include(e => e.AssignedTickets)
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(e => e.AssignedAssets)
+            .Include(e => e.Credentials)
+            .Include(e => e.Branch)
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (employee == null) return NotFound();
+
+        // ── DB-side counts (single COUNT per query, no entity hydration) ──────
+        var totalSubmitted = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id);
+        var openCount = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id
+                          && (t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress));
+        var resolvedCount = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.SubmittedById == id
+                          && (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed));
+        var totalAssigned = await _context.Tickets.AsNoTracking()
+            .CountAsync(t => t.AssignedToId == id);
+
+        // ── Category breakdown aggregated in SQL ─────────────────────────────
+        var categoryStats = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id)
+            .GroupBy(t => t.Category)
+            .Select(g => new {
+                CategoryId = g.Key,
+                Count      = g.Count(),
+                OpenCount  = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress)
+            })
+            .ToListAsync();
+
+        var catIds = categoryStats.Select(x => x.CategoryId).ToList();
+        var categoryNames = catIds.Count > 0
+            ? await _context.TicketCategories.AsNoTracking()
+                .Where(c => catIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Name)
+            : new Dictionary<int, string>();
+
+        ViewBag.CategoryBreakdown = categoryStats
+            .Select(g => new {
+                g.CategoryId,
+                CategoryName = categoryNames.GetValueOrDefault(g.CategoryId, $"Category {g.CategoryId}"),
+                g.Count,
+                g.OpenCount
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        // ── Monthly trend aggregated in SQL ───────────────────────────────────
+        var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);
+        var monthlyRaw = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id && t.CreatedDate >= sixMonthsAgo)
+            .GroupBy(t => new { t.CreatedDate.Year, t.CreatedDate.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+            .ToListAsync();
+
+        ViewBag.MonthlyTrend = monthlyRaw
+            .Select(x => new { Label = new DateTime(x.Year, x.Month, 1).ToString("MMM yy"), x.Count })
+            .OrderBy(x => x.Label)
+            .ToList();
+
+        ViewBag.RecurringCategories = ((IEnumerable<dynamic>)ViewBag.CategoryBreakdown)
+            .Where(x => x.Count >= 3 && x.OpenCount > 0)
+            .ToList();
+
+        // ── Recent tickets for the Tickets tab (capped at 100 rows) ──────────
+        ViewBag.RecentSubmitted = await _context.Tickets.AsNoTracking()
+            .Where(t => t.SubmittedById == id)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(100)
+            .Select(t => new {
+                t.Id, t.Title,
+                Status   = t.Status,
+                Priority = t.Priority,
+                Category = t.Category,
+                t.CreatedDate
+            })
+            .ToListAsync();
+
+        ViewBag.RecentAssigned = await _context.Tickets.AsNoTracking()
+            .Where(t => t.AssignedToId == id)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(100)
+            .Select(t => new {
+                t.Id, t.Title,
+                Status   = t.Status,
+                Priority = t.Priority,
+                Category = t.Category,
+                t.CreatedDate
+            })
+            .ToListAsync();
+
+        ViewBag.TotalSubmitted = totalSubmitted;
+        ViewBag.OpenCount      = openCount;
+        ViewBag.ResolvedCount  = resolvedCount;
+        ViewBag.TotalAssigned  = totalAssigned;
+
+        // ── Onboarding / Offboarding checklist ───────────────────────────────
+        ViewBag.EmployeeTasks = await _context.EmployeeTasks
+            .AsNoTracking()
+            .Where(t => t.EmployeeId == id)
+            .OrderBy(t => t.TaskType).ThenBy(t => t.SortOrder).ThenBy(t => t.Title)
+            .ToListAsync();
+
         return View(employee);
     }
 
-    public IActionResult Create()
+    // ── AJAX Search (used by Asset Details typeahead) ─────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> Search(string? q)
     {
+        var results = await _context.Employees
+            .AsNoTracking()
+            .Where(e => e.IsActive && (string.IsNullOrEmpty(q)
+                || e.FirstName.Contains(q) || e.LastName.Contains(q) || e.Email.Contains(q)))
+            .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
+            .Take(25)
+            .Select(e => new { id = e.Id, name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+        return Json(results);
+    }
+
+    // ── Employee Credential Vault ─────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddCredential(int id, string label, string? username,
+        string password, string? url, string? credNotes)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(password))
+        {
+            TempData["Error"] = "Label and password are required.";
+            return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+        }
+
+        _context.EmployeeCredentials.Add(new EmployeeCredential
+        {
+            EmployeeId        = id,
+            Label             = label.Trim(),
+            Username          = username?.Trim(),
+            EncryptedPassword = _protector.Protect(password),
+            Url               = url?.Trim(),
+            Notes             = credNotes?.Trim(),
+            CreatedDate       = DateTime.UtcNow,
+            CreatedByEmail    = User.Identity?.Name ?? "system",
+        });
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Credential added.";
+        return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCredential(int id, int credentialId)
+    {
+        var cred = await _context.EmployeeCredentials.FindAsync(credentialId);
+        if (cred != null && cred.EmployeeId == id)
+        {
+            _context.EmployeeCredentials.Remove(cred);
+            await _context.SaveChangesAsync();
+        }
+        TempData["Success"] = "Credential deleted.";
+        return RedirectToAction(nameof(Details), new { id, tab = "credentials" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevealPassword(int credentialId)
+    {
+        var cred = await _context.EmployeeCredentials.FindAsync(credentialId);
+        if (cred == null) return Json(new { success = false, message = "Not found" });
+
+        try
+        {
+            var plain = _protector.Unprotect(cred.EncryptedPassword);
+            return Json(new { success = true, password = plain });
+        }
+        catch
+        {
+            return Json(new { success = false, message = "Decryption failed." });
+        }
+    }
+
+    public async Task<IActionResult> Create()
+    {
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View();
     }
 
@@ -87,6 +277,7 @@ public class EmployeesController : Controller
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 
@@ -94,8 +285,11 @@ public class EmployeesController : Controller
     {
         if (id == null) return NotFound();
 
-        var employee = await _context.Employees.FindAsync(id);
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
         if (employee == null) return NotFound();
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 
@@ -107,10 +301,27 @@ public class EmployeesController : Controller
 
         if (ModelState.IsValid)
         {
-            _context.Update(employee);
+            var existing = await _context.Employees.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.FirstName    = employee.FirstName;
+            existing.LastName     = employee.LastName;
+            existing.Email        = employee.Email;
+            existing.BranchId     = employee.BranchId;
+            existing.Phone        = employee.Phone;
+            existing.Extension    = employee.Extension;
+            existing.Department   = employee.Department;
+            existing.JobTitle     = employee.JobTitle;
+            existing.HireDate     = employee.HireDate;
+            existing.IsActive     = employee.IsActive;
+            existing.ManagerEmail = employee.ManagerEmail;
+            existing.EmployeeType = employee.EmployeeType;
+            existing.FloorSection = employee.FloorSection;
+
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
+        ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
     }
 
@@ -184,6 +395,10 @@ public class EmployeesController : Controller
             ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
             return View();
         }
+
+        // Clean up any previous abandoned temp file from this session before creating a new one
+        if (TempData.Peek("ImportEmployeeTempPath") is string prevEmpPath && System.IO.File.Exists(prevEmpPath))
+            System.IO.File.Delete(prevEmpPath);
 
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_employee_{Guid.NewGuid():N}.dat");
@@ -372,5 +587,426 @@ public class EmployeesController : Controller
         }
         result.Add(current.ToString());
         return result;
+    }
+
+    // ── Gmail Signature Management ────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetSignature(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (success, html, error) = await _googleWorkspace.GetSignatureAsync(employee.Email);
+        return Json(new { success, html = html ?? "", error });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateSignature(int id, string html, bool includeAliases = false)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        bool ok;
+        string? errorMsg;
+        int addressesUpdated = 1;
+
+        if (includeAliases)
+        {
+            var (s, updated, _, err) = await _googleWorkspace.UpdateSignatureAllAddressesAsync(employee.Email, html ?? "");
+            ok = s; errorMsg = err; addressesUpdated = updated;
+        }
+        else
+        {
+            var (s, err) = await _googleWorkspace.UpdateSignatureAsync(employee.Email, html ?? "");
+            ok = s; errorMsg = err;
+        }
+
+        if (ok)
+        {
+            employee.LastGoogleSignatureSync = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            var msg = includeAliases
+                ? $"Signature applied to {addressesUpdated} address(es) for {employee.FullName}."
+                : $"Signature updated for {employee.FullName}.";
+            return Json(new { success = true, message = msg,
+                syncDate = employee.LastGoogleSignatureSync!.Value.ToString("MMM d, yyyy h:mm tt") });
+        }
+
+        return Json(new { success = false, message = errorMsg ?? "Unknown error." });
+    }
+
+    // ── Google Workspace Admin Actions ────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetWorkspaceInfo(int id)
+    {
+        try
+        {
+            var employee = await _context.Employees.FindAsync(id);
+            if (employee == null) return NotFound();
+
+            if (string.IsNullOrWhiteSpace(employee.Email))
+                return Json(new
+                {
+                    user     = new { suspended = false, mustChange = false, orgUnit = (string?)null,
+                                     error = "No email address is set for this employee." },
+                    vacation = (object)new { error = "No email address." },
+                    groups   = (object)new { error = "No email address." }
+                });
+
+            var (userOk, user, userErr) = await _googleWorkspace.GetGoogleUserAsync(employee.Email);
+            var (vacOk,  vac,  vacErr)  = await _googleWorkspace.GetVacationResponderAsync(employee.Email);
+            var (grpOk,  grps, grpErr)  = await _googleWorkspace.GetUserGroupsAsync(employee.Email);
+
+            return Json(new
+            {
+                user = userOk ? new
+                {
+                    suspended  = user!.Suspended,
+                    mustChange = user.ChangePasswordAtNextLogin,
+                    orgUnit    = user.OrgUnit,
+                    error      = (string?)null
+                } : new { suspended = false, mustChange = false, orgUnit = (string?)null, error = userErr },
+
+                vacation = vacOk ? new
+                {
+                    enabled  = vac!.EnableAutoReply,
+                    subject  = vac.ResponseSubject,
+                    body     = vac.ResponseBodyHtml,
+                    start    = vac.StartTime?.ToString("yyyy-MM-dd"),
+                    end      = vac.EndTime?.ToString("yyyy-MM-dd"),
+                    contacts = vac.RestrictToContacts,
+                    domain   = vac.RestrictToDomain,
+                    error    = (string?)null
+                } : (object)new { error = vacErr },
+
+                groups = grpOk
+                    ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
+                    : (object)new { error = grpErr }
+            });
+        }
+        catch (Exception ex)
+        {
+            // Always return JSON so the client shows a readable error rather than an HTML 500 page
+            return Json(new
+            {
+                user     = new { suspended = false, mustChange = false, orgUnit = (string?)null,
+                                 error = "Server error: " + ex.Message },
+                vacation = (object)new { error = ex.Message },
+                groups   = (object)new { error = ex.Message }
+            });
+        }
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuspendUser(int id, bool suspended)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.SetSuspendedAsync(employee.Email, suspended);
+        return Json(new { success = ok,
+            message = ok ? $"Account {(suspended ? "suspended" : "unsuspended")} successfully." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetWorkspacePassword(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, pw, err) = await _googleWorkspace.ResetPasswordAsync(employee.Email);
+        return Json(new { success = ok, tempPassword = pw, message = err });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetStorageInfo(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, info, err) = await _googleWorkspace.GetStorageAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new
+        {
+            success    = true,
+            gmailMb    = info!.GmailUsedMb,
+            driveMb    = info.DriveUsedMb,
+            totalMb    = info.TotalQuotaMb,
+            asOf       = info.AsOfDate?.ToString("MMM d, yyyy")
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetVacationResponder(int id,
+        bool enabled, string? subject, string? body,
+        string? startDate, string? endDate,
+        bool restrictToContacts = false, bool restrictToDomain = false)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        DateTimeOffset? start = DateTime.TryParse(startDate, out var sd)
+            ? new DateTimeOffset(sd, TimeSpan.Zero) : null;
+        DateTimeOffset? end = DateTime.TryParse(endDate, out var ed)
+            ? new DateTimeOffset(ed, TimeSpan.Zero) : null;
+
+        var settings = new GoogleWorkspaceService.VacationResponder(
+            enabled, subject, body, start, end, restrictToContacts, restrictToDomain);
+        var (ok, err) = await _googleWorkspace.SetVacationResponderAsync(employee.Email, settings);
+        return Json(new { success = ok,
+            message = ok ? (enabled ? "Out-of-office responder enabled." : "Out-of-office responder disabled.") : err });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDomainGroups()
+    {
+        var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            groups = groups.Select(g => new { g.Email, g.Name, g.MemberCount }) });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddToGroup(int id, string groupEmail)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.AddToGroupAsync(groupEmail, employee.Email);
+        return Json(new { success = ok, message = ok ? $"Added to {groupEmail}." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveFromGroup(int id, string groupEmail)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveFromGroupAsync(groupEmail, employee.Email);
+        return Json(new { success = ok, message = ok ? $"Removed from {groupEmail}." : err });
+    }
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ProvisionWorkspaceAccount(int id, string? orgUnit)
+    {
+        var employee = await _context.Employees.Include(e => e.Branch).FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, message = "Employee has no email address on file." });
+
+        var ou = string.IsNullOrWhiteSpace(orgUnit) ? "/" : orgUnit.Trim();
+        var (ok, pw, err) = await _googleWorkspace.CreateGoogleUserAsync(
+            employee.FirstName, employee.LastName, employee.Email, ou);
+
+        return Json(new
+        {
+            success = ok,
+            message = ok ? $"Google account created for {employee.Email}." : err,
+            tempPassword = pw
+        });
+    }
+
+    // ── Offboarding ───────────────────────────────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RunOffboarding(int id,
+        bool suspend         = true,
+        bool removeGroups    = true,
+        bool setOoo          = true,
+        string? oooSubject   = null,
+        string? oooBody      = null,
+        bool revokeTokens    = true,
+        bool transferDrive   = false,
+        string? transferToEmail = null)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var email   = employee.Email;
+        var steps   = new List<object>();
+        bool anyFail = false;
+
+        // 1. Suspend
+        if (suspend)
+        {
+            var (ok, err) = await _googleWorkspace.SetSuspendedAsync(email, true);
+            steps.Add(new { step = "Suspend account", ok, message = ok ? "Account suspended." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 2. Revoke OAuth tokens
+        if (revokeTokens)
+        {
+            var (ok, err) = await _googleWorkspace.RevokeAllTokensAsync(email);
+            steps.Add(new { step = "Revoke OAuth tokens", ok, message = ok ? "All app access revoked." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 3. Remove from all groups
+        if (removeGroups)
+        {
+            var (grpOk, grps, _) = await _googleWorkspace.GetUserGroupsAsync(email);
+            int removed = 0, grpFail = 0;
+            if (grpOk)
+                foreach (var g in grps)
+                {
+                    var (ok2, _) = await _googleWorkspace.RemoveFromGroupAsync(g.Email, email);
+                    if (ok2) removed++; else grpFail++;
+                }
+            steps.Add(new { step = "Remove from groups",
+                ok = grpFail == 0,
+                message = grpOk ? $"Removed from {removed} group(s)." : "Groups API unavailable." });
+        }
+
+        // 4. OOO Responder
+        if (setOoo)
+        {
+            var vac = new GoogleWorkspaceService.VacationResponder(
+                EnableAutoReply:    true,
+                ResponseSubject:    oooSubject ?? $"{employee.FullName} is no longer with the company.",
+                ResponseBodyHtml:   oooBody    ?? $"<p>{employee.FullName} is no longer available. Please contact your account manager.</p>",
+                StartTime:          null,
+                EndTime:            null,
+                RestrictToContacts: false,
+                RestrictToDomain:   false);
+            var (ok, err) = await _googleWorkspace.SetVacationResponderAsync(email, vac);
+            steps.Add(new { step = "Set out-of-office", ok, message = ok ? "OOO auto-reply enabled." : err });
+            if (!ok) anyFail = true;
+        }
+
+        // 5. Drive transfer
+        if (transferDrive && !string.IsNullOrWhiteSpace(transferToEmail))
+        {
+            var (ok, transferId, err) = await _googleWorkspace.StartDriveTransferAsync(email, transferToEmail);
+            steps.Add(new
+            {
+                step    = "Transfer Drive files",
+                ok,
+                message = ok ? $"Drive transfer initiated (ID: {transferId}). Files will appear in {transferToEmail}'s Drive shortly." : err
+            });
+            if (!ok) anyFail = true;
+        }
+
+        // Mark employee inactive on success and clear scheduled date
+        if (!anyFail)
+        {
+            employee.IsActive                 = false;
+            employee.ScheduledOffboardingDate = null;
+            await _context.SaveChangesAsync();
+        }
+
+        return Json(new
+        {
+            success = !anyFail,
+            message = anyFail ? "Offboarding completed with some errors." : "Offboarding completed successfully. Employee marked inactive.",
+            steps
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SyncWorkspaceProfile(int id)
+    {
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        var (ok, err) = await _googleWorkspace.UpdateUserInfoAsync(
+            userEmail:    employee.Email,
+            jobTitle:     employee.JobTitle,
+            department:   employee.Department,
+            costCenter:   employee.Branch?.CostCenter,
+            employeeType: employee.EmployeeType,
+            buildingId:   employee.Branch?.BuildingId,
+            floorName:    employee.Branch?.Name,
+            floorSection: employee.FloorSection,
+            managerEmail: employee.ManagerEmail);
+
+        return Json(new
+        {
+            success = ok,
+            message = ok
+                ? "Google Workspace profile updated successfully."
+                : $"Update failed: {err}"
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetOffboardingDate(int id, DateTime? scheduledDate)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        employee.ScheduledOffboardingDate = scheduledDate;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = scheduledDate.HasValue
+            ? $"Offboarding scheduled for {scheduledDate.Value:MMM dd, yyyy}."
+            : "Scheduled offboarding date cleared.";
+
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    // ── Security ──────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetOAuthApps(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (ok, tokens, err) = await _googleWorkspace.GetUserTokensAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+
+        return Json(new
+        {
+            success = true,
+            tokens  = tokens.Select(t => new { t.AppName, t.ClientId, scopeCount = t.Scopes.Count, t.Scopes })
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetLoginActivity(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+
+        var (ok, events, err) = await _googleWorkspace.GetUserLoginActivityAsync(employee.Email, 25);
+        if (!ok) return Json(new { success = false, error = err });
+
+        return Json(new
+        {
+            success = true,
+            events  = events.Select(e => new
+            {
+                time      = e.Time.ToString("MMM d, yyyy h:mm tt"),
+                eventName = e.EventName,
+                ip        = e.IpAddress
+            })
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ListSharedDrives()
+    {
+        var (ok, drives, err) = await _googleWorkspace.ListSharedDrivesAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true, drives = drives.Select(d => new { d.Id, d.Name }) });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetSignatureTemplate(int id)
+    {
+        var employee = await _context.Employees
+            .Include(e => e.Branch)
+            .FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) return NotFound();
+
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings?.SignatureTemplate == null)
+            return Json(new { success = false, message = "No signature template configured in Settings → Google Workspace." });
+
+        var rendered = await _googleWorkspace.RenderTemplateAsync(settings.SignatureTemplate, employee);
+        return Json(new { success = true, html = rendered });
     }
 }

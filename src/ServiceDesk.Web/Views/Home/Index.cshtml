@@ -1,6 +1,7 @@
 @model DashboardViewModel
 @{
     ViewData["Title"] = "Dashboard";
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -140,12 +141,53 @@
     </div>
 }
 
+@if (Model.SlaAtRiskTickets.Any())
+{
+    <div class="card border-warning shadow-sm mb-3">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-stopwatch me-1"></i> SLA At Risk — @Model.SlaAtRiskTickets.Count ticket@(Model.SlaAtRiskTickets.Count == 1 ? "" : "s") need attention</span>
+            <a asp-controller="Tickets" asp-action="Index" class="btn btn-sm btn-outline-dark py-0">View all tickets</a>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ticket</th>
+                        <th>Priority</th>
+                        <th>Risk</th>
+                        <th>Due</th>
+                        <th>Assigned To</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Model.SlaAtRiskTickets)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@t.Id"
+                                   class="fw-medium">#@t.Id — @(t.Title.Length > 45 ? t.Title[..45] + "…" : t.Title)</a>
+                            </td>
+                            <td><span class="badge badge-@t.Priority.ToLower()">@t.Priority</span></td>
+                            <td><span class="badge bg-@t.RiskBadge">@t.RiskLabel</span></td>
+                            <td class="small text-muted">@(t.DueLabel ?? "—")</td>
+                            <td class="small">@(t.AssigneeName ?? "Unassigned")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 <div class="row g-3">
-    <!-- Critical Tickets -->
+    <!-- Urgent Tickets (High + Critical) -->
     <div class="col-lg-6">
         <div class="card">
-            <div class="card-header bg-danger text-white">
-                <i class="bi bi-exclamation-triangle"></i> Critical Tickets
+            <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-triangle me-1"></i> Urgent Tickets</span>
+                <a asp-controller="Tickets" asp-action="Index"
+                   asp-route-priorities="High" asp-route-priorities="Critical"
+                   class="btn btn-sm btn-outline-light py-0">View all</a>
             </div>
             <div class="card-body p-0">
                 @if (Model.CriticalTickets.Any())
@@ -154,7 +196,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Title</th>
-                                <th>Submitted By</th>
+                                <th>Priority</th>
                                 <th>Assigned To</th>
                                 <th>Status</th>
                             </tr>
@@ -168,8 +210,17 @@
                                             @ticket.Title
                                         </a>
                                     </td>
-                                    <td>@ticket.SubmittedBy?.FullName</td>
-                                    <td>@(ticket.AssignedTo?.FullName ?? "Unassigned")</td>
+                                    <td>
+                                        <span class="badge badge-@ticket.Priority.ToString().ToLower()">
+                                            @ticket.Priority
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (ticket.AssignedTo != null)
+                                        { @ticket.AssignedTo.FullName }
+                                        else
+                                        { <span class="text-muted">Unassigned</span> }
+                                    </td>
                                     <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
                                 </tr>
                             }
@@ -178,7 +229,7 @@
                 }
                 else
                 {
-                    <div class="p-3 text-muted text-center">No critical tickets</div>
+                    <div class="p-3 text-muted text-center">No high-priority or critical tickets</div>
                 }
             </div>
         </div>
@@ -210,7 +261,7 @@
                                         @ticket.Title
                                     </a>
                                 </td>
-                                <td>@ticket.Category</td>
+                                <td>@(catById.TryGetValue(ticket.Category, out var cn) ? cn : $"Cat {ticket.Category}")</td>
                                 <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
                                 <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
                                 <td>@ticket.CreatedDate.ToString("MMM dd")</td>

@@ -1,0 +1,361 @@
+@model EmailTemplate
+@{
+    ViewData["Title"] = $"Edit — {Model.Name}";
+
+    // Default body snippets shown as starter content when the template has no custom body
+    var defaultBodies = new Dictionary<string, string>
+    {
+        ["TicketCreated"] = @"<h3>Ticket Received — #{{TicketId}}</h3>
+<p>Hi {{RecipientName}},</p>
+<p>We've received your request and created ticket <strong>[#SS-{{TicketId}}]</strong>.</p>
+<table style=""width:100%;border-collapse:collapse;margin:15px 0;"">
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;"">Ticket #</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">SS-{{TicketId}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Subject</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketTitle}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Priority</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketPriority}}</td></tr>
+    <tr><td style=""padding:8px;font-weight:bold;"">Status</td><td style=""padding:8px;"">{{TicketStatus}}</td></tr>
+</table>
+<p>To add information to this ticket, simply <strong>reply to this email</strong>.</p>
+<p style=""color:#6b7280;font-size:13px;"">Please keep <strong>[#SS-{{TicketId}}]</strong> in the subject line so we can track your conversation.</p>",
+
+        ["TicketAssigned"] = @"<h3>New Ticket Assigned to You</h3>
+<p>Hi {{AssigneeName}},</p>
+<p>A new ticket has been assigned to you.</p>
+<table style=""width:100%;border-collapse:collapse;margin:15px 0;"">
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;"">Ticket #</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">SS-{{TicketId}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Title</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketTitle}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Priority</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketPriority}}</td></tr>
+    <tr><td style=""padding:8px;font-weight:bold;"">Category</td><td style=""padding:8px;"">{{TicketCategory}}</td></tr>
+</table>
+<p><strong>Description:</strong></p>
+<div style=""background:#f9fafb;padding:12px;border-radius:6px;margin:10px 0;"">{{TicketDescription}}</div>",
+
+        ["TicketUpdated"] = @"<h3>Ticket Update — [#SS-{{TicketId}}]</h3>
+<table style=""width:100%;border-collapse:collapse;margin:15px 0;"">
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;"">Ticket #</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">SS-{{TicketId}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Title</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketTitle}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Status</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketStatus}}</td></tr>
+    <tr><td style=""padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;"">Priority</td><td style=""padding:8px;border-bottom:1px solid #e5e7eb;"">{{TicketPriority}}</td></tr>
+    {{ResolutionRow}}
+</table>
+{{UpdateBlock}}
+<p style=""color:#6b7280;font-size:13px;"">Reply to this email to add comments to ticket [#SS-{{TicketId}}].</p>",
+
+        ["NoteAdded"] = @"<h3>New Comment on [#SS-{{TicketId}}]</h3>
+<p><strong>{{NoteAuthor}}</strong> added a comment:</p>
+<div style=""background:#f9fafb;padding:12px;border-radius:6px;border-left:4px solid #4f46e5;margin:15px 0;"">{{NoteContent}}</div>
+<p style=""color:#6b7280;font-size:13px;"">Reply to this email to continue the conversation on ticket [#SS-{{TicketId}}].</p>",
+
+        ["PasswordReset"] = @"<h3>Password Reset Request</h3>
+<p>Hi {{RecipientName}},</p>
+<p>We received a request to reset the password for your {{CompanyName}} account.</p>
+<p style=""margin:24px 0;"">
+    <a href=""{{ResetUrl}}"" style=""background:#4f46e5;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;"">
+        Reset My Password
+    </a>
+</p>
+<p style=""color:#6b7280;font-size:13px;"">This link expires in <strong>1 hour</strong>. If you did not request a password reset, ignore this email.</p>
+<p style=""color:#6b7280;font-size:12px;"">If the button above doesn't work, paste this URL into your browser:<br/>
+<a href=""{{ResetUrl}}"" style=""color:#4f46e5;"">{{ResetUrl}}</a></p>"
+    };
+
+    var currentBody   = Model.BodyTemplate ?? (defaultBodies.TryGetValue(Model.Key, out var def) ? def : "");
+    var currentSubject = Model.SubjectTemplate ?? "";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="EmailTemplates">Email Templates</a></li>
+        <li class="breadcrumb-item active">@Model.Name</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1><i class="bi bi-envelope-paper text-primary"></i> @Model.Name</h1>
+        <p class="text-muted mb-0">@Model.Description</p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="bi bi-check-circle me-2"></i> @TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form method="post" asp-action="EditEmailTemplate" asp-route-id="@Model.Id" asp-antiforgery="true">
+
+    <div class="row g-4 align-items-start">
+
+        <!-- Left: Editor -->
+        <div class="col-lg-7">
+
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-code-slash me-1"></i> Subject Line</h6>
+                    <span class="badge bg-secondary small">Tokens supported</span>
+                </div>
+                <div class="card-body">
+                    <input type="text" class="form-control font-monospace"
+                           id="subjectTemplate" name="subjectTemplate"
+                           value="@currentSubject"
+                           placeholder="e.g. [#SS-{{TicketId}}] {{TicketTitle}}" />
+                    <div class="form-text">Leave blank to use the system default subject line.</div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-code-slash me-1"></i> Body Template <span class="text-muted small fw-normal ms-1">(HTML inner content)</span></h6>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button type="button" class="btn btn-sm btn-outline-info" id="btnPreview">
+                            <i class="bi bi-eye me-1"></i> Preview
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnOpenTestEmail"
+                                data-bs-toggle="modal" data-bs-target="#testEmailModal">
+                            <i class="bi bi-send me-1"></i> Send Test
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <textarea id="bodyTemplate" name="bodyTemplate"
+                              class="form-control font-monospace border-0"
+                              rows="22"
+                              style="border-radius:0;font-size:12.5px;resize:vertical;"
+                              placeholder="Enter HTML body content here. Leave blank to use the system default.">@currentBody</textarea>
+                </div>
+                <div class="card-footer text-muted small bg-transparent">
+                    This is the inner content of the email — the branded header and footer are added automatically.
+                    Leave blank to use the system default body.
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-toggle-on me-1"></i> Template Status</h6>
+                </div>
+                <div class="card-body">
+                    <div class="form-check form-switch">
+                        <input type="checkbox" class="form-check-input" id="isActive" name="isActive"
+                               value="true" @(Model.IsActive ? "checked" : "") />
+                        <label class="form-check-label" for="isActive">
+                            @(Model.IsActive ? "Active — this email type will be sent" : "Disabled — this email type will not be sent")
+                        </label>
+                    </div>
+                    <input type="hidden" name="isActive" value="false" />
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mb-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> Save Template
+                </button>
+                <a asp-action="EmailTemplates" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </div>
+
+        <!-- Right: Token reference + preview -->
+        <div class="col-lg-5">
+            <!-- Live preview panel -->
+            <div class="card shadow-sm mb-3" id="previewCard" style="display:none;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-eye me-1 text-info"></i> Email Preview</h6>
+                    <button type="button" class="btn-close btn-sm" id="btnClosePreview"></button>
+                </div>
+                <div class="card-body p-0">
+                    <iframe id="previewFrame" style="width:100%;height:380px;border:none;border-radius:0 0 8px 8px;"></iframe>
+                </div>
+            </div>
+
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm mb-3 border-0" style="background:#f8fafc;">
+                <div class="card-body py-3">
+                    <h6 class="card-title text-muted mb-3" style="font-size:0.8rem;">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Branding" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-palette me-2"></i> Branding
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Email header, footer &amp; logo</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Toggle which events trigger emails</small>
+                        </a>
+                        <a asp-action="EmailIntegration" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-envelope-check me-2"></i> Email Integration
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Gmail OAuth &amp; inbound config</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token reference -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-braces me-1 text-warning"></i> Available Tokens</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0 small">
+                        <thead class="table-light">
+                            <tr><th>Token</th><th>Description</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr class="table-secondary"><td colspan="2" class="fw-semibold py-1 px-3 text-muted">Ticket</td></tr>
+                            <tr><td><code>{{"{{"}}TicketId{{"}}"}}</code></td><td>Ticket number</td></tr>
+                            <tr><td><code>{{"{{"}}TicketTitle{{"}}"}}</code></td><td>Ticket subject</td></tr>
+                            <tr><td><code>{{"{{"}}TicketStatus{{"}}"}}</code></td><td>Current status</td></tr>
+                            <tr><td><code>{{"{{"}}TicketPriority{{"}}"}}</code></td><td>Priority level</td></tr>
+                            <tr><td><code>{{"{{"}}TicketCategory{{"}}"}}</code></td><td>Category name</td></tr>
+                            <tr><td><code>{{"{{"}}TicketDescription{{"}}"}}</code></td><td>Ticket description</td></tr>
+                            <tr><td><code>{{"{{"}}ResolutionRow{{"}}"}}</code></td><td>Resolution row (if set)</td></tr>
+                            <tr><td><code>{{"{{"}}UpdateBlock{{"}}"}}</code></td><td>Update message block (if set)</td></tr>
+                            <tr class="table-secondary"><td colspan="2" class="fw-semibold py-1 px-3 text-muted">People</td></tr>
+                            <tr><td><code>{{"{{"}}RecipientName{{"}}"}}</code></td><td>Recipient's name</td></tr>
+                            <tr><td><code>{{"{{"}}AssigneeName{{"}}"}}</code></td><td>Assigned agent name</td></tr>
+                            <tr><td><code>{{"{{"}}NoteAuthor{{"}}"}}</code></td><td>Comment author</td></tr>
+                            <tr><td><code>{{"{{"}}NoteContent{{"}}"}}</code></td><td>Comment text (HTML)</td></tr>
+                            <tr class="table-secondary"><td colspan="2" class="fw-semibold py-1 px-3 text-muted">Branding</td></tr>
+                            <tr><td><code>{{"{{"}}CompanyName{{"}}"}}</code></td><td>Company name</td></tr>
+                            <tr class="table-secondary"><td colspan="2" class="fw-semibold py-1 px-3 text-muted">Password Reset</td></tr>
+                            <tr><td><code>{{"{{"}}ResetUrl{{"}}"}}</code></td><td>Password reset link URL</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Send Test Email Modal -->
+<div class="modal fade" id="testEmailModal" tabindex="-1" aria-labelledby="testEmailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="testEmailModalLabel">
+                    <i class="bi bi-send me-2 text-primary"></i> Send Test Email
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Renders this template with sample data and sends it to the address below so you can preview the final result in a real inbox.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="testEmailAddress">Recipient Email</label>
+                    <input type="email" class="form-control" id="testEmailAddress"
+                           placeholder="you@example.com" autocomplete="email" />
+                </div>
+                <div id="testEmailResult"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="btnSendTestEmail">
+                    <i class="bi bi-send me-1"></i> Send Test
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var btnPreview   = document.getElementById('btnPreview');
+    var btnClose     = document.getElementById('btnClosePreview');
+    var previewCard  = document.getElementById('previewCard');
+    var previewFrame = document.getElementById('previewFrame');
+    var bodyTextarea = document.getElementById('bodyTemplate');
+    var companyName  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((string)(ViewBag.CompanyName ?? "ServiceSphere")));
+    var brandColor   = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((string)(ViewBag.BrandColor ?? "#4f46e5")));
+
+    function buildPreview() {
+        var inner = bodyTextarea.value || '<p><em>(No custom body — system default will be used when this email is sent.)</em></p>';
+        var sample = {
+            TicketId: '1042', TicketTitle: 'Example Ticket Subject', TicketStatus: 'Open',
+            TicketPriority: 'High', TicketCategory: 'Software Issue',
+            TicketDescription: 'Sample ticket description for preview.',
+            RecipientName: 'Jane Smith', AssigneeName: 'John Doe',
+            NoteAuthor: 'John Doe', NoteContent: 'This is a sample comment.',
+            CompanyName: companyName, ResetUrl: 'https://example.com/reset',
+            ResolutionRow: '', UpdateBlock: '',
+        };
+        var body = inner;
+        Object.keys(sample).forEach(function (k) {
+            body = body.split('{{' + k + '}}').join(sample[k]);
+        });
+        var gradEnd = brandColor + 'cc';
+        var html = '<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+            + '<div style="max-width:560px;margin:0 auto;">'
+            + '<div style="background:linear-gradient(135deg,' + brandColor + ' 0%,' + gradEnd + ' 100%);color:white;padding:20px 16px;border-radius:8px 8px 0 0;">'
+            + '<div style="font-size:17px;font-weight:600;">' + companyName + '</div>'
+            + '<div style="font-size:12px;opacity:0.85;margin-top:3px;">IT Service Desk</div>'
+            + '</div>'
+            + '<div style="padding:20px 16px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;background:#fff;">'
+            + body
+            + '<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0 12px;"/>'
+            + '<p style="color:#9ca3af;font-size:11px;margin:0;">Automated notification from ' + companyName + '.</p>'
+            + '</div></div></body></html>';
+
+        var doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        doc.open(); doc.write(html); doc.close();
+    }
+
+    btnPreview.addEventListener('click', function () { buildPreview(); previewCard.style.display = 'block'; });
+    btnClose.addEventListener('click',   function () { previewCard.style.display = 'none'; });
+})();
+
+// ── Send Test Email ────────────────────────────────────────────────────────
+(function () {
+    var btnSend      = document.getElementById('btnSendTestEmail');
+    var emailInput   = document.getElementById('testEmailAddress');
+    var resultDiv    = document.getElementById('testEmailResult');
+    var tokenInput   = document.querySelector('input[name="__RequestVerificationToken"]');
+    var templateId   = @Model.Id;
+    var sendUrl      = '@Url.Action("SendTestEmail", "Settings")';
+
+    // Clear result when modal is reopened
+    document.getElementById('testEmailModal').addEventListener('show.bs.modal', function () {
+        resultDiv.innerHTML = '';
+    });
+
+    btnSend.addEventListener('click', function () {
+        var email = emailInput.value.trim();
+        if (!email) {
+            resultDiv.innerHTML = '<div class="alert alert-warning py-2 mb-0 small"><i class="bi bi-exclamation-triangle me-1"></i>Please enter a recipient email address.</div>';
+            return;
+        }
+
+        btnSend.disabled = true;
+        btnSend.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sending…';
+        resultDiv.innerHTML = '';
+
+        fetch(sendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': tokenInput ? tokenInput.value : ''
+            },
+            body: 'templateId=' + encodeURIComponent(templateId) + '&recipientEmail=' + encodeURIComponent(email)
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success py-2 mb-0 small"><i class="bi bi-check-circle me-1"></i>' + data.message + '</div>';
+            } else {
+                resultDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0 small"><i class="bi bi-exclamation-circle me-1"></i>' + data.message + '</div>';
+            }
+        })
+        .catch(function () {
+            resultDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0 small"><i class="bi bi-exclamation-circle me-1"></i>Request failed. Check your network connection and try again.</div>';
+        })
+        .finally(function () {
+            btnSend.disabled = false;
+            btnSend.innerHTML = '<i class="bi bi-send me-1"></i> Send Test';
+        });
+    });
+})();
+</script>
+}

@@ -1,6 +1,7 @@
 @model ServiceDesk.Web.Models.TicketReportViewModel
 @{
     ViewData["Title"] = "Ticket Reports";
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <nav aria-label="breadcrumb">
@@ -10,8 +11,14 @@
     </ol>
 </nav>
 
-<h1><i class="bi bi-ticket-detailed"></i> Ticket Reports</h1>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0"><i class="bi bi-ticket-detailed"></i> Ticket Reports</h1>
+    <button onclick="ssExport.show('ss-export-target','Ticket Reports')" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-file-earmark-pdf me-1"></i>Export / Print
+    </button>
+</div>
 
+<div id="ss-export-target">
 <!-- Summary Row -->
 <div class="row g-3">
     <div class="col-md-4 col-lg-2">
@@ -100,9 +107,10 @@
                     @foreach (var item in Model.ByCategory)
                     {
                         var percent = maxCategory > 0 ? (int)((double)item.Value / maxCategory * 100) : 0;
-                        <div class="mb-3 row-clickable" data-category="@item.Key" role="button" title="View @item.Key tickets">
+                        var catLabel = catById.TryGetValue(item.Key, out var catNameRpt) ? catNameRpt : $"Category {item.Key}";
+                        <div class="mb-3 row-clickable" data-category="@item.Key" data-category-label="@catLabel" role="button" title="View @catLabel tickets">
                             <div class="d-flex justify-content-between mb-1">
-                                <span>@item.Key</span>
+                                <span>@catLabel</span>
                                 <span class="fw-bold">@item.Value</span>
                             </div>
                             <div class="progress" style="height: 8px;">
@@ -185,9 +193,10 @@
                     <tbody>
                         @foreach (var assignee in Model.TopAssignees)
                         {
-                            <tr>
-                                <td>@assignee.Name</td>
-                                <td class="text-end">@assignee.TotalAssigned</td>
+                            <tr class="row-clickable" data-assignee="@assignee.Name"
+                                role="button" title="View tickets assigned to @assignee.Name">
+                                <td><i class="bi bi-person-circle text-muted me-1"></i>@assignee.Name</td>
+                                <td class="text-end fw-bold">@assignee.TotalAssigned</td>
                                 <td class="text-end"><span class="text-success fw-bold">@assignee.Resolved</span></td>
                                 <td class="text-end"><span class="text-warning fw-bold">@assignee.Open</span></td>
                             </tr>
@@ -204,6 +213,8 @@
         }
     </div>
 </div>
+
+</div><!-- /ss-export-target -->
 
 <!-- Reusable Report Detail Modal -->
 <div class="modal fade" id="reportDetailModal" tabindex="-1">
@@ -254,22 +265,38 @@ document.addEventListener('DOMContentLoaded', function () {
         }).render();
     }
 
-    // Category Donut
+    // Category Donut — segments clickable to open modal
     var donutEl = document.getElementById('chartCategoryDonut');
     if (donutEl) {
-        var catLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
-        var catCounts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
+        var catLabels  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => catById.TryGetValue(k, out var ln) ? ln : k.ToString()).ToList()));
+        var catKeys    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Keys.Select(k => k.ToString()).ToList()));
+        var catCounts  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByCategory.Values.ToList()));
         var hasData = catCounts.some(function(v) { return v > 0; });
         if (hasData) {
-            new ApexCharts(donutEl, {
+            var donutChart = new ApexCharts(donutEl, {
                 series: catCounts,
-                chart: { type: 'donut', height: 250 },
+                chart: {
+                    type: 'donut', height: 250,
+                    events: {
+                        dataPointSelection: function (event, chartCtx, opts) {
+                            var idx = opts.dataPointIndex;
+                            if (idx < 0 || idx >= catKeys.length) return;
+                            showModal(
+                                catLabels[idx] + ' Tickets',
+                                '/Reports/TicketsByCategory?category=' + encodeURIComponent(catKeys[idx]),
+                                '/Tickets?category=' + encodeURIComponent(catKeys[idx])
+                            );
+                        }
+                    }
+                },
                 labels: catLabels,
                 legend: { position: 'bottom', fontSize: '11px' },
                 dataLabels: { enabled: false },
                 plotOptions: { pie: { donut: { size: '60%' } } },
                 tooltip: { y: { formatter: function(val) { return val + ' tickets'; } } }
-            }).render();
+            });
+            donutChart.render();
+            donutEl.style.cursor = 'pointer';
         } else {
             donutEl.innerHTML = '<p class="text-muted text-center py-4 small">No ticket data yet.</p>';
         }
@@ -439,8 +466,9 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.row-clickable[data-category]').forEach(function (row) {
         row.addEventListener('click', function () {
             var category = this.getAttribute('data-category');
+            var categoryLabel = this.getAttribute('data-category-label') || category;
             showModal(
-                category + ' Tickets',
+                categoryLabel + ' Tickets',
                 '/Reports/TicketsByCategory?category=' + encodeURIComponent(category),
                 '/Tickets?category=' + encodeURIComponent(category)
             );
@@ -455,6 +483,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 priority + ' Priority Tickets',
                 '/Reports/TicketsByPriority?priority=' + encodeURIComponent(priority),
                 '/Tickets?priority=' + encodeURIComponent(priority)
+            );
+        });
+    });
+
+    // Assignee row click handlers
+    document.querySelectorAll('.row-clickable[data-assignee]').forEach(function (row) {
+        row.addEventListener('click', function () {
+            var assignee = this.getAttribute('data-assignee');
+            showModal(
+                assignee + ' — Assigned Tickets',
+                '/Reports/TicketsByAssignee?assignee=' + encodeURIComponent(assignee),
+                '/Tickets'
             );
         });
     });

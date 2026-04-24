@@ -1,6 +1,7 @@
 @model IEnumerable<ServiceDesk.Core.Models.AssignmentRule>
 @{
     ViewData["Title"] = "Assignment Rules";
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <div class="row">
@@ -90,7 +91,7 @@
                                         <td>
                                             @if (rule.Category.HasValue)
                                             {
-                                                <span class="badge bg-info text-dark">@rule.Category.Value</span>
+                                                <span class="badge bg-info text-dark">@(catById.TryGetValue(rule.Category.Value, out var cn) ? cn : $"Category {rule.Category.Value}")</span>
                                             }
                                             else
                                             {

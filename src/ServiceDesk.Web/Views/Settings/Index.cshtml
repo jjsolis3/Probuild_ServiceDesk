@@ -2,16 +2,35 @@
     ViewData["Title"] = "Settings";
 }
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1><i class="bi bi-gear"></i> Settings</h1>
         <p class="text-muted mb-0">Configure and manage your ServiceDesk platform settings.</p>
     </div>
 </div>
 
+<!-- Settings search bar -->
+<div class="mb-4" style="max-width:420px;">
+    <div class="input-group shadow-sm">
+        <span class="input-group-text bg-white border-end-0">
+            <i class="bi bi-search text-muted"></i>
+        </span>
+        <input type="search" id="settingsSearch" class="form-control border-start-0 ps-0"
+               placeholder="Search settings…" autocomplete="off" />
+        <button class="btn btn-outline-secondary" type="button" id="settingsSearchClear" style="display:none;">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+</div>
+<div id="settingsNoResults" class="text-muted text-center py-5" style="display:none;">
+    <i class="bi bi-search display-4 d-block mb-2 opacity-25"></i>
+    No settings match "<span id="settingsNoResultsQuery"></span>". Try a different keyword.
+</div>
+
 <!-- ADMIN & COMPANY SETTINGs -->
-<div class="row g-4 mb-4">
-    
+<div class="settings-section-label visually-hidden">Account Company Branding Logo Branches Sites Portal</div>
+<div class="row g-4 mb-4 settings-row">
+
     <!-- Account Settings -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
@@ -22,7 +41,7 @@
                     </div>
                     <div>
                         <h5 class="card-title mb-1">Account Settings</h5>
-                        <p class="card-text text-muted small">Manage company info, timezone, default assignee, and ticket prefix</p>
+                        <p class="card-text text-muted small">Manage company name, timezone, default assignee, and ticket prefix</p>
                     </div>
                 </div>
             </div>
@@ -32,7 +51,29 @@
                 </a>
             </div>
         </div>
-    </div>    
+    </div>
+
+    <!-- Branding -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
+                        <i class="bi bi-palette display-6" style="color: #6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Branding</h5>
+                        <p class="card-text text-muted small">Logo, brand colour, and company contact details for emails and the portal</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Branding" class="btn btn-sm" style="background-color: #6f42c1; color: #fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- Branches & Sites -->
     <div class="col-lg-3 col-md-6">
@@ -56,6 +97,33 @@
         </div>
     </div>
 
+    <!-- Portal Branding -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.1);">
+                        <i class="bi bi-window-fullscreen display-6" style="color:#6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Portal Branding</h5>
+                        <p class="card-text text-muted small">Welcome message, page title, announcement banner, and Knowledge Base toggle</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="PortalBranding" class="btn btn-sm" style="background-color:#6f42c1;color:#fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- EMAIL & NOTIFICATION SETTINGS -->
+<div class="settings-section-label visually-hidden">Email Notifications Templates Integration Gmail</div>
+<div class="row g-4 mb-4 settings-row">
+
     <!-- Email Integration -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
@@ -77,10 +145,144 @@
             </div>
         </div>
     </div>
+
+    <!-- Notification Settings -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(255, 193, 7, 0.1);">
+                        <i class="bi bi-bell display-6 text-warning"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Notification Settings</h5>
+                        <p class="card-text text-muted small">Control which events trigger outbound email alerts to agents and requesters</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Notifications" class="btn btn-sm btn-warning text-dark">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Templates -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                        <i class="bi bi-envelope-paper display-6 text-info"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Templates</h5>
+                        <p class="card-text text-muted small">Customise HTML layout and content of automated notification emails</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailTemplates" class="btn btn-sm btn-info text-white">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Workspace -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(66, 133, 244, 0.1);">
+                        <i class="bi bi-google display-6" style="color:#4285F4;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Google Workspace</h5>
+                        <p class="card-text text-muted small">DWD service account — signatures, OOO, suspend/unsuspend, password resets &amp; storage</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="GoogleWorkspace" class="btn btn-sm text-white" style="background-color:#4285F4;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Groups -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(52, 168, 83, 0.1);">
+                        <i class="bi bi-people-fill display-6" style="color:#34A853;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Google Groups</h5>
+                        <p class="card-text text-muted small">View all domain mailing groups. Manage individual employee memberships from their profile.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="GoogleGroups" class="btn btn-sm text-white" style="background-color:#34A853;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> View Groups
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace Security Audit -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(220, 53, 69, 0.1);">
+                        <i class="bi bi-shield-lock-fill display-6 text-danger"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Security Audit</h5>
+                        <p class="card-text text-muted small">Org-wide view of 2FA enrollment, suspended accounts, and password status across all Workspace users.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="WorkspaceAudit" class="btn btn-sm btn-danger">
+                    <i class="bi bi-arrow-right-circle me-1"></i> View Audit
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSAT Surveys -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(255, 193, 7, 0.12);">
+                        <i class="bi bi-star display-6 text-warning"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">CSAT Surveys</h5>
+                        <p class="card-text text-muted small">Toggle post-resolution satisfaction surveys (1–5 stars) sent to ticket requesters</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Csat" class="btn btn-sm btn-warning text-dark">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- USER & ROLES MANAGEMENT-->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Users Roles Permissions Groups Teams Portal</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Portal Users -->
     <div class="col-lg-3 col-md-6">
@@ -152,9 +354,32 @@
 </div>
 
 <!-- TICKET CREATION / MANAGEMENT -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Tickets Categories Keywords Assignment Rules SLA</div>
+<div class="row g-4 mb-4 settings-row">
+
+    <!-- Categories & Keywords -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                        <i class="bi bi-key display-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Category Keywords</h5>
+                        <p class="card-text text-muted small">Manage keywords used to auto-classify inbound emails into ticket categories</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="CategoryKeywords" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
     
-    <!-- Categories & Sub-Categories -->
+    <!-- Sub-Categories -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
             <div class="card-body">
@@ -197,10 +422,83 @@
             </div>
         </div>
     </div>
+
+    <!-- SLA Policy -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                        <i class="bi bi-clock-history display-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">SLA Policy</h5>
+                        <p class="card-text text-muted small">Configure response-time deadlines by priority (Critical, High, Medium, Low)</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Sla" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI & AUTOMATION -->
+<div class="settings-section-label visually-hidden">AI Triage Machine Learning Dashboard Automation</div>
+<div class="row g-4 mb-4 settings-row">
+
+    <!-- AI Triage -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                        <i class="bi bi-robot display-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">AI Triage</h5>
+                        <p class="card-text text-muted small">ML.NET ticket classification, Ollama draft replies, and confidence thresholds</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Ai" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Dashboard -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(25, 135, 84, 0.1);">
+                        <i class="bi bi-bar-chart-line display-6 text-success"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">AI Dashboard</h5>
+                        <p class="card-text text-muted small">Model accuracy, recommendation outcomes, confidence trends, and training history</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="AiDashboard" class="btn btn-sm btn-success">
+                    <i class="bi bi-arrow-right-circle me-1"></i> View Stats
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- TICKET STATUS AND RESOLUTIONS -->
-<div class="row g-4 mb-4">
+<div class="settings-section-label visually-hidden">Resolution Codes States Workflow Canned Responses</div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Custom Ticket States -->
     <div class="col-lg-3 col-md-6">
@@ -268,4 +566,94 @@
         </div>
     </div>
 
+    <!-- Employee Checklists -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                        <i class="bi bi-list-check display-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Employee Checklists</h5>
+                        <p class="card-text text-muted small">Reusable onboarding and offboarding checklist templates applied per employee</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-controller="EmployeeTasks" asp-action="Templates" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Manage
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var searchInput  = document.getElementById('settingsSearch');
+    var clearBtn     = document.getElementById('settingsSearchClear');
+    var noResults    = document.getElementById('settingsNoResults');
+    var noResultsQ   = document.getElementById('settingsNoResultsQuery');
+
+    if (!searchInput) return;
+
+    // Build searchable text for each card column once, then cache it
+    var cols = Array.from(document.querySelectorAll('.settings-row .col-lg-3, .settings-row .col-md-6'));
+    cols.forEach(function (col) {
+        // Include surrounding section label in each card's search text
+        var row = col.closest('.settings-row');
+        var sectionLabel = '';
+        if (row) {
+            var prev = row.previousElementSibling;
+            while (prev && !prev.classList.contains('settings-section-label')) {
+                prev = prev.previousElementSibling;
+            }
+            if (prev) sectionLabel = prev.textContent;
+        }
+        col.dataset.searchText = (col.textContent + ' ' + sectionLabel).toLowerCase().replace(/\s+/g, ' ');
+    });
+
+    function filterCards(q) {
+        q = q.trim().toLowerCase();
+        clearBtn.style.display = q ? 'block' : 'none';
+        if (!q) {
+            cols.forEach(function (c) { c.style.display = ''; });
+            // Restore section row visibility
+            document.querySelectorAll('.settings-row').forEach(function (r) { r.style.display = ''; });
+            noResults.style.display = 'none';
+            return;
+        }
+        var terms = q.split(/\s+/).filter(Boolean);
+        var totalVisible = 0;
+        // Process row by row
+        document.querySelectorAll('.settings-row').forEach(function (row) {
+            var rowCols = Array.from(row.querySelectorAll('.col-lg-3, .col-md-6'));
+            var anyVisible = false;
+            rowCols.forEach(function (col) {
+                var text = col.dataset.searchText || '';
+                var match = terms.every(function (t) { return text.includes(t); });
+                col.style.display = match ? '' : 'none';
+                if (match) { anyVisible = true; totalVisible++; }
+            });
+            row.style.display = anyVisible ? '' : 'none';
+        });
+        if (totalVisible === 0) {
+            noResults.style.display = 'block';
+            if (noResultsQ) noResultsQ.textContent = q;
+        } else {
+            noResults.style.display = 'none';
+        }
+    }
+
+    searchInput.addEventListener('input', function () { filterCards(searchInput.value); });
+    clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        filterCards('');
+        searchInput.focus();
+    });
+})();
+</script>
+}

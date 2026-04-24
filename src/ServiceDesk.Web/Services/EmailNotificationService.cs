@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Web.Services;
 
@@ -19,6 +21,70 @@ public class EmailNotificationService
         _context = context;
         _logger = logger;
         _gmailApiService = gmailApiService;
+    }
+
+    // ── Category name lookup ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves a category ID to its display name by querying the TicketCategories
+    /// table. Falls back to enum name for system categories (0-7) when the DB lookup
+    /// fails, and to "Category N" for unknown custom categories.
+    /// </summary>
+    private async Task<string> GetCategoryNameAsync(int categoryId)
+    {
+        try
+        {
+            var cat = await _context.TicketCategories.FindAsync(categoryId);
+            if (cat != null) return cat.Name;
+        }
+        catch { /* table may not exist yet on fresh install */ }
+
+        if (Enum.IsDefined(typeof(TicketCategory), categoryId))
+            return ((TicketCategory)categoryId).GetDisplayName();
+        return $"Category {categoryId}";
+    }
+
+    // ── Branding & template helpers ───────────────────────────────────────────
+
+    /// <summary>
+    /// Loads branding values from AppSettings used to compose the email wrapper.
+    /// </summary>
+    private async Task<(string CompanyName, string BrandColor, string LogoUrl, string Tagline, string FooterText, bool ShowLogo)> GetBrandingAsync()
+    {
+        var keys = new[] { "CompanyName", "BrandColor", "CompanyLogoUrl", "EmailHeaderTagline", "EmailFooterText", "EmailShowLogo" };
+        var settings = await _context.AppSettings
+            .Where(s => keys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s.Value ?? string.Empty);
+        return (
+            settings.GetValueOrDefault("CompanyName", "ServiceSphere"),
+            settings.GetValueOrDefault("BrandColor", "#4f46e5"),
+            settings.GetValueOrDefault("CompanyLogoUrl", string.Empty),
+            settings.GetValueOrDefault("EmailHeaderTagline", "IT Service Desk"),
+            settings.GetValueOrDefault("EmailFooterText", string.Empty),
+            !settings.GetValueOrDefault("EmailShowLogo", "true").Equals("false", StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    /// <summary>
+    /// Loads an active email template by key; returns null if not found or has no custom body.
+    /// </summary>
+    private async Task<ServiceDesk.Core.Models.EmailTemplate?> GetTemplateAsync(string key)
+        => await _context.EmailTemplates.FirstOrDefaultAsync(t => t.Key == key && t.IsActive);
+
+    /// <summary>
+    /// Replaces token placeholders in a template string.
+    /// Supports both {{Token}} (current seed format) and {Token} (legacy DB records).
+    /// Double-brace is tried first so it is never confused with single-brace leftovers.
+    /// </summary>
+    private static string ApplyTokens(string template, Dictionary<string, string> tokens)
+    {
+        foreach (var (k, v) in tokens)
+        {
+            template = template
+                .Replace("{{" + k + "}}", v ?? string.Empty, StringComparison.Ordinal)
+                .Replace("{" + k + "}", v ?? string.Empty, StringComparison.Ordinal);
+        }
+        return template;
     }
 
     /// <summary>
@@ -68,11 +134,23 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Returns true when a notification trigger key is enabled in AppSettings.
+    /// Defaults to true if the key has never been seeded (safe fallback).
+    /// </summary>
+    private async Task<bool> IsNotificationEnabled(string key)
+    {
+        var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == key);
+        return setting == null || setting.Value?.ToLower() == "true";
+    }
+
+    /// <summary>
     /// Sends a confirmation email when a new ticket is created from an inbound email.
     /// Includes the [#SS-XXXXX] reference so future replies thread correctly.
     /// </summary>
     public async Task SendTicketCreatedConfirmation(Ticket ticket, string recipientEmail, string recipientName)
     {
+        if (!await IsNotificationEnabled("NotifyOnTicketCreated")) return;
+
         var config = await GetActiveConfig();
         if (config == null)
         {
@@ -80,43 +158,42 @@ public class EmailNotificationService
             return;
         }
 
-        var subject = BuildThreadedSubject(ticket);
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("TicketCreated");
 
-        var htmlBody = BuildHtmlEmail($@"
-            <h3>Ticket Received - #{ticket.Id}</h3>
-            <p>Hi {recipientName},</p>
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]       = ticket.Id.ToString(),
+            ["TicketTitle"]    = System.Net.WebUtility.HtmlEncode(ticket.Title),
+            ["TicketPriority"] = ticket.Priority.ToString(),
+            ["TicketStatus"]   = ticket.Status.ToString(),
+            ["RecipientName"]  = System.Net.WebUtility.HtmlEncode(recipientName),
+            ["CompanyName"]    = System.Net.WebUtility.HtmlEncode(companyName),
+        };
+
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : BuildThreadedSubject(ticket);
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>Ticket Received — #{ticket.Id}</h3>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
             <p>We've received your request and created ticket <strong>[#SS-{ticket.Id}]</strong>.</p>
-            <table style='width: 100%; border-collapse: collapse; margin: 15px 0;'>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold; width: 120px;'>Ticket #</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>SS-{ticket.Id}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Subject</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Title}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Priority</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Priority}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; font-weight: bold;'>Status</td>
-                    <td style='padding: 8px;'>{ticket.Status}</td>
-                </tr>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:120px;'>Ticket #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>SS-{ticket.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Subject</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(ticket.Title)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Priority</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{ticket.Priority}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Status</td><td style='padding:8px;'>{ticket.Status}</td></tr>
             </table>
-            <p>To add information to this ticket, simply <strong>reply to this email</strong>.
-               Your reply will be automatically attached to ticket [#SS-{ticket.Id}].</p>
-            <p style='color: #6b7280; font-size: 13px;'>
-                Please keep <strong>[#SS-{ticket.Id}]</strong> in the subject line so we can track your conversation.
-            </p>");
+            <p>To add information to this ticket, simply <strong>reply to this email</strong>. Your reply will be automatically attached to ticket [#SS-{ticket.Id}].</p>
+            <p style='color:#6b7280;font-size:13px;'>Please keep <strong>[#SS-{ticket.Id}]</strong> in the subject line so we can track your conversation.</p>";
 
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
-            await _gmailApiService.SendEmailViaGmailApi(
-                config, _context, recipientEmail, subject, htmlBody, ticket.Id,
-                inReplyTo, references);
-
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
             _logger.LogInformation("Sent ticket confirmation for #{TicketId} to {Email}", ticket.Id, recipientEmail);
         }
         catch (Exception ex)
@@ -131,43 +208,50 @@ public class EmailNotificationService
     public async Task NotifyTicketAssigned(Ticket ticket)
     {
         if (ticket.AssignedTo == null) return;
+        if (!await IsNotificationEnabled("NotifyOnAssignment")) return;
 
         var config = await GetActiveConfig();
         if (config == null) return;
 
-        var subject = BuildThreadedSubject(ticket, "Assigned:");
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("TicketAssigned");
 
-        var htmlBody = BuildHtmlEmail($@"
-            <h3>New Ticket Assigned to You</h3>
-            <table style='width: 100%; border-collapse: collapse; margin: 15px 0;'>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold; width: 120px;'>Ticket #</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>SS-{ticket.Id}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Title</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Title}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Priority</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Priority}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; font-weight: bold;'>Category</td>
-                    <td style='padding: 8px;'>{ticket.Category}</td>
-                </tr>
+        var assigneeName = ticket.AssignedTo.FirstName + " " + ticket.AssignedTo.LastName;
+        var categoryName = await GetCategoryNameAsync(ticket.Category);
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]          = ticket.Id.ToString(),
+            ["TicketTitle"]       = System.Net.WebUtility.HtmlEncode(ticket.Title),
+            ["TicketPriority"]    = ticket.Priority.ToString(),
+            ["TicketCategory"]    = categoryName,
+            ["TicketDescription"] = ticket.Description ?? string.Empty,
+            ["AssigneeName"]      = System.Net.WebUtility.HtmlEncode(assigneeName),
+            ["CompanyName"]       = System.Net.WebUtility.HtmlEncode(companyName),
+        };
+
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : BuildThreadedSubject(ticket, "Assigned:");
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>New Ticket Assigned to You</h3>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(assigneeName)},</p>
+            <p>A new ticket has been assigned to you.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:120px;'>Ticket #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>SS-{ticket.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Title</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(ticket.Title)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Priority</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{ticket.Priority}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Category</td><td style='padding:8px;'>{categoryName}</td></tr>
             </table>
             <p><strong>Description:</strong></p>
-            <div style='background: #f9fafb; padding: 12px; border-radius: 6px; margin: 10px 0;'>
-                {ticket.Description}
-            </div>");
+            <div style='background:#f9fafb;padding:12px;border-radius:6px;margin:10px 0;'>{ticket.Description}</div>";
 
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
-            await _gmailApiService.SendEmailViaGmailApi(
-                config, _context, ticket.AssignedTo.Email, subject, htmlBody, ticket.Id,
-                inReplyTo, references);
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, ticket.AssignedTo.Email, subject, htmlBody, ticket.Id, inReplyTo, references);
         }
         catch (Exception ex)
         {
@@ -180,56 +264,57 @@ public class EmailNotificationService
     /// </summary>
     public async Task NotifyTicketUpdated(Ticket ticket, string recipientEmail, string? updateMessage = null)
     {
+        // Check the appropriate setting — escalation messages bypass the status-change gate
+        var isEscalation = updateMessage?.StartsWith("Ticket has been escalated") == true;
+        var settingKey   = isEscalation ? "NotifyOnEscalation" : "NotifyOnStatusChange";
+        if (!await IsNotificationEnabled(settingKey)) return;
+
         var config = await GetActiveConfig();
         if (config == null) return;
 
-        var subject = BuildThreadedSubject(ticket, "Updated:");
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("TicketUpdated");
 
-        var resolutionHtml = !string.IsNullOrEmpty(ticket.ResolutionNotes)
-            ? $@"<tr>
-                    <td style='padding: 8px; font-weight: bold;'>Resolution</td>
-                    <td style='padding: 8px;'>{ticket.ResolutionNotes}</td>
-                </tr>"
+        var resolutionRow = !string.IsNullOrEmpty(ticket.ResolutionNotes)
+            ? $"<tr><td style='padding:8px;font-weight:bold;'>Resolution</td><td style='padding:8px;'>{System.Net.WebUtility.HtmlEncode(ticket.ResolutionNotes)}</td></tr>"
+            : "";
+        var updateBlock = !string.IsNullOrEmpty(updateMessage)
+            ? $"<div style='background:#f0fdf4;padding:12px;border-radius:6px;border-left:4px solid #22c55e;margin:15px 0;'><strong>Update:</strong> {System.Net.WebUtility.HtmlEncode(updateMessage)}</div>"
             : "";
 
-        var updateHtml = !string.IsNullOrEmpty(updateMessage)
-            ? $@"<div style='background: #f0fdf4; padding: 12px; border-radius: 6px; border-left: 4px solid #22c55e; margin: 15px 0;'>
-                    <strong>Update:</strong> {updateMessage}
-                </div>"
-            : "";
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]       = ticket.Id.ToString(),
+            ["TicketTitle"]    = System.Net.WebUtility.HtmlEncode(ticket.Title),
+            ["TicketStatus"]   = ticket.Status.ToString(),
+            ["TicketPriority"] = ticket.Priority.ToString(),
+            ["ResolutionRow"]  = resolutionRow,
+            ["UpdateBlock"]    = updateBlock,
+            ["CompanyName"]    = System.Net.WebUtility.HtmlEncode(companyName),
+        };
 
-        var htmlBody = BuildHtmlEmail($@"
-            <h3>Ticket Update - [#SS-{ticket.Id}]</h3>
-            <table style='width: 100%; border-collapse: collapse; margin: 15px 0;'>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold; width: 120px;'>Ticket #</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>SS-{ticket.Id}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Title</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Title}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Status</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Status}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;'>Priority</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #e5e7eb;'>{ticket.Priority}</td>
-                </tr>
-                {resolutionHtml}
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : BuildThreadedSubject(ticket, "Updated:");
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>Ticket Update — [#SS-{ticket.Id}]</h3>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:120px;'>Ticket #</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>SS-{ticket.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Title</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(ticket.Title)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Status</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{ticket.Status}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Priority</td><td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{ticket.Priority}</td></tr>
+                {resolutionRow}
             </table>
-            {updateHtml}
-            <p style='color: #6b7280; font-size: 13px;'>
-                Reply to this email to add comments to ticket [#SS-{ticket.Id}].
-            </p>");
+            {updateBlock}
+            <p style='color:#6b7280;font-size:13px;'>Reply to this email to add comments to ticket [#SS-{ticket.Id}].</p>";
 
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
-            await _gmailApiService.SendEmailViaGmailApi(
-                config, _context, recipientEmail, subject, htmlBody, ticket.Id,
-                inReplyTo, references);
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
         }
         catch (Exception ex)
         {
@@ -242,27 +327,39 @@ public class EmailNotificationService
     /// </summary>
     public async Task NotifyNoteAdded(Ticket ticket, TicketNote note, string recipientEmail)
     {
+        if (!await IsNotificationEnabled("NotifyOnNoteAdded")) return;
+
         var config = await GetActiveConfig();
         if (config == null) return;
 
-        var subject = BuildThreadedSubject(ticket, "Re:");
         var (inReplyTo, references) = await GetThreadingHeaders(ticket.Id);
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("NoteAdded");
 
-        var htmlBody = BuildHtmlEmail($@"
-            <h3>New Comment on [#SS-{ticket.Id}]</h3>
-            <p><strong>{note.AuthorName}</strong> added a comment:</p>
-            <div style='background: #f9fafb; padding: 12px; border-radius: 6px; border-left: 4px solid #4f46e5; margin: 15px 0;'>
-                {note.Content}
-            </div>
-            <p style='color: #6b7280; font-size: 13px;'>
-                Reply to this email to continue the conversation on ticket [#SS-{ticket.Id}].
-            </p>");
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]     = ticket.Id.ToString(),
+            ["TicketTitle"]  = System.Net.WebUtility.HtmlEncode(ticket.Title),
+            ["NoteAuthor"]   = System.Net.WebUtility.HtmlEncode(note.AuthorName ?? "IT Support"),
+            ["NoteContent"]  = note.Content ?? string.Empty,
+            ["CompanyName"]  = System.Net.WebUtility.HtmlEncode(companyName),
+        };
 
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : BuildThreadedSubject(ticket, "Re:");
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>New Comment on [#SS-{ticket.Id}]</h3>
+            <p><strong>{System.Net.WebUtility.HtmlEncode(note.AuthorName ?? "IT Support")}</strong> added a comment:</p>
+            <div style='background:#f9fafb;padding:12px;border-radius:6px;border-left:4px solid #4f46e5;margin:15px 0;'>{note.Content}</div>
+            <p style='color:#6b7280;font-size:13px;'>Reply to this email to continue the conversation on ticket [#SS-{ticket.Id}].</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
-            await _gmailApiService.SendEmailViaGmailApi(
-                config, _context, recipientEmail, subject, htmlBody, ticket.Id,
-                inReplyTo, references);
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
         }
         catch (Exception ex)
         {
@@ -282,27 +379,35 @@ public class EmailNotificationService
             return;
         }
 
-        var subject = "Reset Your ServiceSphere Password";
-        var htmlBody = BuildHtmlEmail($@"
-            <h3>Password Reset Request</h3>
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var tmpl = await GetTemplateAsync("PasswordReset");
+
+        var tokens = new Dictionary<string, string>
+        {
+            ["RecipientName"] = System.Net.WebUtility.HtmlEncode(recipientName),
+            ["ResetUrl"]      = resetUrl,
+            ["CompanyName"]   = System.Net.WebUtility.HtmlEncode(companyName),
+        };
+
+        var subject = tmpl?.SubjectTemplate != null
+            ? ApplyTokens(tmpl.SubjectTemplate, tokens)
+            : $"Reset Your {companyName} Password";
+
+        var innerContent = tmpl?.BodyTemplate != null
+            ? ApplyTokens(tmpl.BodyTemplate, tokens)
+            : $@"<h3>Password Reset Request</h3>
             <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
-            <p>We received a request to reset the password for your ServiceSphere account.</p>
-            <p style='margin: 24px 0;'>
-                <a href='{resetUrl}'
-                   style='background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px;
-                          text-decoration: none; font-weight: 600; display: inline-block;'>
+            <p>We received a request to reset the password for your {System.Net.WebUtility.HtmlEncode(companyName)} account.</p>
+            <p style='margin:24px 0;'>
+                <a href='{resetUrl}' style='background:{brandColor};color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
                     Reset My Password
                 </a>
             </p>
-            <p style='color: #6b7280; font-size: 13px;'>
-                This link expires in <strong>1 hour</strong>. If you did not request a password reset,
-                you can safely ignore this email — your password will not change.
-            </p>
-            <p style='color: #6b7280; font-size: 12px;'>
-                If the button above doesn't work, copy and paste this URL into your browser:<br/>
-                <a href='{resetUrl}' style='color: #4f46e5;'>{resetUrl}</a>
-            </p>");
+            <p style='color:#6b7280;font-size:13px;'>This link expires in <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email — your password will not change.</p>
+            <p style='color:#6b7280;font-size:12px;'>If the button above doesn't work, copy and paste this URL into your browser:<br/>
+                <a href='{resetUrl}' style='color:{brandColor};'>{resetUrl}</a></p>";
 
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
@@ -315,24 +420,104 @@ public class EmailNotificationService
     }
 
     /// <summary>
-    /// Builds a branded HTML email template.
+    /// Sends a test email for the given template key, filling all tokens with
+    /// sample values so the recipient can see an accurate rendered preview.
+    /// Returns (success, message) so the caller can surface the result to the UI.
     /// </summary>
-    private static string BuildHtmlEmail(string innerContent)
+    public async Task<(bool Success, string Message)> SendTestEmailAsync(
+        string templateKey,
+        string? customBody,
+        string? customSubject,
+        string recipientEmail)
     {
+        var config = await GetActiveConfig();
+        if (config == null)
+            return (false, "No active, authorized email configuration found. Set one up in Email Integration first.");
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var tokens = new Dictionary<string, string>
+        {
+            ["TicketId"]          = "1042",
+            ["TicketTitle"]       = "Sample Ticket — Test Preview",
+            ["TicketStatus"]      = "Open",
+            ["TicketPriority"]    = "High",
+            ["TicketCategory"]    = "Software Issue",
+            ["TicketDescription"] = "This is a sample description used to preview the email template.",
+            ["RecipientName"]     = "Test Recipient",
+            ["AssigneeName"]      = "Support Agent",
+            ["NoteAuthor"]        = "Support Agent",
+            ["NoteContent"]       = "This is a sample comment used to preview the template.",
+            ["CompanyName"]       = companyName,
+            ["ResetUrl"]          = "https://example.com/reset-password",
+            ["ResolutionRow"]     = string.Empty,
+            ["UpdateBlock"]       = string.Empty,
+        };
+
+        var subject = !string.IsNullOrWhiteSpace(customSubject)
+            ? $"[TEST] {ApplyTokens(customSubject, tokens)}"
+            : $"[TEST] Email Template — {templateKey}";
+
+        var innerContent = !string.IsNullOrWhiteSpace(customBody)
+            ? ApplyTokens(customBody, tokens)
+            : $"<p><em>This is a test send for the <strong>{templateKey}</strong> template. No custom body is set — the system default will be used when this email is actually triggered.</em></p>";
+
+        // Add a test banner so recipients know this is not a real notification
+        var testBanner = "<div style='background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;'>"
+            + "<strong>Test Email</strong> — This message was sent from the ServiceDesk email template preview. Sample data is used in place of real ticket values.</div>";
+
+        var htmlBody = BuildHtmlEmail(testBanner + innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
+            _logger.LogInformation("Sent test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            return (true, $"Test email sent successfully to {recipientEmail}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            return (false, $"Send failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
+    /// </summary>
+    private static string BuildHtmlEmail(
+        string innerContent,
+        string companyName,
+        string brandColor,
+        string logoUrl = "",
+        string tagline = "IT Service Desk",
+        string footerText = "",
+        bool showLogo = true)
+    {
+        var encodedCompany = System.Net.WebUtility.HtmlEncode(companyName);
+        var encodedTagline  = System.Net.WebUtility.HtmlEncode(tagline);
+        var encodedFooter   = string.IsNullOrWhiteSpace(footerText)
+            ? $"This is an automated notification from {encodedCompany}. Replies to this email are processed automatically and attached to the relevant ticket."
+            : System.Net.WebUtility.HtmlEncode(footerText);
+
+        // Logo block: only render if ShowLogo is true and a URL is provided
+        var logoBlock = showLogo && !string.IsNullOrWhiteSpace(logoUrl)
+            ? $"<div style='margin-bottom:10px;'><img src='{System.Net.WebUtility.HtmlEncode(logoUrl)}' alt='{encodedCompany}' style='max-height:50px;max-width:200px;display:block;' /></div>"
+            : string.Empty;
+
         return $@"<!DOCTYPE html>
 <html>
 <body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Arial, sans-serif;'>
     <div style='max-width: 600px; margin: 0 auto;'>
-        <div style='background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color: white; padding: 24px 20px; border-radius: 8px 8px 0 0;'>
-            <h2 style='margin: 0; font-size: 20px;'>ProbuildIQ ServiceSphere</h2>
-            <p style='margin: 4px 0 0; opacity: 0.85; font-size: 13px;'>IT Service Desk</p>
+        <div style='background: linear-gradient(135deg, {brandColor} 0%, {brandColor}cc 100%); color: white; padding: 24px 20px; border-radius: 8px 8px 0 0;'>
+            {logoBlock}
+            <h2 style='margin: 0; font-size: 20px;'>{encodedCompany}</h2>
+            <p style='margin: 4px 0 0; opacity: 0.85; font-size: 13px;'>{encodedTagline}</p>
         </div>
         <div style='padding: 24px 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; background: #ffffff;'>
             {innerContent}
             <hr style='border: none; border-top: 1px solid #e5e7eb; margin: 24px 0 16px;' />
             <p style='color: #9ca3af; font-size: 11px; margin: 0;'>
-                This is an automated notification from ProbuildIQ ServiceSphere.
-                Replies to this email are processed automatically and attached to the relevant ticket.
+                {encodedFooter}
             </p>
         </div>
     </div>

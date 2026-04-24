@@ -1,5 +1,6 @@
 @model IEnumerable<Ticket>
 @using Microsoft.AspNetCore.Html
+@using ServiceDesk.Core.Extensions
 @{
     ViewData["Title"] = "Tickets";
 }
@@ -45,7 +46,7 @@
 <!-- Filters -->
 @{
     var selStatuses    = (TicketStatus[])(ViewBag.SelectedStatuses    ?? Array.Empty<TicketStatus>());
-    var selCategories  = (TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>());
+    var selCategories  = (int[])(ViewBag.SelectedCategories ?? Array.Empty<int>());
     var selPriorities  = (TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>());
     var selAssignees   = (int[])(ViewBag.SelectedAssigneeIds  ?? Array.Empty<int>());
     var selRequesters  = (int[])(ViewBag.SelectedRequesterIds ?? Array.Empty<int>());
@@ -83,7 +84,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="statuses"
                                    value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
-                            <label class="form-check-label small" for="fs_@s">@s</label>
+                            <label class="form-check-label small" for="fs_@s">@s.GetDisplayName()</label>
                         </div>
                     }
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
@@ -101,12 +102,12 @@
                     <span class="filter-label">@FilterLabel("Category", "Categories", selCategories.Length)</span>
                 </button>
                 <div class="dropdown-menu p-2 shadow" style="min-width:190px;">
-                    @foreach (var c in Enum.GetValues<TicketCategory>())
+                    @foreach (var c in (ViewBag.Categories as IEnumerable<dynamic> ?? []))
                     {
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="categories"
-                                   value="@c" id="fc_@c" @(selCategories.Contains(c) ? "checked" : "")>
-                            <label class="form-check-label small" for="fc_@c">@c</label>
+                                   value="@c.Id" id="fc_@c.Id" @(selCategories.Contains((int)c.Id) ? "checked" : "")>
+                            <label class="form-check-label small" for="fc_@c.Id">@c.Name</label>
                         </div>
                     }
                     <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
@@ -256,6 +257,54 @@
     </form>
 </div>
 
+<!-- ── Resolution Modal (for inline status change) ──────────────────────── -->
+<div class="modal fade" id="resolveModal" tabindex="-1" aria-labelledby="resolveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="resolveModalLabel">
+                    <i class="bi bi-check-circle me-2"></i>Resolve Ticket <span id="resolveModalStatusLabel" class="fw-normal opacity-75 small"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" id="btnResolveDismiss" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Resolution Type <span class="text-danger">*</span></label>
+                    <select id="resolveTypeSelect" class="form-select">
+                        <option value="">— Select a resolution type —</option>
+                        <option value="Resolved – Full Solution">Resolved – Full Solution</option>
+                        <option value="Resolved – Workaround">Resolved – Workaround</option>
+                        <option value="Resolved – Not Reproducible">Resolved – Not Reproducible</option>
+                        <option value="Resolved – By Design">Resolved – By Design</option>
+                        <option value="Resolved – Informational">Resolved – Informational</option>
+                        <option value="Resolved – Third Party">Resolved – Third Party</option>
+                        <option value="Resolved – User Cancelled">Resolved – User Cancelled</option>
+                        <option value="Resolved – Duplicate">Resolved – Duplicate</option>
+                        <option value="Resolved – No Action Required">Resolved – No Action Required</option>
+                    </select>
+                    <div id="resolveTypeError" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-circle me-1"></i>Please select a resolution type.
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        Resolution Notes
+                        <span class="badge bg-secondary fw-normal ms-1">Internal — not emailed to user</span>
+                    </label>
+                    <textarea id="resolveNotesTextarea" class="form-control" rows="4"
+                              placeholder="Describe what resolved this ticket, any steps taken, workarounds applied, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="btnResolveCancelModal">Cancel</button>
+                <button type="button" class="btn btn-success" id="btnResolveConfirm">
+                    <i class="bi bi-check-circle me-1"></i>Confirm Resolution
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Merge Target Modal: prompts for target ticket ID when only 1 ticket is selected -->
 <div class="modal fade" id="mergeTargetModal" tabindex="-1" aria-labelledby="mergeTargetModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -278,6 +327,31 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- KB article suggestion banner (appears after resolving a ticket with resolution notes) -->
+<div id="kbSuggestionBanner" class="alert alert-success alert-dismissible d-none mb-2 py-2 border-0 shadow-sm" role="alert">
+    <div class="d-flex align-items-center gap-3">
+        <i class="bi bi-journal-plus text-success flex-shrink-0" style="font-size:1.1rem;"></i>
+        <span class="flex-grow-1 small fw-medium">This ticket has resolution notes — add it to the Knowledge Base?</span>
+        <a id="kbSuggestionLink" href="#" class="btn btn-sm btn-success py-0 px-2 flex-shrink-0">
+            <i class="bi bi-plus-lg me-1"></i>Create KB Article
+        </a>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+</div>
+
+<!-- New ticket notification banner (driven by 30-second JS poll, never auto-refreshes) -->
+<div id="newTicketsBanner" class="alert alert-dismissible d-none mb-2 py-2 border-0 shadow-sm"
+     role="alert" style="background:linear-gradient(135deg,#dbeafe,#e0f2fe);">
+    <div class="d-flex align-items-center gap-3">
+        <i class="bi bi-bell-fill text-primary flex-shrink-0"></i>
+        <span id="newTicketsBannerText" class="flex-grow-1 small fw-medium"></span>
+        <button type="button" class="btn btn-sm btn-primary py-0 px-2 flex-shrink-0" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
 </div>
 
 <!-- Tickets table (AJAX-rendered partial — only this div updates on sort/page/filter) -->
@@ -347,11 +421,11 @@
                 All Categories
               </button>
               <div class="dropdown-menu p-2 shadow" style="min-width:200px;">
-                @foreach (var c in Enum.GetValues<TicketCategory>())
+                @foreach (var c in ViewBag.Categories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>())
                 {
                   <div class="form-check">
-                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c" id="sv_c_@c">
-                    <label class="form-check-label small" for="sv_c_@c">@c</label>
+                    <input class="form-check-input sv-category-cb" type="checkbox" value="@c.Id" id="sv_c_@c.Id">
+                    <label class="form-check-label small" for="sv_c_@c.Id">@c.Name</label>
                   </div>
                 }
               </div>
@@ -377,19 +451,39 @@
           </div>
           <div class="col-md-4">
             <label class="form-label small">Branch / Location</label>
-            <select id="svBranch" class="form-select form-select-sm">
-              <option value="">All Branches</option>
-              @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
-              { <option value="@b.Id">@b.Name</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svBranchBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Branches
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:180px;max-height:220px;overflow-y:auto;">
+                @foreach (var b in (ViewBag.Branches as IEnumerable<dynamic> ?? []))
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-branch-cb" type="checkbox" value="@b.Id" id="sv_b_@b.Id">
+                    <label class="form-check-label small" for="sv_b_@b.Id">@b.Name</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Department</label>
-            <select id="svDepartment" class="form-select form-select-sm">
-              <option value="">All Departments</option>
-              @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
-              { <option value="@d">@d</option> }
-            </select>
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start"
+                      id="svDeptBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                All Departments
+              </button>
+              <div class="dropdown-menu p-2 shadow" style="min-width:200px;max-height:220px;overflow-y:auto;">
+                @foreach (var d in (ViewBag.Departments as IEnumerable<string> ?? []))
+                {
+                  <div class="form-check">
+                    <input class="form-check-input sv-dept-cb" type="checkbox" value="@d" id="sv_d_@(d.Replace(" ","_").Replace("/","_"))">
+                    <label class="form-check-label small" for="sv_d_@(d.Replace(" ","_").Replace("/","_"))">@d</label>
+                  </div>
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
             <label class="form-label small">Group / Team</label>
@@ -497,8 +591,10 @@
     sortDir  = (string?)ViewBag.SortDir ?? "desc",
     pageSize = (int)(ViewBag.PageSize ?? 25),
     currentStatuses    = ((TicketStatus[])(ViewBag.SelectedStatuses   ?? Array.Empty<TicketStatus>())).Select(s => s.ToString()).ToArray(),
-    currentCategories  = ((TicketCategory[])(ViewBag.SelectedCategories ?? Array.Empty<TicketCategory>())).Select(c => c.ToString()).ToArray(),
-    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray()
+    currentCategories  = ((int[])(ViewBag.SelectedCategories ?? Array.Empty<int>())).Select(c => c.ToString()).ToArray(),
+    currentPriorities  = ((TicketPriority[])(ViewBag.SelectedPriorities ?? Array.Empty<TicketPriority>())).Select(p => p.ToString()).ToArray(),
+    currentAssigneeIds = (int[])(ViewBag.SelectedAssigneeIds ?? Array.Empty<int>()),
+    currentEmployeeId  = (int?)ViewBag.CurrentEmployeeId
 }))</script>
 <script>
 (function () {
@@ -506,6 +602,21 @@
     const itStaff = JSON.parse(document.getElementById('itStaffData').textContent);
     const toast = new bootstrap.Toast(document.getElementById('quickEditToast'), { delay: 2500 });
     const toastMsg = document.getElementById('quickEditToastMsg');
+
+    function showKbSuggestionBanner(ticketId) {
+        var banner = document.getElementById('kbSuggestionBanner');
+        var link   = document.getElementById('kbSuggestionLink');
+        if (!banner || !link) return;
+        link.href = '/Tickets/SuggestToKb/' + ticketId;
+        link.onclick = function (e) {
+            e.preventDefault();
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', antiForgeryToken);
+            fetch('/Tickets/SuggestToKb/' + ticketId, { method: 'POST', body: fd })
+                .then(function (r) { if (r.redirected) window.location.href = r.url; });
+        };
+        banner.classList.remove('d-none');
+    }
 
     function showToast(msg, isError) {
         const el = document.getElementById('quickEditToast');
@@ -527,7 +638,71 @@
             .catch(() => showToast('Update failed. Please try again.', true));
     }
 
+    // Resolution modal — wire up once
+    var _pendingResolveTicketId = null;
+    var _pendingResolveBadge    = null;
+    var _pendingResolveOpt      = null;
+    var _pendingResolveStatus   = '';
+    var resolveModalEl = document.getElementById('resolveModal');
+    var resolveModal   = resolveModalEl ? new bootstrap.Modal(resolveModalEl, { backdrop: 'static', keyboard: false }) : null;
+
+    if (resolveModalEl) {
+        document.getElementById('btnResolveDismiss')?.addEventListener('click', function () { resolveModal.hide(); });
+        document.getElementById('btnResolveCancelModal')?.addEventListener('click', function () { resolveModal.hide(); });
+
+        document.getElementById('btnResolveConfirm')?.addEventListener('click', function () {
+            var resType  = document.getElementById('resolveTypeSelect').value;
+            var resNotes = (document.getElementById('resolveNotesTextarea')?.value || '').trim();
+            if (!resType) { document.getElementById('resolveTypeError').style.display = ''; return; }
+            document.getElementById('resolveTypeError').style.display = 'none';
+
+            var btn = this;
+            var origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Resolving\u2026';
+
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', antiForgeryToken);
+            fd.append('resolutionType', resType);
+            fd.append('resolutionNotes', resNotes);
+            fd.append('targetStatus', _pendingResolveStatus || 'Resolved');
+
+            fetch('/Tickets/ResolveTicket/' + _pendingResolveTicketId, { method: 'POST', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    if (data.success) {
+                        resolveModal.hide();
+                        if (_pendingResolveBadge) {
+                            var st = _pendingResolveStatus.toLowerCase();
+                            _pendingResolveBadge.className = `badge badge-${st} inline-edit-badge`;
+                            _pendingResolveBadge.setAttribute('data-current', _pendingResolveStatus);
+                            _pendingResolveBadge.innerHTML = `${_pendingResolveStatus} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
+                        }
+                        if (_pendingResolveOpt) {
+                            var dd = _pendingResolveOpt.closest('.status-dropdown');
+                            if (dd) dd.querySelectorAll('.status-option').forEach(function(o){ o.classList.remove('active'); });
+                            _pendingResolveOpt.classList.add('active');
+                        }
+                        showToast('Ticket resolved successfully.');
+                        if (data.suggestKb && data.ticketId) {
+                            showKbSuggestionBanner(data.ticketId);
+                        }
+                    } else {
+                        showToast(data.error || 'Resolution failed.', true);
+                    }
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    showToast('Failed to reach the server.', true);
+                });
+        });
+    }
+
     // Status inline edit — event delegation (survives AJAX table replacement)
+    // Resolved/Closed show the resolution modal; other statuses call QuickUpdate directly.
     document.addEventListener('click', function (e) {
         const opt = e.target.closest('.status-option');
         if (!opt) return;
@@ -535,7 +710,22 @@
         const dropdown = opt.closest('.status-dropdown');
         const ticketId = dropdown.getAttribute('data-ticket-id');
         const badge = document.querySelector(`.inline-edit-badge[data-ticket-id="${ticketId}"]`);
-        sendQuickUpdate(ticketId, 'status', opt.getAttribute('data-value'), function (data) {
+        const newStatus = opt.getAttribute('data-value');
+
+        if ((newStatus === 'Resolved' || newStatus === 'Closed') && resolveModal) {
+            _pendingResolveTicketId = ticketId;
+            _pendingResolveBadge    = badge;
+            _pendingResolveOpt      = opt;
+            _pendingResolveStatus   = newStatus;
+            document.getElementById('resolveModalStatusLabel').textContent = '— ' + newStatus;
+            document.getElementById('resolveTypeSelect').value = '';
+            document.getElementById('resolveNotesTextarea').value = '';
+            document.getElementById('resolveTypeError').style.display = 'none';
+            resolveModal.show();
+            return;
+        }
+
+        sendQuickUpdate(ticketId, 'status', newStatus, function (data) {
             badge.className = `badge badge-${data.status.toLowerCase()} inline-edit-badge`;
             badge.setAttribute('data-current', data.status);
             badge.innerHTML = `${data.status} <i class="bi bi-chevron-down ms-1" style="font-size:0.65em;"></i>`;
@@ -774,6 +964,9 @@ function loadTable(url) {
             container.style.opacity = '1';
             container.style.pointerEvents = '';
             history.pushState({ url: url }, '', url);
+            // Persist the current view so returning from edit/detail pages restores it
+            document.cookie = 'sd_tkt_last=' + url + '; path=/; SameSite=Lax'
+                + (location.protocol === 'https:' ? '; Secure' : '');
         })
         .catch(function () {
             container.style.opacity = '1';
@@ -914,7 +1107,7 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
               <i class="bi ${starCls}"></i>
             </button>
             ${v.isOwner ? `<button class="btn btn-link btn-sm p-0" title="Edit" onclick="editView(event,${v.id})"><i class="bi bi-pencil text-muted"></i></button>
-            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})"><i class="bi bi-trash text-danger"></i></button>` : ''}
+            <button class="btn btn-link btn-sm p-0" title="Delete" onclick="deleteView(event,${v.id},${escHtml(JSON.stringify(v.name))})"><i class="bi bi-trash text-danger"></i></button>` : ''}
           </div></li>`;
     }
 
@@ -943,7 +1136,7 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
                 <div class="d-flex gap-1">
                   <a href="?viewId=${v.id}" class="btn btn-sm btn-outline-primary" title="Apply view"><i class="bi bi-play-fill"></i></a>
                   ${v.isOwner ? `<button class="btn btn-sm btn-outline-secondary" onclick="editView(event,${v.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${JSON.stringify(v.name)})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteView(event,${v.id},${escHtml(JSON.stringify(v.name))})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
                 </div>
               </div>`).join('');
         }
@@ -967,10 +1160,22 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         if (statuses.length) parts.push('Status: ' + statuses.join(', '));
         if (cats.length)     parts.push('Category: ' + cats.join(', '));
         if (pris.length)     parts.push('Priority: ' + pris.join(', '));
+
+        // Branch multi-select
+        const branches = v.filterBranchIds
+            ? v.filterBranchIds.split(',').map(s => s.trim()).filter(Boolean)
+            : (v.filterBranchId != null ? [String(v.filterBranchId)] : []);
+        if (branches.length) parts.push(branches.length === 1 ? '1 Branch' : branches.length + ' Branches');
+
+        // Department multi-select
+        const depts = v.filterDepartments
+            ? v.filterDepartments.split(',').map(s => s.trim()).filter(Boolean)
+            : (v.filterDepartment ? [v.filterDepartment] : []);
+        if (depts.length) parts.push('Dept: ' + depts.join(', '));
+
         if (v.filterAssignedToMe)   parts.push('Assigned to me');
         if (v.filterUnassignedOnly) parts.push('Unassigned');
         if (v.filterUnmatchedOnly)  parts.push('Unmatched requester');
-        if (v.filterDepartment) parts.push('Dept: ' + v.filterDepartment);
         return parts.length ? parts.join(' · ') : 'No filters — shows all tickets';
     }
 
@@ -990,9 +1195,11 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         const checked = svGetCheckedValues(cssClass);
         const count = checked.length;
         let btnId, singular, plural;
-        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';   plural = 'Statuses'; }
-        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category'; plural = 'Categories'; }
-        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority'; plural = 'Priorities'; }
+        if (cssClass === 'sv-status-cb')   { btnId = 'svStatusBtn';   singular = 'Status';     plural = 'Statuses'; }
+        if (cssClass === 'sv-category-cb') { btnId = 'svCategoryBtn'; singular = 'Category';   plural = 'Categories'; }
+        if (cssClass === 'sv-priority-cb') { btnId = 'svPriorityBtn'; singular = 'Priority';   plural = 'Priorities'; }
+        if (cssClass === 'sv-branch-cb')   { btnId = 'svBranchBtn';   singular = 'Branch';     plural = 'Branches'; }
+        if (cssClass === 'sv-dept-cb')     { btnId = 'svDeptBtn';     singular = 'Department'; plural = 'Departments'; }
         const btn = document.getElementById(btnId);
         if (!btn) return;
         btn.textContent = count === 0 ? 'All ' + plural : count === 1 ? '1 ' + singular : count + ' ' + plural;
@@ -1000,10 +1207,12 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
     }
 
     // Wire up live label updates when checkboxes change
-    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb').forEach(cb => {
+    document.querySelectorAll('.sv-status-cb,.sv-category-cb,.sv-priority-cb,.sv-branch-cb,.sv-dept-cb').forEach(cb => {
         cb.addEventListener('change', () => {
             const cls = cb.classList.contains('sv-status-cb')   ? 'sv-status-cb'   :
-                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' : 'sv-priority-cb';
+                        cb.classList.contains('sv-category-cb') ? 'sv-category-cb' :
+                        cb.classList.contains('sv-priority-cb') ? 'sv-priority-cb' :
+                        cb.classList.contains('sv-branch-cb')   ? 'sv-branch-cb'   : 'sv-dept-cb';
             svUpdateDropdownLabel(cls);
         });
     });
@@ -1017,10 +1226,13 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svSetCheckboxes('sv-status-cb',   pageState.currentStatuses   ?? []);
         svSetCheckboxes('sv-category-cb', pageState.currentCategories ?? []);
         svSetCheckboxes('sv-priority-cb', pageState.currentPriorities ?? []);
-        document.getElementById('svBranch').value  = '';
-        document.getElementById('svDepartment').value = '';
+        svSetCheckboxes('sv-branch-cb',   []);
+        svSetCheckboxes('sv-dept-cb',     []);
         document.getElementById('svGroup').value   = '';
-        document.getElementById('svAssignedToMe').checked  = false;
+        // Pre-fill "Assigned to me" if the current user's employee ID is among the active assignee filters
+        const myEmpId = pageState.currentEmployeeId;
+        const isFilteredToMe = myEmpId != null && (pageState.currentAssigneeIds ?? []).includes(myEmpId);
+        document.getElementById('svAssignedToMe').checked  = isFilteredToMe;
         document.getElementById('svUnassigned').checked    = pageState.currentUnassigned;
         document.getElementById('svUnmatched').checked     = pageState.currentUnmatched;
         document.getElementById('svSortBy').value   = pageState.sortBy;
@@ -1057,8 +1269,18 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svSetCheckboxes('sv-category-cb', cats);
         svSetCheckboxes('sv-priority-cb', pris);
 
-        document.getElementById('svBranch').value  = v.filterBranchId ?? '';
-        document.getElementById('svDepartment').value = v.filterDepartment ?? '';
+        // Restore branch multi-select: prefer new FilterBranchIds, fall back to legacy FilterBranchId
+        const branchVals = v.filterBranchIds
+            ? v.filterBranchIds.split(',').map(s => s.trim())
+            : (v.filterBranchId != null ? [String(v.filterBranchId)] : []);
+        svSetCheckboxes('sv-branch-cb', branchVals);
+
+        // Restore department multi-select: prefer new FilterDepartments, fall back to legacy FilterDepartment
+        const deptVals = v.filterDepartments
+            ? v.filterDepartments.split(',').map(s => s.trim())
+            : (v.filterDepartment ? [v.filterDepartment] : []);
+        svSetCheckboxes('sv-dept-cb', deptVals);
+
         document.getElementById('svGroup').value   = v.filterGroupId  ?? '';
         document.getElementById('svAssignedToMe').checked  = v.filterAssignedToMe;
         document.getElementById('svUnassigned').checked    = v.filterUnassignedOnly;
@@ -1088,12 +1310,10 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         svGetCheckedValues('sv-category-cb').forEach(v => body.append('filterCategories', v));
         svGetCheckedValues('sv-priority-cb').forEach(v => body.append('filterPriorities', v));
 
-        const branch = document.getElementById('svBranch').value;
-        const dept   = document.getElementById('svDepartment').value;
-        const group  = document.getElementById('svGroup').value;
-        if (branch) body.append('filterBranchId',   branch);
-        if (dept)   body.append('filterDepartment', dept);
-        if (group)  body.append('filterGroupId',    group);
+        svGetCheckedValues('sv-branch-cb').forEach(v => body.append('filterBranchIds',   v));
+        svGetCheckedValues('sv-dept-cb').forEach(v   => body.append('filterDepartments', v));
+        const group = document.getElementById('svGroup').value;
+        if (group) body.append('filterGroupId', group);
         body.append('filterAssignedToMe',   document.getElementById('svAssignedToMe').checked);
         body.append('filterUnassignedOnly', document.getElementById('svUnassigned').checked);
         body.append('filterUnmatchedOnly',  document.getElementById('svUnmatched').checked);
@@ -1141,6 +1361,40 @@ document.getElementById('ticketKeywordSearch')?.addEventListener('keydown', func
         await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
         renderDropdown();
     };
+})();
+</script>
+
+<script>
+// ── New ticket notification polling ───────────────────────────────────────
+// Polls every 30 s. Shows a banner if new tickets arrive — never auto-refreshes.
+(function () {
+    var since      = new Date().toISOString();
+    var banner     = document.getElementById('newTicketsBanner');
+    var bannerText = document.getElementById('newTicketsBannerText');
+    if (!banner || !bannerText) return;
+
+    var dismissed = false;
+    banner.addEventListener('closed.bs.alert', function () { dismissed = true; });
+
+    function poll() {
+        fetch('/Tickets/PollNewTickets?since=' + encodeURIComponent(since))
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || data.count === 0 || dismissed) return;
+                var noun  = data.count === 1 ? '1 new ticket' : data.count + ' new tickets';
+                var parts = (data.preview || []).slice(0, 2).map(function (t) {
+                    var title = t.title.length > 55 ? t.title.substring(0, 55) + '…' : t.title;
+                    return '<strong>#' + t.id + '</strong> — ' + title;
+                });
+                bannerText.innerHTML = noun + ' received'
+                    + (parts.length ? ': ' + parts.join('; ') : '')
+                    + (data.count > 2 ? ' &amp; more' : '');
+                banner.classList.remove('d-none');
+            })
+            .catch(function () {}); // silent — non-critical
+    }
+
+    setInterval(poll, 30000); // every 30 s — faster than the 5-min email ingest
 })();
 </script>
 }

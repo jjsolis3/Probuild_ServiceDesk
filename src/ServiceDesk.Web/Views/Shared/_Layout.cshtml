@@ -161,6 +161,18 @@
                             <span class="nav-text">Assets</span>
                         </a>
                     </li>
+                    <li class="@NavClass("SoftwareLicenses")">
+                        <a asp-controller="SoftwareLicenses" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-box"></i>
+                            <span class="nav-text">Licenses</span>
+                        </a>
+                    </li>
+                    <li class="@NavClass("Consumables")">
+                        <a asp-controller="Consumables" asp-action="Index" aria-expanded="false">
+                            <i class="fas fa-layer-group"></i>
+                            <span class="nav-text">Consumables</span>
+                        </a>
+                    </li>
                     @if (!User.IsInRole("Viewer"))
                     {
                     <li class="@NavClass("Employees")">
@@ -270,7 +282,7 @@
         ***********************************-->
         <div class="footer">
             <div class="copyright">
-                <p>ServiceSphere &copy; @DateTime.Now.Year &mdash; Crafted by <strong>ProbuildIQ</strong></p>
+                <p>ServiceSphere &copy; @DateTime.Now.Year &mdash; crafted by <a href="https://www.instagram.com/774entfx">774EntFx</a> <strong>Powered by ProbuildIQ</strong></p>
             </div>
         </div>
         <!--**********************************
@@ -324,6 +336,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+    <!-- Company branding available to JS (populated by BrandingFilter) -->
+    <script type="application/json" id="__ssLayoutBranding">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { companyName = (string)(ViewBag.CompanyName ?? "ServiceSphere"), brandColor = "#4f46e5" }))</script>
+    <script>
+        window.ssBranding = JSON.parse(document.getElementById('__ssLayoutBranding').textContent);
+    </script>
     <!-- ServiceSphere Custom JS -->
     <script src="~/js/servicesphere.js"></script>
     <!-- DataTables Initialization -->
@@ -478,5 +495,6 @@
     </script>
 
     @await RenderSectionAsync("Scripts", required: false)
+    @await Html.PartialAsync("_ExportPreviewModal")
 </body>
 </html>

@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Core.Models;
 
@@ -25,7 +24,7 @@ public class KbArticle
     [StringLength(8000)]
     public string Solution { get; set; } = string.Empty;
 
-    public TicketCategory Category { get; set; }
+    public int Category { get; set; }
 
     /// <summary>
     /// Optional link back to the ticket this was promoted from.

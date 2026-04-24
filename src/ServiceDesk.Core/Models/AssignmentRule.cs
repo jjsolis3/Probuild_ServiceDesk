@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Core.Models;
 
@@ -18,10 +17,10 @@ public class AssignmentRule
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// When null, this rule matches any category.
+    /// When null, this rule matches any category. References TicketCategories.Id.
     /// </summary>
     [Display(Name = "Category (any if blank)")]
-    public TicketCategory? Category { get; set; }
+    public int? Category { get; set; }
 
     /// <summary>
     /// When null, this rule matches any sub-category within the selected category.

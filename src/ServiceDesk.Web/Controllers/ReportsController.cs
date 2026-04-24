@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Extensions;
 using ServiceDesk.Core.Enums;
+using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Models;
 
@@ -22,12 +24,241 @@ public class ReportsController : Controller
         return View();
     }
 
+    public async Task<IActionResult> Executive()
+    {
+        var now      = DateTime.UtcNow;
+        var cutoff30 = now.AddDays(-30);
+        var week12   = now.AddDays(-84).Date;
+
+        // ── Server-side scalar counts ─────────────────────────────────────────
+        var openStatuses = new[] { TicketStatus.Open, TicketStatus.InProgress, TicketStatus.OnHold };
+
+        var totalOpen      = await _context.Tickets.CountAsync(t => openStatuses.Contains(t.Status));
+        var resolvedLast30 = await _context.Tickets.CountAsync(t => t.ResolvedDate.HasValue && t.ResolvedDate >= cutoff30);
+        var createdLast30  = await _context.Tickets.CountAsync(t => t.CreatedDate >= cutoff30 && t.Status != TicketStatus.Cancelled);
+        var totalAllTime   = await _context.Tickets.CountAsync(t => t.Status != TicketStatus.Cancelled);
+
+        // ── Minimal projections for metrics that need per-row arithmetic ──────
+        // MTTR / SLA — only resolved tickets, only the columns we need
+        var resolvedProj = await _context.Tickets
+            .Where(t => t.ResolvedDate.HasValue && t.Status != TicketStatus.Cancelled)
+            .Select(t => new { t.Id, t.Priority, t.CreatedDate, t.ResolvedDate, t.DueDate })
+            .ToListAsync();
+
+        // Open tickets — just the dates for backlog aging
+        var openDates = await _context.Tickets
+            .Where(t => openStatuses.Contains(t.Status))
+            .Select(t => t.CreatedDate)
+            .ToListAsync();
+
+        // Recent dates for weekly chart
+        var weeklyDates = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Cancelled && t.CreatedDate >= week12)
+            .Select(t => t.CreatedDate)
+            .ToListAsync();
+
+        // ── MTTA: first agent note per ticket (already server-side) ──────────
+        var firstNotes = await _context.TicketNotes
+            .Where(n => n.Source == "Agent" && !n.IsInternal)
+            .GroupBy(n => n.TicketId)
+            .Select(g => new { TicketId = g.Key, FirstDate = g.Min(n => n.CreatedDate) })
+            .ToListAsync();
+
+        // Ticket creation dates for MTTA calculation (only tickets that have a first-note)
+        var noteTicketIds  = firstNotes.Select(n => n.TicketId).ToHashSet();
+        var mttaTicketDates = await _context.Tickets
+            .Where(t => noteTicketIds.Contains(t.Id))
+            .Select(t => new { t.Id, t.CreatedDate })
+            .ToListAsync();
+        var createdDateById = mttaTicketDates.ToDictionary(t => t.Id, t => t.CreatedDate);
+
+        // ── Server-side category breakdown (last 30 days) ────────────────────
+        var byCategory = await _context.Tickets
+            .Where(t => t.CreatedDate >= cutoff30 && t.Status != TicketStatus.Cancelled)
+            .GroupBy(t => t.Category)
+            .Select(g => new { Category = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Category, x => x.Count);
+
+        // ── Server-side agent workload ────────────────────────────────────────
+        var agentBaseQuery = _context.Tickets
+            .Where(t => t.AssignedToId.HasValue && t.Status != TicketStatus.Cancelled);
+
+        var agentCounts = await agentBaseQuery
+            .GroupBy(t => new { t.AssignedToId, t.AssignedTo!.FirstName, t.AssignedTo.LastName })
+            .Select(g => new
+            {
+                Name              = g.Key.FirstName + " " + g.Key.LastName,
+                OpenCount         = g.Count(t => t.Status == TicketStatus.Open),
+                InProgressCount   = g.Count(t => t.Status == TicketStatus.InProgress),
+                ResolvedLast30    = g.Count(t => t.ResolvedDate.HasValue && t.ResolvedDate >= cutoff30),
+            })
+            .ToListAsync();
+
+        // Resolution hours for agents (separate query — conditional AVG is hard to express in one GroupBy)
+        var agentResolutionProj = await agentBaseQuery
+            .Where(t => t.ResolvedDate.HasValue && t.ResolvedDate >= cutoff30)
+            .Select(t => new { Name = t.AssignedTo!.FirstName + " " + t.AssignedTo.LastName, t.CreatedDate, t.ResolvedDate })
+            .ToListAsync();
+        var agentAvgHours = agentResolutionProj
+            .GroupBy(t => t.Name)
+            .ToDictionary(g => g.Key,
+                g => Math.Round(g.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours), 1));
+
+        var agentWorkload = agentCounts
+            .Select(a => new AgentWorkloadRow
+            {
+                AgentName          = a.Name,
+                OpenTickets        = a.OpenCount,
+                InProgressTickets  = a.InProgressCount,
+                ResolvedLast30Days = a.ResolvedLast30,
+                AvgResolutionHours = agentAvgHours.GetValueOrDefault(a.Name, 0),
+            })
+            .Where(a => a.OpenTickets + a.InProgressTickets + a.ResolvedLast30Days > 0)
+            .OrderByDescending(a => a.OpenTickets + a.InProgressTickets)
+            .ToList();
+
+        // ── In-memory calculations on minimal projections ─────────────────────
+        var mttr = resolvedProj.Any()
+            ? resolvedProj.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours) : 0;
+
+        var mttaValues = firstNotes
+            .Where(n => createdDateById.ContainsKey(n.TicketId))
+            .Select(n => (n.FirstDate - createdDateById[n.TicketId]).TotalHours)
+            .Where(h => h >= 0)
+            .ToList();
+        var mtta = mttaValues.Any() ? mttaValues.Average() : 0;
+
+        // SLA compliance
+        var slaRows = new List<SlaPriorityRow>();
+        foreach (var pri in new[] { TicketPriority.Critical, TicketPriority.High, TicketPriority.Medium, TicketPriority.Low })
+        {
+            var priResolved = resolvedProj.Where(t => t.Priority == pri).ToList();
+            if (!priResolved.Any()) continue;
+            var slaHours = SlaPolicy.GetHours(pri);
+            var met = priResolved.Count(t =>
+            {
+                var due = t.DueDate ?? t.CreatedDate.AddHours(slaHours);
+                return t.ResolvedDate!.Value <= due;
+            });
+            slaRows.Add(new SlaPriorityRow { Priority = pri, Met = met, Total = priResolved.Count });
+        }
+        var totalSlaMet   = slaRows.Sum(r => r.Met);
+        var totalSlaTotal = slaRows.Sum(r => r.Total);
+        var slaCompliance = totalSlaTotal > 0 ? (double)totalSlaMet / totalSlaTotal * 100 : 0;
+
+        // Backlog aging
+        var backlogOver7  = openDates.Count(d => (now - d).TotalDays > 7);
+        var backlogOver14 = openDates.Count(d => (now - d).TotalDays > 14);
+        var backlogOver30 = openDates.Count(d => (now - d).TotalDays > 30);
+
+        // Weekly volume
+        var weekly = new List<WeeklyPoint>();
+        for (int i = 11; i >= 0; i--)
+        {
+            var ws = now.AddDays(-7 * (i + 1)).Date;
+            var we = ws.AddDays(7);
+            weekly.Add(new WeeklyPoint
+            {
+                Label = ws.ToString("MMM d"),
+                Count = weeklyDates.Count(d => d >= ws && d < we)
+            });
+        }
+
+        // ── AI effectiveness ──────────────────────────────────────────────────
+        var decidedRecs = await _context.AiRecommendations
+            .Where(r => r.Status == "Approved" || r.Status == "Dismissed")
+            .Select(r => new { r.Status, r.TicketId, r.SuggestedCategory, r.SuggestedPriority })
+            .ToListAsync();
+        var aiAcceptance = decidedRecs.Any()
+            ? (double)decidedRecs.Count(r => r.Status == "Approved") / decidedRecs.Count * 100 : 0;
+
+        var approvedRecs = decidedRecs.Where(r => r.Status == "Approved").ToList();
+        var resolvedIds  = resolvedProj.Select(t => t.Id).ToHashSet();
+        var resolvedCatById = resolvedProj.ToDictionary(t => t.Id, t => t.Priority); // reuse projection
+
+        var catCorrect = approvedRecs.Count(r => r.SuggestedCategory.HasValue && resolvedIds.Contains(r.TicketId));
+        var catTotal   = approvedRecs.Count(r => r.SuggestedCategory.HasValue && resolvedIds.Contains(r.TicketId));
+        var priCorrect = approvedRecs.Count(r => r.SuggestedPriority.HasValue && resolvedIds.Contains(r.TicketId)
+            && resolvedProj.First(t => t.Id == r.TicketId).Priority == (TicketPriority)r.SuggestedPriority.Value);
+        var priTotal   = approvedRecs.Count(r => r.SuggestedPriority.HasValue && resolvedIds.Contains(r.TicketId));
+
+        var aiCatAccuracy = catTotal > 0 ? (double)catCorrect / catTotal * 100 : 0;
+        var aiPriAccuracy = priTotal > 0 ? (double)priCorrect / priTotal * 100 : 0;
+        var aiRecsLast30  = await _context.AiRecommendations.CountAsync(r => r.CreatedDate >= cutoff30);
+        var latestRun     = await _context.AiRunLogs.OrderByDescending(r => r.RunDate).FirstOrDefaultAsync();
+
+        // ── CSAT ──────────────────────────────────────────────────────────────
+        var csatSetting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+        var csatEnabled = csatSetting?.Value == "true";
+        double? csatAvg  = null;
+        int     csatCount = 0;
+        double? csatRate  = null;
+        if (csatEnabled)
+        {
+            try
+            {
+                var csatStats = await _context.CsatSurveys
+                    .GroupBy(_ => 1)
+                    .Select(g => new
+                    {
+                        Total     = g.Count(),
+                        Completed = g.Count(s => s.Score.HasValue),
+                        AvgScore  = g.Where(s => s.Score.HasValue).Average(s => (double?)s.Score)
+                    })
+                    .FirstOrDefaultAsync();
+                if (csatStats != null && csatStats.Total > 0)
+                {
+                    csatCount = csatStats.Completed;
+                    csatAvg   = csatStats.AvgScore.HasValue ? Math.Round(csatStats.AvgScore.Value, 1) : null;
+                    csatRate  = Math.Round((double)csatStats.Completed / csatStats.Total * 100, 1);
+                }
+            }
+            catch { /* table not yet created */ }
+        }
+
+        ViewBag.CategoriesById = await LoadCategoryLookupAsync();
+
+        var model = new ExecReportViewModel
+        {
+            MttrHours             = Math.Round(mttr,          1),
+            MttaHours             = Math.Round(mtta,          1),
+            SlaCompliancePct      = Math.Round(slaCompliance, 1),
+            TotalOpen             = totalOpen,
+            ResolvedLast30Days    = resolvedLast30,
+            CreatedLast30Days     = createdLast30,
+            TotalTicketsAllTime   = totalAllTime,
+            BacklogOver7Days      = backlogOver7,
+            BacklogOver14Days     = backlogOver14,
+            BacklogOver30Days     = backlogOver30,
+            SlaByPriority         = slaRows,
+            WeeklyVolume          = weekly,
+            ByCategory            = byCategory,
+            AgentWorkload         = agentWorkload,
+            AiAcceptanceRate      = Math.Round(aiAcceptance,  1),
+            AiCategoryAccuracyPct = Math.Round(aiCatAccuracy, 1),
+            AiPriorityAccuracyPct = Math.Round(aiPriAccuracy, 1),
+            AiRecsLast30Days      = aiRecsLast30,
+            AiHasData             = decidedRecs.Any(),
+            LatestTrainingRun     = latestRun,
+            CsatEnabled           = csatEnabled,
+            CsatAvgScore          = csatAvg,
+            CsatResponseCount     = csatCount,
+            CsatResponseRate      = csatRate
+        };
+
+        return View(model);
+    }
+
     public async Task<IActionResult> Tickets()
     {
         var tickets = await _context.Tickets
             .Include(t => t.AssignedTo)
             .Take(5000)
             .ToListAsync();
+
+        // Load categories from DB for display names; fall back to enum for IDs 0-7
+        var categoryLookup = await LoadCategoryLookupAsync();
+        ViewBag.CategoriesById = categoryLookup;
 
         var model = new TicketReportViewModel
         {
@@ -70,28 +301,118 @@ public class ReportsController : Controller
         return View(model);
     }
 
+    private async Task<Dictionary<int, string>> LoadCategoryLookupAsync()
+    {
+        try
+        {
+            return await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            // Table not yet created — fall back to enum
+            return Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+    }
+
+    private string CategoryName(int id, Dictionary<int, string> lookup) =>
+        lookup.TryGetValue(id, out var name) ? name : $"Category {id}";
+
     public async Task<IActionResult> Assets()
     {
         var assets = await _context.Assets
             .Include(a => a.AssignedTo)
             .ToListAsync();
 
+        var today = DateTime.Today;
+
+        // Age distribution
+        var ageDistribution = new Dictionary<string, int>
+        {
+            ["< 1 year"]  = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays < 365),
+            ["1–3 years"] = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays is >= 365 and < 365 * 3),
+            ["3–5 years"] = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays is >= 365 * 3 and < 365 * 5),
+            ["5+ years"]  = assets.Count(a => a.PurchaseDate.HasValue && (today - a.PurchaseDate.Value).TotalDays >= 365 * 5),
+            ["Unknown"]   = assets.Count(a => !a.PurchaseDate.HasValue),
+        };
+
+        // Refresh cycle planner — recommended life by type
+        var lifespans = new Dictionary<AssetType, int>
+        {
+            [AssetType.Laptop]          = 3,
+            [AssetType.Desktop]         = 4,
+            [AssetType.Monitor]         = 6,
+            [AssetType.Printer]         = 5,
+            [AssetType.Phone]           = 3,
+            [AssetType.Tablet]          = 3,
+            [AssetType.Server]          = 5,
+            [AssetType.NetworkEquipment]= 5,
+        };
+        var refreshRows = lifespans.Select(kv =>
+        {
+            var typeAssets = assets.Where(a => a.AssetType == kv.Key && a.Status != AssetStatus.Retired && a.Status != AssetStatus.Disposed).ToList();
+            var overdue = typeAssets.Where(a => a.PurchaseDate.HasValue
+                && (today - a.PurchaseDate.Value).TotalDays > kv.Value * 365).ToList();
+            var dueSoon = typeAssets.Where(a => a.PurchaseDate.HasValue
+                && !overdue.Contains(a)
+                && (today - a.PurchaseDate.Value).TotalDays > (kv.Value - 1) * 365).ToList();
+            return new RefreshCycleRow
+            {
+                Type                 = kv.Key,
+                RecommendedLifeYears = kv.Value,
+                TotalCount           = typeAssets.Count,
+                OverdueCount         = overdue.Count,
+                DueSoonCount         = dueSoon.Count,
+                OverdueAssets        = overdue.OrderBy(a => a.PurchaseDate).Take(10).ToList(),
+            };
+        }).Where(r => r.TotalCount > 0).OrderByDescending(r => r.OverdueCount).ToList();
+
+        // Cost center breakdown
+        var costCenterRows = assets
+            .Where(a => a.AssignedTo != null)
+            .GroupBy(a => a.AssignedTo!.Department)
+            .Select(g => new CostCenterRow
+            {
+                Department = g.Key,
+                AssetCount = g.Count(),
+                TotalCost  = g.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
+            })
+            .OrderByDescending(r => r.TotalCost)
+            .ToList();
+
+        // Hardware standardization (top make+model combos by type)
+        var hardwareRows = assets
+            .Where(a => !string.IsNullOrEmpty(a.Manufacturer) && !string.IsNullOrEmpty(a.Model))
+            .GroupBy(a => new { a.Manufacturer, a.Model, a.AssetType })
+            .Select(g => new HardwareStdRow
+            {
+                Make  = g.Key.Manufacturer!,
+                Model = g.Key.Model!,
+                Type  = g.Key.AssetType,
+                Count = g.Count(),
+            })
+            .OrderBy(r => r.Type).ThenByDescending(r => r.Count)
+            .ToList();
+
         var model = new AssetReportViewModel
         {
             TotalAssets = assets.Count,
-            TotalValue = assets.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
-            ByType = assets.GroupBy(a => a.AssetType)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ByStatus = assets.GroupBy(a => a.Status)
-                .ToDictionary(g => g.Key, g => g.Count()),
+            TotalValue  = assets.Where(a => a.PurchaseCost.HasValue).Sum(a => a.PurchaseCost!.Value),
+            ByType      = assets.GroupBy(a => a.AssetType).ToDictionary(g => g.Key, g => g.Count()),
+            ByStatus    = assets.GroupBy(a => a.Status).ToDictionary(g => g.Key, g => g.Count()),
             ExpiringWarranties = assets
-                .Where(a => a.WarrantyExpiry.HasValue && a.WarrantyExpiry.Value <= DateTime.UtcNow.AddMonths(3) && a.WarrantyExpiry.Value >= DateTime.UtcNow)
-                .OrderBy(a => a.WarrantyExpiry)
-                .ToList(),
-            ByDepartment = assets
-                .Where(a => a.AssignedTo != null)
-                .GroupBy(a => a.AssignedTo!.Department)
-                .ToDictionary(g => g.Key, g => g.Count())
+                .Where(a => a.WarrantyExpiry.HasValue
+                         && a.WarrantyExpiry.Value <= DateTime.UtcNow.AddMonths(3)
+                         && a.WarrantyExpiry.Value >= DateTime.UtcNow)
+                .OrderBy(a => a.WarrantyExpiry).ToList(),
+            ByDepartment          = assets.Where(a => a.AssignedTo != null)
+                                          .GroupBy(a => a.AssignedTo!.Department)
+                                          .ToDictionary(g => g.Key, g => g.Count()),
+            AgeDistribution       = ageDistribution,
+            RefreshCyclePlanner   = refreshRows,
+            CostCenterBreakdown   = costCenterRows,
+            HardwareStandardization = hardwareRows,
         };
 
         return View(model);
@@ -99,29 +420,58 @@ public class ReportsController : Controller
 
     public async Task<IActionResult> Users()
     {
+        // Project employee base data — no SubmittedTickets Include
         var employees = await _context.Employees
-            .Include(e => e.SubmittedTickets)
-            .Include(e => e.AssignedAssets)
+            .AsNoTracking()
             .Where(e => e.IsActive)
+            .Select(e => new {
+                e.Id,
+                FullName       = e.FirstName + " " + e.LastName,
+                Department     = e.Department ?? "—",
+                BranchName     = e.Branch != null ? e.Branch.Name : "—",
+                AssetsAssigned = e.AssignedAssets.Count()
+            })
             .ToListAsync();
+
+        var empIds = employees.Select(e => e.Id).ToList();
+
+        // Single DB query aggregates all ticket stats grouped by submitter
+        var ticketStats = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => empIds.Contains(t.SubmittedById))
+            .GroupBy(t => t.SubmittedById)
+            .Select(g => new {
+                EmployeeId = g.Key,
+                Total    = g.Count(),
+                Open     = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress),
+                Resolved = g.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+            })
+            .ToDictionaryAsync(x => x.EmployeeId);
+
+        var userStats = employees.Select(e => {
+            ticketStats.TryGetValue(e.Id, out var s);
+            return new UserTicketStats {
+                EmployeeName     = e.FullName,
+                Department       = e.Department,
+                Branch           = e.BranchName,
+                TicketsSubmitted = s?.Total    ?? 0,
+                TicketsOpen      = s?.Open     ?? 0,
+                TicketsResolved  = s?.Resolved ?? 0,
+                AssetsAssigned   = e.AssetsAssigned
+            };
+        })
+        .OrderByDescending(u => u.TicketsSubmitted)
+        .ToList();
 
         var model = new UserReportViewModel
         {
-            UserStats = employees.Select(e => new UserTicketStats
-            {
-                EmployeeName = e.FullName,
-                Department = e.Department,
-                TicketsSubmitted = e.SubmittedTickets.Count,
-                TicketsOpen = e.SubmittedTickets.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress),
-                TicketsResolved = e.SubmittedTickets.Count(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed),
-                AssetsAssigned = e.AssignedAssets.Count
-            })
-            .OrderByDescending(u => u.TicketsSubmitted)
-            .ToList(),
-
-            TicketsByDepartment = employees
-                .GroupBy(e => e.Department)
-                .ToDictionary(g => g.Key, g => g.Sum(e => e.SubmittedTickets.Count))
+            UserStats = userStats,
+            TicketsByDepartment = userStats
+                .GroupBy(u => u.Department)
+                .ToDictionary(g => g.Key, g => g.Sum(u => u.TicketsSubmitted)),
+            TicketsByBranch = userStats
+                .GroupBy(u => u.Branch)
+                .ToDictionary(g => g.Key, g => g.Sum(u => u.TicketsSubmitted))
         };
 
         return View(model);
@@ -144,35 +494,64 @@ public class ReportsController : Controller
             _ => query
         };
 
-        var data = await query
+        var catLookup = await LoadCategoryLookupAsync();
+
+        // Materialize with raw values first, then apply display names in memory
+        var raw = await query
             .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName, AssignedTo = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
             .ToListAsync();
 
-        return Json(data);
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
     }
 
     // API: Get tickets by category for report table modals
+    // The `category` param is a numeric category ID (as string) e.g. "1"
     [HttpGet]
     public async Task<IActionResult> TicketsByCategory(string category)
     {
+        var catLookup = await LoadCategoryLookupAsync();
+
         var tickets = await _context.Tickets
             .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
             .ToListAsync();
 
-        var filtered = tickets
-            .Where(t => t.Category.ToString() == category)
-            .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
-            .ToList();
+        // Support both numeric IDs ("1") and legacy enum names ("HardwareIssue")
+        var filtered = int.TryParse(category, out int catId)
+            ? tickets.Where(t => t.Category == catId)
+            : tickets.Where(t => Enum.TryParse<TicketCategory>(category, out var e) && t.Category == (int)e);
 
-        return Json(filtered);
+        return Json(filtered
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = CategoryName(t.Category, catLookup),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToList());
     }
 
     // API: Get tickets by priority for report table modals
     [HttpGet]
     public async Task<IActionResult> TicketsByPriority(string priority)
     {
+        var catLookup = await LoadCategoryLookupAsync();
+
         var tickets = await _context.Tickets
             .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
             .ToListAsync();
@@ -180,7 +559,43 @@ public class ReportsController : Controller
         var filtered = tickets
             .Where(t => t.Priority.ToString() == priority)
             .OrderByDescending(t => t.CreatedDate)
-            .Select(t => new { t.Id, t.Title, Category = t.Category.ToString(), Priority = t.Priority.ToString(), Status = t.Status.ToString(), SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown", AssignedTo = t.AssignedTo?.FullName ?? "Unassigned", Created = t.CreatedDate.ToString("MMM dd, yyyy") })
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = CategoryName(t.Category, catLookup),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToList();
+
+        return Json(filtered);
+    }
+
+    // API: Get tickets assigned to a specific agent for report table modals
+    [HttpGet]
+    public async Task<IActionResult> TicketsByAssignee(string assignee)
+    {
+        var catLookup = await LoadCategoryLookupAsync();
+
+        var tickets = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.AssignedTo != null)
+            .ToListAsync();
+
+        var filtered = tickets
+            .Where(t => (t.AssignedTo!.FirstName + " " + t.AssignedTo.LastName).Trim() == assignee)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title,
+                Category = CategoryName(t.Category, catLookup),
+                Priority = t.Priority.GetDisplayName(),
+                Status   = t.Status.GetDisplayName(),
+                SubmittedBy = t.SubmittedBy?.FullName ?? "Unknown",
+                AssignedTo  = t.AssignedTo?.FullName  ?? "Unassigned",
+                Created = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
             .ToList();
 
         return Json(filtered);

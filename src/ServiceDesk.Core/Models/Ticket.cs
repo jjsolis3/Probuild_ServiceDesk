@@ -23,7 +23,7 @@ public class Ticket
 
     [Required]
     [Display(Name = "Category")]
-    public TicketCategory Category { get; set; }
+    public int Category { get; set; }
 
     [Display(Name = "Sub-Category")]
     public int? SubCategoryId { get; set; }
@@ -53,6 +53,12 @@ public class Ticket
     [Display(Name = "Resolution Notes")]
     public string? ResolutionNotes { get; set; }
 
+    /// <summary>
+    /// Categorises how the ticket was resolved. Set when status changes to Resolved or Closed.
+    /// </summary>
+    [StringLength(100)]
+    public string? ResolutionType { get; set; }
+
     // Foreign keys
     [Required]
     [Display(Name = "Submitted By")]
@@ -73,7 +79,11 @@ public class Ticket
     [Display(Name = "Group Assignment")]
     public int? UserGroupId { get; set; }
 
+    [Display(Name = "Related Asset")]
+    public int? AssetId { get; set; }
+
     // Navigation properties
+    public Asset? Asset { get; set; }
     public Branch? Branch { get; set; }
 
     [Display(Name = "Group Assignment")]
@@ -96,6 +106,19 @@ public class Ticket
     public ICollection<TicketEmail> Emails { get; set; } = new List<TicketEmail>();
     public ICollection<TicketAttachment> Attachments { get; set; } = new List<TicketAttachment>();
     public ICollection<TicketHistory> History { get; set; } = new List<TicketHistory>();
+    public ICollection<TicketTimeEntry> TimeEntries { get; set; } = new List<TicketTimeEntry>();
+
+    // ── Escalation ────────────────────────────────────────────────────────────
+    /// <summary>True once an agent has manually escalated this ticket.</summary>
+    public bool IsEscalated { get; set; }
+
+    [StringLength(500)]
+    public string? EscalationReason { get; set; }
+
+    public DateTime? EscalatedAt { get; set; }
+
+    public int? EscalatedById { get; set; }
+    public Employee? EscalatedBy { get; set; }
 
     public bool IsOverdue => DueDate.HasValue && DueDate.Value < DateTime.UtcNow
                              && Status != TicketStatus.Resolved

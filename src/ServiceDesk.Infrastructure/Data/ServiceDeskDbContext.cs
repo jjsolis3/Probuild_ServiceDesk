@@ -14,6 +14,23 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Asset> Assets => Set<Asset>();
+
+    // Asset ITAM extensions
+    public DbSet<AssetAssignmentHistory> AssetAssignmentHistory => Set<AssetAssignmentHistory>();
+    public DbSet<AssetAuditLog> AssetAuditLogs => Set<AssetAuditLog>();
+    public DbSet<AssetCredential> AssetCredentials => Set<AssetCredential>();
+    public DbSet<AssetAttachment> AssetAttachments => Set<AssetAttachment>();
+    public DbSet<AssetRelationship> AssetRelationships => Set<AssetRelationship>();
+    public DbSet<AssetMaintenanceLog> AssetMaintenanceLogs => Set<AssetMaintenanceLog>();
+    public DbSet<AssetCheckout> AssetCheckouts => Set<AssetCheckout>();
+
+    // Software licenses & consumables
+    public DbSet<SoftwareLicense> SoftwareLicenses => Set<SoftwareLicense>();
+    public DbSet<ConsumableItem> ConsumableItems => Set<ConsumableItem>();
+    public DbSet<ConsumableTransaction> ConsumableTransactions => Set<ConsumableTransaction>();
+
+    // Employee credential vault
+    public DbSet<EmployeeCredential> EmployeeCredentials => Set<EmployeeCredential>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<CompanyService> CompanyServices => Set<CompanyService>();
 
@@ -47,7 +64,32 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
 
     // Ticket categorisation
+    public DbSet<TicketCategoryEntry> TicketCategories => Set<TicketCategoryEntry>();
     public DbSet<TicketSubCategory> TicketSubCategories => Set<TicketSubCategory>();
+    public DbSet<CategoryKeyword> CategoryKeywords => Set<CategoryKeyword>();
+
+    // Email templates
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
+
+    // AI triage
+    public DbSet<AiRecommendation> AiRecommendations => Set<AiRecommendation>();
+    public DbSet<AiRunLog> AiRunLogs => Set<AiRunLog>();
+
+    // Google Workspace
+    public DbSet<GoogleWorkspaceSettings> GoogleWorkspaceSettings => Set<GoogleWorkspaceSettings>();
+
+    // CSAT surveys
+    public DbSet<CsatSurvey> CsatSurveys => Set<CsatSurvey>();
+
+    // Ticket time tracking
+    public DbSet<TicketTimeEntry> TicketTimeEntries => Set<TicketTimeEntry>();
+
+    // Software license seat assignments
+    public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
+
+    // Employee onboarding / offboarding checklists
+    public DbSet<EmployeeTaskTemplate> EmployeeTaskTemplates => Set<EmployeeTaskTemplate>();
+    public DbSet<EmployeeTask> EmployeeTasks => Set<EmployeeTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -126,6 +168,102 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<Asset>()
             .HasIndex(a => a.AssetTag)
             .IsUnique();
+
+        // AssetAssignmentHistory -> Asset
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.Asset)
+            .WithMany(a => a.AssignmentHistory)
+            .HasForeignKey(h => h.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.AssignedTo)
+            .WithMany()
+            .HasForeignKey(h => h.AssignedToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<AssetAssignmentHistory>()
+            .HasOne(h => h.AssignedBy)
+            .WithMany()
+            .HasForeignKey(h => h.AssignedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssetAuditLog -> Asset
+        modelBuilder.Entity<AssetAuditLog>()
+            .HasOne(l => l.Asset)
+            .WithMany(a => a.AuditLogs)
+            .HasForeignKey(l => l.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetAuditLog>()
+            .HasIndex(l => new { l.AssetId, l.ChangedDate });
+
+        // AssetCredential -> Asset
+        modelBuilder.Entity<AssetCredential>()
+            .HasOne(c => c.Asset)
+            .WithMany(a => a.Credentials)
+            .HasForeignKey(c => c.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetCredential>()
+            .Property(c => c.EncryptedPassword)
+            .HasColumnType("nvarchar(max)");
+
+        // AssetAttachment -> Asset
+        modelBuilder.Entity<AssetAttachment>()
+            .HasOne(at => at.Asset)
+            .WithMany(a => a.Attachments)
+            .HasForeignKey(at => at.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetRelationship -> SourceAsset
+        modelBuilder.Entity<AssetRelationship>()
+            .HasOne(r => r.SourceAsset)
+            .WithMany(a => a.RelationshipsFrom)
+            .HasForeignKey(r => r.SourceAssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetRelationship -> TargetAsset (restrict to avoid multiple cascade paths)
+        modelBuilder.Entity<AssetRelationship>()
+            .HasOne(r => r.TargetAsset)
+            .WithMany(a => a.RelationshipsTo)
+            .HasForeignKey(r => r.TargetAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Ticket -> Asset (optional FK)
+        modelBuilder.Entity<Ticket>()
+            .HasOne(t => t.Asset)
+            .WithMany(a => a.RelatedTickets)
+            .HasForeignKey(t => t.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // AssetMaintenanceLog -> Asset
+        modelBuilder.Entity<AssetMaintenanceLog>()
+            .HasOne(m => m.Asset)
+            .WithMany(a => a.MaintenanceLogs)
+            .HasForeignKey(m => m.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetCheckout -> Asset
+        modelBuilder.Entity<AssetCheckout>()
+            .HasOne(c => c.Asset)
+            .WithMany(a => a.Checkouts)
+            .HasForeignKey(c => c.AssetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AssetCheckout -> CheckedOutTo (Employee, restrict)
+        modelBuilder.Entity<AssetCheckout>()
+            .HasOne(c => c.CheckedOutTo)
+            .WithMany()
+            .HasForeignKey(c => c.CheckedOutToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // ConsumableTransaction -> ConsumableItem
+        modelBuilder.Entity<ConsumableTransaction>()
+            .HasOne(t => t.ConsumableItem)
+            .WithMany(i => i.Transactions)
+            .HasForeignKey(t => t.ConsumableItemId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Unique constraint on Employee Email
         modelBuilder.Entity<Employee>()
@@ -264,6 +402,24 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<SavedTicketView>()
             .HasIndex(v => new { v.OwnerPortalUserId, v.IsShared });
 
+        // EmployeeCredential -> Employee
+        modelBuilder.Entity<EmployeeCredential>()
+            .HasOne(c => c.Employee)
+            .WithMany(e => e.Credentials)
+            .HasForeignKey(c => c.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EmployeeCredential>()
+            .Property(c => c.EncryptedPassword)
+            .HasColumnType("nvarchar(max)");
+
+        // Subscription -> Asset (optional)
+        modelBuilder.Entity<Subscription>()
+            .HasOne(s => s.Asset)
+            .WithMany()
+            .HasForeignKey(s => s.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Decimal precision — prevents silent truncation on SQL Server
         modelBuilder.Entity<Asset>()
             .Property(a => a.PurchaseCost)
@@ -282,6 +438,19 @@ public class ServiceDeskDbContext : DbContext
             .Property(t => t.DescriptionHtml)
             .HasColumnType("nvarchar(max)");
 
+        // Decimal precision — prevents silent truncation and suppresses EF warnings
+        modelBuilder.Entity<AssetMaintenanceLog>()
+            .Property(m => m.Cost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ConsumableItem>()
+            .Property(i => i.UnitCost)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<SoftwareLicense>()
+            .Property(l => l.CostPerSeat)
+            .HasPrecision(18, 2);
+
         // Ticket -> SubCategory (optional)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.SubCategory)
@@ -296,8 +465,130 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(t => t.UserGroupId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // TicketCategoryEntry — no IDENTITY; IDs 0-7 are seeded as system categories
+        modelBuilder.Entity<TicketCategoryEntry>()
+            .Property(c => c.Id)
+            .ValueGeneratedNever();
+
+        // Indexes on Tickets for the most-common filter/sort columns (list page, dashboard, reports)
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.Status);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.Priority);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.CreatedDate);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.AssignedToId);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => t.SubmittedById);
+        modelBuilder.Entity<Ticket>()
+            .HasIndex(t => new { t.Status, t.Priority });
+
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()
             .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });
+
+        // Index on CategoryKeyword for fast lookup by category
+        modelBuilder.Entity<CategoryKeyword>()
+            .HasIndex(k => new { k.Category, k.IsActive });
+
+        // Unique index on EmailTemplate Key
+        modelBuilder.Entity<EmailTemplate>()
+            .HasIndex(t => t.Key)
+            .IsUnique();
+
+        // Store email body without length limit
+        modelBuilder.Entity<EmailTemplate>()
+            .Property(t => t.BodyTemplate)
+            .HasColumnType("nvarchar(max)");
+
+        // AiRecommendation -> Ticket (cascade)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.Ticket)
+            .WithMany()
+            .HasForeignKey(r => r.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // AiRecommendation -> SuggestedAssignee (set null)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.SuggestedAssignee)
+            .WithMany()
+            .HasForeignKey(r => r.SuggestedAssigneeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // CsatSurvey -> Ticket (cascade)
+        modelBuilder.Entity<CsatSurvey>()
+            .HasOne(s => s.Ticket)
+            .WithMany()
+            .HasForeignKey(s => s.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CsatSurvey>()
+            .HasIndex(s => s.Token)
+            .IsUnique();
+
+        // Store draft reply without length limit
+        modelBuilder.Entity<AiRecommendation>()
+            .Property(r => r.AiDraftReply)
+            .HasColumnType("nvarchar(max)");
+
+        // Index on ticket + status for fast pending lookup
+        modelBuilder.Entity<AiRecommendation>()
+            .HasIndex(r => new { r.TicketId, r.Status });
+
+        // TicketTimeEntry -> Ticket (cascade)
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.Ticket)
+            .WithMany(t => t.TimeEntries)
+            .HasForeignKey(e => e.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.LoggedByEmployee)
+            .WithMany()
+            .HasForeignKey(e => e.LoggedByEmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .Property(e => e.Hours)
+            .HasPrecision(6, 2);
+
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasIndex(e => new { e.TicketId, e.WorkDate });
+
+        // LicenseSeat -> SoftwareLicense (cascade)
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.SoftwareLicense)
+            .WithMany(l => l.Seats)
+            .HasForeignKey(s => s.SoftwareLicenseId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.Employee)
+            .WithMany(e => e.LicenseSeats)
+            .HasForeignKey(s => s.EmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasOne(s => s.Asset)
+            .WithMany()
+            .HasForeignKey(s => s.AssetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LicenseSeat>()
+            .HasIndex(s => new { s.SoftwareLicenseId, s.RevokedDate });
+
+        // EmployeeTask -> Employee (cascade)
+        modelBuilder.Entity<EmployeeTask>()
+            .HasOne(t => t.Employee)
+            .WithMany(e => e.Tasks)
+            .HasForeignKey(t => t.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EmployeeTask>()
+            .HasIndex(t => new { t.EmployeeId, t.TaskType, t.Status });
+
+        modelBuilder.Entity<EmployeeTaskTemplate>()
+            .HasIndex(t => new { t.TaskType, t.IsActive, t.SortOrder });
     }
 }

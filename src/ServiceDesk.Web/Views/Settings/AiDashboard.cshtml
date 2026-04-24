@@ -1,0 +1,857 @@
+@model ServiceDesk.Web.Models.AiDashboardViewModel
+@{
+    ViewData["Title"] = "AI Triage Dashboard";
+
+    // Priority badge colours
+    string PriBadge(string pri) => pri switch {
+        "Critical" => "danger",
+        "High"     => "warning text-dark",
+        "Medium"   => "info text-dark",
+        "Low"      => "secondary",
+        _          => "light text-dark"
+    };
+
+    // Status badge colours
+    string StatusBadge(string s) => s switch {
+        "Approved"  => "success",
+        "Dismissed" => "secondary",
+        "Pending"   => "primary",
+        _           => "light text-dark"
+    };
+
+    // Confidence colour: red < 65, yellow 65-80, green 80+
+    string ConfColour(int pct) => pct >= 80 ? "#198754" : pct >= 65 ? "#ffc107" : "#dc3545";
+
+    // Chart.js JSON helpers — build arrays inline
+    var trendLabels = "[" + string.Join(",", Model.DailyTrend.Select(d => $"\"{d.DateLabel}\"")) + "]";
+    var trendData   = "[" + string.Join(",", Model.DailyTrend.Select(d => d.Count))             + "]";
+
+    var catLabels = "[" + string.Join(",", Model.CategoryStats.Select(c => $"\"{c.CategoryName}\"")) + "]";
+    var catSuggested = "[" + string.Join(",", Model.CategoryStats.Select(c => c.Suggested)) + "]";
+    var catApproved  = "[" + string.Join(",", Model.CategoryStats.Select(c => c.Approved))  + "]";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="Ai">AI Triage</a></li>
+        <li class="breadcrumb-item active">Statistics</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-bar-chart-line text-primary me-2"></i>AI Triage Dashboard</h1>
+        <p class="text-muted mb-0">Model performance, recommendation outcomes, and training history.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Ai" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-gear me-1"></i>AI Settings
+        </a>
+        <form method="post" asp-action="AiRetrain" asp-antiforgery="true" class="d-inline">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-cpu me-1"></i>Retrain Model
+            </button>
+        </form>
+        <form method="post" asp-action="AiBatchRetriage" asp-antiforgery="true" class="d-inline">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-success btn-sm"
+                    title="Queue AI triage for all open tickets that have no pending recommendation">
+                <i class="bi bi-collection me-1"></i>
+                Batch Retriage
+                @if (Model.TicketsAwaitingTriage > 0)
+                {
+                    <span class="badge bg-success ms-1">@Model.TicketsAwaitingTriage</span>
+                }
+            </button>
+        </form>
+        <form method="post" asp-action="BulkKbExtraction" asp-antiforgery="true" class="d-inline"
+              onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span>Generating…';">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-info btn-sm"
+                    title="Generate KB draft articles from resolved tickets with resolution notes (up to 20, drafts require review before publishing)">
+                <i class="bi bi-journal-plus me-1"></i>Bulk KB Extraction
+            </button>
+        </form>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Info"] != null)
+{
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <i class="bi bi-info-circle me-2"></i>@TempData["Info"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["KbExtractionSkipped"] is string skippedJson && !string.IsNullOrEmpty(skippedJson))
+{
+    var skippedItems = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, System.Text.Json.JsonElement>>>(skippedJson)
+                       ?? new List<Dictionary<string, System.Text.Json.JsonElement>>();
+    if (skippedItems.Count > 0)
+    {
+        <div class="card border-warning shadow-sm mb-4">
+            <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#kbSkippedList"
+                 style="cursor:pointer;" aria-expanded="true">
+                <div>
+                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                    <strong>@skippedItems.Count ticket@(skippedItems.Count == 1 ? "" : "s") skipped during KB extraction</strong>
+                </div>
+                <i class="bi bi-chevron-down"></i>
+            </div>
+            <div id="kbSkippedList" class="collapse show">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 90px;">Ticket</th>
+                                <th>Title</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in skippedItems)
+                            {
+                                var tid = item.TryGetValue("id", out var idEl) ? idEl.GetInt32() : 0;
+                                var ttitle = item.TryGetValue("title", out var tEl) ? tEl.GetString() ?? "" : "";
+                                var treason = item.TryGetValue("reason", out var rEl) ? rEl.GetString() ?? "" : "";
+                                <tr>
+                                    <td>
+                                        <a asp-controller="Tickets" asp-action="Details" asp-route-id="@tid" target="_blank">
+                                            #@tid
+                                        </a>
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 400px;" title="@ttitle">@ttitle</td>
+                                    <td class="text-muted small">@treason</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<!-- ── Model status banner ────────────────────────────────────────────────── -->
+@if (!Model.ModelIsTrained)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+        <div>
+            <strong>Model not yet trained.</strong>
+            The AI model needs at least <strong>@Model.MinTrainingTickets</strong> resolved/closed tickets to train.
+            You currently have <strong>@Model.TotalTrainingTickets</strong> available.
+            <a asp-action="Ai" class="alert-link ms-1">Configure training settings</a> or click Retrain above.
+        </div>
+    </div>
+}
+
+<!-- ── Summary stat cards ─────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold text-primary">@Model.TotalRecommendations</div>
+                <div class="small text-muted">Total Recommendations</div>
+                <div class="text-muted" style="font-size:0.7rem;">@Model.RecsLast30Days last 30 days</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold text-success">@Model.ApprovedCount</div>
+                <div class="small text-muted">Approved</div>
+                <div class="text-success" style="font-size:0.7rem;">@Model.ApprovalRate% approval rate</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold text-secondary">@Model.DismissedCount</div>
+                <div class="small text-muted">Dismissed</div>
+                <div class="text-muted" style="font-size:0.7rem;">
+                    @(Model.TotalRecommendations > 0
+                        ? Math.Round((double)Model.DismissedCount / Model.TotalRecommendations * 100, 1)
+                        : 0)% of total
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold text-primary">@Model.PendingCount</div>
+                <div class="small text-muted">Pending Review</div>
+                <div class="text-muted" style="font-size:0.7rem;">awaiting agent action</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold" style="color: @ConfColour((int)Model.AvgCategoryConfidence)">
+                    @Model.AvgCategoryConfidence<span class="fs-6">%</span>
+                </div>
+                <div class="small text-muted">Avg Category Confidence</div>
+                <div class="text-muted" style="font-size:0.7rem;">across all recommendations</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-4 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <div class="fs-2 fw-bold" style="color: @ConfColour((int)Model.AvgPriorityConfidence)">
+                    @Model.AvgPriorityConfidence<span class="fs-6">%</span>
+                </div>
+                <div class="small text-muted">Avg Priority Confidence</div>
+                <div class="text-muted" style="font-size:0.7rem;">across all recommendations</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Row 2: Outcome donut + Confidence bands ───────────────────────────── -->
+<div class="row g-4 align-items-start mb-4">
+
+    <!-- Outcome donut -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent">
+                <h6 class="mb-0"><i class="bi bi-pie-chart me-2 text-primary"></i>Recommendation Outcomes</h6>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center">
+                @if (Model.TotalRecommendations == 0)
+                {
+                    <div class="text-muted text-center py-4">
+                        <i class="bi bi-robot display-6 d-block mb-2 opacity-25"></i>
+                        No recommendations yet
+                    </div>
+                }
+                else
+                {
+                    <div style="max-width:240px; width:100%;">
+                        <canvas id="outcomeChart"></canvas>
+                    </div>
+                    <div class="d-flex gap-3 mt-3 small">
+                        <span><span class="badge bg-success me-1">&nbsp;</span>Approved</span>
+                        <span><span class="badge bg-secondary me-1">&nbsp;</span>Dismissed</span>
+                        <span><span class="badge bg-primary me-1">&nbsp;</span>Pending</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Confidence band bar chart -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent">
+                <h6 class="mb-0"><i class="bi bi-bar-chart me-2 text-primary"></i>Confidence Band Distribution</h6>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center">
+                @if (Model.TotalRecommendations == 0)
+                {
+                    <div class="text-muted text-center py-4">
+                        <i class="bi bi-bar-chart display-6 d-block mb-2 opacity-25"></i>
+                        No data yet
+                    </div>
+                }
+                else
+                {
+                    <div style="width:100%; max-width:320px;">
+                        <canvas id="confBandChart"></canvas>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Training data status -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent">
+                <h6 class="mb-0"><i class="bi bi-database me-2 text-primary"></i>Training Data Status</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Resolved / Closed Tickets</span>
+                        <strong>@Model.TotalTrainingTickets <span class="text-muted fw-normal">/ @Model.MinTrainingTickets min</span></strong>
+                    </div>
+                    @{
+                        var trainTarget = Math.Max(Model.MinTrainingTickets * 5, 100);
+                        var trainPct = Model.TotalTrainingTickets >= trainTarget ? 100
+                                     : (int)((double)Model.TotalTrainingTickets / trainTarget * 100);
+                        var trainColor = Model.TotalTrainingTickets < Model.MinTrainingTickets
+                                       ? "bg-danger"
+                                       : Model.TotalTrainingTickets < Model.MinTrainingTickets * 2
+                                         ? "bg-warning"
+                                         : "bg-success";
+                    }
+                    <div class="progress" style="height:8px;">
+                        <div class="progress-bar @trainColor" style="width:@trainPct%"></div>
+                    </div>
+                    <div class="text-muted" style="font-size:0.7rem;">
+                        @if (Model.TotalTrainingTickets < Model.MinTrainingTickets)
+                        {
+                            <span class="text-danger">Need at least @Model.MinTrainingTickets resolved tickets to train</span>
+                        }
+                        else if (Model.TotalTrainingTickets < Model.MinTrainingTickets * 2)
+                        {
+                            <span class="text-warning">Good start — more resolved tickets improve accuracy</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">Sufficient training data available</span>
+                        }
+                    </div>
+                </div>
+
+                <hr class="my-3">
+
+                <div class="small">
+                    <div class="d-flex justify-content-between py-1 border-bottom">
+                        <span class="text-muted">Model status</span>
+                        @if (Model.ModelIsTrained)
+                        {
+                            <span class="badge bg-success">Trained</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark">Not trained</span>
+                        }
+                    </div>
+                    <div class="d-flex justify-content-between py-1 border-bottom">
+                        <span class="text-muted">Training runs logged</span>
+                        <strong>@Model.RecentTrainingRuns.Count</strong>
+                    </div>
+                    @if (Model.RecentTrainingRuns.Any())
+                    {
+                        var last = Model.RecentTrainingRuns.First();
+                        <div class="d-flex justify-content-between py-1 border-bottom">
+                            <span class="text-muted">Last trained</span>
+                            <span>@last.RunDate.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+                        </div>
+                        <div class="d-flex justify-content-between py-1">
+                            <span class="text-muted">Last run result</span>
+                            @if (last.Success)
+                            {
+                                <span class="text-success"><i class="bi bi-check-circle me-1"></i>@last.TrainingTicketCount tickets, @last.DurationMs.ToString("F0")ms</span>
+                            }
+                            else
+                            {
+                                <span class="text-danger"><i class="bi bi-x-circle me-1"></i>Failed</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Row 3: 30-day trend + Category breakdown ───────────────────────────── -->
+<div class="row g-4 align-items-start mb-4">
+
+    <!-- 30-day trend -->
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>Recommendations — Last 30 Days</h6>
+                <span class="badge bg-primary">@Model.RecsLast30Days total</span>
+            </div>
+            <div class="card-body">
+                @if (Model.RecsLast30Days == 0)
+                {
+                    <div class="text-muted text-center py-5">
+                        <i class="bi bi-graph-up display-6 d-block mb-2 opacity-25"></i>
+                        No recommendations in the last 30 days
+                    </div>
+                }
+                else
+                {
+                    <canvas id="trendChart" height="100"></canvas>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Category breakdown -->
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-transparent">
+                <h6 class="mb-0"><i class="bi bi-tags me-2 text-primary"></i>Category Predictions</h6>
+            </div>
+            <div class="card-body">
+                @if (!Model.CategoryStats.Any())
+                {
+                    <div class="text-muted text-center py-5">
+                        <i class="bi bi-tags display-6 d-block mb-2 opacity-25"></i>
+                        No category predictions yet
+                    </div>
+                }
+                else
+                {
+                    <canvas id="catChart"></canvas>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Row 4: Accuracy + Category Gap Detection ───────────────────────────── -->
+<div class="row g-4 align-items-start mb-4">
+
+    <!-- AI Accuracy -->
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent">
+                <h6 class="mb-0">
+                    <i class="bi bi-bullseye me-2 text-success"></i>AI Prediction Accuracy
+                    <span class="text-muted fw-normal small ms-1">(approved recs on closed tickets)</span>
+                </h6>
+            </div>
+            <div class="card-body">
+                @if (Model.AccuracyCategoryTotal == 0 && Model.AccuracyPriorityTotal == 0)
+                {
+                    <div class="text-muted text-center py-4">
+                        <i class="bi bi-bullseye display-6 d-block mb-2 opacity-25"></i>
+                        Accuracy data will appear once approved recommendations exist on closed tickets.
+                    </div>
+                }
+                else
+                {
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-end mb-1">
+                            <span class="small fw-semibold">Category Accuracy</span>
+                            <span class="fw-bold" style="color: @(Model.CategoryAccuracyRate >= 75 ? "#198754" : Model.CategoryAccuracyRate >= 50 ? "#ffc107" : "#dc3545")">
+                                @Model.CategoryAccuracyRate%
+                            </span>
+                        </div>
+                        <div class="progress mb-1" style="height:10px;">
+                            <div class="progress-bar @(Model.CategoryAccuracyRate >= 75 ? "bg-success" : Model.CategoryAccuracyRate >= 50 ? "bg-warning" : "bg-danger")"
+                                 style="width:@Model.CategoryAccuracyRate%"></div>
+                        </div>
+                        <div class="text-muted" style="font-size:0.7rem;">
+                            @Model.AccuracyCategoryCorrect of @Model.AccuracyCategoryTotal approved recommendations matched final category
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between align-items-end mb-1">
+                            <span class="small fw-semibold">Priority Accuracy</span>
+                            <span class="fw-bold" style="color: @(Model.PriorityAccuracyRate >= 75 ? "#198754" : Model.PriorityAccuracyRate >= 50 ? "#ffc107" : "#dc3545")">
+                                @Model.PriorityAccuracyRate%
+                            </span>
+                        </div>
+                        <div class="progress mb-1" style="height:10px;">
+                            <div class="progress-bar @(Model.PriorityAccuracyRate >= 75 ? "bg-success" : Model.PriorityAccuracyRate >= 50 ? "bg-warning" : "bg-danger")"
+                                 style="width:@Model.PriorityAccuracyRate%"></div>
+                        </div>
+                        <div class="text-muted" style="font-size:0.7rem;">
+                            @Model.AccuracyPriorityCorrect of @Model.AccuracyPriorityTotal approved recommendations matched final priority
+                        </div>
+                    </div>
+                    <div class="mt-3 p-2 bg-light rounded small text-muted">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Accuracy measures whether the ticket's final category/priority still matches what the AI suggested when it was approved.
+                        Scores below 70% suggest more training data is needed or existing categories need refinement.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Gap Detection -->
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-lightbulb me-2 text-warning"></i>Potential Category Gaps
+                    <span class="text-muted fw-normal small ms-1">(from low-confidence tickets)</span>
+                </h6>
+                <a asp-controller="Settings" asp-action="Categories" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-tags me-1"></i>Manage Categories
+                </a>
+            </div>
+            <div class="card-body">
+                @if (!Model.CategoryGaps.Any())
+                {
+                    <div class="text-muted text-center py-4">
+                        <i class="bi bi-lightbulb display-6 d-block mb-2 opacity-25"></i>
+                        @if (Model.ConfUnder50 < 3)
+                        {
+                            <span>Not enough low-confidence tickets yet to detect gaps. Keep using AI Triage — gaps appear once 3+ tickets have &lt;50% confidence.</span>
+                        }
+                        else
+                        {
+                            <span>No recurring keyword patterns found in low-confidence tickets.</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted small mb-3">
+                        These keywords appear frequently in tickets where the AI had low confidence (&lt;50%).
+                        They may represent categories or sub-categories that are missing from your configuration.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Keyword</th>
+                                    <th class="text-center">Low-Conf Tickets</th>
+                                    <th>Sample Tickets</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var gap in Model.CategoryGaps)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-warning text-dark fs-6 px-2">@gap.KeyTerm</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="fw-bold">@gap.TicketCount</span>
+                                        </td>
+                                        <td class="small text-muted">
+                                            @foreach (var (sId, sTitle) in gap.Samples)
+                                            {
+                                                <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@sId"
+                                                   class="d-block text-truncate text-decoration-none" style="max-width:240px;"
+                                                   title="@sTitle">#@sId @sTitle</a>
+                                            }
+                                        </td>
+                                        <td class="text-nowrap">
+                                            <a asp-controller="Settings" asp-action="Categories"
+                                               class="btn btn-sm btn-outline-primary py-0">
+                                                <i class="bi bi-plus me-1"></i>Add Category
+                                            </a>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2 small text-muted">
+                        <i class="bi bi-info-circle me-1"></i>
+                        After adding new categories, click <strong>Retrain Model</strong> so the AI learns to classify them.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Row 6: Training history ────────────────────────────────────────────── -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Training Run History</h6>
+        <span class="text-muted small">Last 10 runs</span>
+    </div>
+    <div class="card-body p-0">
+        @if (!Model.RecentTrainingRuns.Any())
+        {
+            <div class="text-muted text-center py-4">
+                <i class="bi bi-cpu display-6 d-block mb-2 opacity-25"></i>
+                No training runs recorded yet. Enable AI Triage and click Retrain to begin.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Tickets</th>
+                            <th>Model Version</th>
+                            <th>Duration</th>
+                            <th>Result</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in Model.RecentTrainingRuns)
+                        {
+                            <tr>
+                                <td class="small">@run.RunDate.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
+                                <td><span class="badge bg-light text-dark border">@run.RunType</span></td>
+                                <td class="small">@run.TrainingTicketCount</td>
+                                <td class="small text-muted">@(string.IsNullOrEmpty(run.ModelVersion) ? "—" : run.ModelVersion)</td>
+                                <td class="small">@run.DurationMs.ToString("F0") ms</td>
+                                <td>
+                                    @if (run.Success)
+                                    {
+                                        <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Success</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger"><i class="bi bi-x-lg me-1"></i>Failed</span>
+                                    }
+                                </td>
+                                <td class="small text-muted">@(run.ErrorMessage ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ── Row 7: Recent recommendations ─────────────────────────────────────── -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Recent AI Recommendations</h6>
+        <span class="text-muted small">Last 50</span>
+    </div>
+    <div class="card-body p-0">
+        @if (!Model.RecentRecs.Any())
+        {
+            <div class="text-muted text-center py-4">
+                <i class="bi bi-robot display-6 d-block mb-2 opacity-25"></i>
+                No recommendations recorded yet. Create tickets with AI Triage enabled to see results here.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="recsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Category</th>
+                            <th>Cat. Conf.</th>
+                            <th>Priority</th>
+                            <th>Pri. Conf.</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Reviewed By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rec in Model.RecentRecs)
+                        {
+                            <tr>
+                                <td>
+                                    <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@rec.TicketId"
+                                       class="text-decoration-none">
+                                        <span class="text-muted small">#@rec.TicketId</span>
+                                        <span class="ms-1 small">@rec.TicketTitle</span>
+                                    </a>
+                                </td>
+                                <td class="small">@rec.SuggestedCategory</td>
+                                <td>
+                                    <span class="small fw-semibold" style="color: @ConfColour(rec.CategoryConfidencePct)">
+                                        @rec.CategoryConfidencePct%
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (rec.SuggestedPriority != "—")
+                                    {
+                                        <span class="badge bg-@PriBadge(rec.SuggestedPriority)">@rec.SuggestedPriority</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="small fw-semibold" style="color: @ConfColour(rec.PriorityConfidencePct)">
+                                        @rec.PriorityConfidencePct%
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-@StatusBadge(rec.Status)">@rec.Status</span>
+                                </td>
+                                <td class="small text-muted">@rec.CreatedDate.ToLocalTime().ToString("MMM d, h:mm tt")</td>
+                                <td class="small text-muted">@(rec.ReviewedBy ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#6c757d';
+
+    // ── Outcome donut ─────────────────────────────────────────────────────────
+    var outcomeEl = document.getElementById('outcomeChart');
+    if (outcomeEl) {
+        new Chart(outcomeEl, {
+            type: 'doughnut',
+            data: {
+                labels: ['Approved', 'Dismissed', 'Pending'],
+                datasets: [{
+                    data: [@Model.ApprovedCount, @Model.DismissedCount, @Model.PendingCount],
+                    backgroundColor: ['#198754', '#6c757d', '#0d6efd'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                cutout: '65%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var total = ctx.dataset.data.reduce(function(a,b){return a+b;}, 0);
+                                var pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+                                return ' ' + ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Confidence band bar ───────────────────────────────────────────────────
+    var confEl = document.getElementById('confBandChart');
+    if (confEl) {
+        new Chart(confEl, {
+            type: 'bar',
+            data: {
+                labels: ['< 50%', '50–65%', '65–80%', '> 80%'],
+                datasets: [{
+                    label: 'Recommendations',
+                    data: [@Model.ConfUnder50, @Model.Conf50To65, @Model.Conf65To80, @Model.ConfOver80],
+                    backgroundColor: ['#dc3545cc','#ffc107cc','#0d6efdcc','#198754cc'],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f0f0' } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── 30-day trend line ─────────────────────────────────────────────────────
+    var trendEl = document.getElementById('trendChart');
+    if (trendEl) {
+        new Chart(trendEl, {
+            type: 'bar',
+            data: {
+                labels: @Html.Raw(trendLabels),
+                datasets: [{
+                    label: 'Recommendations',
+                    data: @Html.Raw(trendData),
+                    backgroundColor: 'rgba(13,110,253,0.15)',
+                    borderColor: 'rgba(13,110,253,0.8)',
+                    borderWidth: 2,
+                    borderRadius: 3,
+                    fill: true
+                }]
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 10,
+                            maxRotation: 0
+                        },
+                        grid: { display: false }
+                    },
+                    y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f0f0' } }
+                }
+            }
+        });
+    }
+
+    // ── Category horizontal bar ───────────────────────────────────────────────
+    var catEl = document.getElementById('catChart');
+    if (catEl) {
+        new Chart(catEl, {
+            type: 'bar',
+            data: {
+                labels: @Html.Raw(catLabels),
+                datasets: [
+                    {
+                        label: 'Suggested',
+                        data: @Html.Raw(catSuggested),
+                        backgroundColor: 'rgba(13,110,253,0.3)',
+                        borderColor: 'rgba(13,110,253,0.8)',
+                        borderWidth: 1,
+                        borderRadius: 3
+                    },
+                    {
+                        label: 'Approved',
+                        data: @Html.Raw(catApproved),
+                        backgroundColor: 'rgba(25,135,84,0.5)',
+                        borderColor: 'rgba(25,135,84,0.8)',
+                        borderWidth: 1,
+                        borderRadius: 3
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: {
+                    legend: { position: 'bottom' }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f0f0' } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── Init DataTable on recs table ──────────────────────────────────────────
+    var recsTable = document.getElementById('recsTable');
+    if (recsTable && typeof $.fn.DataTable !== 'undefined') {
+        $(recsTable).DataTable({
+            order: [[6, 'desc']],
+            pageLength: 25,
+            columnDefs: [{ orderable: false, targets: [] }],
+            dom: '<"d-flex justify-content-between align-items-center mb-2"lf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+            language: { search: '', searchPlaceholder: 'Search recommendations...' }
+        });
+    }
+})();
+</script>
+}

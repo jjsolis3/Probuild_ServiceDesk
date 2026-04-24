@@ -22,7 +22,12 @@ public class Employee
     public string Email { get; set; } = string.Empty;
 
     [StringLength(20)]
+    [Display(Name = "Direct Phone")]
     public string? Phone { get; set; }
+
+    [StringLength(10)]
+    [Display(Name = "Extension")]
+    public string? Extension { get; set; }
 
     [Required]
     [StringLength(100)]
@@ -45,9 +50,32 @@ public class Employee
     [Display(Name = "Branch / Location")]
     public int? BranchId { get; set; }
 
+    [Display(Name = "Last Signature Sync")]
+    public DateTime? LastGoogleSignatureSync { get; set; }
+
+    [Display(Name = "Scheduled Offboarding Date")]
+    [DataType(DataType.Date)]
+    public DateTime? ScheduledOffboardingDate { get; set; }
+
+    [StringLength(200)]
+    [Display(Name = "Manager Email")]
+    [EmailAddress]
+    public string? ManagerEmail { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Employee Type")]
+    public string? EmployeeType { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Team / Floor Section")]
+    public string? FloorSection { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();
     public ICollection<Ticket> AssignedTickets { get; set; } = new List<Ticket>();
     public ICollection<Asset> AssignedAssets { get; set; } = new List<Asset>();
+    public ICollection<EmployeeCredential> Credentials { get; set; } = new List<EmployeeCredential>();
+    public ICollection<EmployeeTask> Tasks { get; set; } = new List<EmployeeTask>();
+    public ICollection<LicenseSeat> LicenseSeats { get; set; } = new List<LicenseSeat>();
 }

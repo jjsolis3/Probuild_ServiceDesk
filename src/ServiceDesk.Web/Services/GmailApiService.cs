@@ -242,6 +242,32 @@ public class GmailApiService : BackgroundService
             }
         }
 
+        // ---- THREADING FALLBACK: match clean subject against recent open tickets ----
+        // Catches forwarded emails and replies that bypass the three header-based checks above.
+        if (!existingTicketId.HasValue)
+        {
+            var cleanedSubject = CleanSubject(subject);
+            if (!string.IsNullOrWhiteSpace(cleanedSubject))
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-14);
+                var subjectMatch = await context.Tickets
+                    .Where(t => t.Title == cleanedSubject
+                             && t.CreatedDate >= cutoff
+                             && t.Status != TicketStatus.Closed
+                             && t.Status != TicketStatus.Cancelled)
+                    .OrderByDescending(t => t.CreatedDate)
+                    .Select(t => (int?)t.Id)
+                    .FirstOrDefaultAsync(stoppingToken);
+                if (subjectMatch.HasValue)
+                {
+                    existingTicketId = subjectMatch.Value;
+                    _logger.LogInformation(
+                        "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
+                        existingTicketId.Value, cleanedSubject);
+                }
+            }
+        }
+
         if (existingTicketId.HasValue)
         {
             // ---- APPEND NOTE TO EXISTING TICKET ----
@@ -251,6 +277,7 @@ public class GmailApiService : BackgroundService
                 AuthorName = fromName ?? fromEmail,
                 AuthorEmail = fromEmail,
                 Content = body,
+                ContentHtml = bodyHtml,
                 Source = "Email",
                 IsInternal = false,
                 CreatedDate = DateTime.UtcNow
@@ -279,13 +306,14 @@ public class GmailApiService : BackgroundService
             if (cleanSubject.Length > 200)
                 cleanSubject = cleanSubject[..200];
 
-            // Detect category from email content
-            var detectedCategory = AssignmentResolverService.DetectCategory(cleanSubject, body);
-
             // Resolve assignee via rules (category + submitter branch), fallback to config default
             int? submitterBranchId = submitter?.BranchId;
             var resolver = _serviceProvider.CreateScope().ServiceProvider
                 .GetRequiredService<AssignmentResolverService>();
+
+            // Detect category from email content (DB-backed keywords, hardcoded fallback)
+            var detectedCategory = await resolver.DetectCategoryAsync(cleanSubject, body);
+
             var resolvedAssigneeId = await resolver.ResolveAsync(
                 detectedCategory, submitterBranchId, config.DefaultAssigneeId);
 
@@ -317,6 +345,7 @@ public class GmailApiService : BackgroundService
                 AuthorName = fromName ?? fromEmail,
                 AuthorEmail = fromEmail,
                 Content = body,
+                ContentHtml = bodyHtml,
                 Source = "Email",
                 IsInternal = false,
                 CreatedDate = DateTime.UtcNow
@@ -324,6 +353,53 @@ public class GmailApiService : BackgroundService
             context.TicketNotes.Add(note);
 
             _logger.LogInformation("Created new Ticket #{TicketId} from email: {Subject}", ticket.Id, ticket.Title);
+
+            // Run ML.NET triage (category + priority prediction) in background — same as manual create
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var triageScope = _serviceProvider.CreateScope();
+                    var triage = triageScope.ServiceProvider.GetRequiredService<AiTriageService>();
+                    await triage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description ?? "", ticket.BranchId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[EmailTriage] Background triage failed for Ticket #{Id}", ticket.Id);
+                }
+            });
+
+            // Check for possible duplicate tickets (>80% TF-IDF similarity) — post an internal note
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var dupScope = _serviceProvider.CreateScope();
+                    var similarity = dupScope.ServiceProvider.GetRequiredService<TicketSimilarityService>();
+                    var db         = dupScope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    var similar    = await similarity.FindSimilarAsync(
+                        ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
+                    var dupes = similar.Where(s => s.ScorePct >= 80).ToList();
+                    if (dupes.Count == 0) return;
+
+                    var links = string.Join(", ", dupes.Select(d => $"#{d.TicketId} ({d.ScorePct:F0}% match)"));
+                    db.TicketNotes.Add(new TicketNote
+                    {
+                        TicketId    = ticket.Id,
+                        AuthorName  = "AI Duplicate Detector",
+                        Content     = $"🔁 Possible duplicate detected. Similar open tickets: {links}. "
+                                    + "Consider merging or linking before working this ticket.",
+                        Source      = "AI",
+                        IsInternal  = true,
+                        CreatedDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[DuplicateCheck] Failed for Ticket #{Id}", ticket.Id);
+                }
+            });
 
             // Send auto-reply confirmation with ticket reference
             if (config.AutoReplyOnNewTicket)
@@ -337,6 +413,28 @@ public class GmailApiService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to send auto-reply for Ticket #{TicketId}", ticket.Id);
+                }
+            }
+
+            // Notify assigned agent about the new ticket
+            if (resolvedAssigneeId.HasValue)
+            {
+                try
+                {
+                    var ticketWithAssignee = await context.Tickets
+                        .Include(t => t.AssignedTo)
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.Id == ticket.Id, stoppingToken);
+                    if (ticketWithAssignee?.AssignedTo != null)
+                    {
+                        var notifySvc = _serviceProvider.CreateScope().ServiceProvider
+                            .GetRequiredService<EmailNotificationService>();
+                        await notifySvc.NotifyTicketAssigned(ticketWithAssignee);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send assignment notification for Ticket #{TicketId}", ticket.Id);
                 }
             }
 
@@ -677,7 +775,7 @@ public class GmailApiService : BackgroundService
         // Get initial historyId by listing a single message
         try
         {
-            var hc = new HttpClient();
+            using var hc = _httpClientFactory.CreateClient();
             hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.GmailAccessToken);
             var profileResp = await hc.GetAsync("https://gmail.googleapis.com/gmail/v1/users/me/profile", ct);
             if (profileResp.IsSuccessStatusCode)

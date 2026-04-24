@@ -1,0 +1,325 @@
+@model IEnumerable<AppSetting>
+@{
+    ViewData["Title"] = "AI Triage Settings";
+
+    // Keys that should render as toggle switches
+    var boolKeys    = new[] { "AiTriageEnabled", "OllamaEnabled" };
+
+    // Keys that should render as dropdowns
+    var modeOptions = new[] { "RecommendOnly", "AutoApply" };
+
+    var lastLog = ViewBag.LastRunLog as ServiceDesk.Core.Models.AiRunLog;
+    var totalTrained = (int)(ViewBag.TotalTrainingTickets ?? 0);
+    var modelIsTrained = (bool)(ViewBag.ModelIsTrained ?? false);
+    var minTraining = (int)(ViewBag.MinTrainingTickets ?? 20);
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item active">AI Triage</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-robot text-primary"></i> AI Triage Settings</h1>
+        <p class="text-muted mb-0">Configure ML.NET-powered automatic ticket triage and Ollama LLM draft replies.</p>
+    </div>
+    <a asp-action="AiDashboard" class="btn btn-outline-success">
+        <i class="bi bi-bar-chart-line me-1"></i>View AI Dashboard
+    </a>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i> @TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- ── Live model status banner ──────────────────────────────────────────── -->
+<div class="card shadow-sm border-0 mb-4 @(modelIsTrained ? "border-start border-4 border-success" : totalTrained < minTraining ? "border-start border-4 border-warning" : "border-start border-4 border-secondary")">
+    <div class="card-body py-3">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-3">
+                <div class="small text-muted">Model status</div>
+                @if (modelIsTrained)
+                {
+                    <div class="fs-5"><span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ready</span></div>
+                }
+                else if (totalTrained < minTraining)
+                {
+                    <div class="fs-5"><span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Insufficient Data</span></div>
+                }
+                else
+                {
+                    <div class="fs-5"><span class="badge bg-secondary"><i class="bi bi-cpu me-1"></i>Awaiting First Train</span></div>
+                }
+            </div>
+            <div class="col-md-3">
+                <div class="small text-muted">Training samples</div>
+                <div class="fs-5 fw-semibold @(totalTrained >= minTraining ? "text-success" : "text-warning")">
+                    @totalTrained <span class="text-muted fw-normal small">/ @minTraining min</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="small text-muted">Last trained</div>
+                <div class="fs-6 fw-semibold">
+                    @if (lastLog != null)
+                    {
+                        <span title="@lastLog.RunDate.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")">
+                            @lastLog.RunDate.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-muted">Never</span>
+                    }
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="small text-muted">Last run result</div>
+                @if (lastLog == null)
+                {
+                    <div class="text-muted">—</div>
+                }
+                else if (lastLog.Success)
+                {
+                    <div class="text-success"><i class="bi bi-check-circle me-1"></i>Success (@lastLog.TrainingTicketCount tickets)</div>
+                }
+                else
+                {
+                    <div class="text-danger" title="@lastLog.ErrorMessage"><i class="bi bi-x-circle me-1"></i>Failed</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 align-items-start">
+    <!-- ── Left column: settings form ─────────────────────────────────────── -->
+    <div class="col-lg-8">
+
+        <form method="post" asp-action="Ai" asp-antiforgery="true">
+            @foreach (var group in Model.GroupBy(s => s.Category).OrderBy(g => g.Key))
+            {
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-sliders me-2"></i>@group.Key
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @foreach (var setting in group)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold" for="s_@setting.Key">
+                                    @FormatKey(setting.Key)
+                                </label>
+
+                                @if (boolKeys.Contains(setting.Key))
+                                {
+                                    <input type="hidden" name="@setting.Key" value="false" />
+                                    <div class="form-check form-switch">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               name="@setting.Key"
+                                               value="true"
+                                               id="s_@setting.Key"
+                                               @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "checked" : "") />
+                                        <label class="form-check-label" for="s_@setting.Key">
+                                            @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "Enabled" : "Disabled")
+                                        </label>
+                                    </div>
+                                }
+                                else if (setting.Key == "AiTriageMode")
+                                {
+                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
+                                        @foreach (var opt in modeOptions)
+                                        {
+                                            if (setting.Value == opt)
+                                            {
+                                                <option value="@opt" selected="selected">@opt</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@opt">@opt</option>
+                                            }
+
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <input type="text"
+                                           class="form-control"
+                                           name="@setting.Key"
+                                           value="@setting.Value"
+                                           id="s_@setting.Key" />
+                                }
+
+                                @if (!string.IsNullOrEmpty(setting.Description))
+                                {
+                                    <div class="form-text text-muted">
+                                        <i class="bi bi-info-circle me-1"></i>@setting.Description
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="mb-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>Save Settings
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+
+        <!-- ── Force retrain ──────────────────────────────────────────────── -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>Model Training</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    The ML.NET model automatically retrains every 24 hours using resolved and closed tickets.
+                    Use the button below to trigger an immediate retrain — useful after bulk ticket imports
+                    or when you want the model to reflect recent data without waiting.
+                </p>
+                <div class="d-flex align-items-center gap-3">
+                    <form method="post" asp-action="AiRetrain" asp-antiforgery="true" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-primary">
+                            <i class="bi bi-cpu me-1"></i>Retrain Model Now
+                        </button>
+                    </form>
+                    <div class="small text-muted">
+                        Training data: <strong>@totalTrained</strong> resolved/closed tickets available
+                    </div>
+                </div>
+
+                @if (lastLog != null)
+                {
+                    <div class="mt-3 p-3 rounded @(lastLog.Success ? "bg-success" : "bg-danger") bg-opacity-10 border border-@(lastLog.Success ? "success" : "danger") border-opacity-25">
+                        <div class="small">
+                            <strong>Last training run:</strong>
+                            @lastLog.RunDate.ToString("MMM dd, yyyy h:mm tt")
+                            — @(lastLog.Success ? "Succeeded" : "Failed")
+                            (@lastLog.DurationMs.ToString("F0") ms,
+                             @lastLog.TrainingTicketCount tickets)
+                        </div>
+                        @if (!string.IsNullOrEmpty(lastLog.ErrorMessage))
+                        {
+                            <div class="small text-danger mt-1">@lastLog.ErrorMessage</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Right column: info panel ──────────────────────────────────────── -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 bg-light mb-4">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-robot me-1 text-primary"></i> How AI Triage Works
+                </h6>
+                <ul class="small text-muted mb-0">
+                    <li class="mb-2">The ML.NET model trains on your <strong>resolved and closed tickets</strong> to learn which categories and priorities apply to different issue descriptions.</li>
+                    <li class="mb-2">When a new ticket is created, the model predicts the most likely <strong>Category</strong> and <strong>Priority</strong> and shows a suggestion card on the Edit page.</li>
+                    <li class="mb-2">In <strong>RecommendOnly</strong> mode, agents see the suggestion and can approve or dismiss it. In <strong>AutoApply</strong> mode, high-confidence predictions are applied automatically.</li>
+                    <li class="mb-2">Accuracy improves as more resolved tickets accumulate. A minimum of <strong>@((Model.FirstOrDefault(s => s.Key == "AiMinTrainingTickets")?.Value) ?? "20")</strong> resolved tickets is required to train.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-hdd-stack me-1 text-info"></i> Ollama Setup
+                </h6>
+                <ul class="small text-muted mb-3">
+                    <li class="mb-2">Install Ollama from <strong>ollama.ai</strong> and run it locally on the server.</li>
+                    <li class="mb-2">Pull a model: <code>ollama pull phi</code>, <code>ollama pull phi3</code>, or <code>ollama pull llama3.1</code></li>
+                    <li class="mb-2">Set <strong>Ollama Model</strong> to the exact model name you pulled (e.g. <code>phi</code> or <code>phi3:mini</code>).</li>
+                    <li class="mb-2">Default server URL is <code>http://localhost:11434</code>. Ensure the port is accessible from the web server.</li>
+                    <li>Once enabled, a <strong>Draft AI Reply</strong> button appears on ticket Details and Edit pages.</li>
+                </ul>
+                <form method="post" asp-action="TestOllama" id="frmTestOllama">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-sm btn-outline-info w-100" id="btnTestOllama">
+                        <i class="bi bi-wifi me-1"></i>Test Ollama Connection
+                    </button>
+                </form>
+                <div id="ollamaTestResult" class="mt-2 small" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@functions {
+    string FormatKey(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return key;
+        var sb = new System.Text.StringBuilder();
+        sb.Append(key[0]);
+        for (int i = 1; i < key.Length; i++)
+        {
+            if (char.IsUpper(key[i]) && !char.IsUpper(key[i - 1]))
+                sb.Append(' ');
+            sb.Append(key[i]);
+        }
+        return sb.ToString();
+    }
+}
+
+<script>
+(function () {
+    var form = document.getElementById('frmTestOllama');
+    var btn  = document.getElementById('btnTestOllama');
+    var res  = document.getElementById('ollamaTestResult');
+    if (!form) return;
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+        res.style.display = 'none';
+
+        var fd = new FormData(form);
+        fetch('/Settings/TestOllama', { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Ollama Connection';
+                res.style.display = '';
+                res.className = 'mt-2 small alert ' + (data.ok ? 'alert-success' : 'alert-warning') + ' py-2 px-3';
+                var modelsHtml = (data.models && data.models.length)
+                    ? '<br><strong>Installed models:</strong> ' + data.models.map(function(m){ return '<code>' + m + '</code>'; }).join(', ')
+                    : '';
+                res.innerHTML = (data.ok ? '<i class="bi bi-check-circle me-1"></i>' : '<i class="bi bi-exclamation-triangle me-1"></i>')
+                    + data.message + modelsHtml;
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Ollama Connection';
+                res.style.display = '';
+                res.className = 'mt-2 small alert alert-danger py-2 px-3';
+                res.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed — check browser console.';
+            });
+    });
+})();
+</script>

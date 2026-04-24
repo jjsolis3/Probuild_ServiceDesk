@@ -1,221 +1,1904 @@
 @model Employee
+@using ServiceDesk.Core.Enums
 @{
     ViewData["Title"] = Model.FullName;
+    var categoryBreakdown   = ViewBag.CategoryBreakdown   as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var monthlyTrend        = ViewBag.MonthlyTrend        as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var recurringCategories = ViewBag.RecurringCategories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var recentSubmitted     = ViewBag.RecentSubmitted     as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var recentAssigned      = ViewBag.RecentAssigned      as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    int totalSubmitted = (int)(ViewBag.TotalSubmitted ?? 0);
+    int openCount      = (int)(ViewBag.OpenCount      ?? 0);
+    int resolvedCount  = (int)(ViewBag.ResolvedCount  ?? 0);
+    int totalAssigned  = (int)(ViewBag.TotalAssigned  ?? 0);
+
+    var activeTab = Context.Request.Query["tab"].ToString();
+    if (string.IsNullOrEmpty(activeTab)) activeTab = "overview";
+    string TabClass(string key) => activeTab == key ? "nav-link active" : "nav-link";
+    string PaneClass(string key) => activeTab == key ? "tab-pane fade show active" : "tab-pane fade";
 }
 
-<nav aria-label="breadcrumb">
+<nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a asp-action="Index">Employees</a></li>
         <li class="breadcrumb-item active">@Model.FullName</li>
     </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>
-        <i class="bi bi-person"></i> @Model.FullName
-        @if (Model.IsActive)
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-person-circle text-primary me-2"></i>@Model.FullName
+            @if (Model.IsActive)
+            { <span class="badge bg-success ms-1 fs-6">Active</span> }
+            else
+            { <span class="badge bg-secondary ms-1 fs-6">Inactive</span> }
+        </h1>
+        <div class="text-muted small">@(Model.JobTitle ?? "No title") &nbsp;·&nbsp; @Model.Department</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Edit
+        </a>
+        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash me-1"></i>Delete
+        </a>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-0" id="empTabs">
+    <li class="nav-item">
+        <a class="@TabClass("overview")" href="?tab=overview">
+            <i class="bi bi-person-badge me-1"></i>Overview
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("credentials")" href="?tab=credentials">
+            <i class="bi bi-key me-1"></i>Credentials
+            @if (Model.Credentials.Any()) { <span class="badge bg-secondary ms-1">@Model.Credentials.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("tickets")" href="?tab=tickets">
+            <i class="bi bi-ticket-detailed me-1"></i>Tickets
+            @if (totalSubmitted > 0) { <span class="badge bg-secondary ms-1">@totalSubmitted</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("assets")" href="?tab=assets">
+            <i class="bi bi-laptop me-1"></i>Assets
+            @if (Model.AssignedAssets.Any()) { <span class="badge bg-secondary ms-1">@Model.AssignedAssets.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("signature")" href="?tab=signature">
+            <i class="bi bi-pen me-1"></i>Signature
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("workspace")" href="?tab=workspace">
+            <i class="bi bi-google me-1"></i>Workspace
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("onboarding")" href="?tab=onboarding">
+            <i class="bi bi-person-plus me-1"></i>Onboarding
+            @{
+                var allTasks   = ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>();
+                var onBadge    = allTasks.Count(t => t.TaskType == EmployeeTaskType.Onboarding && t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
+            }
+            @if (onBadge > 0) { <span class="badge bg-success ms-1">@onBadge</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("offboarding")" href="?tab=offboarding">
+            <i class="bi bi-person-dash me-1"></i>Offboarding
+            @{
+                var offBadge = allTasks.Count(t => t.TaskType == EmployeeTaskType.Offboarding && t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
+            }
+            @if (offBadge > 0) { <span class="badge bg-warning text-dark ms-1">@offBadge</span> }
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
+
+    <!-- ═══ OVERVIEW ═══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("overview")">
+        <div class="row g-4">
+
+            <!-- Profile card -->
+            <div class="col-md-5">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header fw-semibold"><i class="bi bi-person me-2"></i>Profile</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5 text-muted small">Email</dt>
+                            <dd class="col-sm-7"><a href="mailto:@Model.Email">@Model.Email</a></dd>
+                            <dt class="col-sm-5 text-muted small">Phone</dt>
+                            <dd class="col-sm-7">@(Model.Phone ?? "—")@(!string.IsNullOrEmpty(Model.Extension) ? $" ext. {Model.Extension}" : "")</dd>
+                            <dt class="col-sm-5 text-muted small">Department</dt>
+                            <dd class="col-sm-7">@Model.Department</dd>
+                            <dt class="col-sm-5 text-muted small">Job Title</dt>
+                            <dd class="col-sm-7">@(Model.JobTitle ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Hire Date</dt>
+                            <dd class="col-sm-7">@Model.HireDate.ToString("MMM dd, yyyy")</dd>
+                            <dt class="col-sm-5 text-muted small">Status</dt>
+                            <dd class="col-sm-7">
+                                @if (Model.IsActive)
+                                { <span class="badge bg-success">Active</span> }
+                                else
+                                { <span class="badge bg-secondary">Inactive</span> }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ticket KPI summary -->
+            <div class="col-md-7">
+                <div class="row g-3 mb-3">
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="all" style="cursor:pointer;" title="View all tickets">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-primary">@totalSubmitted</div>
+                                <div class="text-muted small">Total Tickets</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="open" style="cursor:pointer;" title="View open / in-progress tickets">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-warning">@openCount</div>
+                                <div class="text-muted small">Open / In Progress</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center shadow-sm border-0 h-100 kpi-card"
+                             data-filter="resolved" style="cursor:pointer;" title="View resolved tickets">
+                            <div class="card-body py-3">
+                                <div class="fs-2 fw-bold text-success">@resolvedCount</div>
+                                <div class="text-muted small">Resolved</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Training hint -->
+                @if (recurringCategories.Any())
+                {
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-mortarboard me-2"></i>
+                        <strong>Training Opportunity:</strong>
+                        Recurring open tickets in:
+                        @string.Join(", ", recurringCategories.Select(x => (string)x.CategoryName))
+                    </div>
+                }
+
+                <!-- Category breakdown -->
+                @if (categoryBreakdown.Any())
+                {
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body p-3">
+                            <div class="fw-semibold small text-muted mb-2">
+                                <i class="bi bi-bar-chart-line me-1"></i>Ticket Categories
+                            </div>
+                            @foreach (var cat in categoryBreakdown)
+                            {
+                                var pct = totalSubmitted > 0 ? (int)((double)cat.Count / totalSubmitted * 100) : 0;
+                                <div class="mb-2 cat-bar" data-cat-id="@cat.CategoryId"
+                                     data-cat-name="@cat.CategoryName"
+                                     style="cursor:pointer;" title="View @cat.CategoryName tickets">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="small">@cat.CategoryName</span>
+                                        <span class="small text-muted">@cat.Count (@pct%)</span>
+                                    </div>
+                                    <div class="progress" style="height:6px;">
+                                        <div class="progress-bar bg-primary" style="width:@pct%"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Monthly trend chart -->
+            @if (monthlyTrend.Any())
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header fw-semibold small">
+                            <i class="bi bi-graph-up me-1"></i>Monthly Submissions (Last 6 Months)
+                        </div>
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-end gap-2" style="height:80px;">
+                                @{
+                                    var maxMonthly = monthlyTrend.Any() ? (int)monthlyTrend.Max(x => (int)x.Count) : 1;
+                                    if (maxMonthly == 0) maxMonthly = 1;
+                                }
+                                @foreach (var m in monthlyTrend)
+                                {
+                                    var barH = Math.Max(6, (int)((double)(int)m.Count / maxMonthly * 72));
+                                    <div class="flex-fill text-center">
+                                        <div class="bg-primary rounded-top mx-auto"
+                                             style="height:@(barH)px;min-width:18px;" title="@m.Count tickets"></div>
+                                        <div class="text-muted" style="font-size:0.65rem;margin-top:2px;">@m.Label</div>
+                                        <div class="fw-semibold" style="font-size:0.7rem;">@m.Count</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ═══ CREDENTIALS ═════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("credentials")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-key me-2"></i>IT-Managed Credential Vault</h6>
+                <div class="text-muted small">Credentials IT manages on behalf of this employee (AD, VPN, email, etc.)</div>
+            </div>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCredModal">
+                <i class="bi bi-plus-lg me-1"></i>Add Credential
+            </button>
+        </div>
+
+        @if (!Model.Credentials.Any())
         {
-            <span class="badge bg-success fs-6">Active</span>
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-key fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-1">No credentials stored for this employee.</p>
+                <p class="small text-muted">Store Active Directory, VPN, email, or other IT-managed passwords here.</p>
+            </div>
         }
         else
         {
-            <span class="badge bg-secondary fs-6">Inactive</span>
-        }
-    </h1>
-    <div>
-        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
-            <i class="bi bi-pencil"></i> Edit
-        </a>
-        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
-            <i class="bi bi-trash"></i> Delete
-        </a>
-    </div>
-</div>
-
-<div class="row g-3">
-    <!-- Employee Details Card -->
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-person-badge"></i> Employee Details
+            <div class="list-group">
+                @foreach (var cred in Model.Credentials.OrderBy(c => c.Label))
+                {
+                    <div class="list-group-item px-3 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">
+                                    <i class="bi bi-lock-fill text-warning me-1"></i>@cred.Label
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Username))
+                                {
+                                    <div class="text-muted small"><i class="bi bi-person me-1"></i>@cred.Username</div>
+                                }
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <input type="password" class="form-control form-control-sm bg-light"
+                                           id="empwd_@cred.Id" value="••••••••" readonly style="max-width:200px;" />
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="revealEmpPwd(@cred.Id, this)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="copyEmpPwd(@cred.Id)" title="Copy password">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Url))
+                                {
+                                    <div class="mt-1 small">
+                                        <i class="bi bi-link-45deg me-1"></i>
+                                        <a href="@cred.Url" target="_blank" rel="noopener">@cred.Url</a>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(cred.Notes))
+                                {
+                                    <div class="text-muted small mt-1"><i class="bi bi-info-circle me-1"></i>@cred.Notes</div>
+                                }
+                                <div class="text-muted mt-1" style="font-size:0.72rem;">
+                                    Added by @cred.CreatedByEmail on @cred.CreatedDate.ToString("MMM d, yyyy")
+                                </div>
+                            </div>
+                            <form asp-action="DeleteCredential" asp-route-id="@Model.Id" method="post" class="ms-3">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="credentialId" value="@cred.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Delete this credential?')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
             </div>
-            <div class="card-body">
-                <dl>
-                    <dt>First Name</dt>
-                    <dd>@Model.FirstName</dd>
+        }
 
-                    <dt>Last Name</dt>
-                    <dd>@Model.LastName</dd>
+        <!-- Add Credential Modal -->
+        <div class="modal fade" id="addCredModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Add Credential for @Model.FirstName</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddCredential" asp-route-id="@Model.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Label <span class="text-danger">*</span></label>
+                                <input type="text" name="label" class="form-control"
+                                       placeholder="e.g. Active Directory, VPN, Email, Wi-Fi" maxlength="100" required />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Username</label>
+                                <input type="text" name="username" class="form-control"
+                                       placeholder="e.g. jsmith" maxlength="200" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <input type="password" name="password" id="newEmpCredPwd" class="form-control"
+                                           placeholder="Enter password" maxlength="500" required />
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="toggleEmpNewPwd()">
+                                        <i class="bi bi-eye" id="newEmpPwdIcon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">URL / System Link</label>
+                                <input type="url" name="url" class="form-control"
+                                       placeholder="https://..." maxlength="500" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="credNotes" class="form-control"
+                                       placeholder="e.g. Temp password — must change on first login" maxlength="500" />
+                            </div>
+                            <div class="alert alert-info py-2 small mb-0">
+                                <i class="bi bi-shield-lock me-1"></i>
+                                Passwords are encrypted and never stored in plain text.
+                                Only IT staff can view or reveal them.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-lock me-1"></i>Save Credential</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    <dt>Email</dt>
-                    <dd><a href="mailto:@Model.Email">@Model.Email</a></dd>
+    <!-- ═══ TICKETS ══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("tickets")">
+        <ul class="nav nav-pills mb-3" id="ticketSubTabs">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabSubmitted">
+                    Submitted (@totalSubmitted)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabAssigned">
+                    Assigned to Them (@totalAssigned)
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="tabSubmitted">
+                @if (!recentSubmitted.Any())
+                {
+                    <p class="text-muted text-center py-4">No submitted tickets.</p>
+                }
+                else
+                {
+                    @if (totalSubmitted > 100)
+                    {
+                        <div class="alert alert-info py-2 small mb-2">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Showing 100 most recent of @totalSubmitted total.
+                            <a asp-controller="Tickets" asp-action="Index" asp-route-submittedById="@Model.Id" class="alert-link ms-1">View all</a>
+                        </div>
+                    }
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in recentSubmitted)
+                                {
+                                    <tr>
+                                        <td class="text-muted">#@t.Id</td>
+                                        <td><a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a></td>
+                                        <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
+                                        <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
+                                        <td class="text-muted small">@((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="tab-pane fade" id="tabAssigned">
+                @if (!recentAssigned.Any())
+                {
+                    <p class="text-muted text-center py-4">No tickets assigned to this employee.</p>
+                }
+                else
+                {
+                    @if (totalAssigned > 100)
+                    {
+                        <div class="alert alert-info py-2 small mb-2">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Showing 100 most recent of @totalAssigned total.
+                        </div>
+                    }
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Created</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in recentAssigned)
+                                {
+                                    <tr>
+                                        <td class="text-muted">#@t.Id</td>
+                                        <td><a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id">@t.Title</a></td>
+                                        <td><span class="badge badge-@t.Status.ToString().ToLower()">@t.Status</span></td>
+                                        <td><span class="badge badge-@t.Priority.ToString().ToLower()">@t.Priority</span></td>
+                                        <td class="text-muted small">@((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 
-                    <dt>Phone</dt>
-                    <dd>@(Model.Phone ?? "N/A")</dd>
-
-                    <dt>Department</dt>
-                    <dd>@Model.Department</dd>
-
-                    <dt>Job Title</dt>
-                    <dd>@(Model.JobTitle ?? "N/A")</dd>
-
-                    <dt>Hire Date</dt>
-                    <dd>@Model.HireDate.ToString("MMM dd, yyyy")</dd>
-
-                    <dt>Status</dt>
-                    <dd>
-                        @if (Model.IsActive)
+    <!-- ═══ ASSETS ═══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("assets")">
+        <h6 class="fw-semibold mb-3"><i class="bi bi-laptop me-2"></i>Assigned Assets</h6>
+        @if (!Model.AssignedAssets.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-laptop fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No assets assigned to this employee.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover ss-datatable-compact">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Asset Tag</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Serial Number</th>
+                            <th>Warranty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var asset in Model.AssignedAssets)
                         {
-                            <span class="badge bg-success">Active</span>
+                            var wExpired = asset.WarrantyExpiry.HasValue && asset.WarrantyExpiry.Value < DateTime.Today;
+                            <tr>
+                                <td>
+                                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id">
+                                        <code>@asset.AssetTag</code>
+                                    </a>
+                                </td>
+                                <td>@asset.Name</td>
+                                <td>@asset.AssetType</td>
+                                <td><span class="badge badge-@asset.Status.ToString().ToLower()">@asset.Status</span></td>
+                                <td><code class="small">@(asset.SerialNumber ?? "—")</code></td>
+                                <td>
+                                    @if (asset.WarrantyExpiry.HasValue)
+                                    {
+                                        <span class="@(wExpired ? "text-danger" : "text-success") small">
+                                            @asset.WarrantyExpiry.Value.ToString("MMM yyyy")
+                                            @if (wExpired) { <i class="bi bi-exclamation-triangle ms-1"></i> }
+                                        </span>
+                                    }
+                                    else { <span class="text-muted small">—</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+
+    <!-- ═══ SIGNATURE ══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("signature")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-pen me-2"></i>Gmail Email Signature</h6>
+                <div class="text-muted small d-flex align-items-center gap-2 flex-wrap mt-1">
+                    <span>Signature for <strong>@Model.Email</strong> via Google Workspace.</span>
+                    @if (Model.LastGoogleSignatureSync.HasValue)
+                    {
+                        <span class="badge bg-success" id="sigSyncBadge" title="Last pushed to Gmail">
+                            <i class="bi bi-cloud-check me-1"></i>Synced @Model.LastGoogleSignatureSync.Value.ToString("MMM d, yyyy h:mm tt")
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary" id="sigSyncBadge">
+                            <i class="bi bi-cloud-slash me-1"></i>Never synced
+                        </span>
+                    }
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" onclick="loadCurrentSignature()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Load Current
+                </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="applyTemplate()">
+                    <i class="bi bi-layout-text-sidebar me-1"></i>Apply Template
+                </button>
+            </div>
+        </div>
+
+        <div id="sigStatus" class="d-none mb-3"></div>
+
+        <div class="row g-4">
+            <!-- Editor -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-pencil-square me-1"></i>Editor (HTML)</span>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="sigViewToggle" onchange="toggleSigView(this)">
+                            <label class="form-check-label small" for="sigViewToggle">Preview</label>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <textarea id="sigEditor" class="form-control font-monospace border-0 rounded-0"
+                                  rows="14" style="resize:vertical;"
+                                  placeholder="HTML signature will appear here. Click 'Load Current' to fetch from Gmail or 'Apply Template' to use the configured template."></textarea>
+                        <div id="sigPreview" class="p-3 d-none" style="min-height:200px;font-family:Arial,sans-serif;font-size:14px;"></div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button class="btn btn-primary btn-sm" onclick="saveSignature()">
+                                <i class="bi bi-cloud-upload me-1"></i>Save to Gmail
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearEditor()">
+                                <i class="bi bi-trash me-1"></i>Clear
+                            </button>
+                            <div class="form-check form-switch ms-2 mb-0 d-flex align-items-center gap-1">
+                                <input class="form-check-input" type="checkbox" id="sigIncludeAliases"
+                                       role="switch" style="width:2.2em;height:1.2em;" checked />
+                                <label class="form-check-label small" for="sigIncludeAliases">
+                                    Include aliases
+                                    <span class="text-muted">(e.g. .com)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Signature applies to <strong>new emails, replies &amp; forwards</strong> automatically.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live preview + tips -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-header fw-semibold small"><i class="bi bi-eye me-1"></i>Rendered Preview</div>
+                    <div class="card-body">
+                        <div id="sigLivePreview" class="border rounded p-3 bg-light"
+                             style="min-height:120px;font-family:Arial,sans-serif;font-size:14px;">
+                            <span class="text-muted small">Preview will appear here as you edit.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header fw-semibold small"><i class="bi bi-info-circle me-1"></i>Template Variables</div>
+                    <div class="card-body py-2">
+                        <table class="table table-sm table-borderless mb-0 small">
+                            <tbody>
+                                <tr><td><code>{FIRST_NAME}</code></td><td class="text-muted">@Model.FirstName</td></tr>
+                                <tr><td><code>{LAST_NAME}</code></td><td class="text-muted">@Model.LastName</td></tr>
+                                <tr><td><code>{FIRST_NAME_SLUG}</code></td><td class="text-muted">@Model.FirstName.Replace(" ","_")</td></tr>
+                                <tr><td><code>{LAST_NAME_SLUG}</code></td><td class="text-muted">@Model.LastName.Replace(" ","_")</td></tr>
+                                <tr><td><code>{FULL_NAME}</code></td><td class="text-muted">@Model.FullName</td></tr>
+                                <tr><td><code>{JOB_TITLE}</code></td><td class="text-muted">@(Model.JobTitle ?? "—")</td></tr>
+                                <tr><td><code>{EMAIL}</code></td><td class="text-muted">@Model.Email</td></tr>
+                                <tr><td><code>{EMAIL_DISPLAY}</code></td><td class="text-muted">@Model.Email.Replace(".org",".com")</td></tr>
+                                <tr><td><code>{PHONE}</code></td><td class="text-muted">@(Model.Phone ?? "—")</td></tr>
+                                <tr><td><code>{DEPARTMENT}</code></td><td class="text-muted">@Model.Department</td></tr>
+                                <tr><td><code>{BRANCH}</code></td><td class="text-muted">@(Model.Branch?.Name ?? "—")</td></tr>
+                                <tr><td><code>{BRANCH_PHONE}</code></td><td class="text-muted">@(Model.Branch?.Phone ?? "—")</td></tr>
+                                <tr><td><code>{COST_CENTER}</code></td><td class="text-muted">@(Model.Branch?.CostCenter ?? "—")</td></tr>
+                                <tr><td><code>{BUILDING_ID}</code></td><td class="text-muted">@(Model.Branch?.BuildingId ?? "—")</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ═══ WORKSPACE ════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("workspace")" id="workspacePane">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-google me-2 text-primary"></i>Google Workspace Admin</h6>
+                <div class="text-muted small">Manage <strong>@Model.Email</strong> in your Workspace domain.</div>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadWorkspaceInfo()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+        </div>
+
+        <!-- ── Sync Profile to Google ─────────────────────────────────────── -->
+        <div class="card border-0 shadow-sm mb-4 border-start border-primary border-3">
+            <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person-badge me-2 text-primary"></i>Employee Profile — Google Directory</span>
+                <button class="btn btn-sm btn-primary" id="btnSyncProfile" onclick="syncProfile()">
+                    <i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google
+                </button>
+            </div>
+            <div class="card-body py-2">
+                <div id="syncProfileResult" class="d-none mb-2"></div>
+                <div class="row g-3 small">
+                    <div class="col-md-3">
+                        <span class="text-muted">Job Title</span><br />
+                        <strong>@(Model.JobTitle ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Department</span><br />
+                        <strong>@Model.Department</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Employee Type</span><br />
+                        <strong>@(Model.EmployeeType ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Manager Email</span><br />
+                        <strong>@(Model.ManagerEmail ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Cost Center</span><br />
+                        <strong>@(Model.Branch?.CostCenter ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Building ID</span><br />
+                        <strong>@(Model.Branch?.BuildingId ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Floor Name (Branch)</span><br />
+                        <strong>@(Model.Branch?.Name ?? "—")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted">Floor Section / Team</span><br />
+                        <strong>@(Model.FloorSection ?? "—")</strong>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">
+                    <i class="bi bi-pencil me-1"></i>
+                    To change these values, <a asp-action="Edit" asp-route-id="@Model.Id">edit the employee</a>.
+                    Branch codes (Cost Center, Building ID) are set in <a asp-controller="Settings" asp-action="Branches">Settings → Branches</a>.
+                </div>
+            </div>
+        </div>
+
+        <div id="wsAlert" class="d-none mb-3"></div>
+        <div id="wsLoader" class="text-center py-4 d-none">
+            <div class="spinner-border text-primary"></div><p class="mt-2 text-muted small">Loading Workspace data…</p>
+        </div>
+
+        <div id="wsContent" class="d-none">
+            <div class="row g-4">
+
+                <!-- ── Account Status ──────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small"><i class="bi bi-person-check me-2"></i>Account Status</div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-3 mb-3">
+                                <div id="wsStatusBadge"><span class="badge bg-secondary">Loading…</span></div>
+                                <div class="small text-muted" id="wsOrgUnit"></div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-warning" id="wsSuspendBtn" onclick="toggleSuspend(true)">
+                                    <i class="bi bi-pause-circle me-1"></i>Suspend Account
+                                </button>
+                                <button class="btn btn-sm btn-success d-none" id="wsUnsuspendBtn" onclick="toggleSuspend(false)">
+                                    <i class="bi bi-play-circle me-1"></i>Unsuspend Account
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Password Reset ──────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small"><i class="bi bi-key me-2"></i>Password Reset</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Generate a secure temporary password. The employee will be required to change it on next sign-in.</p>
+                            <div id="wsTempPwBox" class="d-none mb-3">
+                                <label class="form-label small fw-semibold">Temporary Password (shown once)</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control font-monospace fw-bold" id="wsTempPw" readonly />
+                                    <button class="btn btn-outline-secondary" onclick="copyTempPw()" title="Copy">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <div class="small text-muted mt-1"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Copy and share this password securely. It will not be shown again.</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="resetPassword()">
+                                <i class="bi bi-key me-1"></i>Reset Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Drive & Gmail Storage ───────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small d-flex justify-content-between">
+                            <span><i class="bi bi-hdd me-2"></i>Storage Usage</span>
+                            <button class="btn btn-link btn-sm p-0 text-muted" onclick="loadStorage()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body" id="wsStorageCard">
+                            <div class="text-muted small">Click refresh to load storage data.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Out of Office ───────────────────────────────────── -->
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-calendar-x me-2"></i>Out of Office</span>
+                            <span class="badge" id="wsOooBadge">Loading…</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Start Date</label>
+                                    <input type="date" class="form-control form-control-sm" id="wsOooStart" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">End Date <span class="text-muted">(optional)</span></label>
+                                    <input type="date" class="form-control form-control-sm" id="wsOooEnd" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">Subject</label>
+                                    <input type="text" class="form-control form-control-sm" id="wsOooSubject"
+                                           placeholder="Out of office: I'll be back soon" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">Message Body (HTML)</label>
+                                    <textarea class="form-control form-control-sm font-monospace" rows="3"
+                                              id="wsOooBody" placeholder="<p>I'm currently out of office…</p>"></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="wsOooDomain" />
+                                        <label class="form-check-label small" for="wsOooDomain">Only reply to people in my domain</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="saveOoo(true)">
+                                    <i class="bi bi-calendar-check me-1"></i>Enable OOO
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="saveOoo(false)">
+                                    <i class="bi bi-calendar-x me-1"></i>Disable
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Group Memberships ───────────────────────────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-people me-2"></i>Group Memberships</span>
+                            <div class="d-flex gap-2 align-items-center">
+                                <select class="form-select form-select-sm" id="wsGroupSelect" style="max-width:280px;">
+                                    <option value="">— Select a group to add —</option>
+                                </select>
+                                <button class="btn btn-sm btn-primary" onclick="addToGroup()">
+                                    <i class="bi bi-plus-lg me-1"></i>Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0" id="wsGroupsList">
+                            <div class="text-muted small p-3">Loading groups…</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Security: OAuth Apps + Login Activity ───────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-shield-lock me-2"></i>Security</span>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadOAuthApps()"><i class="bi bi-app me-1"></i>Load OAuth Apps</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadLoginActivity()"><i class="bi bi-clock-history me-1"></i>Load Login Activity</button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="wsOAuthSection" class="p-3 d-none">
+                                <h6 class="small fw-semibold mb-2"><i class="bi bi-app me-1 text-primary"></i>Authorized OAuth Apps</h6>
+                                <div id="wsOAuthList"></div>
+                            </div>
+                            <div id="wsLoginSection" class="p-3 d-none">
+                                <h6 class="small fw-semibold mb-2"><i class="bi bi-clock-history me-1 text-primary"></i>Recent Login Activity</h6>
+                                <div id="wsLoginList"></div>
+                            </div>
+                            <div id="wsSecurityPlaceholder" class="text-muted small p-3">Click a button above to load security data.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /row -->
+        </div><!-- /wsContent -->
+    </div><!-- /workspace pane -->
+
+    <!-- ═══ ONBOARDING ══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("onboarding")">
+        @{
+            var obTasks = (ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>())
+                           .Where(t => t.TaskType == EmployeeTaskType.Onboarding).ToList();
+            int obDone = obTasks.Count(t => t.Status == EmployeeTaskStatus.Completed);
+            int obPct  = obTasks.Count == 0 ? 0 : obDone * 100 / obTasks.Count;
+        }
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-person-plus me-2 text-success"></i>Onboarding</h6>
+                <div class="text-muted small">Provision the Google Workspace account and complete onboarding tasks.</div>
+            </div>
+            @if (User.IsInRole("Admin"))
+            {
+                <a asp-controller="EmployeeTasks" asp-action="Templates" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-gear me-1"></i>Manage Templates
+                </a>
+            }
+        </div>
+
+        <div class="row g-4">
+            <!-- Google Account Provisioning -->
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm h-100 border-start border-success border-4">
+                    <div class="card-header fw-semibold small bg-success bg-opacity-10">
+                        <i class="bi bi-google me-2 text-success"></i>Google Account Provisioning
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">Create a new Google Workspace account for this employee. A temporary password will be generated and the employee will be required to change it on first sign-in.</p>
+                        <div class="mb-3">
+                            <label class="form-label small">Organizational Unit <span class="text-muted">(optional)</span></label>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="wsOrgUnitInput" placeholder="/ or /Sales" />
+                            <div class="form-text">Leave blank for root OU. E.g. <code>/Engineering</code></div>
+                        </div>
+                        <div id="wsProvisionResult" class="d-none mb-3">
+                            <div class="alert alert-success py-2 small mb-2" id="wsProvisionMsg"></div>
+                            <div id="wsNewPwBox" class="d-none">
+                                <label class="form-label small fw-semibold">Temporary Password (shown once)</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control font-monospace fw-bold" id="wsNewPw" readonly />
+                                    <button class="btn btn-outline-secondary" onclick="copyNewPw()" title="Copy"><i class="bi bi-clipboard"></i></button>
+                                </div>
+                                <div class="small text-warning mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Copy and share this securely — it will not be shown again.</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-success" onclick="provisionAccount()">
+                            <i class="bi bi-person-plus me-1"></i>Provision Google Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Onboarding Checklist -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold"><i class="bi bi-list-check me-2"></i>Onboarding Checklist</span>
+                        <span class="badge bg-success">@obDone / @obTasks.Count complete</span>
+                    </div>
+                    <div class="card-body">
+                        @if (obTasks.Any())
+                        {
+                            <div class="progress mb-3" style="height:8px;">
+                                <div class="progress-bar bg-success" style="width:@obPct%"></div>
+                            </div>
+                        }
+                        <form asp-controller="EmployeeTasks" asp-action="ApplyTemplate" method="post" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="employeeId" value="@Model.Id" />
+                            <input type="hidden" name="taskType" value="@EmployeeTaskType.Onboarding" />
+                            <button type="submit" class="btn btn-sm btn-outline-primary mb-3">
+                                <i class="bi bi-magic me-1"></i>Apply Onboarding Template
+                            </button>
+                        </form>
+                        @if (!obTasks.Any())
+                        {
+                            <p class="text-muted small mb-0">No onboarding tasks yet. Apply the template or add a custom task below.</p>
                         }
                         else
                         {
-                            <span class="badge bg-secondary">Inactive</span>
+                            <ul class="list-group list-group-flush mb-3">
+                                @foreach (var task in obTasks.OrderBy(t => t.SortOrder).ThenBy(t => t.Title))
+                                {
+                                    var isDone    = task.Status == EmployeeTaskStatus.Completed;
+                                    var isSkipped = task.Status == EmployeeTaskStatus.Skipped;
+                                    <li class="list-group-item px-0 py-2">
+                                        <div class="d-flex align-items-start gap-2">
+                                            <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post" class="mt-1">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="taskId" value="@task.Id" />
+                                                <input type="hidden" name="status" value="@(isDone ? EmployeeTaskStatus.Pending : EmployeeTaskStatus.Completed)" />
+                                                <button type="submit" class="btn btn-link p-0 border-0" title="@(isDone ? "Mark as pending" : "Mark as done")">
+                                                    @if (isDone) { <i class="bi bi-check-square-fill text-success fs-5"></i> }
+                                                    else { <i class="bi bi-square fs-5 text-muted"></i> }
+                                                </button>
+                                            </form>
+                                            <div class="flex-grow-1">
+                                                <div class="@(isDone ? "text-decoration-line-through text-muted" : "")">
+                                                    <strong>@task.Title</strong>
+                                                    @if (!string.IsNullOrEmpty(task.Category)) { <span class="badge bg-light text-dark small ms-1">@task.Category</span> }
+                                                    @if (isSkipped) { <span class="badge bg-secondary ms-1">Skipped</span> }
+                                                    else if (task.IsOverdue) { <span class="badge bg-danger ms-1">Overdue</span> }
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(task.Description)) { <div class="small text-muted">@task.Description</div> }
+                                                <div class="small text-muted d-flex flex-wrap gap-3 mt-1">
+                                                    @if (!string.IsNullOrEmpty(task.AssignedToEmail)) { <span><i class="bi bi-person me-1"></i>@task.AssignedToEmail</span> }
+                                                    @if (task.DueDate.HasValue) { <span><i class="bi bi-calendar me-1"></i>Due @task.DueDate.Value.ToString("MMM d, yyyy")</span> }
+                                                    @if (task.CompletedDate.HasValue) { <span><i class="bi bi-check-circle me-1"></i>Completed @task.CompletedDate.Value.ToString("MMM d, yyyy") @(string.IsNullOrEmpty(task.CompletedByEmail) ? "" : $"by {task.CompletedByEmail}")</span> }
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-1">
+                                                @if (!isSkipped)
+                                                {
+                                                    <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="taskId" value="@task.Id" />
+                                                        <input type="hidden" name="status" value="@EmployeeTaskStatus.Skipped" />
+                                                        <button type="submit" class="btn btn-link btn-sm p-0 text-muted" title="Skip"><i class="bi bi-dash-circle"></i></button>
+                                                    </form>
+                                                }
+                                                <form asp-controller="EmployeeTasks" asp-action="DeleteTask" method="post" onsubmit="return confirm('Delete this task?');">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="taskId" value="@task.Id" />
+                                                    <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
                         }
-                    </dd>
-                </dl>
+                        <details>
+                            <summary class="small text-primary">+ Add custom task</summary>
+                            <form asp-controller="EmployeeTasks" asp-action="AddTask" method="post" class="mt-2">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="employeeId" value="@Model.Id" />
+                                <input type="hidden" name="taskType" value="@EmployeeTaskType.Onboarding" />
+                                <div class="row g-2">
+                                    <div class="col-12"><input name="title" class="form-control form-control-sm" maxlength="200" placeholder="Task title" required /></div>
+                                    <div class="col-12"><textarea name="description" rows="2" class="form-control form-control-sm" maxlength="1000" placeholder="Description (optional)"></textarea></div>
+                                    <div class="col-md-6"><input name="assignedToEmail" type="email" class="form-control form-control-sm" placeholder="Assigned to email" /></div>
+                                    <div class="col-md-6"><input name="dueDate" type="date" class="form-control form-control-sm" /></div>
+                                </div>
+                                <button type="submit" class="btn btn-sm btn-primary mt-2"><i class="bi bi-plus-lg me-1"></i>Add Task</button>
+                            </form>
+                        </details>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </div><!-- /onboarding pane -->
 
-    <!-- Tickets & Assets -->
-    <div class="col-md-8">
-        <!-- Submitted Tickets -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <i class="bi bi-ticket-detailed"></i> Submitted Tickets
-                <span class="badge bg-primary rounded-pill ms-1">@Model.SubmittedTickets.Count</span>
+    <!-- ═══ OFFBOARDING ══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("offboarding")">
+        @{
+            var offTasks  = (ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>())
+                             .Where(t => t.TaskType == EmployeeTaskType.Offboarding).ToList();
+            int offDone   = offTasks.Count(t => t.Status == EmployeeTaskStatus.Completed);
+            int offPct    = offTasks.Count == 0 ? 0 : offDone * 100 / offTasks.Count;
+            var schedDate = Model.ScheduledOffboardingDate;
+            bool dateSet  = schedDate.HasValue;
+            bool dateDue  = dateSet && schedDate!.Value.Date <= DateTime.Today;
+        }
+
+        <!-- Scheduled Inactive Date banner -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-x me-2 text-danger"></i>Scheduled Inactive Date</span>
+                @if (dateSet && dateDue)
+                { <span class="badge bg-danger"><i class="bi bi-exclamation-circle me-1"></i>Date reached — ready to offboard</span> }
+                else if (dateSet)
+                { <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Scheduled for @schedDate!.Value.ToString("MMM dd, yyyy")</span> }
+                else
+                { <span class="badge bg-secondary"><i class="bi bi-slash-circle me-1"></i>No date set — offboarding locked</span> }
             </div>
             <div class="card-body">
-                @if (Model.SubmittedTickets.Any())
+                @if (!dateSet)
                 {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Status</th>
-                                    <th>Priority</th>
-                                    <th>Created</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var ticket in Model.SubmittedTickets)
-                                {
-                                    <tr>
-                                        <td>@ticket.Id</td>
-                                        <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@ticket.Id">
-                                                @ticket.Title
-                                            </a>
-                                        </td>
-                                        <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
-                                        <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                                        <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                    <div class="alert alert-warning d-flex align-items-start gap-2 py-2 mb-3">
+                        <i class="bi bi-lock-fill text-warning mt-1"></i>
+                        <div class="small">Offboarding actions are <strong>locked</strong> until a scheduled inactive date is saved. This prevents accidental account suspension.</div>
+                    </div>
+                }
+                else if (dateDue)
+                {
+                    <div class="alert alert-danger d-flex align-items-start gap-2 py-2 mb-3">
+                        <i class="bi bi-exclamation-triangle-fill text-danger mt-1"></i>
+                        <div class="small">The scheduled date has arrived. Offboarding actions are <strong>unlocked</strong>. The background service will run automatically, or you can run manually below.</div>
                     </div>
                 }
                 else
                 {
-                    <p class="text-muted mb-0">No submitted tickets.</p>
+                    <div class="alert alert-info d-flex align-items-start gap-2 py-2 mb-3">
+                        <i class="bi bi-info-circle-fill text-info mt-1"></i>
+                        <div class="small">Offboarding is scheduled for <strong>@schedDate!.Value.ToString("MMMM dd, yyyy")</strong>. The system will run automatically on that date. You may also run it manually before then.</div>
+                    </div>
                 }
+                <form asp-action="SetOffboardingDate" asp-route-id="@Model.Id" method="post" class="d-flex align-items-end gap-3 flex-wrap">
+                    @Html.AntiForgeryToken()
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">@(dateSet ? "Change" : "Set") Inactive Date</label>
+                        <input type="date" name="scheduledDate" class="form-control form-control-sm"
+                               value="@(schedDate.HasValue ? schedDate.Value.ToString("yyyy-MM-dd") : "")" />
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-calendar-check me-1"></i>@(dateSet ? "Update Date" : "Set Date & Unlock")
+                    </button>
+                    @if (dateSet)
+                    {
+                        <button type="submit" name="scheduledDate" value="" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-x-circle me-1"></i>Clear &amp; Lock
+                        </button>
+                    }
+                </form>
             </div>
         </div>
 
-        <!-- Assigned Tickets -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <i class="bi bi-clipboard-check"></i> Assigned Tickets
-                <span class="badge bg-info rounded-pill ms-1">@Model.AssignedTickets.Count</span>
-            </div>
-            <div class="card-body">
-                @if (Model.AssignedTickets.Any())
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Status</th>
-                                    <th>Priority</th>
-                                    <th>Created</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var ticket in Model.AssignedTickets)
-                                {
-                                    <tr>
-                                        <td>@ticket.Id</td>
-                                        <td>
-                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@ticket.Id">
-                                                @ticket.Title
-                                            </a>
-                                        </td>
-                                        <td><span class="badge badge-@ticket.Status.ToString().ToLower()">@ticket.Status</span></td>
-                                        <td><span class="badge badge-@ticket.Priority.ToString().ToLower()">@ticket.Priority</span></td>
-                                        <td>@ticket.CreatedDate.ToString("MMM dd, yyyy")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+        <div class="row g-4">
+            <!-- Google Offboarding Actions -->
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm h-100 border-start border-danger border-4 @(!dateSet ? "opacity-75" : "")">
+                    <div class="card-header fw-semibold small bg-danger bg-opacity-10">
+                        <i class="bi bi-person-dash me-2 text-danger"></i>Google Account Offboarding
+                        @if (!dateSet) { <span class="badge bg-secondary ms-2">Locked</span> }
                     </div>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No assigned tickets.</p>
-                }
+                    <div class="card-body">
+                        @if (!dateSet)
+                        {
+                            <div class="text-muted small mb-3"><i class="bi bi-lock me-1"></i>Set an inactive date above to unlock these actions.</div>
+                        }
+                        <p class="text-muted small mb-2">Run automated offboarding steps for this employee's Google account.</p>
+                        <div class="mb-2 @(!dateSet ? "opacity-50" : "")">
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offSuspend" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offSuspend">Suspend account</label></div>
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offRevoke" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offRevoke">Revoke all OAuth app access</label></div>
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offGroups" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offGroups">Remove from all groups</label></div>
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offOoo" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offOoo">Enable out-of-office auto-reply</label></div>
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offTransfer" @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offTransfer">Transfer Drive files to:</label></div>
+                            <div class="ms-4 mt-1" id="offTransferDest" style="display:none;">
+                                <input type="email" class="form-control form-control-sm" id="offTransferEmail" placeholder="recipient@domain.com" @(!dateSet ? "disabled" : "") />
+                                <div class="form-text">Enter the destination user's email address.</div>
+                            </div>
+                        </div>
+                        <div class="mb-2 @(!dateSet ? "opacity-50" : "")">
+                            <label class="form-label small">OOO Subject <span class="text-muted">(optional)</span></label>
+                            <input type="text" class="form-control form-control-sm" id="offOooSubject" placeholder="This employee is no longer with the company." @(!dateSet ? "disabled" : "") />
+                            <label class="form-label small mt-1">OOO Message</label>
+                            <textarea class="form-control form-control-sm" rows="2" id="offOooBody" placeholder="<p>Please contact your account manager for assistance.</p>" @(!dateSet ? "disabled" : "")></textarea>
+                        </div>
+                        <div id="offboardingResult" class="d-none mb-2"></div>
+                        <button class="btn btn-sm btn-danger" onclick="runOffboarding()" @(!dateSet ? "disabled" : "")
+                                title="@(!dateSet ? "Set an inactive date to unlock offboarding" : "Run offboarding steps for this employee")">
+                            <i class="bi bi-box-arrow-right me-1"></i>Run Offboarding Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Offboarding Checklist -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold"><i class="bi bi-list-check me-2"></i>Offboarding Checklist</span>
+                        <span class="badge bg-warning text-dark">@offDone / @offTasks.Count complete</span>
+                    </div>
+                    <div class="card-body">
+                        @if (offTasks.Any())
+                        {
+                            <div class="progress mb-3" style="height:8px;">
+                                <div class="progress-bar bg-warning" style="width:@offPct%"></div>
+                            </div>
+                        }
+                        <form asp-controller="EmployeeTasks" asp-action="ApplyTemplate" method="post" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="employeeId" value="@Model.Id" />
+                            <input type="hidden" name="taskType" value="@EmployeeTaskType.Offboarding" />
+                            <button type="submit" class="btn btn-sm btn-outline-primary mb-3">
+                                <i class="bi bi-magic me-1"></i>Apply Offboarding Template
+                            </button>
+                        </form>
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <a asp-controller="EmployeeTasks" asp-action="Templates" class="btn btn-sm btn-outline-secondary mb-3 ms-1">
+                                <i class="bi bi-gear me-1"></i>Manage Templates
+                            </a>
+                        }
+                        @if (!offTasks.Any())
+                        {
+                            <p class="text-muted small mb-0">No offboarding tasks yet. Apply the template or add a custom task below.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush mb-3">
+                                @foreach (var task in offTasks.OrderBy(t => t.SortOrder).ThenBy(t => t.Title))
+                                {
+                                    var isDone    = task.Status == EmployeeTaskStatus.Completed;
+                                    var isSkipped = task.Status == EmployeeTaskStatus.Skipped;
+                                    <li class="list-group-item px-0 py-2">
+                                        <div class="d-flex align-items-start gap-2">
+                                            <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post" class="mt-1">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="taskId" value="@task.Id" />
+                                                <input type="hidden" name="status" value="@(isDone ? EmployeeTaskStatus.Pending : EmployeeTaskStatus.Completed)" />
+                                                <button type="submit" class="btn btn-link p-0 border-0" title="@(isDone ? "Mark as pending" : "Mark as done")">
+                                                    @if (isDone) { <i class="bi bi-check-square-fill text-success fs-5"></i> }
+                                                    else { <i class="bi bi-square fs-5 text-muted"></i> }
+                                                </button>
+                                            </form>
+                                            <div class="flex-grow-1">
+                                                <div class="@(isDone ? "text-decoration-line-through text-muted" : "")">
+                                                    <strong>@task.Title</strong>
+                                                    @if (!string.IsNullOrEmpty(task.Category)) { <span class="badge bg-light text-dark small ms-1">@task.Category</span> }
+                                                    @if (isSkipped) { <span class="badge bg-secondary ms-1">Skipped</span> }
+                                                    else if (task.IsOverdue) { <span class="badge bg-danger ms-1">Overdue</span> }
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(task.Description)) { <div class="small text-muted">@task.Description</div> }
+                                                <div class="small text-muted d-flex flex-wrap gap-3 mt-1">
+                                                    @if (!string.IsNullOrEmpty(task.AssignedToEmail)) { <span><i class="bi bi-person me-1"></i>@task.AssignedToEmail</span> }
+                                                    @if (task.DueDate.HasValue) { <span><i class="bi bi-calendar me-1"></i>Due @task.DueDate.Value.ToString("MMM d, yyyy")</span> }
+                                                    @if (task.CompletedDate.HasValue) { <span><i class="bi bi-check-circle me-1"></i>Completed @task.CompletedDate.Value.ToString("MMM d, yyyy") @(string.IsNullOrEmpty(task.CompletedByEmail) ? "" : $"by {task.CompletedByEmail}")</span> }
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-1">
+                                                @if (!isSkipped)
+                                                {
+                                                    <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="taskId" value="@task.Id" />
+                                                        <input type="hidden" name="status" value="@EmployeeTaskStatus.Skipped" />
+                                                        <button type="submit" class="btn btn-link btn-sm p-0 text-muted" title="Skip"><i class="bi bi-dash-circle"></i></button>
+                                                    </form>
+                                                }
+                                                <form asp-controller="EmployeeTasks" asp-action="DeleteTask" method="post" onsubmit="return confirm('Delete this task?');">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="taskId" value="@task.Id" />
+                                                    <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <details>
+                            <summary class="small text-primary">+ Add custom task</summary>
+                            <form asp-controller="EmployeeTasks" asp-action="AddTask" method="post" class="mt-2">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="employeeId" value="@Model.Id" />
+                                <input type="hidden" name="taskType" value="@EmployeeTaskType.Offboarding" />
+                                <div class="row g-2">
+                                    <div class="col-12"><input name="title" class="form-control form-control-sm" maxlength="200" placeholder="Task title" required /></div>
+                                    <div class="col-12"><textarea name="description" rows="2" class="form-control form-control-sm" maxlength="1000" placeholder="Description (optional)"></textarea></div>
+                                    <div class="col-md-6"><input name="assignedToEmail" type="email" class="form-control form-control-sm" placeholder="Assigned to email" /></div>
+                                    <div class="col-md-6"><input name="dueDate" type="date" class="form-control form-control-sm" /></div>
+                                </div>
+                                <button type="submit" class="btn btn-sm btn-primary mt-2"><i class="bi bi-plus-lg me-1"></i>Add Task</button>
+                            </form>
+                        </details>
+                    </div>
+                </div>
             </div>
         </div>
+    </div><!-- /offboarding pane -->
 
-        <!-- Assigned Assets -->
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-laptop"></i> Assigned Assets
-                <span class="badge bg-warning text-dark rounded-pill ms-1">@Model.AssignedAssets.Count</span>
+</div>
+
+<!-- ═══ TICKET VIEWER MODAL ══════════════════════════════════════════════ -->
+<div class="modal fade" id="ticketViewerModal" tabindex="-1" aria-labelledby="ticketViewerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ticketViewerTitle">
+                    <i class="bi bi-ticket-detailed me-2"></i><span id="ticketViewerLabel">Tickets</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="card-body">
-                @if (Model.AssignedAssets.Any())
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 ss-datatable-compact">
-                            <thead>
-                                <tr>
-                                    <th>Asset Tag</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Serial Number</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var asset in Model.AssignedAssets)
-                                {
-                                    <tr>
-                                        <td>
-                                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id">
-                                                @asset.AssetTag
-                                            </a>
-                                        </td>
-                                        <td>@asset.Name</td>
-                                        <td>@asset.AssetType</td>
-                                        <td><span class="badge badge-@asset.Status.ToString().ToLower()">@asset.Status</span></td>
-                                        <td>@(asset.SerialNumber ?? "N/A")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No assets assigned.</p>
-                }
+            <div class="modal-body p-0">
+                <div id="ticketViewerEmpty" class="text-center text-muted py-5 d-none">
+                    <i class="bi bi-ticket fs-1 opacity-25 d-block mb-3"></i>
+                    <p class="mb-0">No tickets match this filter.</p>
+                </div>
+                <div class="table-responsive" id="ticketViewerTableWrap">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Title</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ticketViewerBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <small class="text-muted me-auto" id="ticketViewerCount"></small>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+    window.revealEmpPwd = function (credId, btn) {
+        var input = document.getElementById('empwd_' + credId);
+        if (input.type === 'text') {
+            input.type = 'password';
+            input.value = '••••••••';
+            btn.innerHTML = '<i class="bi bi-eye"></i>';
+            return;
+        }
+        fetch('@Url.Action("RevealPassword", "Employees")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': token
+            },
+            body: 'credentialId=' + credId
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                input.type = 'text';
+                input.value = d.password;
+                btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                alert('Error: ' + d.message);
+            }
+        });
+    };
+
+    window.copyEmpPwd = function (credId) {
+        var input = document.getElementById('empwd_' + credId);
+        if (input.type !== 'text') {
+            fetch('@Url.Action("RevealPassword", "Employees")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'RequestVerificationToken': token
+                },
+                body: 'credentialId=' + credId
+            })
+            .then(r => r.json())
+            .then(d => { if (d.success) navigator.clipboard.writeText(d.password); });
+        } else {
+            navigator.clipboard.writeText(input.value);
+        }
+    };
+
+    window.toggleEmpNewPwd = function () {
+        var inp = document.getElementById('newEmpCredPwd');
+        var ico = document.getElementById('newEmpPwdIcon');
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+        ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+    };
+})();
+
+// ── Gmail Signature ───────────────────────────────────────────────────────
+(function () {
+    var token       = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    var editor      = document.getElementById('sigEditor');
+    var livePreview = document.getElementById('sigLivePreview');
+    var preview     = document.getElementById('sigPreview');
+    var status      = document.getElementById('sigStatus');
+
+    if (!editor) return;   // tab not rendered
+
+    function showStatus(msg, type) {
+        status.className = 'alert alert-' + type + ' py-2 small mb-3';
+        status.textContent = msg;
+        status.classList.remove('d-none');
+        if (type === 'success') setTimeout(function(){ status.classList.add('d-none'); }, 4000);
+    }
+
+    editor.addEventListener('input', function () {
+        livePreview.innerHTML = editor.value || '<span class="text-muted small">Preview will appear here as you edit.</span>';
+    });
+
+    window.toggleSigView = function(cb) {
+        editor.classList.toggle('d-none', cb.checked);
+        preview.classList.toggle('d-none', !cb.checked);
+        if (cb.checked) preview.innerHTML = editor.value;
+    };
+
+    window.clearEditor = function() {
+        editor.value = '';
+        livePreview.innerHTML = '<span class="text-muted small">Preview will appear here as you edit.</span>';
+        preview.innerHTML = '';
+    };
+
+    window.loadCurrentSignature = function() {
+        showStatus('Loading signature from Gmail…', 'info');
+        fetch('@Url.Action("GetSignature", "Employees", new { id = Model.Id })')
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    editor.value = d.html;
+                    livePreview.innerHTML = d.html || '<span class="text-muted small">Signature is currently empty.</span>';
+                    showStatus('Signature loaded from Gmail.', 'success');
+                } else {
+                    showStatus('Error: ' + d.error, 'danger');
+                }
+            })
+            .catch(function(){ showStatus('Network error loading signature.', 'danger'); });
+    };
+
+    window.applyTemplate = function() {
+        showStatus('Applying template…', 'info');
+        fetch('@Url.Action("GetSignatureTemplate", "Employees", new { id = Model.Id })')
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    editor.value = d.html;
+                    livePreview.innerHTML = d.html;
+                    showStatus('Template applied. Review and click Save to Gmail.', 'success');
+                } else {
+                    showStatus('Error: ' + d.message, 'danger');
+                }
+            })
+            .catch(function(){ showStatus('Network error loading template.', 'danger'); });
+    };
+
+    window.saveSignature = function() {
+        var html           = editor.value.trim();
+        var includeAliases = document.getElementById('sigIncludeAliases')?.checked ?? false;
+        showStatus('Saving signature to Gmail…', 'info');
+        var fd = new FormData();
+        fd.append('html', html);
+        fd.append('includeAliases', includeAliases);
+        fetch('@Url.Action("UpdateSignature", "Employees", new { id = Model.Id })', {
+            method: 'POST',
+            headers: { 'RequestVerificationToken': token },
+            body: fd
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            showStatus(d.message, d.success ? 'success' : 'danger');
+            if (d.success && d.syncDate) {
+                var badge = document.getElementById('sigSyncBadge');
+                if (badge) {
+                    badge.className = 'badge bg-success';
+                    badge.innerHTML = '<i class="bi bi-cloud-check me-1"></i>Synced ' + d.syncDate;
+                }
+            }
+        })
+        .catch(function(){ showStatus('Network error saving signature.', 'danger'); });
+    };
+})();
+
+// ── Google Workspace Tab ──────────────────────────────────────────────────
+(function () {
+    var wsLoaded    = false;
+    var wsState     = { suspended: false, groups: [] };
+    var antiForgery = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+
+    function wsAlert(msg, type) {
+        var el = document.getElementById('wsAlert');
+        el.className = 'alert alert-' + type + ' py-2 small mb-3';
+        el.textContent = msg;
+        el.classList.remove('d-none');
+        if (type === 'success') setTimeout(function () { el.classList.add('d-none'); }, 4000);
+    }
+
+    function post(url, extra) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgery);
+        Object.entries(extra || {}).forEach(function ([k, v]) { fd.append(k, v); });
+        return fetch(url, { method: 'POST', headers: { 'RequestVerificationToken': antiForgery }, body: fd })
+            .then(function (r) { return r.json(); });
+    }
+
+    window.loadWorkspaceInfo = function () {
+        document.getElementById('wsLoader').classList.remove('d-none');
+        document.getElementById('wsContent').classList.add('d-none');
+        document.getElementById('wsAlert').classList.add('d-none');
+
+        Promise.all([
+            fetch('@Url.Action("GetWorkspaceInfo","Employees",new{id=Model.Id})').then(r => r.json()),
+            fetch('@Url.Action("GetDomainGroups","Employees")').then(r => r.json())
+        ]).then(function ([info, domGrps]) {
+            document.getElementById('wsLoader').classList.add('d-none');
+            document.getElementById('wsContent').classList.remove('d-none');
+
+            // Account status
+            wsState.suspended = info.user?.suspended ?? false;
+            var badge = document.getElementById('wsStatusBadge');
+            badge.innerHTML = wsState.suspended
+                ? '<span class="badge bg-danger fs-6"><i class="bi bi-pause-circle me-1"></i>Suspended</span>'
+                : '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Active</span>';
+            document.getElementById('wsOrgUnit').textContent = info.user?.orgUnit ?? '';
+            document.getElementById('wsSuspendBtn').classList.toggle('d-none', wsState.suspended);
+            document.getElementById('wsUnsuspendBtn').classList.toggle('d-none', !wsState.suspended);
+
+            // OOO
+            var vac = info.vacation;
+            var oooBadge = document.getElementById('wsOooBadge');
+            if (vac && !vac.error) {
+                oooBadge.textContent = vac.enabled ? 'Active' : 'Off';
+                oooBadge.className   = 'badge ' + (vac.enabled ? 'bg-warning text-dark' : 'bg-secondary');
+                if (vac.subject) document.getElementById('wsOooSubject').value = vac.subject;
+                if (vac.body)    document.getElementById('wsOooBody').value    = vac.body;
+                if (vac.start)   document.getElementById('wsOooStart').value   = vac.start;
+                if (vac.end)     document.getElementById('wsOooEnd').value     = vac.end;
+                document.getElementById('wsOooDomain').checked = vac.domain ?? false;
+            } else {
+                oooBadge.textContent = 'Unavailable'; oooBadge.className = 'badge bg-secondary';
+            }
+
+            // Groups
+            wsState.groups = Array.isArray(info.groups) ? info.groups : [];
+            renderGroups(wsState.groups);
+
+            // Domain group dropdown
+            var sel = document.getElementById('wsGroupSelect');
+            sel.innerHTML = '<option value="">— Select a group to add —</option>';
+            if (domGrps.success && Array.isArray(domGrps.groups)) {
+                domGrps.groups.forEach(function (g) {
+                    var already = wsState.groups.some(function (m) { return m.Email === g.Email; });
+                    if (!already) {
+                        var o = document.createElement('option');
+                        o.value = g.Email; o.textContent = g.Name + ' (' + g.Email + ')';
+                        sel.appendChild(o);
+                    }
+                });
+            }
+
+            wsLoaded = true;
+        }).catch(function (e) {
+            document.getElementById('wsLoader').classList.add('d-none');
+            wsAlert('Failed to load Workspace data: ' + e, 'danger');
+        });
+    };
+
+    function renderGroups(grps) {
+        var el = document.getElementById('wsGroupsList');
+        if (!grps || grps.length === 0) {
+            el.innerHTML = '<p class="text-muted small p-3 mb-0">Not a member of any groups.</p>';
+            return;
+        }
+        var rows = grps.map(function (g) {
+            return '<tr><td><code class="small">' + escHtml(g.Email) + '</code></td>' +
+                   '<td>' + escHtml(g.Name) + '</td>' +
+                   '<td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="removeFromGroup(' +
+                   "'" + escHtml(g.Email) + "'" + ')"><i class="bi bi-x-lg"></i></button></td></tr>';
+        }).join('');
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+            '<tr><th>Email</th><th>Name</th><th class="text-end">Remove</th></tr></thead><tbody>' +
+            rows + '</tbody></table></div>';
+    }
+
+    window.toggleSuspend = function (suspend) {
+        if (!confirm((suspend ? 'Suspend' : 'Unsuspend') + ' this Google account?')) return;
+        post('@Url.Action("SuspendUser","Employees",new{id=Model.Id})', { suspended: suspend })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) {
+                    wsState.suspended = suspend;
+                    document.getElementById('wsStatusBadge').innerHTML = suspend
+                        ? '<span class="badge bg-danger fs-6"><i class="bi bi-pause-circle me-1"></i>Suspended</span>'
+                        : '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Active</span>';
+                    document.getElementById('wsSuspendBtn').classList.toggle('d-none', suspend);
+                    document.getElementById('wsUnsuspendBtn').classList.toggle('d-none', !suspend);
+                }
+            });
+    };
+
+    window.resetPassword = function () {
+        if (!confirm('Generate a new temporary password for this account?')) return;
+        post('@Url.Action("ResetWorkspacePassword","Employees",new{id=Model.Id})')
+            .then(function (d) {
+                if (d.success) {
+                    document.getElementById('wsTempPwBox').classList.remove('d-none');
+                    document.getElementById('wsTempPw').value = d.tempPassword;
+                    wsAlert('Password reset. Share the temporary password securely with the employee.', 'warning');
+                } else {
+                    wsAlert('Reset failed: ' + d.message, 'danger');
+                }
+            });
+    };
+
+    window.copyTempPw = function () {
+        var pw = document.getElementById('wsTempPw').value;
+        navigator.clipboard?.writeText(pw);
+        wsAlert('Password copied to clipboard.', 'success');
+    };
+
+    window.loadStorage = function () {
+        var card = document.getElementById('wsStorageCard');
+        card.innerHTML = '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small text-muted">Loading storage data…</span>';
+        fetch('@Url.Action("GetStorageInfo","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) { card.innerHTML = '<p class="text-muted small mb-0">' + escHtml(d.error) + '</p>'; return; }
+                var totalUsedMb = d.gmailMb + d.driveMb;
+                var pct = d.totalMb > 0 ? Math.min(100, Math.round(totalUsedMb / d.totalMb * 100)) : 0;
+                var barClass = pct > 85 ? 'bg-danger' : pct > 60 ? 'bg-warning' : 'bg-primary';
+                card.innerHTML =
+                    '<div class="mb-2"><div class="d-flex justify-content-between small mb-1">' +
+                    '<span>' + totalUsedMb.toLocaleString() + ' MB used</span>' +
+                    '<span class="text-muted">' + d.totalMb.toLocaleString() + ' MB total</span>' +
+                    '</div><div class="progress" style="height:10px;">' +
+                    '<div class="progress-bar ' + barClass + '" style="width:' + pct + '%"></div></div>' +
+                    '<div class="small text-muted mt-1">' + pct + '% used</div></div>' +
+                    '<div class="row g-2 mt-1"><div class="col-6 text-center border-end">' +
+                    '<div class="fw-bold">' + d.gmailMb.toLocaleString() + ' MB</div>' +
+                    '<div class="small text-muted">Gmail</div></div>' +
+                    '<div class="col-6 text-center"><div class="fw-bold">' + d.driveMb.toLocaleString() + ' MB</div>' +
+                    '<div class="small text-muted">Drive</div></div></div>' +
+                    (d.asOf ? '<div class="small text-muted mt-2"><i class="bi bi-clock me-1"></i>Data as of ' + escHtml(d.asOf) + '</div>' : '');
+            });
+    };
+
+    window.saveOoo = function (enable) {
+        var data = {
+            enabled:          enable,
+            subject:          document.getElementById('wsOooSubject').value,
+            body:             document.getElementById('wsOooBody').value,
+            startDate:        document.getElementById('wsOooStart').value,
+            endDate:          document.getElementById('wsOooEnd').value,
+            restrictToDomain: document.getElementById('wsOooDomain').checked
+        };
+        post('@Url.Action("SetVacationResponder","Employees",new{id=Model.Id})', data)
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) {
+                    var b = document.getElementById('wsOooBadge');
+                    b.textContent = enable ? 'Active' : 'Off';
+                    b.className   = 'badge ' + (enable ? 'bg-warning text-dark' : 'bg-secondary');
+                }
+            });
+    };
+
+    window.addToGroup = function () {
+        var sel = document.getElementById('wsGroupSelect');
+        var grp = sel.value;
+        if (!grp) return;
+        post('@Url.Action("AddToGroup","Employees",new{id=Model.Id})', { groupEmail: grp })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    window.removeFromGroup = function (grpEmail) {
+        if (!confirm('Remove from ' + grpEmail + '?')) return;
+        post('@Url.Action("RemoveFromGroup","Employees",new{id=Model.Id})', { groupEmail: grpEmail })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    window.provisionAccount = function () {
+        if (!confirm('Create a new Google Workspace account for @(System.Web.HttpUtility.JavaScriptStringEncode(Model.Email ?? Model.FullName))?\n\nMake sure this account does not already exist in your domain.')) return;
+        var ou = document.getElementById('wsOrgUnitInput').value.trim();
+        post('@Url.Action("ProvisionWorkspaceAccount","Employees",new{id=Model.Id})', { orgUnit: ou })
+            .then(function (d) {
+                var res = document.getElementById('wsProvisionResult');
+                var msg = document.getElementById('wsProvisionMsg');
+                res.classList.remove('d-none');
+                msg.textContent = d.message;
+                msg.className   = 'alert py-2 small mb-2 ' + (d.success ? 'alert-success' : 'alert-danger');
+                if (d.success && d.tempPassword) {
+                    var box = document.getElementById('wsNewPwBox');
+                    box.classList.remove('d-none');
+                    document.getElementById('wsNewPw').value = d.tempPassword;
+                }
+            });
+    };
+
+    window.copyNewPw = function () {
+        navigator.clipboard?.writeText(document.getElementById('wsNewPw').value);
+        wsAlert('Password copied to clipboard.', 'success');
+    };
+
+    // ── Offboarding ───────────────────────────────────────────────────────────
+
+    window.runOffboarding = function () {
+        if (!confirm('Run offboarding steps for this employee? This will apply the selected actions to their Google account.')) return;
+        var data = {
+            suspend:          document.getElementById('offSuspend').checked,
+            removeGroups:     document.getElementById('offGroups').checked,
+            setOoo:           document.getElementById('offOoo').checked,
+            oooSubject:       document.getElementById('offOooSubject').value,
+            oooBody:          document.getElementById('offOooBody').value,
+            revokeTokens:     document.getElementById('offRevoke').checked,
+            transferDrive:    document.getElementById('offTransfer').checked,
+            transferToEmail:  document.getElementById('offTransferEmail')?.value ?? ''
+        };
+        var btn = document.querySelector('[onclick="runOffboarding()"]');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running…';
+
+        post('@Url.Action("RunOffboarding","Employees",new{id=Model.Id})', data)
+            .then(function (d) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Run Offboarding';
+
+                var resultEl = document.getElementById('offboardingResult');
+                resultEl.classList.remove('d-none');
+                var rows = (d.steps || []).map(function (s) {
+                    var icon = s.ok
+                        ? '<i class="bi bi-check-circle-fill text-success me-1"></i>'
+                        : '<i class="bi bi-x-circle-fill text-danger me-1"></i>';
+                    return '<li class="list-group-item py-1 small d-flex justify-content-between align-items-start">' +
+                           '<span>' + icon + escHtml(s.step) + '</span>' +
+                           '<span class="text-muted small ms-2">' + escHtml(s.message || '') + '</span></li>';
+                }).join('');
+                resultEl.innerHTML =
+                    '<div class="alert alert-' + (d.success ? 'success' : 'warning') + ' py-2 small mb-2">' +
+                    escHtml(d.message) + '</div>' +
+                    (rows ? '<ul class="list-group list-group-flush border rounded">' + rows + '</ul>' : '');
+            }).catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Run Offboarding';
+                wsAlert('Request failed. Check your network and try again.', 'danger');
+            });
+    };
+
+    // ── Security ──────────────────────────────────────────────────────────────
+
+    window.loadOAuthApps = function () {
+        var sec = document.getElementById('wsSecurityPlaceholder');
+        sec.classList.add('d-none');
+        var el = document.getElementById('wsOAuthSection');
+        el.classList.remove('d-none');
+        el.querySelector('#wsOAuthList').innerHTML =
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small">Loading…</span>';
+
+        fetch('@Url.Action("GetOAuthApps","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) {
+                    el.querySelector('#wsOAuthList').innerHTML = '<p class="text-danger small">' + escHtml(d.error) + '</p>';
+                    return;
+                }
+                if (!d.tokens || d.tokens.length === 0) {
+                    el.querySelector('#wsOAuthList').innerHTML = '<p class="text-muted small">No authorized apps found.</p>';
+                    return;
+                }
+                var rows = d.tokens.map(function (t) {
+                    return '<tr><td class="fw-semibold small">' + escHtml(t.appName) + '</td>' +
+                           '<td><code class="small">' + escHtml(t.clientId) + '</code></td>' +
+                           '<td class="text-end"><span class="badge bg-secondary">' + t.scopeCount + ' scope(s)</span></td></tr>';
+                }).join('');
+                el.querySelector('#wsOAuthList').innerHTML =
+                    '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+                    '<tr><th>App</th><th>Client ID</th><th class="text-end">Scopes</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody></table></div>';
+            });
+    };
+
+    window.loadLoginActivity = function () {
+        var sec = document.getElementById('wsSecurityPlaceholder');
+        sec.classList.add('d-none');
+        var el = document.getElementById('wsLoginSection');
+        el.classList.remove('d-none');
+        el.querySelector('#wsLoginList').innerHTML =
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="small">Loading…</span>';
+
+        fetch('@Url.Action("GetLoginActivity","Employees",new{id=Model.Id})')
+            .then(r => r.json())
+            .then(function (d) {
+                if (!d.success) {
+                    el.querySelector('#wsLoginList').innerHTML = '<p class="text-danger small">' + escHtml(d.error) + '</p>';
+                    return;
+                }
+                if (!d.events || d.events.length === 0) {
+                    el.querySelector('#wsLoginList').innerHTML = '<p class="text-muted small">No login events found.</p>';
+                    return;
+                }
+                var eventIcons = { 'login_success': 'bi-check-circle text-success',
+                    'login_failure': 'bi-x-circle text-danger', 'logout': 'bi-box-arrow-right text-secondary' };
+                var rows = d.events.map(function (e) {
+                    var icon = eventIcons[e.eventName] || 'bi-circle text-muted';
+                    return '<tr><td class="small">' + escHtml(e.time) + '</td>' +
+                           '<td><i class="bi ' + icon + ' me-1"></i><span class="small">' + escHtml(e.eventName) + '</span></td>' +
+                           '<td><code class="small">' + escHtml(e.ip || '—') + '</code></td></tr>';
+                }).join('');
+                el.querySelector('#wsLoginList').innerHTML =
+                    '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+                    '<tr><th>Time</th><th>Event</th><th>IP Address</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody></table></div>';
+            });
+    };
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Auto-load when workspace tab is clicked
+    document.querySelectorAll('a[href="?tab=workspace"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            if (!wsLoaded) setTimeout(loadWorkspaceInfo, 80);
+        });
+    });
+
+    // Auto-load if workspace is the active tab on page load
+    if (window.location.search.includes('tab=workspace')) {
+        setTimeout(loadWorkspaceInfo, 200);
+    }
+
+    // Drive transfer toggle in offboarding tab
+    document.getElementById('offTransfer')?.addEventListener('change', function () {
+        document.getElementById('offTransferDest').style.display = this.checked ? '' : 'none';
+    });
+
+    // ── Sync Profile to Google ────────────────────────────────────────────────
+    window.syncProfile = function () {
+        var btn    = document.getElementById('btnSyncProfile');
+        var result = document.getElementById('syncProfileResult');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing…';
+
+        post('@Url.Action("SyncWorkspaceProfile","Employees",new{id=Model.Id})', {})
+            .then(function (d) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google';
+                result.className = 'alert py-2 small mb-2 ' + (d.success ? 'alert-success' : 'alert-danger');
+                result.textContent = d.message;
+                result.classList.remove('d-none');
+                if (d.success) setTimeout(function () { result.classList.add('d-none'); }, 5000);
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Sync Profile to Google';
+                result.className = 'alert alert-danger py-2 small mb-2';
+                result.textContent = 'Request failed — check your connection and try again.';
+                result.classList.remove('d-none');
+            });
+    };
+})();
+
+// ── Ticket Viewer Modal ────────────────────────────────────────────────────
+var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+    ((IEnumerable<dynamic>)(ViewBag.RecentSubmitted ?? Enumerable.Empty<dynamic>()))
+    .Select(t => new {
+        id          = (int)t.Id,
+        title       = (string)t.Title,
+        statusInt   = (int)t.Status,
+        status      = ((object)t.Status).ToString(),
+        priority    = ((object)t.Priority).ToString(),
+        category    = (int)t.Category,
+        createdDate = ((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")
+    })
+));
+
+(function () {
+    var statusLabels = {0:'Open',1:'In Progress',2:'On Hold',3:'Resolved',4:'Closed',5:'Cancelled'};
+    var statusClasses = {0:'open',1:'inprogress',2:'onhold',3:'resolved',4:'closed',5:'cancelled'};
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function showTicketModal(label, tickets) {
+        document.getElementById('ticketViewerLabel').textContent = label;
+        var tbody  = document.getElementById('ticketViewerBody');
+        var empty  = document.getElementById('ticketViewerEmpty');
+        var wrap   = document.getElementById('ticketViewerTableWrap');
+        var count  = document.getElementById('ticketViewerCount');
+
+        tbody.innerHTML = '';
+
+        if (tickets.length === 0) {
+            empty.classList.remove('d-none');
+            wrap.classList.add('d-none');
+            count.textContent = '0 tickets';
+        } else {
+            empty.classList.add('d-none');
+            wrap.classList.remove('d-none');
+            count.textContent = tickets.length + ' ticket' + (tickets.length !== 1 ? 's' : '');
+
+            tickets.slice().sort(function(a,b){ return b.id - a.id; }).forEach(function(t) {
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="text-muted small">#' + t.id + '</td>' +
+                    '<td><a href="/Tickets/Details/' + t.id + '">' + escHtml(t.title) + '</a></td>' +
+                    '<td><span class="badge badge-' + (statusClasses[t.statusInt] || 'secondary') + '">' + (statusLabels[t.statusInt] || t.status) + '</span></td>' +
+                    '<td><span class="badge badge-' + t.priority.toLowerCase() + '">' + t.priority + '</span></td>' +
+                    '<td class="text-muted small">' + t.createdDate + '</td>';
+                tbody.appendChild(tr);
+            });
+        }
+
+        new bootstrap.Modal(document.getElementById('ticketViewerModal')).show();
+    }
+
+    // KPI card clicks
+    document.querySelectorAll('.kpi-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var filter = this.dataset.filter;
+            var filtered, label;
+            if (filter === 'all') {
+                filtered = empTickets.slice();
+                label = 'All Tickets';
+            } else if (filter === 'open') {
+                filtered = empTickets.filter(function(t) { return t.statusInt === 0 || t.statusInt === 1; });
+                label = 'Open / In Progress';
+            } else {
+                filtered = empTickets.filter(function(t) { return t.statusInt === 3 || t.statusInt === 4; });
+                label = 'Resolved / Closed';
+            }
+            showTicketModal(label + ' (' + filtered.length + ')', filtered);
+        });
+    });
+
+    // Category bar clicks
+    document.querySelectorAll('.cat-bar').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var catId   = parseInt(this.dataset.catId);
+            var catName = this.dataset.catName;
+            var filtered = empTickets.filter(function(t) { return t.category === catId; });
+            showTicketModal(catName + ' (' + filtered.length + ')', filtered);
+        });
+    });
+})();
+</script>
+}

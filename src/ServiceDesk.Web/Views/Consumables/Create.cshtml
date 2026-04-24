@@ -1,0 +1,26 @@
+@model ServiceDesk.Core.Models.ConsumableItem
+@{
+    ViewData["Title"] = "New Consumable";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Consumables</a></li>
+        <li class="breadcrumb-item active">New</li>
+    </ol>
+</nav>
+
+<h2 class="mb-4"><i class="bi bi-stack me-2"></i>New Consumable Item</h2>
+
+<div class="card shadow-sm" style="max-width:620px;">
+    <div class="card-body">
+        <form asp-action="Create" method="post">
+            @Html.AntiForgeryToken()
+            @await Html.PartialAsync("_ConsumableForm", Model)
+            <div class="mt-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

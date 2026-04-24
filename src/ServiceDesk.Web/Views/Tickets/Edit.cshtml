@@ -2,6 +2,17 @@
 @{
     ViewData["Title"] = $"Ticket #{Model.Id}";
     // Antiforgery token rendered via hidden field in form
+
+    // Status accent color — used for header bar border, title section left accent, title input underline
+    var _statusAccent = Model.Status switch {
+        TicketStatus.Open       => "#3b82f6",
+        TicketStatus.InProgress => "#f59e0b",
+        TicketStatus.OnHold     => "#6b7280",
+        TicketStatus.Resolved   => "#10b981",
+        TicketStatus.Closed     => "#374151",
+        TicketStatus.Cancelled  => "#ef4444",
+        _                       => "#9ca3af"
+    };
 }
 
 <!-- SolarWinds-style ticket edit page -->
@@ -15,7 +26,7 @@
     <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
 
     <!-- ===== TOP HEADER BAR ===== -->
-    <div class="ticket-header-bar bg-white border-bottom shadow-sm mb-0">
+    <div id="ticketHeaderBar" class="ticket-header-bar bg-white shadow-sm mb-0" style="border-bottom: 3px solid @_statusAccent; transition: border-color .2s;">
         <div class="d-flex align-items-center gap-2 flex-wrap py-2 px-3">
             <!-- Back -->
             <a asp-action="Index" class="btn btn-sm btn-light border me-2" title="Back to Tickets">
@@ -55,7 +66,7 @@
             <!-- Category -->
             <div class="ticket-header-field">
                 <label class="ticket-header-label">Category</label>
-                <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()" class="form-select form-select-sm ticket-header-select" id="categorySelect"></select>
+                <select asp-for="Category" asp-items="@ViewBag.CategorySelectList" class="form-select form-select-sm ticket-header-select" id="categorySelect" data-no-picker></select>
             </div>
 
             <!-- Sub-Category -->
@@ -66,13 +77,9 @@
                 </select>
             </div>
 
-            <!-- Submitted By (with inline search) -->
+            <!-- Submitted By -->
             <div class="ticket-header-field" style="min-width:160px;">
                 <label class="ticket-header-label">Submitted By</label>
-                <input type="text" class="form-control form-control-sm mb-1 requester-search"
-                       placeholder="Search…" data-target="SubmittedById"
-                       oninput="filterSelectOptions(this)"
-                       autocomplete="off" style="max-width:160px;">
                 <select asp-for="SubmittedById" class="form-select form-select-sm ticket-header-select" asp-items="@ViewBag.Employees">
                     <option value="">— Select —</option>
                 </select>
@@ -97,7 +104,7 @@
     <div class="ticket-edit-body">
 
         <!-- Ticket Subject & Meta -->
-        <div class="mb-4 pb-3 border-bottom">
+        <div id="ticketTitleSection" class="mb-4 pb-3 border-bottom" style="border-left: 4px solid @_statusAccent !important; padding-left: 1rem; transition: border-color .2s;">
             <!-- Requester row (shown from selected SubmittedById; editable via header bar dropdown) -->
             <div class="d-flex align-items-center gap-2 mb-2" id="requesterDisplay">
                 <div class="ticket-avatar rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
@@ -113,24 +120,179 @@
 
             <!-- Subject -->
             <div class="mb-3">
-                <input asp-for="Title" class="form-control form-control-lg fw-bold border-0 border-bottom rounded-0 px-0 ticket-title-input" placeholder="Subject" />
+                <input asp-for="Title" id="ticketTitleInput" class="form-control form-control-lg fw-bold border-0 border-bottom rounded-0 px-0 ticket-title-input" placeholder="Subject" style="border-bottom-color: @_statusAccent !important; border-bottom-width: 2px !important; transition: border-color .2s;" />
                 <span asp-validation-for="Title" class="text-danger small"></span>
             </div>
 
-            <!-- Created date -->
-            <div class="text-muted small">
-                <i class="bi bi-calendar3 me-1"></i>
-                Created: @Model.CreatedDate.ToString("MMM dd, yyyy") at @Model.CreatedDate.ToString("h:mm tt")
-                @if (Model.SubmittedBy != null)
-                {
-                    <span> by <strong>@Model.SubmittedBy.FullName</strong></span>
-                }
+            <!-- Created date + SLA risk badge -->
+            <div class="text-muted small d-flex flex-wrap align-items-center gap-3">
+                <span>
+                    <i class="bi bi-calendar3 me-1"></i>
+                    Created: @Model.CreatedDate.ToString("MMM dd, yyyy") at @Model.CreatedDate.ToString("h:mm tt")
+                    @if (Model.SubmittedBy != null)
+                    {
+                        <span> by <strong>@Model.SubmittedBy.FullName</strong></span>
+                    }
+                </span>
                 @if (Model.UpdatedDate.HasValue)
                 {
-                    <span class="ms-3"><i class="bi bi-pencil me-1"></i>Updated: @Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</span>
+                    <span><i class="bi bi-pencil me-1"></i>Updated: @Model.UpdatedDate.Value.ToString("MMM dd, yyyy h:mm tt")</span>
+                }
+                @{
+                    var slaRisk  = (ServiceDesk.Web.Services.SlaRiskLevel)(ViewBag.SlaRisk ?? ServiceDesk.Web.Services.SlaRiskLevel.None);
+                    var slaLabel = (string)(ViewBag.SlaThresholdLabel ?? "");
+                    var isOpen   = Model.Status != ServiceDesk.Core.Enums.TicketStatus.Resolved
+                                && Model.Status != ServiceDesk.Core.Enums.TicketStatus.Closed
+                                && Model.Status != ServiceDesk.Core.Enums.TicketStatus.Cancelled;
+                }
+                @if (isOpen && slaRisk != ServiceDesk.Web.Services.SlaRiskLevel.None)
+                {
+                    <span class="badge bg-@ServiceDesk.Web.Services.SlaRiskService.RiskBadgeClass(slaRisk) text-white"
+                          title="Expected resolution window: @slaLabel">
+                        <i class="bi bi-clock-history me-1"></i>@ServiceDesk.Web.Services.SlaRiskService.RiskLabel(slaRisk)
+                        <span class="opacity-75 ms-1">(@slaLabel SLA)</span>
+                    </span>
+                }
+                @if (Model.IsEscalated)
+                {
+                    <span class="badge bg-danger text-white"
+                          title="Escalated @(Model.EscalatedAt.HasValue ? Model.EscalatedAt.Value.ToString("MMM dd, yyyy h:mm tt") : ""): @(Model.EscalationReason ?? "")">
+                        <i class="bi bi-exclamation-octagon-fill me-1"></i>ESCALATED
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(Model.ResolutionType))
+                {
+                    <span class="badge bg-success ms-1" title="Resolution Type">
+                        <i class="bi bi-check-circle me-1"></i>@Model.ResolutionType
+                    </span>
+                }
+                @if (isOpen && !Model.IsEscalated)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0"
+                            data-bs-toggle="modal" data-bs-target="#escalateModal"
+                            title="Escalate this ticket">
+                        <i class="bi bi-arrow-up-circle me-1"></i>Escalate
+                    </button>
                 }
             </div>
         </div>
+
+        @if (Context.Request.Query["suggestKb"] == "1" && !string.IsNullOrWhiteSpace(Model.ResolutionNotes))
+        {
+            <div class="alert alert-success alert-dismissible border-0 shadow-sm mb-3 py-2" role="alert">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-journal-plus text-success flex-shrink-0" style="font-size:1.1rem;"></i>
+                    <span class="flex-grow-1 small fw-medium">This ticket has resolution notes — turn it into a Knowledge Base article?</span>
+                    <form asp-action="SuggestToKb" asp-route-id="@Model.Id" method="post" class="flex-shrink-0">
+                        <button type="submit" class="btn btn-sm btn-success py-0 px-2">
+                            <i class="bi bi-plus-lg me-1"></i>Create KB Article
+                        </button>
+                    </form>
+                    <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        }
+
+        <!-- ===== AI TRIAGE CARD ===== -->
+        @{
+            var aiRec       = ViewBag.AiRecommendation as ServiceDesk.Core.Models.AiRecommendation;
+            var ollamaOn    = (bool)(ViewBag.OllamaEnabled ?? false);
+        }
+        @if (aiRec != null)
+        {
+            <!-- AI card uses data-* attributes + AJAX so no nested <form> inside the outer Edit form -->
+            <div class="alert alert-info border-start border-4 border-primary shadow-sm mb-3 py-2 px-3" id="aiTriageCard"
+                 data-rec-id="@aiRec.Id"
+                 style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="flex-shrink-0 pt-1">
+                        <span class="fs-4" title="AI Triage">&#129302;</span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold mb-1" style="color:#1a56db;">
+                            AI Triage Suggestion
+                            <span class="fw-normal text-muted small ms-2">ML.NET classification</span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 small mb-2">
+                            @if (aiRec.SuggestedCategory.HasValue)
+                            {
+                                var aiCatById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
+                                var catName = aiCatById.TryGetValue(aiRec.SuggestedCategory.Value, out var aiCn) ? aiCn : aiRec.SuggestedCategory.Value.ToString();
+                                var catPct  = (int)(aiRec.CategoryConfidence * 100);
+                                <span>
+                                    <i class="bi bi-tag me-1 text-primary"></i>
+                                    <strong>Category:</strong> @catName
+                                    <span class="badge bg-primary ms-1">@catPct%</span>
+                                </span>
+                            }
+                            @if (aiRec.SuggestedPriority.HasValue)
+                            {
+                                var priName = ((ServiceDesk.Core.Enums.TicketPriority)aiRec.SuggestedPriority.Value).ToString();
+                                var priPct  = (int)(aiRec.PriorityConfidence * 100);
+                                <span>
+                                    <i class="bi bi-flag me-1 text-warning"></i>
+                                    <strong>Priority:</strong> @priName
+                                    <span class="badge bg-warning text-dark ms-1">@priPct%</span>
+                                </span>
+                            }
+                            @if (aiRec.SuggestedAssignee != null)
+                            {
+                                <span>
+                                    <i class="bi bi-person-check me-1 text-success"></i>
+                                    <strong>Assignee:</strong> @aiRec.SuggestedAssignee.FullName
+                                </span>
+                            }
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnApproveAiRec">
+                                <i class="bi bi-check-lg me-1"></i>Apply Suggestions
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDismissAiRec">
+                                <i class="bi bi-x-lg me-1"></i>Dismiss
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRetriageTicket">
+                                <i class="bi bi-arrow-repeat me-1"></i>Re-run AI
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- ===== SIMILAR TICKETS PANEL ===== -->
+        <div id="similarTicketsPanel" class="mb-3" style="display:none;">
+            <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg,#f8fff8 0%,#edfaed 100%);">
+                <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-2">
+                    <span class="fw-semibold small" style="color:#146c43;">
+                        <i class="bi bi-diagram-2 me-1"></i>Similar Tickets
+                        <span class="text-muted fw-normal ms-1">— these may be related or duplicates</span>
+                    </span>
+                    <button type="button" class="btn-close btn-sm" onclick="document.getElementById('similarTicketsPanel').style.display='none';"></button>
+                </div>
+                <div class="card-body py-2 px-3" id="similarTicketsList">
+                    <div class="text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Finding similar tickets…</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ollama "Draft AI Reply" floating hint (visible when Ollama is enabled) -->
+        @{
+            var noteCountForOllama = (int)(ViewBag.NoteCount ?? 0);
+        }
+        @if (ollamaOn)
+        {
+            <div class="d-flex justify-content-end gap-2 mb-2">
+                @if (noteCountForOllama > 0)
+                {
+                    <button type="button" id="btnSummarizeThread" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-journal-text me-1"></i>Summarize Thread
+                    </button>
+                }
+                <button type="button" id="btnDraftAiReply" class="btn btn-sm btn-outline-info">
+                    <i class="bi bi-robot me-1"></i>Draft AI Reply
+                </button>
+            </div>
+        }
 
         <!-- ===== TABS ===== -->
         <ul class="nav nav-tabs mb-3" id="ticketTabs" role="tablist">
@@ -179,6 +341,15 @@
             <!-- ===== COMMENTS TAB ===== -->
             <div class="tab-pane fade show active" id="tab-comments" role="tabpanel">
                 <!-- Existing comments -->
+                @{
+                    // srcdoc prefix/suffix — Razor HTML-encodes the full expression when placed in an
+                    // attribute, and the browser HTML-decodes it to reconstruct the exact document.
+                    var _noteDocPrefix = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+                        + "body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;margin:10px 14px;color:#212529;word-break:break-word;}"
+                        + "img{max-width:100%;height:auto;}a{color:#0d6efd;}.ss-hidden-quote{display:none!important;}"
+                        + "</style></head><body>";
+                    var _noteDocSuffix = "</body></html>";
+                }
                 <div id="commentsContainer">
                     @if (!Model.Notes.Any(n => !n.IsInternal))
                     {
@@ -199,10 +370,19 @@
                                     <span class="fw-semibold">@note.AuthorName</span>
                                     <span class="text-muted small">@note.CreatedDate.ToString("MMM dd, yyyy h:mm tt")</span>
                                 </div>
-                                <div class="comment-body bg-light rounded p-3">
-                                    @if (note.Source == "Email")
+                                <div class="comment-body bg-light rounded @(note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml) ? "p-0 overflow-hidden" : "p-3")">
+                                    @if (note.Source == "Email" && !string.IsNullOrEmpty(note.ContentHtml))
                                     {
-                                        @Html.Raw(note.Content)
+                                        <iframe id="note-frame-@note.Id"
+                                                srcdoc="@(_noteDocPrefix + note.ContentHtml + _noteDocSuffix)"
+                                                style="width:100%;border:none;min-height:80px;max-height:500px;display:block;"
+                                                sandbox="allow-scripts allow-same-origin"
+                                                title="Email comment"
+                                                onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;['.gmail_quote','.gmail_attr','blockquote[type=&quot;cite&quot;]','#divRplyFwdMsg','#divRFW','.yahoo_quoted'].forEach(function(s){try{d.querySelectorAll(s).forEach(function(e){e.style.display='none'});}catch(x){}});function r(){f.style.height=Math.min(500,Math.max(80,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
+                                    }
+                                    else if (note.Source == "Email")
+                                    {
+                                        <span style="white-space:pre-wrap;word-break:break-word;">@note.Content</span>
                                     }
                                     else
                                     {
@@ -263,8 +443,23 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">Description</label>
-                        <textarea asp-for="Description" class="form-control" rows="6"></textarea>
-                        <span asp-validation-for="Description" class="text-danger small"></span>
+                        @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
+                        {
+                            @* Email-originated ticket: show rendered HTML, keep Description value via hidden input *@
+                            <input type="hidden" asp-for="Description" />
+                            <div class="border rounded overflow-hidden" style="min-height:120px;">
+                                <iframe srcdoc="@(_noteDocPrefix + Model.DescriptionHtml + _noteDocSuffix)"
+                                        style="width:100%;border:none;min-height:120px;max-height:600px;display:block;"
+                                        sandbox="allow-scripts allow-same-origin"
+                                        title="Email description"
+                                        onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;function r(){f.style.height=Math.min(600,Math.max(120,d.body.scrollHeight))+'px';}r();d.querySelectorAll('img').forEach(function(i){i.addEventListener('load',r);});})(this)"></iframe>
+                            </div>
+                        }
+                        else
+                        {
+                            <textarea asp-for="Description" class="form-control" rows="6"></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        }
                     </div>
                     <div class="col-md-6">
                         <div class="row g-3">
@@ -279,6 +474,12 @@
                             <div class="col-12">
                                 <label class="form-label fw-semibold">Related Service</label>
                                 <select asp-for="CompanyServiceId" class="form-select" asp-items="@ViewBag.Services">
+                                    <option value="">— None —</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Related Asset</label>
+                                <select asp-for="AssetId" class="form-select" asp-items="@ViewBag.Assets">
                                     <option value="">— None —</option>
                                 </select>
                             </div>
@@ -537,6 +738,97 @@
 </form>
 
 <!-- Toast for comment post feedback -->
+<!-- ── Resolution Modal ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="resolveModal" tabindex="-1" aria-labelledby="resolveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="resolveModalLabel">
+                    <i class="bi bi-check-circle me-2"></i>Resolve Ticket <span id="resolveModalStatusLabel" class="fw-normal opacity-75 small"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" id="btnResolveDismiss" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Resolution Type <span class="text-danger">*</span></label>
+                    <select id="resolveTypeSelect" class="form-select">
+                        <option value="">— Select a resolution type —</option>
+                        <option value="Resolved – Full Solution">Resolved – Full Solution</option>
+                        <option value="Resolved – Workaround">Resolved – Workaround</option>
+                        <option value="Resolved – Not Reproducible">Resolved – Not Reproducible</option>
+                        <option value="Resolved – By Design">Resolved – By Design</option>
+                        <option value="Resolved – Informational">Resolved – Informational</option>
+                        <option value="Resolved – Third Party">Resolved – Third Party</option>
+                        <option value="Resolved – User Cancelled">Resolved – User Cancelled</option>
+                        <option value="Resolved – Duplicate">Resolved – Duplicate</option>
+                        <option value="Resolved – No Action Required">Resolved – No Action Required</option>
+                    </select>
+                    <div id="resolveTypeError" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-circle me-1"></i>Please select a resolution type.
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                        Resolution Notes
+                        <span class="badge bg-secondary fw-normal ms-1">Internal — not emailed to user</span>
+                    </label>
+                    <textarea id="resolveNotesTextarea" class="form-control" rows="4"
+                              placeholder="Describe what resolved this ticket, any steps taken, workarounds applied, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="btnResolveCancelModal">Cancel</button>
+                <button type="button" class="btn btn-success" id="btnResolveConfirm">
+                    <i class="bi bi-check-circle me-1"></i>Confirm Resolution
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ── Escalate Ticket Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="escalateModal" tabindex="-1" aria-labelledby="escalateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="escalateModalLabel">
+                    <i class="bi bi-exclamation-octagon-fill me-2"></i>Escalate Ticket #@Model.Id
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Escalating will raise the ticket priority and notify the assigned agent and requester.
+                    The ticket will be flagged as <strong>ESCALATED</strong> in the audit trail.
+                </p>
+                <div class="mb-3">
+                    <label for="escalateReason" class="form-label fw-semibold">Escalation Reason <span class="text-danger">*</span></label>
+                    <textarea id="escalateReason" class="form-control" rows="3"
+                              placeholder="Briefly explain why this ticket needs to be escalated…" maxlength="500"></textarea>
+                    <div id="escalateReasonError" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-circle me-1"></i>Please provide a reason for escalation.
+                    </div>
+                </div>
+                <div class="alert alert-warning small py-2 mb-0">
+                    <i class="bi bi-arrow-up-circle me-1"></i>
+                    Current priority: <strong>@Model.Priority</strong> →
+                    will be raised to <strong>@(Model.Priority switch {
+                        ServiceDesk.Core.Enums.TicketPriority.Low    => "High",
+                        ServiceDesk.Core.Enums.TicketPriority.Medium => "High",
+                        ServiceDesk.Core.Enums.TicketPriority.High   => "Critical",
+                        _                                             => "Critical"
+                    })</strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="btnConfirmEscalate" class="btn btn-danger">
+                    <i class="bi bi-exclamation-octagon me-1"></i>Confirm Escalation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="commentToast" class="toast align-items-center text-bg-success border-0" role="alert">
         <div class="d-flex">
@@ -547,6 +839,7 @@
 </div>
 
 @section Scripts {
+@{ var ollamaOn = (bool)(ViewBag.OllamaEnabled ?? false); }
 <script>
 // ── Searchable select: filters visible <option> elements by text ──────────
 function filterSelectOptions(input) {
@@ -592,6 +885,57 @@ function filterSelectOptions(input) {
     applySelectColor(statusSelect, statusColors);
     applySelectColor(prioritySelect, priorityColors);
 
+    // --- Status accent color updater ---
+    const _statusAccentPalette = {
+        open: '#3b82f6', inprogress: '#f59e0b', onhold: '#6b7280',
+        resolved: '#10b981', closed: '#374151', cancelled: '#ef4444'
+    };
+    function _updateStatusAccent(statusKey) {
+        const color = _statusAccentPalette[statusKey] || '#9ca3af';
+        const bar     = document.getElementById('ticketHeaderBar');
+        const section = document.getElementById('ticketTitleSection');
+        const inp     = document.getElementById('ticketTitleInput');
+        if (bar)     bar.style.borderBottomColor  = color;
+        if (section) section.style.borderLeftColor = color;
+        if (inp)     inp.style.borderBottomColor   = color;
+    }
+    if (statusSelect) statusSelect.addEventListener('change', function () {
+        _updateStatusAccent(this.value.toLowerCase());
+    });
+
+    // --- Neutral select active-state highlight ---
+    // Native selects: run immediately on DOM-ready
+    (function () {
+        function applyNeutralActive(sel) {
+            if (!sel) return;
+            function update() { sel.classList.toggle('select-active', !!sel.value); }
+            sel.addEventListener('change', update);
+            update();
+        }
+        applyNeutralActive(document.querySelector('select[name="UserGroupId"]'));
+        // Category and SubCategory use native select (data-no-picker / few options)
+        applyNeutralActive(document.getElementById('categorySelect'));
+        applyNeutralActive(document.getElementById('subCategorySelect'));
+    })();
+
+    // Bootstrap-select-wrapped selects: defer until after window.load so the
+    // wrapper <div class="bootstrap-select"> exists before we query it.
+    $(window).on('load', function () {
+        function applyBsSelectActive(sel) {
+            if (!sel) return;
+            const $sel = $(sel);
+            function update() {
+                const wrapper = sel.closest('.bootstrap-select');
+                const target = wrapper || sel;
+                target.classList.toggle('select-active', !!sel.value);
+            }
+            $sel.on('changed.bs.select change', update);
+            update();
+        }
+        applyBsSelectActive(document.querySelector('select[name="AssignedToId"]'));
+        applyBsSelectActive(document.querySelector('select[name="SubmittedById"]'));
+    });
+
     // --- Sub-category AJAX loader ---
     (function () {
         const catSel = document.getElementById('categorySelect');
@@ -613,6 +957,7 @@ function filterSelectOptions(input) {
                         if (selectId && item.id === selectId) opt.selected = true;
                         subSel.appendChild(opt);
                     });
+                    subSel.dispatchEvent(new Event('change')); // refresh active-state highlight
                 });
         }
 
@@ -635,16 +980,50 @@ function filterSelectOptions(input) {
         }
     });
 
-    // --- Canned Responses picker ---
+    // --- Canned Responses picker (ranked by ticket relevance) ---
     (function () {
         const btn = document.getElementById('btnCannedResponses');
         const menu = document.getElementById('cannedResponsesMenu');
         if (!btn || !menu) return;
+        const ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
         let loaded = false;
+
+        function buildItem(t) {
+            const li = document.createElement('li');
+            const a  = document.createElement('a');
+            a.className = 'dropdown-item small d-flex align-items-center gap-1';
+            a.href = '#';
+            if (t.isRecommended) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-primary me-1';
+                badge.style.fontSize = '0.65em';
+                badge.textContent = '★';
+                badge.title = 'Recommended based on ticket content';
+                a.appendChild(badge);
+            }
+            const span = document.createElement('span');
+            span.textContent = t.title;
+            a.appendChild(span);
+            a.title = t.content.substring(0, 120);
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                const ta = document.getElementById('newCommentText');
+                if (ta) {
+                    ta.value = ta.value ? ta.value + '\n\n' + t.content : t.content;
+                    ta.focus();
+                }
+            });
+            li.appendChild(a);
+            return li;
+        }
+
         btn.addEventListener('click', function () {
             if (loaded) return;
             loaded = true;
-            fetch('/Tickets/CannedResponses')
+            var url = ticketId
+                ? '/Tickets/RankedCannedResponses?ticketId=' + ticketId
+                : '/Tickets/CannedResponses';
+            fetch(url)
                 .then(r => r.json())
                 .then(items => {
                     menu.innerHTML = '';
@@ -652,41 +1031,32 @@ function filterSelectOptions(input) {
                         menu.innerHTML = '<li><span class="dropdown-item text-muted small">No templates available</span></li>';
                         return;
                     }
+                    const recommended = items.filter(t => t.isRecommended);
+                    const rest        = items.filter(t => !t.isRecommended);
+
+                    if (recommended.length > 0) {
+                        menu.innerHTML = '<li><h6 class="dropdown-header text-primary">★ Suggested for this ticket</h6></li>';
+                        recommended.forEach(t => menu.appendChild(buildItem(t)));
+                        menu.innerHTML += '<li><hr class="dropdown-divider"></li>';
+                    }
+
                     const groups = {};
-                    items.forEach(t => {
+                    rest.forEach(t => {
                         const cat = t.category || 'General';
                         if (!groups[cat]) groups[cat] = [];
                         groups[cat].push(t);
                     });
-                    Object.keys(groups).sort().forEach(cat => {
+                    Object.keys(groups).sort().forEach((cat, i, arr) => {
                         const header = document.createElement('li');
                         header.innerHTML = `<h6 class="dropdown-header">${cat}</h6>`;
                         menu.appendChild(header);
-                        groups[cat].forEach(t => {
-                            const li = document.createElement('li');
-                            const a = document.createElement('a');
-                            a.className = 'dropdown-item small';
-                            a.href = '#';
-                            a.textContent = t.title;
-                            a.title = t.content.substring(0, 120);
-                            a.addEventListener('click', function (e) {
-                                e.preventDefault();
-                                const ta = document.getElementById('newCommentText');
-                                if (ta) {
-                                    const cur = ta.value;
-                                    ta.value = cur ? cur + '\n\n' + t.content : t.content;
-                                    ta.focus();
-                                }
-                            });
-                            li.appendChild(a);
-                            menu.appendChild(li);
-                        });
-                        const divider = document.createElement('li');
-                        divider.innerHTML = '<hr class="dropdown-divider">';
-                        menu.appendChild(divider);
+                        groups[cat].forEach(t => menu.appendChild(buildItem(t)));
+                        if (i < arr.length - 1) {
+                            const div = document.createElement('li');
+                            div.innerHTML = '<hr class="dropdown-divider">';
+                            menu.appendChild(div);
+                        }
                     });
-                    // remove trailing divider
-                    if (menu.lastChild) menu.removeChild(menu.lastChild);
                 })
                 .catch(() => {
                     menu.innerHTML = '<li><span class="dropdown-item text-muted small">Failed to load templates</span></li>';
@@ -844,6 +1214,457 @@ function filterSelectOptions(input) {
         toastMsg.textContent = msg;
         toast.show();
     }
+})();
+</script>
+
+@if (ollamaOn)
+{
+<div class="modal fade" id="aiDraftModal" tabindex="-1" aria-labelledby="aiDraftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aiDraftModalLabel">
+                    <i class="bi bi-robot me-2 text-info"></i>AI Draft Reply
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="aiDraftStatus" class="small text-muted mb-2">
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span id="aiDraftStatusText">Connecting to Ollama...</span>
+                    <span id="aiDraftTimer" class="ms-2"></span>
+                </div>
+                <div id="aiDraftError" class="alert alert-danger d-none small"></div>
+                <textarea id="aiDraftText" class="form-control" rows="8"
+                          style="resize:vertical;font-family:inherit;"
+                          placeholder="Draft will stream here as it is generated..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <span id="aiDraftComplete" class="text-muted small me-auto d-none">
+                    <i class="bi bi-check-circle text-success me-1"></i>Complete — review and insert below
+                </span>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="btnUseDraft" class="btn btn-primary" disabled>
+                    <i class="bi bi-arrow-down-circle me-1"></i>Insert into reply
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+}
+
+<script>
+// ── Ollama "Draft AI Reply" button — streaming via EventSource ────────────
+(function () {
+    var btn = document.getElementById('btnDraftAiReply');
+    if (!btn) return;
+
+    var ticketId   = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var modalEl    = document.getElementById('aiDraftModal');
+    var modal      = modalEl ? new bootstrap.Modal(modalEl) : null;
+    var draftText  = document.getElementById('aiDraftText');
+    var draftError = document.getElementById('aiDraftError');
+    var draftStatus    = document.getElementById('aiDraftStatus');
+    var draftStatusTxt = document.getElementById('aiDraftStatusText');
+    var draftTimer = document.getElementById('aiDraftTimer');
+    var draftComplete  = document.getElementById('aiDraftComplete');
+    var btnUse     = document.getElementById('btnUseDraft');
+    var replyBox   = document.getElementById('newCommentText');
+
+    var evtSource = null;
+    var timerHandle = null;
+    var startTime = 0;
+
+    function stopTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
+
+    function startTimer() {
+        startTime = Date.now();
+        timerHandle = setInterval(function () {
+            var sec = Math.round((Date.now() - startTime) / 1000);
+            if (draftTimer) draftTimer.textContent = '(' + sec + 's elapsed)';
+        }, 1000);
+    }
+
+    function resetModal() {
+        if (draftText)     { draftText.value = ''; draftText.removeAttribute('readonly'); }
+        if (draftError)    { draftError.textContent = ''; draftError.classList.add('d-none'); }
+        if (draftStatus)   draftStatus.classList.remove('d-none');
+        if (draftStatusTxt) draftStatusTxt.textContent = 'Connecting to Ollama...';
+        if (draftTimer)    draftTimer.textContent = '';
+        if (draftComplete) draftComplete.classList.add('d-none');
+        if (btnUse)        btnUse.disabled = true;
+        if (evtSource)     { evtSource.close(); evtSource = null; }
+        stopTimer();
+    }
+
+    function markComplete() {
+        stopTimer();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        if (draftStatus)   draftStatus.classList.add('d-none');
+        if (draftComplete) draftComplete.classList.remove('d-none');
+        if (btnUse)        btnUse.disabled = !draftText || draftText.value.trim().length === 0;
+    }
+
+    function showError(msg) {
+        stopTimer();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        if (draftStatus) draftStatus.classList.add('d-none');
+        if (draftError)  { draftError.textContent = msg; draftError.classList.remove('d-none'); }
+        if (btnUse)      btnUse.disabled = true;
+    }
+
+    btn.addEventListener('click', function () {
+        if (!ticketId) { alert('Cannot determine ticket ID.'); return; }
+        resetModal();
+        if (modal) modal.show();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating...';
+
+        evtSource = new EventSource('/Tickets/DraftAiReplyStream/' + ticketId);
+
+        evtSource.onopen = function () {
+            if (draftStatusTxt)
+                draftStatusTxt.textContent = 'Generating\u2014this may take 30\u201360 seconds with a local model\u2026';
+            startTimer();
+        };
+
+        evtSource.onmessage = function (e) {
+            if (e.data === '[DONE]') {
+                evtSource.close(); evtSource = null;
+                if (!draftText || draftText.value.trim().length === 0) {
+                    showError('Ollama returned an empty response. Check Settings → AI and confirm the configured model is loaded and able to generate text.');
+                } else {
+                    markComplete();
+                }
+                return;
+            }
+            try {
+                var token = JSON.parse(e.data);
+                if (draftText) {
+                    draftText.value += token;
+                    draftText.scrollTop = draftText.scrollHeight;
+                }
+            } catch (_) {}
+        };
+
+        evtSource.onerror = function () {
+            if (evtSource) { evtSource.close(); evtSource = null; }
+            if (draftText && draftText.value.trim().length > 0) {
+                markComplete();
+            } else {
+                showError('Could not reach Ollama or the request failed. Check Settings \u2192 AI and confirm Ollama is running.');
+            }
+        };
+    });
+
+    if (btnUse) {
+        btnUse.addEventListener('click', function () {
+            if (replyBox && draftText) {
+                replyBox.value = draftText.value;
+                replyBox.focus();
+                var commentsTab = document.getElementById('comments-tab');
+                if (commentsTab && !commentsTab.classList.contains('active'))
+                    commentsTab.click();
+            }
+            if (modal) modal.hide();
+        });
+    }
+
+    if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (evtSource) { evtSource.close(); evtSource = null; }
+            stopTimer();
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
+        });
+    }
+})();
+</script>
+
+<script>
+// ── AI triage card buttons ────────────────────────────────────────────────
+(function () {
+    var card = document.getElementById('aiTriageCard');
+    if (!card) return;
+
+    var recId    = parseInt(card.dataset.recId || '0', 10);
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var token    = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    function postAction(url, onSuccess) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fetch(url, { method: 'POST', body: fd })
+            .then(function(r) { return r.ok ? r : Promise.reject(r.status); })
+            .then(function() { onSuccess(); })
+            .catch(function(err) { alert('Request failed (' + err + '). Please refresh and try again.'); });
+    }
+
+    var btnApprove = document.getElementById('btnApproveAiRec');
+    if (btnApprove) {
+        btnApprove.addEventListener('click', function () {
+            btnApprove.disabled = true;
+            btnApprove.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Applying...';
+            postAction('/Tickets/ApproveAiRecommendation/' + ticketId + '?recommendationId=' + recId, function () {
+                location.reload();
+            });
+        });
+    }
+
+    var btnDismiss = document.getElementById('btnDismissAiRec');
+    if (btnDismiss) {
+        btnDismiss.addEventListener('click', function () {
+            btnDismiss.disabled = true;
+            postAction('/Tickets/DismissAiRecommendation/' + ticketId + '?recommendationId=' + recId, function () {
+                card.style.display = 'none';
+            });
+        });
+    }
+
+    var btnRetriage = document.getElementById('btnRetriageTicket');
+    if (btnRetriage) {
+        btnRetriage.addEventListener('click', function () {
+            var origHtml = btnRetriage.innerHTML;
+            btnRetriage.disabled = true;
+            btnRetriage.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+            postAction('/Tickets/RetriageTicket/' + ticketId, function () {
+                location.reload();
+            });
+        });
+    }
+})();
+</script>
+
+<script>
+// ── Similar tickets (loaded via AJAX after page paint) ────────────────────
+(function () {
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    if (!ticketId) return;
+
+    var panel = document.getElementById('similarTicketsPanel');
+    var list  = document.getElementById('similarTicketsList');
+    if (!panel || !list) return;
+
+    fetch('/Tickets/SimilarTickets/' + ticketId)
+        .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function(data) {
+            if (!data || data.length === 0) { panel.style.display = 'none'; return; }
+
+            var statusClasses = {
+                'Open': 'bg-primary', 'InProgress': 'bg-info text-dark',
+                'OnHold': 'bg-warning text-dark', 'Resolved': 'bg-success',
+                'Closed': 'bg-secondary', 'Cancelled': 'bg-secondary'
+            };
+            var priClasses = {
+                'Critical': 'bg-danger', 'High': 'bg-warning text-dark',
+                'Medium': 'bg-info text-dark', 'Low': 'bg-secondary'
+            };
+
+            var html = '<div class="d-flex flex-wrap gap-2">';
+            data.forEach(function(t) {
+                var sc = statusClasses[t.status] || 'bg-secondary';
+                var pc = priClasses[t.priority] || 'bg-secondary';
+                html += '<a href="\/Tickets\/Edit\/' + t.ticketId + '" class="text-decoration-none">' +
+                    '<div class="border rounded p-2 bg-white" style="min-width:180px;max-width:240px;">' +
+                    '<div class="small fw-semibold text-truncate" title="' + t.title.replace(/"/g,'&quot;') + '">' +
+                    '<span class="text-muted me-1">#' + t.ticketId + '</span>' + t.title + '<\/div>' +
+                    '<div class="mt-1 d-flex gap-1">' +
+                    '<span class="badge ' + sc + ' small">' + t.status + '<\/span>' +
+                    '<span class="badge ' + pc + ' small">' + t.priority + '<\/span>' +
+                    '<span class="badge bg-light text-dark border small">' + Math.round(t.scorePct) + '% match<\/span>' +
+                    '<\/div><\/div><\/a>';
+            });
+            html += '<\/div>';
+            list.innerHTML = html;
+            panel.style.display = '';
+        })
+        .catch(function() { panel.style.display = 'none'; });
+})();
+</script>
+
+<script>
+// ── Summarize Thread button (Ollama) ──────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnSummarizeThread');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Summarizing…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/SummarizeThread/' + ticketId, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (data.success && data.summary) {
+                    // Show in a small dismissible banner above the tabs
+                    var existing = document.getElementById('threadSummaryBanner');
+                    if (existing) existing.remove();
+                    var banner = document.createElement('div');
+                    banner.id = 'threadSummaryBanner';
+                    banner.className = 'alert alert-secondary alert-dismissible fade show mb-3 small';
+                    banner.innerHTML =
+                        '<strong><i class="bi bi-journal-text me-1"><\/i>AI Thread Summary:<\/strong> ' +
+                        data.summary +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert"><\/button>';
+                    var tabs = document.getElementById('ticketTabs');
+                    if (tabs) tabs.parentNode.insertBefore(banner, tabs);
+                } else {
+                    alert(data.error || 'Summarization failed. Ensure Ollama is running.');
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
+})();
+</script>
+
+<script>
+// ── Ticket Escalation modal ───────────────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnConfirmEscalate');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var reason = (document.getElementById('escalateReason')?.value || '').trim();
+        if (!reason) {
+            document.getElementById('escalateReasonError').style.display = '';
+            return;
+        }
+        document.getElementById('escalateReasonError').style.display = 'none';
+
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Escalating…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+        fd.append('reason', reason);
+
+        fetch('/Tickets/EscalateTicket/' + ticketId, { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    // Close modal, reload page to reflect new state
+                    var modalEl = document.getElementById('escalateModal');
+                    bootstrap.Modal.getInstance(modalEl)?.hide();
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert(data.error || 'Escalation failed.');
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
+})();
+</script>
+
+<script>
+// ── Ticket Resolution modal ───────────────────────────────────────────────
+(function () {
+    var resolveModalEl = document.getElementById('resolveModal');
+    if (!resolveModalEl) return;
+
+    var resolveModal   = new bootstrap.Modal(resolveModalEl, { backdrop: 'static', keyboard: false });
+    var statusSelect   = document.getElementById('statusSelect');
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId       = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    var pendingStatus  = '';
+    var previousStatus = statusSelect ? statusSelect.value : '';
+
+    // Intercept status dropdown — show modal when user picks Resolved or Closed
+    if (statusSelect) {
+        statusSelect.addEventListener('change', function () {
+            var val = this.value;
+            var selectedText = (this.options[this.selectedIndex] ? this.options[this.selectedIndex].text : '').trim();
+            if (selectedText === 'Resolved' || selectedText === 'Closed') {
+                pendingStatus = selectedText;  // must be text ("Resolved"/"Closed") for Enum.TryParse in controller
+                document.getElementById('resolveModalStatusLabel').textContent = '— ' + selectedText;
+                document.getElementById('resolveTypeSelect').value = '';
+                document.getElementById('resolveNotesTextarea').value = '';
+                document.getElementById('resolveTypeError').style.display = 'none';
+                // Revert dropdown until modal is confirmed
+                this.value = previousStatus;
+                resolveModal.show();
+            } else {
+                previousStatus = val;
+            }
+        });
+        resolveModalEl.addEventListener('hidden.bs.modal', function () {
+            // If modal dismissed without confirming, keep status reverted
+        });
+    }
+
+    document.getElementById('btnResolveDismiss')?.addEventListener('click', function () {
+        resolveModal.hide();
+    });
+    document.getElementById('btnResolveCancelModal')?.addEventListener('click', function () {
+        resolveModal.hide();
+    });
+
+    document.getElementById('btnResolveConfirm')?.addEventListener('click', function () {
+        var resType  = document.getElementById('resolveTypeSelect').value;
+        var resNotes = (document.getElementById('resolveNotesTextarea')?.value || '').trim();
+
+        if (!resType) {
+            document.getElementById('resolveTypeError').style.display = '';
+            return;
+        }
+        document.getElementById('resolveTypeError').style.display = 'none';
+
+        var btn = this;
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Resolving…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+        fd.append('resolutionType', resType);
+        fd.append('resolutionNotes', resNotes);
+        fd.append('targetStatus', pendingStatus || 'Resolved');
+
+        fetch('/Tickets/ResolveTicket/' + ticketId, { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    resolveModal.hide();
+                    // If there are resolution notes, reload with a flag that triggers the KB suggestion banner
+                    var reloadUrl = window.location.pathname
+                        + (data.suggestKb ? '?suggestKb=1' : '');
+                    window.location.href = reloadUrl;
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert(data.error || 'Resolution failed. Please try again.');
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
 })();
 </script>
 }

@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 
@@ -34,7 +33,7 @@ public class AssignmentResolverService
     ///   7. <paramref name="defaultAssigneeId"/> fallback
     /// </summary>
     public async Task<int?> ResolveAsync(
-        TicketCategory category,
+        int category,
         int? branchId,
         int? defaultAssigneeId,
         int? subCategoryId = null)
@@ -111,16 +110,18 @@ public class AssignmentResolverService
     // Keyword-based category detection
     // -------------------------------------------------------------------------
 
-    private static readonly Dictionary<TicketCategory, string[]> CategoryKeywords = new()
+    // Hardcoded fallback keyword dict — keys are the system category IDs (0-7)
+    // matching the original TicketCategory enum values
+    private static readonly Dictionary<int, string[]> CategoryKeywords = new()
     {
-        [TicketCategory.HardwareIssue] = new[]
+        [1] = new[]  // HardwareIssue
         {
             "printer", "printing", "keyboard", "mouse", "monitor", "screen", "display",
             "laptop", "desktop", "computer", "pc", "hardware", "device", "battery",
             "charger", "dock", "docking", "headset", "webcam", "scanner", "projector",
             "broken", "damaged", "physical", "power", "overheating", "fan noise"
         },
-        [TicketCategory.SoftwareIssue] = new[]
+        [2] = new[]  // SoftwareIssue
         {
             "software", "application", "app", "program", "install", "installation",
             "uninstall", "update", "upgrade", "crash", "crashes", "error", "errors",
@@ -129,28 +130,28 @@ public class AssignmentResolverService
             "slow", "freezing", "frozen", "not responding", "blue screen", "bsod",
             "driver", "operating system", "windows", "macos", "patch"
         },
-        [TicketCategory.NetworkIssue] = new[]
+        [4] = new[]  // NetworkIssue
         {
             "vpn", "network", "internet", "wifi", "wi-fi", "wireless", "ethernet",
             "connection", "connectivity", "firewall", "dns", "dhcp", "ip address",
             "bandwidth", "slow internet", "no internet", "network drive", "mapped drive",
             "remote access", "remote desktop", "rdp", "switch", "router", "cable"
         },
-        [TicketCategory.SecurityIncident] = new[]
+        [5] = new[]  // SecurityIncident
         {
             "security", "phishing", "phish", "suspicious", "hack", "hacked",
             "virus", "malware", "ransomware", "spyware", "trojan", "spam",
             "unauthorized", "breach", "password reset", "account locked",
             "compromised", "scam", "fraud", "social engineering", "2fa", "mfa"
         },
-        [TicketCategory.EmployeeIssue] = new[]
+        [3] = new[]  // EmployeeIssue
         {
             "onboarding", "new employee", "new hire", "offboarding", "termination",
             "terminated", "access request", "new user", "user setup", "account setup",
             "leave", "absence", "transfer", "promotion", "department change",
             "badge", "id card", "equipment request", "role change"
         },
-        [TicketCategory.ServiceRequest] = new[]
+        [0] = new[]  // ServiceRequest
         {
             "request", "order", "setup", "configure", "configuration", "provision",
             "provisioning", "access", "permission", "grant", "create account",
@@ -158,23 +159,62 @@ public class AssignmentResolverService
         },
     };
 
+    // Fallback "Other" category ID
+    private const int OtherCategoryId = 6;
+
     /// <summary>
     /// Scans the email subject and body for keywords and returns the best-matching
-    /// <see cref="TicketCategory"/>. Returns <see cref="TicketCategory.Other"/> when
-    /// no keywords match.
+    /// category ID. Loads active keywords from the database; falls back to the
+    /// hardcoded dictionary when the table is empty or unavailable.
     /// </summary>
-    public static TicketCategory DetectCategory(string subject, string body)
+    public async Task<int> DetectCategoryAsync(string subject, string body)
+    {
+        try
+        {
+            var dbKeywords = await _context.CategoryKeywords
+                .Where(k => k.IsActive)
+                .Select(k => new { k.Category, k.Keyword })
+                .ToListAsync();
+
+            if (dbKeywords.Count > 0)
+            {
+                var text = $"{subject} {body}".ToLowerInvariant();
+                var scores = dbKeywords
+                    .GroupBy(k => k.Category)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Count(k => text.Contains(k.Keyword)));
+
+                var best = scores.OrderByDescending(kv => kv.Value).First();
+                return best.Value > 0 ? best.Key : OtherCategoryId;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load keywords from DB; falling back to hardcoded dictionary.");
+        }
+
+        // Fallback: use hardcoded dictionary
+        return DetectCategory(subject, body);
+    }
+
+    /// <summary>
+    /// Scans the email subject and body for keywords and returns the best-matching
+    /// category ID. Returns the "Other" category ID (6) when no keywords match.
+    /// Uses the hardcoded fallback dictionary.
+    /// </summary>
+    public static int DetectCategory(string subject, string body)
     {
         var text = $"{subject} {body}".ToLowerInvariant();
 
         // Score each category by counting keyword hits
-        var scores = new Dictionary<TicketCategory, int>();
+        var scores = new Dictionary<int, int>();
         foreach (var (category, keywords) in CategoryKeywords)
         {
             scores[category] = keywords.Count(kw => text.Contains(kw));
         }
 
         var best = scores.OrderByDescending(kv => kv.Value).First();
-        return best.Value > 0 ? best.Key : TicketCategory.Other;
+        return best.Value > 0 ? best.Key : OtherCategoryId;
     }
 }

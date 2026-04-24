@@ -4,6 +4,7 @@
     Layout = "_PortalLayout";
     var q = ViewBag.SearchQuery as string ?? "";
     var selectedCat = ViewBag.SelectedCategory as int?;
+    var catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -34,11 +35,11 @@
        class="badge @(selectedCat == null ? "bg-primary" : "bg-secondary") text-decoration-none" style="font-size:0.85rem;padding:.35em .7em;">
         All
     </a>
-    @foreach (var cat in Enum.GetValues<ServiceDesk.Core.Enums.TicketCategory>())
+    @foreach (var cat in catById)
     {
-        <a asp-controller="Portal" asp-action="KnowledgeBase" asp-route-q="@q" asp-route-category="@((int)cat)"
-           class="badge @(selectedCat == (int)cat ? "bg-primary" : "bg-light text-dark border") text-decoration-none" style="font-size:0.85rem;padding:.35em .7em;">
-            @cat
+        <a asp-controller="Portal" asp-action="KnowledgeBase" asp-route-q="@q" asp-route-category="@cat.Key"
+           class="badge @(selectedCat == cat.Key ? "bg-primary" : "bg-light text-dark border") text-decoration-none" style="font-size:0.85rem;padding:.35em .7em;">
+            @cat.Value
         </a>
     }
 </div>
@@ -75,7 +76,7 @@ else
                 <div class="card h-100 kb-card border-0 shadow-sm">
                     <div class="card-body">
                         <div class="d-flex align-items-start gap-2 mb-2">
-                            <span class="badge bg-light text-dark border">@article.Category</span>
+                            <span class="badge bg-light text-dark border">@(catById.TryGetValue(article.Category, out var cname) ? cname : $"Category {article.Category}")</span>
                             <span class="ms-auto text-muted small"><i class="bi bi-eye me-1"></i>@article.ViewCount</span>
                         </div>
                         <h6 class="card-title mb-2">

@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
+using ServiceDesk.Core.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
@@ -17,12 +20,27 @@ public class SettingsController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly GmailApiService _gmailApiService;
     private readonly EmailNotificationService _emailService;
+    private readonly IMemoryCache _cache;
+    private readonly IWebHostEnvironment _env;
+    private readonly GoogleWorkspaceService _googleWorkspace;
+    private readonly OllamaService _ollama;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<SettingsController> _logger;
 
-    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService, EmailNotificationService emailService)
+    public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
+        EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
+        GoogleWorkspaceService googleWorkspace, OllamaService ollama,
+        IServiceScopeFactory scopeFactory, ILogger<SettingsController> logger)
     {
-        _context = context;
-        _gmailApiService = gmailApiService;
-        _emailService = emailService;
+        _context          = context;
+        _gmailApiService  = gmailApiService;
+        _emailService     = emailService;
+        _cache            = cache;
+        _env              = env;
+        _googleWorkspace  = googleWorkspace;
+        _ollama           = ollama;
+        _scopeFactory     = scopeFactory;
+        _logger           = logger;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -36,7 +54,13 @@ public class SettingsController : Controller
     // GET: Settings/Account
     public async Task<IActionResult> Account()
     {
-        var settings = await _context.AppSettings.ToListAsync();
+        // Only show General/Account-level settings here.
+        // AI Triage → Settings/Ai, Notifications → Settings/Notifications, Branding → Settings/Branding
+        var settings = await _context.AppSettings
+            .Where(s => s.Category != "Branding"
+                     && s.Category != "AI Triage"
+                     && s.Category != "Notifications")
+            .ToListAsync();
         var employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
         ViewBag.Employees = employees;
         return View(settings);
@@ -63,6 +87,186 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         TempData["Success"] = "Account settings saved successfully.";
         return RedirectToAction(nameof(Account));
+    }
+
+    // ==================== BRANDING ====================
+
+    // GET: Settings/Branding
+    public async Task<IActionResult> Branding()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Branding")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Branding
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Branding(IFormCollection form, IFormFile? logoFile)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Branding")
+            .ToListAsync();
+
+        // Apply all submitted text/toggle fields first
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+                setting.Value = form[setting.Key].FirstOrDefault() ?? setting.Value;
+        }
+
+        // If a logo file was provided, validate, save it, and override CompanyLogoUrl
+        if (logoFile != null && logoFile.Length > 0)
+        {
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp" };
+            var ext = Path.GetExtension(logoFile.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(ext))
+            {
+                TempData["Error"] = "Invalid logo file type. Allowed: PNG, JPG, GIF, SVG, WEBP.";
+                return RedirectToAction(nameof(Branding));
+            }
+            if (logoFile.Length > 2 * 1024 * 1024)
+            {
+                TempData["Error"] = "Logo file is too large. Maximum size is 2 MB.";
+                return RedirectToAction(nameof(Branding));
+            }
+
+            // Delete any previously uploaded logo file from disk
+            var logoSetting = settings.FirstOrDefault(s => s.Key == "CompanyLogoUrl");
+            if (logoSetting?.Value?.StartsWith("/uploads/branding/") == true)
+            {
+                var oldPath = Path.Combine(_env.WebRootPath,
+                    logoSetting.Value.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(oldPath))
+                    System.IO.File.Delete(oldPath);
+            }
+
+            // Save the uploaded file
+            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads", "branding");
+            Directory.CreateDirectory(uploadsDir);
+            var fileName = $"logo_{DateTime.UtcNow.Ticks}{ext}";
+            var filePath = Path.Combine(uploadsDir, fileName);
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await logoFile.CopyToAsync(stream);
+
+            // Override CompanyLogoUrl with the uploaded path
+            if (logoSetting != null)
+                logoSetting.Value = $"/uploads/branding/{fileName}";
+        }
+
+        await _context.SaveChangesAsync();
+        _cache.Remove("ss_branding_v1");
+        TempData["Success"] = "Branding settings saved.";
+        return RedirectToAction(nameof(Branding));
+    }
+
+    // POST: Settings/RemoveLogo
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveLogo()
+    {
+        var logoSetting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CompanyLogoUrl");
+
+        if (logoSetting != null)
+        {
+            // Delete the file from disk if it was an uploaded asset
+            if (logoSetting.Value?.StartsWith("/uploads/branding/") == true)
+            {
+                var filePath = Path.Combine(_env.WebRootPath,
+                    logoSetting.Value.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(filePath))
+                    System.IO.File.Delete(filePath);
+            }
+
+            logoSetting.Value = string.Empty;
+            await _context.SaveChangesAsync();
+            _cache.Remove("ss_branding_v1");
+        }
+
+        TempData["Success"] = "Logo removed.";
+        return RedirectToAction(nameof(Branding));
+    }
+
+    // ==================== EMAIL TEMPLATES ====================
+
+    // GET: Settings/EmailTemplates
+    public async Task<IActionResult> EmailTemplates()
+    {
+        var templates = await _context.EmailTemplates.OrderBy(t => t.Id).ToListAsync();
+        return View(templates);
+    }
+
+    // GET: Settings/EditEmailTemplate/5
+    public async Task<IActionResult> EditEmailTemplate(int id)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        var brandColor = await _context.AppSettings
+            .Where(s => s.Key == "BrandColor")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync() ?? "#4f46e5";
+        ViewBag.BrandColor = string.IsNullOrWhiteSpace(brandColor) ? "#4f46e5" : brandColor;
+
+        return View(template);
+    }
+
+    // POST: Settings/EditEmailTemplate/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditEmailTemplate(int id, string subjectTemplate, string bodyTemplate, bool isActive)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        template.SubjectTemplate = string.IsNullOrWhiteSpace(subjectTemplate) ? null : subjectTemplate.Trim();
+        template.BodyTemplate    = string.IsNullOrWhiteSpace(bodyTemplate)    ? null : bodyTemplate.Trim();
+        template.IsActive        = isActive;
+        template.UpdatedDate     = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Template '{template.Name}' saved.";
+        return RedirectToAction(nameof(EmailTemplates));
+    }
+
+    // POST: Settings/SendTestEmail — sends a rendered test email for the given template
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendTestEmail(int templateId, string recipientEmail)
+    {
+        if (string.IsNullOrWhiteSpace(recipientEmail))
+            return Json(new { success = false, message = "Please enter a recipient email address." });
+
+        var template = await _context.EmailTemplates.FindAsync(templateId);
+        if (template == null)
+            return Json(new { success = false, message = "Template not found." });
+
+        var (success, message) = await _emailService.SendTestEmailAsync(
+            template.Key,
+            template.BodyTemplate,
+            template.SubjectTemplate,
+            recipientEmail.Trim());
+
+        return Json(new { success, message });
+    }
+
+    // POST: Settings/ResetEmailTemplate/5 — clears customisation, reverts to system default
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetEmailTemplate(int id)
+    {
+        var template = await _context.EmailTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        template.BodyTemplate = null;
+        template.UpdatedDate  = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Template '{template.Name}' reset to system default.";
+        return RedirectToAction(nameof(EmailTemplates));
     }
 
     // ==================== ROLES & PERMISSIONS ====================
@@ -476,7 +680,22 @@ public class SettingsController : Controller
         await _context.SaveChangesAsync();
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
         var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
-        _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
+        var capturedResetEmail = user.Email;
+        var capturedResetName  = user.FullName;
+        var capturedResetUrl   = resetUrl;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+                await email.SendPasswordResetEmail(capturedResetEmail, capturedResetName, capturedResetUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Notification] Admin password reset email failed for {Email}.", capturedResetEmail);
+            }
+        });
         TempData["Success"] = $"Password reset email sent to {user.Email}.";
         return RedirectToAction(nameof(EditUser), new { id });
     }
@@ -824,6 +1043,18 @@ public class SettingsController : Controller
             .OrderBy(r => r.SortOrder)
             .ThenBy(r => r.Name)
             .ToListAsync();
+
+        try
+        {
+            ViewBag.CategoriesById = await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            ViewBag.CategoriesById = Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+
         return View(rules);
     }
 
@@ -902,7 +1133,7 @@ public class SettingsController : Controller
         // Only show employees who can actually be assigned tickets:
         // those with an active portal account whose role has ManageTickets permission.
         var staffRoleIds = await _context.Roles
-            .Where(r => r.Permissions.Contains("ManageTickets"))
+            .Where(r => r.Permissions != null && r.Permissions.Contains("ManageTickets"))
             .Select(r => r.Id)
             .ToListAsync();
         var staffEmpIds = await _context.PortalUsers
@@ -916,9 +1147,23 @@ public class SettingsController : Controller
             .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .ToListAsync();
 
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new { Value = (int)c, Text = c.ToString() })
-            .ToList();
+        try
+        {
+            var dbCats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { Value = c.Id, Text = c.Name })
+                .ToListAsync();
+            ViewBag.Categories = dbCats;
+            ViewBag.CategoriesById = dbCats.ToDictionary(c => c.Value, c => c.Text);
+        }
+        catch
+        {
+            var fallback = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Value = (int)c, Text = c.GetDisplayName() }).ToList();
+            ViewBag.Categories = fallback;
+            ViewBag.CategoriesById = fallback.ToDictionary(c => c.Value, c => c.Text);
+        }
 
         ViewBag.SubCategories = await _context.TicketSubCategories
             .Where(s => s.IsActive)
@@ -997,20 +1242,40 @@ public class SettingsController : Controller
 
     // ==================== CATEGORIES & SUB-CATEGORIES ====================
 
+    private async Task<List<SelectListItem>> LoadCategorySelectItemsAsync()
+    {
+        try
+        {
+            return await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new SelectListItem(c.Name, c.Id.ToString()))
+                .ToListAsync();
+        }
+        catch
+        {
+            return Enum.GetValues<TicketCategory>()
+                .Select(c => new SelectListItem(c.GetDisplayName(), ((int)c).ToString()))
+                .ToList();
+        }
+    }
+
     public async Task<IActionResult> Categories()
     {
+        var categories = await _context.TicketCategories
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .ToListAsync();
         var subCategories = await _context.TicketSubCategories
             .OrderBy(s => s.Category).ThenBy(s => s.SortOrder).ThenBy(s => s.Name)
             .ToListAsync();
+        ViewBag.TopLevelCategories = categories;
         return View(subCategories);
     }
 
-    public IActionResult CreateSubCategory(TicketCategory? category)
+    public async Task<IActionResult> CreateSubCategory(int? category)
     {
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
-        var model = new TicketSubCategory { Category = category ?? TicketCategory.Other };
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
+        var model = new TicketSubCategory { Category = category ?? 6 }; // default to "Other"
         return View(model);
     }
 
@@ -1025,9 +1290,7 @@ public class SettingsController : Controller
             TempData["Success"] = "Sub-category created.";
             return RedirectToAction(nameof(Categories));
         }
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(model);
     }
 
@@ -1035,9 +1298,7 @@ public class SettingsController : Controller
     {
         var subCat = await _context.TicketSubCategories.FindAsync(id);
         if (subCat == null) return NotFound();
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(subCat);
     }
 
@@ -1053,9 +1314,7 @@ public class SettingsController : Controller
             TempData["Success"] = "Sub-category updated.";
             return RedirectToAction(nameof(Categories));
         }
-        ViewBag.Categories = Enum.GetValues<TicketCategory>()
-            .Select(c => new SelectListItem(c.ToString(), ((int)c).ToString()))
-            .ToList();
+        ViewBag.Categories = await LoadCategorySelectItemsAsync();
         return View(model);
     }
 
@@ -1071,5 +1330,811 @@ public class SettingsController : Controller
             TempData["Success"] = "Sub-category deleted.";
         }
         return RedirectToAction(nameof(Categories));
+    }
+
+    // ==================== TOP-LEVEL CATEGORY MANAGEMENT ====================
+
+    public IActionResult CreateCategory()
+    {
+        return View(new ServiceDesk.Core.Models.TicketCategoryEntry());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateCategory(ServiceDesk.Core.Models.TicketCategoryEntry model)
+    {
+        if (ModelState.IsValid)
+        {
+            // Assign next available ID (max existing + 1, minimum 8 to avoid clashing with system IDs 0-7)
+            var maxId = await _context.TicketCategories.MaxAsync(c => (int?)c.Id) ?? -1;
+            model.Id = Math.Max(8, maxId + 1);
+            model.IsSystem = false;
+            _context.TicketCategories.Add(model);
+            await _context.SaveChangesAsync();
+            _cache.Remove("TicketCategories");
+            TempData["Success"] = $"Category \"{model.Name}\" created.";
+            return RedirectToAction(nameof(Categories));
+        }
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleCategory(int id)
+    {
+        var cat = await _context.TicketCategories.FindAsync(id);
+        if (cat != null && !cat.IsSystem)
+        {
+            cat.IsActive = !cat.IsActive;
+            await _context.SaveChangesAsync();
+            _cache.Remove("TicketCategories");
+        }
+        return RedirectToAction(nameof(Categories));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCategory(int id)
+    {
+        var cat = await _context.TicketCategories.FindAsync(id);
+        if (cat == null) return NotFound();
+        if (cat.IsSystem)
+        {
+            TempData["Error"] = "System categories cannot be deleted.";
+            return RedirectToAction(nameof(Categories));
+        }
+        _context.TicketCategories.Remove(cat);
+        await _context.SaveChangesAsync();
+        _cache.Remove("TicketCategories");
+        TempData["Success"] = $"Category \"{cat.Name}\" deleted.";
+        return RedirectToAction(nameof(Categories));
+    }
+
+    // ==================== CATEGORY KEYWORDS ====================
+
+    public async Task<IActionResult> CategoryKeywords()
+    {
+        var keywords = await _context.CategoryKeywords
+            .OrderBy(k => k.Category).ThenBy(k => k.Keyword)
+            .ToListAsync();
+        try
+        {
+            ViewBag.CategoriesById = await _context.TicketCategories
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            ViewBag.CategoriesById = Enum.GetValues<TicketCategory>()
+                .ToDictionary(c => (int)c, c => c.GetDisplayName());
+        }
+        ViewBag.CategorySelectItems = await LoadCategorySelectItemsAsync();
+        return View(keywords);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateCategoryKeyword(int category, string keyword)
+    {
+        keyword = keyword?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(keyword) || keyword.Length < 2)
+        {
+            TempData["Error"] = "Keyword must be at least 2 characters.";
+            return RedirectToAction(nameof(CategoryKeywords));
+        }
+
+        var exists = await _context.CategoryKeywords
+            .AnyAsync(k => k.Category == category && k.Keyword == keyword);
+        if (exists)
+        {
+            TempData["Error"] = $"The keyword \"{keyword}\" already exists for that category.";
+            return RedirectToAction(nameof(CategoryKeywords));
+        }
+
+        _context.CategoryKeywords.Add(new CategoryKeyword
+        {
+            Category = category,
+            Keyword = keyword,
+            IsActive = true,
+            CreatedDate = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Keyword \"{keyword}\" added.";
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCategoryKeyword(int id)
+    {
+        var kw = await _context.CategoryKeywords.FindAsync(id);
+        if (kw != null)
+        {
+            _context.CategoryKeywords.Remove(kw);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Keyword deleted.";
+        }
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleCategoryKeyword(int id)
+    {
+        var kw = await _context.CategoryKeywords.FindAsync(id);
+        if (kw != null)
+        {
+            kw.IsActive = !kw.IsActive;
+            await _context.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(CategoryKeywords));
+    }
+
+    // ==================== AI TRIAGE ====================
+
+    // GET: Settings/Ai
+    public async Task<IActionResult> Ai()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "AI Triage")
+            .OrderBy(s => s.Key)
+            .ToListAsync();
+
+        // Status panel data
+        ViewBag.LastRunLog = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .FirstOrDefaultAsync();
+
+        ViewBag.TotalTrainingTickets = await _context.Tickets
+            .CountAsync(t => t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
+                          || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed);
+
+        // Live model status — reflects whether engines are currently loaded in memory
+        var aiTriage = HttpContext.RequestServices
+            .GetService<ServiceDesk.Web.Services.AiTriageService>();
+        ViewBag.ModelIsTrained = aiTriage?.IsModelTrained ?? false;
+
+        // Configured minimum training tickets (falls back to 20)
+        var minSetting = settings.FirstOrDefault(s => s.Key == "AiMinTrainingTickets")?.Value;
+        ViewBag.MinTrainingTickets = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
+        return View(settings);
+    }
+
+    // POST: Settings/Ai — save AI settings
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Ai(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "AI Triage")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+            {
+                var values = form[setting.Key];
+                setting.Value = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
+            }
+        }
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "AI Triage settings saved.";
+        return RedirectToAction(nameof(Ai));
+    }
+
+    // POST: Settings/AiRetrain — force-retrain the ML.NET model immediately
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AiRetrain()
+    {
+        var aiTriage = HttpContext.RequestServices.GetService<ServiceDesk.Web.Services.AiTriageService>();
+        if (aiTriage == null)
+        {
+            TempData["Error"] = "AI Triage service is not registered.";
+            return RedirectToAction(nameof(Ai));
+        }
+
+        await aiTriage.TrainNowAsync();
+
+        var lastLog = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .FirstOrDefaultAsync();
+
+        TempData["Success"] = lastLog?.Success == true
+            ? $"Model retrained successfully on {lastLog.TrainingTicketCount} tickets ({lastLog.DurationMs:F0} ms)."
+            : lastLog?.ErrorMessage ?? "Training complete (check logs for details).";
+
+        return RedirectToAction(nameof(Ai));
+    }
+
+    // POST: Settings/TestOllama — ping Ollama and return diagnostic JSON
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestOllama()
+    {
+        var ollama = HttpContext.RequestServices.GetService<OllamaService>();
+        if (ollama == null)
+            return Json(new { ok = false, message = "OllamaService is not registered.", models = Array.Empty<string>() });
+
+        var (ok, message, models) = await ollama.TestConnectionAsync();
+        return Json(new { ok, message, models });
+    }
+
+    // GET: Settings/AiDashboard — AI statistics dashboard
+    public async Task<IActionResult> AiDashboard()
+    {
+        var aiTriage = HttpContext.RequestServices
+            .GetService<ServiceDesk.Web.Services.AiTriageService>();
+
+        var minSetting = await _context.AppSettings
+            .Where(s => s.Key == "AiMinTrainingTickets")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        var minTraining = int.TryParse(minSetting, out var m) ? Math.Max(10, m) : 20;
+
+        var vm = new ServiceDesk.Web.Models.AiDashboardViewModel
+        {
+            ModelIsTrained = aiTriage?.IsModelTrained ?? false,
+            TotalTrainingTickets = await _context.Tickets
+                .CountAsync(t => t.Status == TicketStatus.Resolved
+                              || t.Status == TicketStatus.Closed),
+            MinTrainingTickets = minTraining
+        };
+
+        // Load all recommendations with ticket titles
+        var allRecs = await _context.AiRecommendations
+            .Include(r => r.Ticket)
+            .OrderByDescending(r => r.CreatedDate)
+            .ToListAsync();
+
+        var cutoff30 = DateTime.UtcNow.AddDays(-30);
+
+        vm.TotalRecommendations = allRecs.Count;
+        vm.ApprovedCount  = allRecs.Count(r => r.Status == "Approved");
+        vm.DismissedCount = allRecs.Count(r => r.Status == "Dismissed");
+        vm.PendingCount   = allRecs.Count(r => r.Status == "Pending");
+        vm.RecsLast30Days = allRecs.Count(r => r.CreatedDate >= cutoff30);
+
+        var reviewed = allRecs.Where(r => r.Status is "Approved" or "Dismissed").ToList();
+        vm.ApprovalRate = reviewed.Count > 0
+            ? Math.Round((double)vm.ApprovedCount / reviewed.Count * 100, 1)
+            : 0;
+
+        if (allRecs.Count > 0)
+        {
+            vm.AvgCategoryConfidence = Math.Round(
+                allRecs.Average(r => (double)r.CategoryConfidence) * 100, 1);
+            vm.AvgPriorityConfidence = Math.Round(
+                allRecs.Average(r => (double)r.PriorityConfidence) * 100, 1);
+        }
+
+        // Confidence bands — use max(cat, pri) as the headline score per rec
+        foreach (var r in allRecs)
+        {
+            var score = Math.Max(r.CategoryConfidence, r.PriorityConfidence);
+            if      (score < 0.50f) vm.ConfUnder50++;
+            else if (score < 0.65f) vm.Conf50To65++;
+            else if (score < 0.80f) vm.Conf65To80++;
+            else                    vm.ConfOver80++;
+        }
+
+        // Category breakdown
+        vm.CategoryStats = allRecs
+            .Where(r => r.SuggestedCategory.HasValue)
+            .GroupBy(r => r.SuggestedCategory!.Value)
+            .Select(g => new ServiceDesk.Web.Models.AiCategoryStat
+            {
+                CategoryName = Enum.IsDefined(typeof(TicketCategory), g.Key)
+                    ? ((TicketCategory)g.Key).ToString()
+                    : $"Category {g.Key}",
+                Suggested = g.Count(),
+                Approved  = g.Count(r => r.Status == "Approved")
+            })
+            .OrderByDescending(c => c.Suggested)
+            .ToList();
+
+        // 30-day daily trend
+        var recsIn30 = allRecs.Where(r => r.CreatedDate >= cutoff30).ToList();
+        vm.DailyTrend = Enumerable.Range(0, 30)
+            .Select(i =>
+            {
+                var day = DateTime.UtcNow.Date.AddDays(-29 + i);
+                return new ServiceDesk.Web.Models.AiDailyTrendPoint
+                {
+                    DateLabel = day.ToString("MMM d"),
+                    Count     = recsIn30.Count(r => r.CreatedDate.Date == day)
+                };
+            })
+            .ToList();
+
+        // Training history (last 10)
+        vm.RecentTrainingRuns = await _context.AiRunLogs
+            .OrderByDescending(l => l.RunDate)
+            .Take(10)
+            .ToListAsync();
+
+        // Recent recommendations (last 50)
+        vm.RecentRecs = allRecs.Take(50).Select(r => new ServiceDesk.Web.Models.AiRecentRecRow
+        {
+            RecId      = r.Id,
+            TicketId   = r.TicketId,
+            TicketTitle = r.Ticket?.Title ?? $"Ticket #{r.TicketId}",
+            SuggestedCategory = r.SuggestedCategory.HasValue && Enum.IsDefined(typeof(TicketCategory), r.SuggestedCategory.Value)
+                ? ((TicketCategory)r.SuggestedCategory.Value).ToString()
+                : "—",
+            SuggestedPriority = r.SuggestedPriority.HasValue && Enum.IsDefined(typeof(TicketPriority), r.SuggestedPriority.Value)
+                ? ((TicketPriority)r.SuggestedPriority.Value).ToString()
+                : "—",
+            CategoryConfidencePct = (int)Math.Round(r.CategoryConfidence * 100),
+            PriorityConfidencePct = (int)Math.Round(r.PriorityConfidence * 100),
+            Status      = r.Status,
+            CreatedDate = r.CreatedDate,
+            ReviewedBy  = r.ReviewedBy
+        }).ToList();
+
+        // ── Accuracy tracking ─────────────────────────────────────────────────
+        // For Approved recs whose ticket is now closed/resolved, check if the
+        // final ticket category/priority still matches what was suggested.
+        var closedApproved = allRecs
+            .Where(r => r.Status == "Approved" && r.Ticket != null
+                     && (r.Ticket.Status == TicketStatus.Resolved
+                      || r.Ticket.Status == TicketStatus.Closed))
+            .ToList();
+
+        vm.AccuracyCategoryTotal   = closedApproved.Count(r => r.SuggestedCategory.HasValue);
+        vm.AccuracyCategoryCorrect = closedApproved.Count(r =>
+            r.SuggestedCategory.HasValue &&
+            r.SuggestedCategory.Value == (int)r.Ticket!.Category);
+
+        vm.AccuracyPriorityTotal   = closedApproved.Count(r => r.SuggestedPriority.HasValue);
+        vm.AccuracyPriorityCorrect = closedApproved.Count(r =>
+            r.SuggestedPriority.HasValue &&
+            r.SuggestedPriority.Value == (int)r.Ticket!.Priority);
+
+        // ── Category gap detection ────────────────────────────────────────────
+        // Find low-confidence recs and extract the most common terms from their
+        // ticket titles to surface potential missing categories.
+        var lowConfRecs = allRecs
+            .Where(r => Math.Max(r.CategoryConfidence, r.PriorityConfidence) < 0.50f
+                     && r.Ticket != null)
+            .ToList();
+
+        if (lowConfRecs.Count >= 3)
+        {
+            var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "the","is","are","was","were","have","has","had","be","a","an","and","or",
+                "in","on","at","to","for","of","with","by","as","not","can","my","our",
+                "your","its","this","that","i","we","they","he","she","it","do","did",
+                "please","help","issue","problem","request","ticket","need","new","old"
+            };
+
+            // Count word frequency across all low-confidence ticket titles
+            var wordCounts = new Dictionary<string, List<(int Id, string Title)>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rec in lowConfRecs)
+            {
+                var title = rec.Ticket!.Title ?? string.Empty;
+                var words = System.Text.RegularExpressions.Regex
+                    .Split(title.ToLowerInvariant(), @"[^a-z0-9]+")
+                    .Where(w => w.Length >= 3 && !stopWords.Contains(w));
+
+                foreach (var word in words.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!wordCounts.ContainsKey(word))
+                        wordCounts[word] = new();
+                    wordCounts[word].Add((rec.TicketId, title));
+                }
+            }
+
+            vm.CategoryGaps = wordCounts
+                .Where(kv => kv.Value.Count >= 2) // minimum 2 tickets for a cluster
+                .OrderByDescending(kv => kv.Value.Count)
+                .Take(8)
+                .Select(kv => new ServiceDesk.Web.Models.AiCategoryGapCluster
+                {
+                    KeyTerm     = kv.Key,
+                    TicketCount = kv.Value.Count,
+                    Samples     = kv.Value.DistinctBy(t => t.Id).Take(3).ToList()
+                })
+                .ToList();
+        }
+
+        // ── Tickets awaiting triage ───────────────────────────────────────────
+        var openTicketIds = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .Select(t => t.Id)
+            .ToListAsync();
+
+        var ticketsWithPendingRec = await _context.AiRecommendations
+            .Where(r => r.Status == "Pending" && openTicketIds.Contains(r.TicketId))
+            .Select(r => r.TicketId)
+            .Distinct()
+            .ToListAsync();
+
+        vm.TicketsAwaitingTriage = openTicketIds.Count - ticketsWithPendingRec.Count;
+
+        return View(vm);
+    }
+
+    // POST: Settings/BulkKbExtraction — generate KB draft articles from resolved tickets
+    // Processes up to 20 resolved tickets that have resolution notes but no KB article yet.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkKbExtraction()
+    {
+        var currentUser = User.Identity?.Name ?? "System";
+
+        // Find eligible tickets: Resolved/Closed, has resolution notes, no existing KB article
+        var existingSourceIds = await _context.KbArticles
+            .Where(k => k.SourceTicketId.HasValue)
+            .Select(k => k.SourceTicketId!.Value)
+            .ToListAsync();
+
+        var candidates = await _context.Tickets
+            .Where(t => (t.Status == ServiceDesk.Core.Enums.TicketStatus.Resolved
+                      || t.Status == ServiceDesk.Core.Enums.TicketStatus.Closed)
+                     && !string.IsNullOrEmpty(t.ResolutionNotes)
+                     && !existingSourceIds.Contains(t.Id))
+            .OrderByDescending(t => t.ResolvedDate ?? t.UpdatedDate)
+            .Take(20)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+        {
+            TempData["Info"] = "No eligible tickets found. All resolved tickets with resolution notes already have KB articles, or none exist yet.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        var created = new List<(int Id, string Title)>();
+        var skipped = new List<(int Id, string Title, string Reason)>();
+
+        foreach (var ticket in candidates)
+        {
+            try
+            {
+                var (problem, solution) = await _ollama.GenerateKbDraftAsync(
+                    ticket.Title, ticket.Description, ticket.ResolutionNotes);
+
+                if (string.IsNullOrWhiteSpace(problem) && string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama returned no output — check that the configured model is running"));
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(problem) || string.IsNullOrWhiteSpace(solution))
+                {
+                    skipped.Add((ticket.Id, ticket.Title, "Ollama output did not include both PROBLEM: and SOLUTION: sections"));
+                    continue;
+                }
+
+                _context.KbArticles.Add(new ServiceDesk.Core.Models.KbArticle
+                {
+                    Title          = ticket.Title,
+                    Problem        = problem,
+                    Solution       = solution,
+                    Category       = (int)ticket.Category,
+                    SourceTicketId = ticket.Id,
+                    IsPublished    = false,   // drafts — require manual review before publishing
+                    CreatedBy      = currentUser,
+                    CreatedDate    = DateTime.UtcNow,
+                });
+                created.Add((ticket.Id, ticket.Title));
+            }
+            catch (Exception ex)
+            {
+                skipped.Add((ticket.Id, ticket.Title, $"Error: {ex.Message}"));
+            }
+        }
+
+        if (created.Count > 0)
+            await _context.SaveChangesAsync();
+
+        if (created.Count > 0)
+        {
+            TempData["Success"] = $"Created {created.Count} KB draft article{(created.Count == 1 ? "" : "s")} "
+                + $"from resolved tickets (of {candidates.Count} processed). "
+                + "Review and publish them in the Knowledge Base.";
+        }
+        else
+        {
+            TempData["Error"] = $"No KB drafts were created from {candidates.Count} candidate ticket{(candidates.Count == 1 ? "" : "s")}. "
+                + "See the skipped list below for details. Verify Ollama is running and that the configured model responds with PROBLEM:/SOLUTION: sections.";
+        }
+
+        if (skipped.Count > 0)
+        {
+            TempData["KbExtractionSkipped"] = System.Text.Json.JsonSerializer.Serialize(
+                skipped.Select(s => new { id = s.Id, title = s.Title, reason = s.Reason }).ToList());
+        }
+
+        return RedirectToAction(nameof(AiDashboard));
+    }
+
+    // POST: Settings/AiBatchRetriage — queue AI triage for all open tickets without a pending rec
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AiBatchRetriage()
+    {
+        var aiTriage = HttpContext.RequestServices.GetService<ServiceDesk.Web.Services.AiTriageService>();
+        if (aiTriage == null)
+        {
+            TempData["Error"] = "AI Triage service is not registered.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        // Find open tickets without a current Pending recommendation
+        var openTickets = await _context.Tickets
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .Select(t => new { t.Id, t.Title, t.Description, t.BranchId })
+            .ToListAsync();
+
+        var pendingTicketIds = await _context.AiRecommendations
+            .Where(r => r.Status == "Pending")
+            .Select(r => r.TicketId)
+            .Distinct()
+            .ToListAsync();
+
+        var toProcess = openTickets
+            .Where(t => !pendingTicketIds.Contains(t.Id))
+            .ToList();
+
+        if (toProcess.Count == 0)
+        {
+            TempData["Success"] = "All open tickets already have a pending AI recommendation.";
+            return RedirectToAction(nameof(AiDashboard));
+        }
+
+        // Fire-and-forget — triage runs in background via IServiceScopeFactory
+        _ = Task.Run(async () =>
+        {
+            foreach (var t in toProcess)
+                await aiTriage.TriageAndSaveAsync(t.Id, t.Title, t.Description ?? string.Empty, t.BranchId);
+        });
+
+        TempData["Success"] = $"Batch triage started for {toProcess.Count} ticket(s). Results will appear shortly.";
+        return RedirectToAction(nameof(AiDashboard));
+    }
+
+    // ==================== PORTAL BRANDING ====================
+
+    // GET: Settings/PortalBranding
+    public async Task<IActionResult> PortalBranding()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Portal Branding")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/PortalBranding
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PortalBranding(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Portal Branding")
+            .ToListAsync();
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key))
+                setting.Value = form[setting.Key].FirstOrDefault() ?? setting.Value;
+        }
+        await _context.SaveChangesAsync();
+        _cache.Remove("ss_branding_v1");
+        TempData["Success"] = "Portal branding settings saved.";
+        return RedirectToAction(nameof(PortalBranding));
+    }
+
+    // ==================== SLA POLICY ====================
+
+    // GET: Settings/Sla
+    public async Task<IActionResult> Sla()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "SLA")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Sla
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Sla(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "SLA")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (form.ContainsKey(setting.Key) &&
+                int.TryParse(form[setting.Key].FirstOrDefault(), out var hours) &&
+                hours >= 1)
+            {
+                setting.Value = hours.ToString();
+            }
+        }
+        await _context.SaveChangesAsync();
+
+        // Immediately apply new hours to the live static policy (no restart needed)
+        int GetH(string key, int fallback) =>
+            int.TryParse(settings.FirstOrDefault(s => s.Key == key)?.Value, out var h) && h > 0 ? h : fallback;
+        ServiceDesk.Core.Services.SlaPolicy.Configure(
+            GetH("SlaHoursCritical", 4),
+            GetH("SlaHoursHigh",     8),
+            GetH("SlaHoursMedium",   24),
+            GetH("SlaHoursLow",      72));
+
+        TempData["Success"] = "SLA policy saved. New tickets will use the updated deadlines immediately.";
+        return RedirectToAction(nameof(Sla));
+    }
+
+    // ==================== NOTIFICATION SETTINGS ====================
+
+    // GET: Settings/Notifications
+    public async Task<IActionResult> Notifications()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Notifications")
+            .OrderBy(s => s.Key)
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/Notifications
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Notifications(IFormCollection form)
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Notifications")
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            // Checkboxes: present = true, absent = false
+            setting.Value = form.ContainsKey(setting.Key) ? "true" : "false";
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Notification settings saved.";
+        return RedirectToAction(nameof(Notifications));
+    }
+
+    // ── Google Workspace ──────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GoogleWorkspace()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        return View(settings);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> GoogleWorkspace(string adminEmail, string domain,
+        IFormFile? serviceAccountFile, string? signatureTemplate)
+    {
+        string? jsonContent = null;
+
+        if (serviceAccountFile != null && serviceAccountFile.Length > 0)
+        {
+            if (!serviceAccountFile.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["Error"] = "Please upload a valid JSON service account key file.";
+                return RedirectToAction(nameof(GoogleWorkspace));
+            }
+
+            using var reader = new System.IO.StreamReader(serviceAccountFile.OpenReadStream());
+            jsonContent = await reader.ReadToEndAsync();
+
+            // Basic validation: must contain client_email and private_key
+            if (!jsonContent.Contains("client_email") || !jsonContent.Contains("private_key"))
+            {
+                TempData["Error"] = "The uploaded file does not look like a valid Google service account key.";
+                return RedirectToAction(nameof(GoogleWorkspace));
+            }
+        }
+
+        await _googleWorkspace.SaveSettingsAsync(adminEmail, domain, jsonContent, signatureTemplate);
+        TempData["Success"] = "Google Workspace settings saved.";
+        return RedirectToAction(nameof(GoogleWorkspace));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestGoogleWorkspace()
+    {
+        var (passed, message) = await _googleWorkspace.TestConnectionAsync();
+        TempData[passed ? "Success" : "Error"] = message;
+        return RedirectToAction(nameof(GoogleWorkspace));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkApplySignatures(bool includeAliases = false, bool activeOnly = true)
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings?.SignatureTemplate == null)
+            return Json(new { success = false, message = "No signature template configured. Add one in the Default Signature Template field above." });
+
+        var query = _context.Employees.Include(e => e.Branch).AsQueryable();
+        if (activeOnly) query = query.Where(e => e.IsActive);
+        var employees = await query.ToListAsync();
+
+        if (employees.Count == 0)
+            return Json(new { success = false, message = "No employees found." });
+
+        var (successCount, failedCount, skippedCount, results) =
+            await _googleWorkspace.BulkApplySignatureAsync(employees, settings.SignatureTemplate, includeAliases);
+
+        // Stamp sync date on successful employees
+        var successEmails = results.Where(r => r.Status == "success").Select(r => r.Email)
+                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var now = DateTime.UtcNow;
+        foreach (var emp in employees.Where(e => successEmails.Contains(e.Email)))
+            emp.LastGoogleSignatureSync = now;
+        if (successEmails.Count > 0)
+            await _context.SaveChangesAsync();
+
+        return Json(new { success = true, successCount, failedCount, skippedCount, results });
+    }
+
+    // ── Google Groups management ──────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GoogleGroups()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings == null || !settings.IsConfigured)
+        {
+            TempData["Error"] = "Google Workspace is not configured. Please set it up first.";
+            return RedirectToAction(nameof(GoogleWorkspace));
+        }
+        var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
+        ViewBag.Error = ok ? null : err;
+        return View(groups);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> WorkspaceAudit()
+    {
+        var settings = await _googleWorkspace.GetSettingsAsync();
+        if (settings == null || !settings.IsConfigured)
+        {
+            TempData["Error"] = "Google Workspace is not configured. Please set it up first.";
+            return RedirectToAction(nameof(GoogleWorkspace));
+        }
+        var (ok, users, err) = await _googleWorkspace.GetOrgUsersSecurityAsync();
+        ViewBag.Error = ok ? null : err;
+        return View(users);
+    }
+
+    // ==================== CSAT SURVEYS ====================
+
+    // GET: Settings/Csat
+    public async Task<IActionResult> Csat()
+    {
+        var enabled = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+        ViewBag.CsatEnabled = enabled?.Value == "true";
+        return View();
+    }
+
+    // POST: Settings/Csat
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Csat(bool csatEnabled)
+    {
+        var setting = await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CsatSurveyEnabled");
+
+        if (setting != null)
+        {
+            setting.Value = csatEnabled ? "true" : "false";
+            await _context.SaveChangesAsync();
+        }
+
+        TempData["Success"] = $"CSAT surveys {(csatEnabled ? "enabled" : "disabled")}.";
+        return RedirectToAction(nameof(Csat));
     }
 }

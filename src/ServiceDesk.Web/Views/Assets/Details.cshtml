@@ -1,125 +1,1123 @@
-@model Asset
+@using ServiceDesk.Core.Enums
+@model ServiceDesk.Web.Models.AssetDetailViewModel
 @{
-    ViewData["Title"] = $"Asset - {Model.AssetTag}";
+    ViewData["Title"] = $"Asset — {Model.Asset.AssetTag}";
+    var a = Model.Asset;
+    var activeTab = Context.Request.Query["tab"].ToString();
+    if (string.IsNullOrEmpty(activeTab)) activeTab = "overview";
+
+    string TabClass(string key) => activeTab == key ? "nav-link active" : "nav-link";
+    string PaneClass(string key) => activeTab == key ? "tab-pane fade show active" : "tab-pane fade";
+
+    var relTypes = new[] { "ConnectedTo", "DependsOn", "Hosts", "Contains", "ManagedBy", "PoweredBy", "BackedUpTo", "ReplacedBy" };
+    bool expired = Model.WarrantyExpired;
+    bool expiringSoon = Model.WarrantyExpiringSoon;
+
+    string StatusBadge(string s) => s.ToLower() switch {
+        "available"   => "bg-success",
+        "assigned"    => "bg-primary",
+        "inrepair"    => "bg-warning text-dark",
+        "retired"     => "bg-secondary",
+        "lost"        => "bg-danger",
+        "disposed"    => "bg-dark",
+        _             => "bg-secondary"
+    };
 }
 
-<nav aria-label="breadcrumb">
+<nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a asp-action="Index">Assets</a></li>
-        <li class="breadcrumb-item active">@Model.AssetTag</li>
+        <li class="breadcrumb-item active">@a.AssetTag</li>
     </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1><i class="bi bi-laptop"></i> @Model.Name</h1>
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-3">
     <div>
-        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
-            <i class="bi bi-pencil"></i> Edit
+        <h1 class="mb-1 fs-3 fw-bold">
+            <i class="bi bi-laptop text-primary me-2"></i>@a.Name
+        </h1>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <code class="bg-light border rounded px-2 py-1 small">@a.AssetTag</code>
+            <span class="badge @StatusBadge(a.Status.ToString())">@a.Status</span>
+            <span class="badge bg-light text-dark border">@a.AssetType</span>
+            @if (expired)   { <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Warranty Expired</span> }
+            @if (expiringSoon) { <span class="badge bg-warning text-dark"><i class="bi bi-clock-history me-1"></i>Warranty Expiring Soon</span> }
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Edit" asp-route-id="@a.Id" class="btn btn-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Edit
         </a>
-        <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-outline-danger">
-            <i class="bi bi-trash"></i> Delete
+        <a asp-action="Delete" asp-route-id="@a.Id" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash me-1"></i>Delete
         </a>
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">General Information</div>
-            <div class="card-body">
-                <dl>
-                    <dt>Asset Tag</dt>
-                    <dd>@Model.AssetTag</dd>
-
-                    <dt>Name</dt>
-                    <dd>@Model.Name</dd>
-
-                    <dt>Asset Type</dt>
-                    <dd>@Model.AssetType</dd>
-
-                    <dt>Status</dt>
-                    <dd><span class="badge badge-@Model.Status.ToString().ToLower()">@Model.Status</span></dd>
-
-                    <dt>Assigned To</dt>
-                    <dd>
-                        @if (Model.AssignedTo != null)
-                        {
-                            <a asp-controller="Employees" asp-action="Details" asp-route-id="@Model.AssignedToId">
-                                @Model.AssignedTo.FullName
-                            </a>
-                        }
-                        else
-                        {
-                            <span class="text-muted">Unassigned</span>
-                        }
-                    </dd>
-
-                    <dt>Location</dt>
-                    <dd>@(Model.Location ?? "N/A")</dd>
-                </dl>
-            </div>
-        </div>
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
 
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Hardware Details</div>
-            <div class="card-body">
-                <dl>
-                    <dt>Manufacturer</dt>
-                    <dd>@(Model.Manufacturer ?? "N/A")</dd>
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-0" id="assetTabs">
+    <li class="nav-item">
+        <a class="@TabClass("overview")" href="?tab=overview">
+            <i class="bi bi-info-circle me-1"></i>Overview
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("credentials")" href="?tab=credentials">
+            <i class="bi bi-key me-1"></i>Credentials
+            @if (Model.Credentials.Any()) { <span class="badge bg-secondary ms-1">@Model.Credentials.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("attachments")" href="?tab=attachments">
+            <i class="bi bi-paperclip me-1"></i>Attachments
+            @if (Model.Attachments.Any()) { <span class="badge bg-secondary ms-1">@Model.Attachments.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("relationships")" href="?tab=relationships">
+            <i class="bi bi-diagram-3 me-1"></i>Relationships
+            @{ var relCount = Model.RelationshipsFrom.Count + Model.RelationshipsTo.Count; }
+            @if (relCount > 0) { <span class="badge bg-secondary ms-1">@relCount</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("tickets")" href="?tab=tickets">
+            <i class="bi bi-ticket-detailed me-1"></i>Tickets
+            @if (Model.RelatedTickets.Any()) { <span class="badge bg-secondary ms-1">@Model.RelatedTickets.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("maintenance")" href="?tab=maintenance">
+            <i class="bi bi-tools me-1"></i>Maintenance
+            @if (Model.MaintenanceLogs.Any()) { <span class="badge bg-secondary ms-1">@Model.MaintenanceLogs.Count</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("checkout")" href="?tab=checkout">
+            <i class="bi bi-box-arrow-right me-1"></i>Checkout
+            @{ var activeCheckout = Model.Checkouts.FirstOrDefault(c => c.ReturnedDate == null); }
+            @if (activeCheckout != null) { <span class="badge bg-warning text-dark ms-1">Out</span> }
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="@TabClass("history")" href="?tab=history">
+            <i class="bi bi-clock-history me-1"></i>History
+        </a>
+    </li>
+</ul>
 
-                    <dt>Model</dt>
-                    <dd>@(Model.Model ?? "N/A")</dd>
+<div class="tab-content border border-top-0 rounded-bottom p-4 bg-white shadow-sm">
 
-                    <dt>Serial Number</dt>
-                    <dd>@(Model.SerialNumber ?? "N/A")</dd>
-                </dl>
-            </div>
-        </div>
+    <!-- ═══ OVERVIEW ═══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("overview")">
+        <div class="row g-4">
 
-        <div class="card mt-3">
-            <div class="card-header">Purchase & Warranty</div>
-            <div class="card-body">
-                <dl>
-                    <dt>Purchase Date</dt>
-                    <dd>@(Model.PurchaseDate?.ToString("MMM dd, yyyy") ?? "N/A")</dd>
-
-                    <dt>Purchase Cost</dt>
-                    <dd>@(Model.PurchaseCost?.ToString("C") ?? "N/A")</dd>
-
-                    <dt>Warranty Expiry</dt>
-                    <dd>
-                        @if (Model.WarrantyExpiry.HasValue)
-                        {
-                            var isExpired = Model.WarrantyExpiry.Value < DateTime.Today;
-                            <span class="@(isExpired ? "text-danger" : "text-success")">
-                                @Model.WarrantyExpiry.Value.ToString("MMM dd, yyyy")
-                                @if (isExpired)
+            <!-- General -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header fw-semibold"><i class="bi bi-card-list me-2"></i>General</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4 text-muted small">Asset Tag</dt>
+                            <dd class="col-sm-8"><code>@a.AssetTag</code></dd>
+                            <dt class="col-sm-4 text-muted small">Type</dt>
+                            <dd class="col-sm-8">@a.AssetType</dd>
+                            <dt class="col-sm-4 text-muted small">Status</dt>
+                            <dd class="col-sm-8"><span class="badge @StatusBadge(a.Status.ToString())">@a.Status</span></dd>
+                            <dt class="col-sm-4 text-muted small">Location</dt>
+                            <dd class="col-sm-8">@(a.Location ?? "—")</dd>
+                            <dt class="col-sm-4 text-muted small">Assigned To</dt>
+                            <dd class="col-sm-8">
+                                @if (a.AssignedTo != null)
                                 {
-                                    <span class="badge bg-danger ms-1">Expired</span>
+                                    <a asp-controller="Employees" asp-action="Details" asp-route-id="@a.AssignedToId">
+                                        @a.AssignedTo.FullName
+                                    </a>
                                 }
-                            </span>
-                        }
-                        else
-                        {
-                            <span>N/A</span>
-                        }
-                    </dd>
-                </dl>
+                                else { <span class="text-muted">Unassigned</span> }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
             </div>
+
+            <!-- Hardware -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header fw-semibold"><i class="bi bi-cpu me-2"></i>Hardware</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5 text-muted small">Manufacturer</dt>
+                            <dd class="col-sm-7">@(a.Manufacturer ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Model</dt>
+                            <dd class="col-sm-7">@(a.Model ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Serial Number</dt>
+                            <dd class="col-sm-7"><code class="small">@(a.SerialNumber ?? "—")</code></dd>
+                            <dt class="col-sm-5 text-muted small">Purchase Date</dt>
+                            <dd class="col-sm-7">@(a.PurchaseDate?.ToString("MMM dd, yyyy") ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Purchase Cost</dt>
+                            <dd class="col-sm-7">@(a.PurchaseCost?.ToString("C") ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Book Value (est.)</dt>
+                            <dd class="col-sm-7">@(Model.BookValue?.ToString("C") ?? "—")</dd>
+                            <dt class="col-sm-5 text-muted small">Warranty Expiry</dt>
+                            <dd class="col-sm-7">
+                                @if (a.WarrantyExpiry.HasValue)
+                                {
+                                    <span class="@(expired ? "text-danger" : expiringSoon ? "text-warning" : "")">
+                                        @a.WarrantyExpiry.Value.ToString("MMM dd, yyyy")
+                                        @if (expired) { <span class="badge bg-danger ms-1">Expired</span> }
+                                        else if (expiringSoon) { <span class="badge bg-warning text-dark ms-1">Soon</span> }
+                                    </span>
+                                }
+                                else { <span class="text-muted">—</span> }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network / System -->
+            @if (a.IpAddress != null || a.MacAddress != null || a.Hostname != null || a.OsVersion != null || a.OsBuild != null)
+            {
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header fw-semibold"><i class="bi bi-router me-2"></i>Network &amp; System</div>
+                        <div class="card-body">
+                            <dl class="row mb-0">
+                                <dt class="col-sm-5 text-muted small">IP Address</dt>
+                                <dd class="col-sm-7"><code class="small">@(a.IpAddress ?? "—")</code></dd>
+                                <dt class="col-sm-5 text-muted small">MAC Address</dt>
+                                <dd class="col-sm-7"><code class="small">@(a.MacAddress ?? "—")</code></dd>
+                                <dt class="col-sm-5 text-muted small">Hostname</dt>
+                                <dd class="col-sm-7"><code class="small">@(a.Hostname ?? "—")</code></dd>
+                                <dt class="col-sm-5 text-muted small">OS Version</dt>
+                                <dd class="col-sm-7">@(a.OsVersion ?? "—")</dd>
+                                <dt class="col-sm-5 text-muted small">OS Build</dt>
+                                <dd class="col-sm-7">@(a.OsBuild ?? "—")</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Quick Assign -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header fw-semibold"><i class="bi bi-person-check me-2"></i>Assign Asset</div>
+                    <div class="card-body">
+                        <form asp-action="Assign" asp-route-id="@a.Id" method="post">
+                            @Html.AntiForgeryToken()
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold">Assign To</label>
+                                <input type="hidden" name="employeeId" id="assignEmpId"
+                                       value="@(a.AssignedToId?.ToString() ?? "")" />
+                                <input type="text" id="assignEmpSearch" class="form-control form-control-sm"
+                                       placeholder="Type name to search employees…"
+                                       value="@(a.AssignedTo?.FullName ?? "")"
+                                       autocomplete="off" />
+                                <div id="assignEmpDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:220px;"></div>
+                                <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-danger"
+                                        onclick="document.getElementById('assignEmpId').value='';document.getElementById('assignEmpSearch').value='';">
+                                    <i class="bi bi-x-circle me-1"></i>Clear (Unassign)
+                                </button>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold">Notes</label>
+                                <input type="text" name="notes" class="form-control form-control-sm"
+                                       placeholder="Optional reason for transfer" maxlength="500" />
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-arrow-right-circle me-1"></i>Transfer Custody
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            @if (!string.IsNullOrEmpty(a.Notes))
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-header fw-semibold"><i class="bi bi-sticky me-2"></i>Notes</div>
+                        <div class="card-body">
+                            <p class="mb-0" style="white-space:pre-wrap;">@a.Notes</p>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(Model.Notes))
-    {
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">Notes</div>
-                <div class="card-body">
-                    <p>@Model.Notes</p>
+    <!-- ═══ CREDENTIALS ═════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("credentials")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-key me-2"></i>Credential Vault</h6>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCredModal">
+                <i class="bi bi-plus-lg me-1"></i>Add Credential
+            </button>
+        </div>
+
+        @if (!Model.Credentials.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-key fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No credentials stored. Add the first one above.</p>
+            </div>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var cred in Model.Credentials)
+                {
+                    <div class="list-group-item px-3 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">
+                                    <i class="bi bi-lock-fill text-warning me-1"></i>@cred.Label
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Username))
+                                {
+                                    <div class="text-muted small"><i class="bi bi-person me-1"></i>@cred.Username</div>
+                                }
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <input type="password" class="form-control form-control-sm bg-light"
+                                           id="pwd_@cred.Id" value="••••••••" readonly style="max-width:200px;" />
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="revealPwd(@cred.Id, this)"
+                                            data-cred-id="@cred.Id">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="copyPwd(@cred.Id)" title="Copy password">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(cred.Url))
+                                {
+                                    <div class="mt-1 small">
+                                        <i class="bi bi-link-45deg me-1"></i>
+                                        <a href="@cred.Url" target="_blank" rel="noopener">@cred.Url</a>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(cred.Notes))
+                                {
+                                    <div class="text-muted small mt-1"><i class="bi bi-info-circle me-1"></i>@cred.Notes</div>
+                                }
+                                <div class="text-muted mt-1" style="font-size:0.72rem;">
+                                    Added by @cred.CreatedByEmail on @cred.CreatedDate.ToString("MMM d, yyyy")
+                                </div>
+                            </div>
+                            <form asp-action="DeleteCredential" asp-route-id="@a.Id" method="post" class="ms-3">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="credentialId" value="@cred.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Delete this credential?')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Add Credential Modal -->
+        <div class="modal fade" id="addCredModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Add Credential</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddCredential" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Label <span class="text-danger">*</span></label>
+                                <input type="text" name="label" class="form-control"
+                                       placeholder="e.g. Local Admin, BIOS, Wi-Fi" maxlength="100" required />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Username</label>
+                                <input type="text" name="username" class="form-control"
+                                       placeholder="e.g. administrator" maxlength="200" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <input type="password" name="password" id="newCredPwd" class="form-control"
+                                           placeholder="Enter password" maxlength="500" required />
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="toggleNewPwd()">
+                                        <i class="bi bi-eye" id="newPwdIcon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">URL</label>
+                                <input type="url" name="url" class="form-control"
+                                       placeholder="https://..." maxlength="500" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="credNotes" class="form-control"
+                                       placeholder="Optional notes" maxlength="500" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-lock me-1"></i>Save Credential</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
-    }
+    </div>
+
+    <!-- ═══ ATTACHMENTS ══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("attachments")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-paperclip me-2"></i>Attachments</h6>
+        </div>
+
+        <form asp-action="AddAttachment" asp-route-id="@a.Id" method="post" enctype="multipart/form-data" class="card p-3 mb-4 bg-light border-0">
+            @Html.AntiForgeryToken()
+            <div class="input-group">
+                <input type="file" name="file" class="form-control form-control-sm"
+                       accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt,.csv,.zip" required />
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-upload me-1"></i>Upload
+                </button>
+            </div>
+            <div class="form-text">Accepted: PDF, Office docs, images, CSV, TXT, ZIP — max 20 MB.</div>
+        </form>
+
+        @if (!Model.Attachments.Any())
+        {
+            <div class="text-center text-muted py-4">
+                <i class="bi bi-folder2-open fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No attachments yet.</p>
+            </div>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var att in Model.Attachments)
+                {
+                    var sizeKb = att.FileSizeBytes / 1024.0;
+                    var sizeLabel = sizeKb >= 1024
+                        ? $"{sizeKb / 1024:F1} MB"
+                        : $"{sizeKb:F0} KB";
+
+                    var iconClass = att.ContentType.StartsWith("image") ? "bi-image" :
+                                   att.FileName.EndsWith(".pdf") ? "bi-file-earmark-pdf text-danger" :
+                                   att.FileName.EndsWith(".zip") ? "bi-file-zip" :
+                                   "bi-file-earmark";
+
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+                        <div>
+                            <i class="bi @iconClass me-2 text-primary"></i>
+                            <a asp-action="DownloadAttachment" asp-route-id="@a.Id" asp-route-attachmentId="@att.Id">
+                                @att.FileName
+                            </a>
+                            <span class="text-muted small ms-2">@sizeLabel</span>
+                            <div class="text-muted" style="font-size:0.72rem;">
+                                Uploaded by @att.UploadedByEmail on @att.UploadedDate.ToString("MMM d, yyyy")
+                            </div>
+                        </div>
+                        <form asp-action="DeleteAttachment" asp-route-id="@a.Id" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="attachmentId" value="@att.Id" />
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('Delete this attachment?')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ═══ RELATIONSHIPS ════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("relationships")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-diagram-3 me-2"></i>Relationship Web</h6>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addRelModal">
+                <i class="bi bi-plus-lg me-1"></i>Add Relationship
+            </button>
+        </div>
+
+        @if (!Model.RelationshipsFrom.Any() && !Model.RelationshipsTo.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-diagram-3 fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No relationships defined. Link this asset to other assets above.</p>
+            </div>
+        }
+        else
+        {
+            @if (Model.RelationshipsFrom.Any())
+            {
+                <h6 class="text-muted small mb-2">This asset relates to:</h6>
+                <div class="list-group mb-4">
+                    @foreach (var rel in Model.RelationshipsFrom)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+                            <div>
+                                <span class="badge bg-info text-dark me-2">@rel.RelationshipType</span>
+                                <a asp-action="Details" asp-route-id="@rel.TargetAssetId">
+                                    <code>@rel.TargetAsset?.AssetTag</code> — @rel.TargetAsset?.Name
+                                </a>
+                                @if (!string.IsNullOrEmpty(rel.Notes))
+                                {
+                                    <span class="text-muted small ms-2">(@rel.Notes)</span>
+                                }
+                            </div>
+                            <form asp-action="DeleteRelationship" asp-route-id="@a.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="relationshipId" value="@rel.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove this relationship?')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (Model.RelationshipsTo.Any())
+            {
+                <h6 class="text-muted small mb-2">Other assets relate to this asset:</h6>
+                <div class="list-group">
+                    @foreach (var rel in Model.RelationshipsTo)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+                            <div>
+                                <a asp-action="Details" asp-route-id="@rel.SourceAssetId">
+                                    <code>@rel.SourceAsset?.AssetTag</code> — @rel.SourceAsset?.Name
+                                </a>
+                                <span class="badge bg-light text-dark border ms-2">@rel.RelationshipType</span>
+                                <span class="text-muted small ms-1">this asset</span>
+                                @if (!string.IsNullOrEmpty(rel.Notes))
+                                {
+                                    <span class="text-muted small ms-2">(@rel.Notes)</span>
+                                }
+                            </div>
+                            <form asp-action="DeleteRelationship" asp-route-id="@rel.SourceAssetId" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="relationshipId" value="@rel.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove this relationship?')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <!-- Add Relationship Modal -->
+        <div class="modal fade" id="addRelModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-diagram-3 me-2"></i>Add Relationship</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddRelationship" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <p class="text-muted small mb-3">
+                                <strong>@a.AssetTag</strong> [relationship] → target asset
+                            </p>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Relationship Type <span class="text-danger">*</span></label>
+                                <select name="relationshipType" class="form-select" required>
+                                    @foreach (var t in relTypes)
+                                    {
+                                        <option value="@t">@t</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Target Asset <span class="text-danger">*</span></label>
+                                <input type="hidden" name="targetAssetId" id="relTargetId" required />
+                                <input type="text" id="relTargetSearch" class="form-control"
+                                       placeholder="Type tag or name to search assets…"
+                                       autocomplete="off" />
+                                <div id="relTargetDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:260px;"></div>
+                                <div class="form-text text-muted">Start typing an asset tag or name.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="relNotes" class="form-control"
+                                       placeholder="Optional details" maxlength="300" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-plus me-1"></i>Add</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ RELATED TICKETS ══════════════════════════════════════════════════ -->
+    <div class="@PaneClass("tickets")">
+        <h6 class="fw-semibold mb-3"><i class="bi bi-ticket-detailed me-2"></i>Related Tickets</h6>
+        @if (!Model.RelatedTickets.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-ticket-detailed fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No tickets linked to this asset.</p>
+                <p class="small">Link a ticket by editing it and selecting this asset.</p>
+            </div>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var t in Model.RelatedTickets)
+                {
+                    var tc = t.Status.ToString().ToLower() switch {
+                        "open"       => "badge-open",
+                        "inprogress" => "badge-inprogress",
+                        "resolved"   => "badge-resolved",
+                        "closed"     => "badge-closed",
+                        _            => "bg-secondary"
+                    };
+                    <a asp-controller="Tickets" asp-action="Details" asp-route-id="@t.Id"
+                       class="list-group-item list-group-item-action px-3 py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted small">#@t.Id</span>
+                                <span class="badge @tc ms-1">@t.Status</span>
+                                <span class="ms-2 fw-semibold">@t.Title</span>
+                            </div>
+                            <span class="text-muted small">@t.CreatedDate.ToString("MMM d")</span>
+                        </div>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ═══ MAINTENANCE ═══════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("maintenance")">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-tools me-2"></i>Maintenance Log</h6>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addMaintModal">
+                <i class="bi bi-plus-lg me-1"></i>Log Service
+            </button>
+        </div>
+
+        @if (!Model.MaintenanceLogs.Any())
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-tools fs-1 opacity-25 d-block mb-3"></i>
+                <p class="mb-0">No maintenance records yet.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Vendor / Tech</th>
+                            <th>Cost</th>
+                            <th>Next Service</th>
+                            <th class="no-sort"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in Model.MaintenanceLogs)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@m.ServiceDate.ToString("MMM d, yyyy")</td>
+                                <td><span class="badge bg-info text-dark">@m.ServiceType</span></td>
+                                <td>@m.Description</td>
+                                <td class="text-muted small">
+                                    @if (!string.IsNullOrEmpty(m.Vendor)) { <span>@m.Vendor</span> }
+                                    @if (!string.IsNullOrEmpty(m.PerformedBy)) { <span class="ms-1">(@m.PerformedBy)</span> }
+                                </td>
+                                <td>@(m.Cost?.ToString("C") ?? "—")</td>
+                                <td class="text-nowrap">
+                                    @if (m.NextServiceDate.HasValue)
+                                    {
+                                        var overdue = m.NextServiceDate.Value < DateTime.Today;
+                                        <span class="@(overdue ? "text-danger fw-semibold" : "")">
+                                            @m.NextServiceDate.Value.ToString("MMM d, yyyy")
+                                            @if (overdue) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
+                                        </span>
+                                    }
+                                    else { <span class="text-muted">—</span> }
+                                </td>
+                                <td>
+                                    <form asp-action="DeleteMaintenance" asp-route-id="@a.Id" method="post" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="maintenanceId" value="@m.Id" />
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('Delete this maintenance entry?')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <!-- Add Maintenance Modal -->
+        <div class="modal fade" id="addMaintModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-tools me-2"></i>Log Service / Maintenance</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form asp-action="AddMaintenance" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Service Date <span class="text-danger">*</span></label>
+                                    <input type="date" name="serviceDate" class="form-control"
+                                           value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Service Type</label>
+                                    <select name="serviceType" class="form-select">
+                                        <option>Repair</option>
+                                        <option>Preventive</option>
+                                        <option>Upgrade</option>
+                                        <option>Inspection</option>
+                                        <option>Warranty Service</option>
+                                        <option>Replacement</option>
+                                        <option>Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Cost</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" name="cost" class="form-control" step="0.01" min="0"
+                                               placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
+                                    <textarea name="description" class="form-control" rows="2"
+                                              placeholder="Describe the work performed" required maxlength="1000"></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Vendor / Shop</label>
+                                    <input type="text" name="vendor" class="form-control"
+                                           placeholder="e.g. Best Buy Geek Squad" maxlength="200" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Performed By</label>
+                                    <input type="text" name="performedBy" class="form-control"
+                                           placeholder="Technician name" maxlength="200" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Next Service Date</label>
+                                    <input type="date" name="nextServiceDate" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Log</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ CHECKOUT ════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("checkout")">
+        @if (activeCheckout != null)
+        {
+            <div class="alert alert-warning d-flex align-items-center mb-4">
+                <i class="bi bi-box-arrow-right fs-4 me-3"></i>
+                <div class="flex-grow-1">
+                    <strong>Currently Checked Out</strong>
+                    @if (activeCheckout.CheckedOutTo != null)
+                    {
+                        <span class="ms-1">to <strong>@activeCheckout.CheckedOutTo.FullName</strong></span>
+                    }
+                    — due <strong>@activeCheckout.DueDate.ToString("MMM d, yyyy")</strong>
+                    @if (activeCheckout.IsOverdue) { <span class="badge bg-danger ms-2">OVERDUE</span> }
+                </div>
+                <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#checkInModal">
+                    <i class="bi bi-box-arrow-in-left me-1"></i>Check In
+                </button>
+            </div>
+
+            <!-- Check-In Modal -->
+            <div class="modal fade" id="checkInModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="bi bi-box-arrow-in-left me-2"></i>Check In Asset</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <form asp-action="CheckIn" asp-route-id="@a.Id" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="checkoutId" value="@activeCheckout.Id" />
+                            <div class="modal-body">
+                                <label class="form-label fw-semibold">Return Notes (optional)</label>
+                                <textarea name="returnNotes" class="form-control" rows="2"
+                                          placeholder="Condition, damage notes, etc." maxlength="500"></textarea>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg me-1"></i>Confirm Check-In</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header fw-semibold"><i class="bi bi-box-arrow-right me-2"></i>Check Out Asset</div>
+                <div class="card-body">
+                    <form asp-action="CheckOut" asp-route-id="@a.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="row g-3">
+                            <div class="col-md-5 position-relative">
+                                <label class="form-label fw-semibold">Check Out To</label>
+                                <input type="hidden" name="employeeId" id="checkoutEmpId" />
+                                <input type="text" id="checkoutEmpSearch" class="form-control form-select-sm"
+                                       placeholder="Type name (leave blank for guest)…"
+                                       autocomplete="off" />
+                                <div id="checkoutEmpDrop" class="list-group shadow-sm position-absolute z-3" style="display:none;max-height:180px;overflow-y:auto;min-width:220px;"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold">Due Date <span class="text-danger">*</span></label>
+                                <input type="date" name="dueDate" class="form-control form-control-sm" required
+                                       value="@DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <input type="text" name="notes" class="form-control form-control-sm"
+                                       placeholder="Purpose / event" maxlength="500" />
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-box-arrow-right me-1"></i>Check Out
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+
+        <!-- Checkout History -->
+        <h6 class="fw-semibold mb-3">Checkout History</h6>
+        @if (!Model.Checkouts.Any())
+        {
+            <p class="text-muted text-center py-3">No checkout history for this asset.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Checked Out</th>
+                            <th>To</th>
+                            <th>Due Date</th>
+                            <th>Returned</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var co in Model.Checkouts)
+                        {
+                            <tr class="@(co.IsActive && co.IsOverdue ? "table-danger" : co.IsActive ? "table-warning" : "")">
+                                <td class="text-nowrap text-muted small">@co.CheckoutDate.ToString("MMM d, yyyy")</td>
+                                <td>@(co.CheckedOutTo?.FullName ?? "— External —")</td>
+                                <td class="text-nowrap">
+                                    <span class="@(co.IsOverdue ? "text-danger fw-semibold" : "")">
+                                        @co.DueDate.ToString("MMM d, yyyy")
+                                        @if (co.IsOverdue) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
+                                    </span>
+                                </td>
+                                <td class="text-nowrap text-muted small">
+                                    @if (co.ReturnedDate.HasValue)
+                                    { @co.ReturnedDate.Value.ToString("MMM d, yyyy") }
+                                    else
+                                    { <span class="badge bg-warning text-dark">Out</span> }
+                                </td>
+                                <td class="text-muted small">@co.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- ═══ HISTORY ══════════════════════════════════════════════════════════ -->
+    <div class="@PaneClass("history")">
+        <ul class="nav nav-pills mb-3" id="historySubTabs">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#histAssign">
+                    Custody Chain (@Model.AssignmentHistory.Count)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#histAudit">
+                    Change Log (@Model.AuditLog.Count)
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- Custody Chain -->
+            <div class="tab-pane fade show active" id="histAssign">
+                @if (!Model.AssignmentHistory.Any())
+                {
+                    <p class="text-muted text-center py-4">No assignment history yet.</p>
+                }
+                else
+                {
+                    <div class="timeline-list">
+                        @foreach (var h in Model.AssignmentHistory)
+                        {
+                            <div class="d-flex mb-3">
+                                <div class="flex-shrink-0 me-3 text-center" style="width:40px;">
+                                    <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center"
+                                         style="width:32px;height:32px;">
+                                        <i class="bi bi-person text-white small"></i>
+                                    </div>
+                                    @if (Model.AssignmentHistory.Last() != h)
+                                    {
+                                        <div style="width:2px;background:#dee2e6;height:100%;margin:0 auto;"></div>
+                                    }
+                                </div>
+                                <div class="flex-grow-1 pb-3">
+                                    <div class="fw-semibold">
+                                        @(h.AssignedTo?.FullName ?? "Unassigned")
+                                    </div>
+                                    <div class="text-muted small">
+                                        Assigned @h.AssignedDate.ToString("MMM d, yyyy h:mm tt")
+                                        @if (h.AssignedBy != null) { <span>by @h.AssignedBy.FullName</span> }
+                                    </div>
+                                    @if (h.ReturnedDate.HasValue)
+                                    {
+                                        <div class="text-muted small">
+                                            Returned @h.ReturnedDate.Value.ToString("MMM d, yyyy h:mm tt")
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success bg-opacity-10 text-success small">Current</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(h.Notes))
+                                    {
+                                        <div class="text-muted small fst-italic">@h.Notes</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Audit/Change Log -->
+            <div class="tab-pane fade" id="histAudit">
+                @if (!Model.AuditLog.Any())
+                {
+                    <p class="text-muted text-center py-4">No changes recorded yet.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover small">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Field</th>
+                                    <th>Old Value</th>
+                                    <th>New Value</th>
+                                    <th>Changed By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in Model.AuditLog)
+                                {
+                                    <tr>
+                                        <td class="text-nowrap text-muted">@log.ChangedDate.ToString("MMM d, yyyy HH:mm")</td>
+                                        <td><strong>@log.FieldName</strong></td>
+                                        <td class="text-danger">@(log.OldValue ?? "—")</td>
+                                        <td class="text-success">@(log.NewValue ?? "—")</td>
+                                        <td class="text-muted">@log.ChangedByEmail</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    // Reveal password via AJAX
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+    window.revealPwd = function (credId, btn) {
+        var input = document.getElementById('pwd_' + credId);
+        if (input.type === 'text') {
+            input.type = 'password';
+            input.value = '••••••••';
+            btn.innerHTML = '<i class="bi bi-eye"></i>';
+            return;
+        }
+        fetch('@Url.Action("RevealPassword", "Assets")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': token
+            },
+            body: 'credentialId=' + credId
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                input.type = 'text';
+                input.value = d.password;
+                btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                alert('Error: ' + d.message);
+            }
+        });
+    };
+
+    window.copyPwd = function (credId) {
+        var input = document.getElementById('pwd_' + credId);
+        if (input.type !== 'text') {
+            // Reveal first, then copy
+            fetch('@Url.Action("RevealPassword", "Assets")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'RequestVerificationToken': token
+                },
+                body: 'credentialId=' + credId
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) navigator.clipboard.writeText(d.password);
+            });
+        } else {
+            navigator.clipboard.writeText(input.value);
+        }
+    };
+
+    window.toggleNewPwd = function () {
+        var inp = document.getElementById('newCredPwd');
+        var ico = document.getElementById('newPwdIcon');
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+        ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+    };
+})();
+</script>
+
+<script>
+// ── AJAX typeaheads for employee/asset search ─────────────────────────────
+(function () {
+    var assetId = @a.Id;
+
+    function makeTypeahead(inputId, dropId, hiddenId, fetchUrl, labelKey) {
+        var input  = document.getElementById(inputId);
+        var drop   = document.getElementById(dropId);
+        var hidden = document.getElementById(hiddenId);
+        if (!input) return;
+
+        var timer;
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            var q = input.value.trim();
+            if (q.length < 1) { drop.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                fetch(fetchUrl + encodeURIComponent(q))
+                    .then(function (r) { return r.json(); })
+                    .then(function (items) {
+                        drop.innerHTML = '';
+                        if (!items.length) {
+                            drop.innerHTML = '<span class="list-group-item list-group-item-action disabled small text-muted">No results</span>';
+                        } else {
+                            items.forEach(function (item) {
+                                var btn = document.createElement('button');
+                                btn.type = 'button';
+                                btn.className = 'list-group-item list-group-item-action small py-1';
+                                btn.textContent = item[labelKey] || item.name || item.label;
+                                btn.addEventListener('mousedown', function (e) {
+                                    e.preventDefault();
+                                    hidden.value = item.id;
+                                    input.value  = btn.textContent;
+                                    drop.style.display = 'none';
+                                });
+                                drop.appendChild(btn);
+                            });
+                        }
+                        drop.style.display = '';
+                    });
+            }, 220);
+        });
+
+        input.addEventListener('blur', function () {
+            setTimeout(function () { drop.style.display = 'none'; }, 200);
+        });
+        input.addEventListener('focus', function () {
+            if (drop.innerHTML && input.value.trim()) drop.style.display = '';
+        });
+    }
+
+    makeTypeahead('assignEmpSearch',   'assignEmpDrop',   'assignEmpId',
+                  '/Employees/Search?q=', 'name');
+    makeTypeahead('checkoutEmpSearch', 'checkoutEmpDrop', 'checkoutEmpId',
+                  '/Employees/Search?q=', 'name');
+    makeTypeahead('relTargetSearch',   'relTargetDrop',   'relTargetId',
+                  '/Assets/Search?excludeId=' + assetId + '&q=', 'label');
+})();
+</script>
+}

@@ -47,6 +47,9 @@ $(window).on('load', function () {
         if ($sel.closest('.dataTables_wrapper').length > 0) return;
         // Skip if already initialized
         if ($sel.data('selectpicker')) return;
+        // Skip selects that explicitly opt out — check attribute presence, not value,
+        // because data-no-picker="" (no value) is falsy via .data() but the attr IS present.
+        if ($sel.attr('data-no-picker') !== undefined) return;
 
         var pickerOptions;
         if (isFilterBarSelect) {
@@ -134,7 +137,71 @@ $(document).ready(function () {
                     title: exportTitle,
                     orientation: 'landscape',
                     pageSize: 'LETTER',
-                    exportOptions: { columns: ':not(.no-export)' }
+                    exportOptions: { columns: ':not(.no-export)' },
+                    customize: function (doc) {
+                        var branding   = window.ssBranding || {};
+                        var company    = branding.companyName || 'ServiceSphere';
+                        var brand      = branding.brandColor  || '#4f46e5';
+                        var now        = new Date();
+                        var dateStr    = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+                        // DataTables adds the title as content[0] — capture & remove it
+                        var reportTitle = exportTitle;
+                        if (doc.content.length > 0 && doc.content[0].style === 'title') {
+                            reportTitle = doc.content[0].text || exportTitle;
+                            doc.content.splice(0, 1);
+                        }
+
+                        // Branded header: company name (left) + report title & date (right)
+                        doc.content.unshift(
+                            {
+                                canvas: [{ type: 'line', x1: 0, y1: 0, x2: 736, y2: 0, lineWidth: 1.5, lineColor: brand }],
+                                margin: [0, 0, 0, 10]
+                            },
+                            {
+                                columns: [
+                                    {
+                                        stack: [
+                                            { text: company, bold: true, fontSize: 16, color: brand },
+                                            { text: 'IT Service Desk', fontSize: 9, color: '#6b7280', margin: [0, 2, 0, 0] }
+                                        ]
+                                    },
+                                    {
+                                        stack: [
+                                            { text: reportTitle, bold: true, fontSize: 13, color: '#111827', alignment: 'right' },
+                                            { text: 'Generated: ' + dateStr, fontSize: 9, color: '#6b7280', alignment: 'right', margin: [0, 3, 0, 0] }
+                                        ]
+                                    }
+                                ],
+                                margin: [0, 0, 0, 4]
+                            },
+                            {
+                                canvas: [{ type: 'line', x1: 0, y1: 0, x2: 736, y2: 0, lineWidth: 0.5, lineColor: '#e5e7eb' }],
+                                margin: [0, 0, 0, 10]
+                            }
+                        );
+
+                        // Style table header row to use brand colour
+                        if (doc.styles && doc.styles.tableHeader) {
+                            doc.styles.tableHeader.fillColor = brand;
+                            doc.styles.tableHeader.color     = '#ffffff';
+                            doc.styles.tableHeader.bold      = true;
+                        }
+
+                        // Slightly smaller body font for denser tables
+                        doc.defaultStyle = doc.defaultStyle || {};
+                        doc.defaultStyle.fontSize = 9;
+
+                        // Footer: company name (left) + page number (right)
+                        doc.footer = function (currentPage, pageCount) {
+                            return {
+                                columns: [
+                                    { text: company + '  \u2022  Confidential', fontSize: 8, color: '#9ca3af', margin: [40, 6, 0, 0] },
+                                    { text: 'Page ' + currentPage + ' of ' + pageCount, alignment: 'right', fontSize: 8, color: '#9ca3af', margin: [0, 6, 40, 0] }
+                                ]
+                            };
+                        };
+                    }
                 }
             ],
 

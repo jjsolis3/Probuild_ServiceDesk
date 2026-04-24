@@ -43,7 +43,7 @@ public class ImportTicketRow
     public string Description     { get; set; } = "";
     public TicketStatus   Status   { get; set; }
     public TicketPriority Priority { get; set; }
-    public TicketCategory Category { get; set; }
+    public int Category { get; set; }
     public int?  SubCategoryId    { get; set; }
     public int?  SubmittedById    { get; set; }
     public int?  AssignedToId     { get; set; }

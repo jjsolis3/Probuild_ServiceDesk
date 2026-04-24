@@ -38,4 +38,14 @@ public class DashboardViewModel
 
     // SLA
     public int SlaBreachCount { get; set; }
+
+    /// <summary>
+    /// Tickets predicted at High or Overdue SLA risk — used for the dashboard SLA alert card.
+    /// Includes both DueDate-based overdue tickets and prediction-based at-risk tickets.
+    /// </summary>
+    public List<SlaAtRiskTicket> SlaAtRiskTickets { get; set; } = new();
 }
+
+public record SlaAtRiskTicket(
+    int Id, string Title, string Priority, string Status, string? AssigneeName,
+    string RiskLabel, string RiskBadge, string? DueLabel);

@@ -1,0 +1,80 @@
+@model ServiceDesk.Core.Models.TicketCategoryEntry
+@{
+    ViewData["Title"] = "Create Category";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="Categories">Categories</a></li>
+        <li class="breadcrumb-item active">New Category</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4"><i class="bi bi-folder-plus me-2 text-success"></i>New Category</h1>
+
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <form asp-action="CreateCategory" method="post">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 small"></div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="Name" class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                            <input asp-for="Name" class="form-control" placeholder="e.g. Cloud Services" autofocus />
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="Icon" class="form-label fw-semibold">Bootstrap Icon class</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i id="iconPreview" class="bi bi-tag"></i></span>
+                                <input asp-for="Icon" class="form-control" placeholder="bi-tag"
+                                       oninput="document.getElementById('iconPreview').className='bi '+this.value" />
+                            </div>
+                            <div class="form-text">Optional. E.g. <code>bi-cloud</code>, <code>bi-shield</code></div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="Color" class="form-label fw-semibold">Color</label>
+                            <div class="input-group">
+                                <input type="color" id="colorPicker" class="form-control form-control-color"
+                                       value="#6c757d" oninput="document.getElementById('colorText').value=this.value" />
+                                <input asp-for="Color" id="colorText" class="form-control" placeholder="#6c757d"
+                                       oninput="if(this.value.match(/^#[0-9a-fA-F]{6}$/))document.getElementById('colorPicker').value=this.value" />
+                            </div>
+                            <div class="form-text">Optional hex color for category badge.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="SortOrder" class="form-label fw-semibold">Sort Order</label>
+                            <input asp-for="SortOrder" type="number" class="form-control" min="0" max="9999" />
+                            <div class="form-text">Lower numbers appear first.</div>
+                        </div>
+
+                        <div class="col-md-6 d-flex align-items-end">
+                            <div class="form-check form-switch mb-2">
+                                <input asp-for="IsActive" class="form-check-input" type="checkbox" checked />
+                                <label asp-for="IsActive" class="form-check-label fw-semibold">Active</label>
+                                <div class="form-text">Inactive categories won't appear in dropdowns.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-white d-flex gap-2 justify-content-end">
+                    <a asp-action="Categories" class="btn btn-outline-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-folder-plus me-1"></i>Create Category
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+}

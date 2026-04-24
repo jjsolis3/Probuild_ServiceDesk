@@ -53,6 +53,19 @@
                 <span asp-validation-for="Phone" class="text-danger"></span>
             </div>
 
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="CostCenter" class="form-label"></label>
+                    <input asp-for="CostCenter" class="form-control font-monospace text-uppercase" placeholder="e.g. LAX, LSV, CHN, SND, PHX" />
+                    <div class="form-text">3-letter location code used in Google Workspace Cost Center.</div>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="BuildingId" class="form-label"></label>
+                    <input asp-for="BuildingId" class="form-control font-monospace text-uppercase" placeholder="e.g. LA, LV, CH, SD, PHX" />
+                    <div class="form-text">Short building code used in Google Workspace Building ID.</div>
+                </div>
+            </div>
+
             <div class="mb-3">
                 <label asp-for="SiteManagerId" class="form-label"></label>
                 <select asp-for="SiteManagerId" class="form-select" asp-items="@(new SelectList(ViewBag.Employees ?? Enumerable.Empty<object>(), "Id", "FullName"))">

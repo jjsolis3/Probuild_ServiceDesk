@@ -38,7 +38,7 @@ public class PortalSubmitTicketViewModel
 
     [Required]
     [Display(Name = "Category")]
-    public TicketCategory Category { get; set; } = TicketCategory.ServiceRequest;
+    public int Category { get; set; } = 0;
 
     [Required]
     [Display(Name = "Priority")]

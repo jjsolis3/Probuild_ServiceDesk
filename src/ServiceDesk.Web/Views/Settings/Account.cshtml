@@ -38,7 +38,7 @@
 }
 
 <form method="post" asp-action="Account" asp-antiforgery="true">
-    <div class="row">
+    <div class="row align-items-start">
         <div class="col-lg-8">
             @foreach (var group in Model.GroupBy(s => s.Category).OrderBy(g => g.Key))
             {
@@ -75,14 +75,18 @@
                                 else if (dropdownKeys.Contains(setting.Key) && employees != null)
                                 {
                                     <!-- Dropdown for DefaultAssigneeId -->
-                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key">
+                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key" data-no-picker="true">
                                         <option value="">-- No Default Assignee --</option>
                                         @foreach (var emp in employees)
                                         {
-                                            var isSelected = setting.Value == emp.Id.ToString();
-                                            <option value="@emp.Id" selected="@isSelected">
-                                                @emp.FullName (@emp.Department)
-                                            </option>
+                                            if (setting.Value == emp.Id.ToString())
+                                            {
+                                                <option value="@emp.Id" selected="selected">@emp.FullName (@emp.Department)</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@emp.Id">@emp.FullName (@emp.Department)</option>
+                                            }
                                         }
                                     </select>
                                 }
@@ -119,6 +123,37 @@
         </div>
 
         <div class="col-lg-4">
+            <!-- Related settings quick-nav -->
+            <div class="card shadow-sm mb-4 border-0" style="background:#f8fafc;">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Related Settings
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <a asp-action="Branding" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-palette me-2"></i> Branding
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Logo, colours, email header &amp; footer</small>
+                        </a>
+                        <a asp-action="Notifications" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-bell me-2"></i> Notification Settings
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Toggle which events send emails</small>
+                        </a>
+                        <a asp-action="EmailTemplates" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-envelope-at me-2"></i> Email Templates
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Customise notification email bodies</small>
+                        </a>
+                        <a asp-action="Users" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-people me-2"></i> Portal Users
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Manage user accounts &amp; passwords</small>
+                        </a>
+                        <a asp-action="Roles" class="btn btn-outline-secondary btn-sm text-start">
+                            <i class="bi bi-shield-check me-2"></i> Roles &amp; Permissions
+                            <small class="d-block text-muted" style="font-size:0.7rem;">Access control and role configuration</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             <div class="card shadow-sm border-0 bg-light">
                 <div class="card-body">
                     <h6 class="card-title">

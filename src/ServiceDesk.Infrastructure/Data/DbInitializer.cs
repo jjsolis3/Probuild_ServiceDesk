@@ -377,6 +377,30 @@ public static class DbInitializer
                     BEGIN
                         ALTER TABLE dbo.SavedTicketViews ADD FilterPriorities NVARCHAR(200) NULL;
                     END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.SavedTicketViews') AND name = 'FilterBranchIds'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.SavedTicketViews ADD FilterBranchIds NVARCHAR(200) NULL;
+                    END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.SavedTicketViews') AND name = 'FilterDepartments'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.SavedTicketViews ADD FilterDepartments NVARCHAR(500) NULL;
+                    END
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sys.columns
+                        WHERE object_id = OBJECT_ID('dbo.TicketNotes') AND name = 'ContentHtml'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.TicketNotes ADD ContentHtml NVARCHAR(MAX) NULL;
+                    END
                 END");
 
             // Seed the system-level default view (active/non-resolved tickets).
@@ -396,7 +420,94 @@ public static class DbInitializer
                          N'Open,InProgress,OnHold', 'id', 'desc', 25, SYSUTCDATETIME());
                 END");
 
-            // 11. Seed additional Company Branding AppSettings keys if not present
+            // 16b. Add Extension column to Employees
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'Extension'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Employees ADD Extension NVARCHAR(10) NULL;
+                END");
+
+            // 17. Create CategoryKeywords table (DB-backed keyword detection for auto-categorisation)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CategoryKeywords')
+                BEGIN
+                    CREATE TABLE dbo.CategoryKeywords (
+                        Id          INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Category    INT             NOT NULL,
+                        Keyword     NVARCHAR(100)   NOT NULL,
+                        IsActive    BIT             NOT NULL DEFAULT 1,
+                        CreatedDate DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_CategoryKeywords_Category_Active
+                        ON dbo.CategoryKeywords (Category, IsActive);
+
+                    -- Seed default keywords (mirrors AssignmentResolverService hardcoded dictionary)
+                    -- HardwareIssue = 1
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (1, N'printer'), (1, N'printing'), (1, N'keyboard'), (1, N'mouse'),
+                    (1, N'monitor'), (1, N'screen'), (1, N'display'), (1, N'laptop'),
+                    (1, N'desktop'), (1, N'computer'), (1, N'pc'), (1, N'hardware'),
+                    (1, N'device'), (1, N'battery'), (1, N'charger'), (1, N'dock'),
+                    (1, N'docking'), (1, N'headset'), (1, N'webcam'), (1, N'scanner'),
+                    (1, N'projector'), (1, N'broken'), (1, N'damaged'), (1, N'physical'),
+                    (1, N'power'), (1, N'overheating'), (1, N'fan noise');
+
+                    -- SoftwareIssue = 2
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (2, N'software'), (2, N'application'), (2, N'app'), (2, N'program'),
+                    (2, N'install'), (2, N'installation'), (2, N'uninstall'), (2, N'update'),
+                    (2, N'upgrade'), (2, N'crash'), (2, N'crashes'), (2, N'error'),
+                    (2, N'errors'), (2, N'bug'), (2, N'license'), (2, N'activation'),
+                    (2, N'office'), (2, N'word'), (2, N'excel'), (2, N'outlook'),
+                    (2, N'teams'), (2, N'zoom'), (2, N'adobe'), (2, N'browser'),
+                    (2, N'chrome'), (2, N'firefox'), (2, N'edge'), (2, N'slow'),
+                    (2, N'freezing'), (2, N'frozen'), (2, N'not responding'),
+                    (2, N'blue screen'), (2, N'bsod'), (2, N'driver'),
+                    (2, N'operating system'), (2, N'windows'), (2, N'macos'), (2, N'patch');
+
+                    -- NetworkIssue = 4
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (4, N'vpn'), (4, N'network'), (4, N'internet'), (4, N'wifi'),
+                    (4, N'wi-fi'), (4, N'wireless'), (4, N'ethernet'), (4, N'connection'),
+                    (4, N'connectivity'), (4, N'firewall'), (4, N'dns'), (4, N'dhcp'),
+                    (4, N'ip address'), (4, N'bandwidth'), (4, N'slow internet'),
+                    (4, N'no internet'), (4, N'network drive'), (4, N'mapped drive'),
+                    (4, N'remote access'), (4, N'remote desktop'), (4, N'rdp'),
+                    (4, N'switch'), (4, N'router'), (4, N'cable');
+
+                    -- SecurityIncident = 5
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (5, N'security'), (5, N'phishing'), (5, N'phish'), (5, N'suspicious'),
+                    (5, N'hack'), (5, N'hacked'), (5, N'virus'), (5, N'malware'),
+                    (5, N'ransomware'), (5, N'spyware'), (5, N'trojan'), (5, N'spam'),
+                    (5, N'unauthorized'), (5, N'breach'), (5, N'password reset'),
+                    (5, N'account locked'), (5, N'compromised'), (5, N'scam'),
+                    (5, N'fraud'), (5, N'social engineering'), (5, N'2fa'), (5, N'mfa');
+
+                    -- EmployeeIssue = 3
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (3, N'onboarding'), (3, N'new employee'), (3, N'new hire'),
+                    (3, N'offboarding'), (3, N'termination'), (3, N'terminated'),
+                    (3, N'access request'), (3, N'new user'), (3, N'user setup'),
+                    (3, N'account setup'), (3, N'leave'), (3, N'absence'),
+                    (3, N'transfer'), (3, N'promotion'), (3, N'department change'),
+                    (3, N'badge'), (3, N'id card'), (3, N'equipment request'),
+                    (3, N'role change');
+
+                    -- ServiceRequest = 0
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (0, N'request'), (0, N'order'), (0, N'setup'), (0, N'configure'),
+                    (0, N'configuration'), (0, N'provision'), (0, N'provisioning'),
+                    (0, N'access'), (0, N'permission'), (0, N'grant'),
+                    (0, N'create account'), (0, N'new account'), (0, N'service'),
+                    (0, N'question'), (0, N'help'), (0, N'how to'), (0, N'assistance');
+                END");
+
+            // 18. Seed additional Company Branding AppSettings keys if not present
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyLogoUrl')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
@@ -412,7 +523,729 @@ public static class DbInitializer
 
                 IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CompanyAddress')
                     INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
-                    VALUES ('CompanyAddress', '', 'Branding', 'Company mailing address displayed in portal footer');");
+                    VALUES ('CompanyAddress', '', 'Branding', 'Company mailing address displayed in portal footer');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'BrandColor')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('BrandColor', '#4f46e5', 'Branding', 'Primary brand colour used in email headers and PDF exports (hex format, e.g. #4f46e5)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailHeaderTagline')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailHeaderTagline', 'IT Service Desk', 'Branding', 'Tagline shown below the company name in the email header banner (e.g. ''IT Service Desk'', ''Support Team'')');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailShowLogo')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailShowLogo', 'true', 'Branding', 'Show the company logo image in outgoing email headers (requires Company Logo URL to be set)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'EmailFooterText')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('EmailFooterText', '', 'Branding', 'Custom footer text for all outgoing emails. Leave blank to use the default automated-notification message.');");
+
+            // 19. Create EmailTemplates table (DB-backed email template management)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailTemplates')
+                BEGIN
+                    CREATE TABLE dbo.EmailTemplates (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        [Key]           NVARCHAR(50)    NOT NULL,
+                        Name            NVARCHAR(100)   NOT NULL,
+                        Description     NVARCHAR(500)   NULL,
+                        SubjectTemplate NVARCHAR(300)   NULL,
+                        BodyTemplate    NVARCHAR(MAX)   NULL,
+                        IsActive        BIT             NOT NULL DEFAULT 1,
+                        UpdatedDate     DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE UNIQUE INDEX IX_EmailTemplates_Key ON dbo.EmailTemplates ([Key]);
+
+                    -- Seed default template metadata (BodyTemplate left NULL — system defaults used until admin customises)
+                    INSERT INTO dbo.EmailTemplates ([Key], Name, Description, SubjectTemplate) VALUES
+                    (N'TicketCreated',
+                     N'Ticket Created Confirmation',
+                     N'Sent to the submitter when a new ticket is created. Confirms receipt and provides the ticket reference.',
+                     N'[#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'TicketAssigned',
+                     N'Ticket Assigned — Agent Notification',
+                     N'Sent to the IT agent when a ticket is assigned to them.',
+                     N'Assigned: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'TicketUpdated',
+                     N'Ticket Status Update',
+                     N'Sent to the submitter when the ticket status or priority changes.',
+                     N'Updated: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'NoteAdded',
+                     N'New Comment / Note',
+                     N'Sent to the submitter when an IT agent adds a public note or comment to the ticket.',
+                     N'Re: [#SS-{{TicketId}}] {{TicketTitle}}'),
+                    (N'PasswordReset',
+                     N'Password Reset Request',
+                     N'Sent to a portal user when they request a password reset link.',
+                     N'Reset Your {{CompanyName}} Password');
+                END");
+            // 20. Create AiRecommendations table (AI triage suggestions per ticket)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AiRecommendations')
+                BEGIN
+                    CREATE TABLE dbo.AiRecommendations (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId            INT             NOT NULL
+                            CONSTRAINT FK_AiRecommendations_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        SuggestedCategory   INT             NULL,
+                        SuggestedPriority   INT             NULL,
+                        SuggestedAssigneeId INT             NULL
+                            CONSTRAINT FK_AiRecommendations_Employees
+                            REFERENCES dbo.Employees(Id)
+                            ON DELETE SET NULL,
+                        CategoryConfidence  REAL            NOT NULL DEFAULT 0,
+                        PriorityConfidence  REAL            NOT NULL DEFAULT 0,
+                        AiSummary           NVARCHAR(2000)  NULL,
+                        AiDraftReply        NVARCHAR(MAX)   NULL,
+                        Status              NVARCHAR(20)    NOT NULL DEFAULT 'Pending',
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        ReviewedDate        DATETIME2       NULL,
+                        ReviewedBy          NVARCHAR(200)   NULL
+                    );
+
+                    CREATE INDEX IX_AiRecommendations_Ticket_Status
+                        ON dbo.AiRecommendations (TicketId, Status);
+                END");
+
+            // 21. Create AiRunLogs table (audit log for ML.NET training / prediction runs)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AiRunLogs')
+                BEGIN
+                    CREATE TABLE dbo.AiRunLogs (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        RunDate             DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        RunType             NVARCHAR(20)    NOT NULL DEFAULT 'Training',
+                        TrainingTicketCount INT             NOT NULL DEFAULT 0,
+                        ModelVersion        NVARCHAR(50)    NOT NULL DEFAULT '',
+                        Success             BIT             NOT NULL DEFAULT 1,
+                        ErrorMessage        NVARCHAR(1000)  NULL,
+                        DurationMs          FLOAT           NOT NULL DEFAULT 0
+                    );
+                END");
+
+            // 22. Seed AI feature-flag AppSettings keys
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiTriageEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiTriageEnabled', 'false', 'AI Triage',
+                            'Enable ML.NET-powered AI triage suggestions for new tickets');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiTriageMode')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiTriageMode', 'RecommendOnly', 'AI Triage',
+                            'RecommendOnly: show suggestions to agents | AutoApply: automatically apply suggestions when confidence is high');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiConfidenceThreshold')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiConfidenceThreshold', '0.65', 'AI Triage',
+                            'Minimum confidence score (0.0–1.0) required before a triage suggestion is shown or applied');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiMinTrainingTickets')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('AiMinTrainingTickets', '20', 'AI Triage',
+                            'Minimum number of resolved/closed tickets required before the AI model is trained');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaEnabled', 'false', 'AI Triage',
+                            'Enable Ollama local LLM for AI-generated ticket summaries and draft replies');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaUrl')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaUrl', 'http://localhost:11434', 'AI Triage',
+                            'URL of the locally running Ollama server (default: http://localhost:11434)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaModel')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('OllamaModel', 'phi3', 'AI Triage',
+                            'Ollama model name to use for text generation (e.g. phi3, llama3.1, mistral)');");
+
+            // 23. Add escalation columns to Tickets table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'IsEscalated'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD IsEscalated       BIT           NOT NULL DEFAULT 0;
+                    ALTER TABLE dbo.Tickets ADD EscalationReason  NVARCHAR(500) NULL;
+                    ALTER TABLE dbo.Tickets ADD EscalatedAt       DATETIME2     NULL;
+                    ALTER TABLE dbo.Tickets ADD EscalatedById     INT           NULL
+                        CONSTRAINT FK_Tickets_EscalatedBy
+                        REFERENCES dbo.Employees(Id)
+                        ON DELETE SET NULL;
+                END");
+
+            // 24. Add ResolutionType column to Tickets table
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'ResolutionType'
+                )
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD ResolutionType NVARCHAR(100) NULL;
+                END");
+
+            // 25. Seed notification-trigger AppSettings keys
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnTicketCreated')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnTicketCreated', 'true', 'Notifications',
+                            'Send confirmation email to the requester when a new ticket is created');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnStatusChange')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnStatusChange', 'true', 'Notifications',
+                            'Send email to the requester when the ticket status changes');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnAssignment')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnAssignment', 'true', 'Notifications',
+                            'Send email to the assigned agent when a ticket is assigned to them');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnNoteAdded')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnNoteAdded', 'true', 'Notifications',
+                            'Send email to the requester when a public comment is added to their ticket');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'NotifyOnEscalation')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('NotifyOnEscalation', 'true', 'Notifications',
+                            'Send email to the assigned agent and admin when a ticket is escalated');"  );
+
+            // 26. Seed Report Request category sub-categories and keywords (Category = 7)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketSubCategories WHERE Category = 7)
+                BEGIN
+                    INSERT INTO dbo.TicketSubCategories (Category, Name, SortOrder) VALUES
+                    (7, N'AR Report',                10),
+                    (7, N'Installation Report',      20),
+                    (7, N'Inventory Report',         30),
+                    (7, N'Rebate Report',            40),
+                    (7, N'Sales Report',             50),
+                    (7, N'Management Report',        60),
+                    (7, N'Custom / Ad-Hoc Report',   70),
+                    (7, N'General Report Request',   80);
+                END
+
+                -- Seed auto-classification keywords for Report Request
+                IF NOT EXISTS (SELECT 1 FROM dbo.CategoryKeywords WHERE Category = 7)
+                BEGIN
+                    INSERT INTO dbo.CategoryKeywords (Category, Keyword) VALUES
+                    (7, N'report'),
+                    (7, N'reporting'),
+                    (7, N'ar report'),
+                    (7, N'accounts receivable report'),
+                    (7, N'installation report'),
+                    (7, N'inventory report'),
+                    (7, N'rebate report'),
+                    (7, N'sales report'),
+                    (7, N'management report'),
+                    (7, N'generate report'),
+                    (7, N'run report'),
+                    (7, N'pull report'),
+                    (7, N'export report'),
+                    (7, N'report request'),
+                    (7, N'monthly report'),
+                    (7, N'weekly report'),
+                    (7, N'quarterly report');
+                END");
+
+            // 27. Create TicketCategories table and seed system categories
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketCategories')
+                BEGIN
+                    CREATE TABLE dbo.TicketCategories (
+                        Id          INT             NOT NULL PRIMARY KEY,
+                        Name        NVARCHAR(100)   NOT NULL,
+                        IsSystem    BIT             NOT NULL DEFAULT 1,
+                        IsActive    BIT             NOT NULL DEFAULT 1,
+                        SortOrder   INT             NOT NULL DEFAULT 0,
+                        Icon        NVARCHAR(60)    NULL,
+                        Color       NVARCHAR(20)    NULL
+                    );
+                END
+
+                -- Seed system categories (IDs 0-7 match the original TicketCategory enum values)
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 0)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (0, N'Service Request',   1, 1, 10, N'bi-clipboard-check',    N'#4f46e5');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 1)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (1, N'Hardware Issue',    1, 1, 20, N'bi-pc-display',         N'#0d6efd');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 2)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (2, N'Software Issue',    1, 1, 30, N'bi-code-square',        N'#198754');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 3)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (3, N'Employee Issue',    1, 1, 40, N'bi-person-badge',       N'#fd7e14');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 4)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (4, N'Network Issue',     1, 1, 50, N'bi-router',             N'#0dcaf0');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 5)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (5, N'Security Incident', 1, 1, 60, N'bi-shield-exclamation', N'#dc3545');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 6)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (6, N'Other',             1, 1, 70, N'bi-question-circle',    N'#6c757d');
+                IF NOT EXISTS (SELECT 1 FROM dbo.TicketCategories WHERE Id = 7)
+                    INSERT INTO dbo.TicketCategories (Id, Name, IsSystem, IsActive, SortOrder, Icon, Color)
+                    VALUES (7, N'Report Request',    1, 1, 80, N'bi-file-earmark-bar-graph', N'#20c997');
+
+                -- 28. Seed SLA policy hours AppSettings
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursCritical')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursCritical', '4', 'SLA', 'SLA response time in hours for Critical priority tickets (default: 4)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursHigh')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursHigh', '8', 'SLA', 'SLA response time in hours for High priority tickets (default: 8)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursMedium')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursMedium', '24', 'SLA', 'SLA response time in hours for Medium priority tickets (default: 24)');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'SlaHoursLow')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('SlaHoursLow', '72', 'SLA', 'SLA response time in hours for Low priority tickets (default: 72)');
+
+                -- Migrate SavedTicketViews.FilterCategories from enum names to numeric IDs
+                -- Only runs when alphabetic names are still present (one-time migration)
+                IF EXISTS (SELECT 1 FROM dbo.SavedTicketViews WHERE FilterCategories LIKE '%[a-zA-Z]%')
+                BEGIN
+                    UPDATE dbo.SavedTicketViews
+                    SET FilterCategories =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            ISNULL(FilterCategories, ''),
+                            'ServiceRequest',   '0'),
+                            'HardwareIssue',    '1'),
+                            'SoftwareIssue',    '2'),
+                            'EmployeeIssue',    '3'),
+                            'NetworkIssue',     '4'),
+                            'SecurityIncident', '5'),
+                            'ReportRequest',    '7'),
+                            'Other',            '6')
+                    WHERE FilterCategories IS NOT NULL AND FilterCategories LIKE '%[a-zA-Z]%';
+                END");
+            // 29. Seed Portal Branding AppSettings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalWelcomeMessage')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalWelcomeMessage', 'Track and manage your IT support requests.', 'Portal Branding',
+                            'Short tagline shown below the greeting on the portal dashboard');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalSupportTitle')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalSupportTitle', 'IT Support Portal', 'Portal Branding',
+                            'Text appended to the company name in portal browser tab titles');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalAnnouncement')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalAnnouncement', '', 'Portal Branding',
+                            'Optional announcement banner shown at the top of every portal page. Leave blank to hide.');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalAnnouncementType')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalAnnouncementType', 'info', 'Portal Branding',
+                            'Bootstrap alert colour for the announcement banner: info, warning, danger, or success');
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PortalShowKnowledgeBase')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('PortalShowKnowledgeBase', 'true', 'Portal Branding',
+                            'Show the Knowledge Base link in the portal navigation bar');");
+
+            // 30. ITAM enhancements — new asset-related tables + column additions
+            context.Database.ExecuteSqlRaw(@"
+                -- Network / system fields on Assets
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'IpAddress')
+                    ALTER TABLE dbo.Assets ADD IpAddress NVARCHAR(50) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'MacAddress')
+                    ALTER TABLE dbo.Assets ADD MacAddress NVARCHAR(17) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'Hostname')
+                    ALTER TABLE dbo.Assets ADD Hostname NVARCHAR(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'OsVersion')
+                    ALTER TABLE dbo.Assets ADD OsVersion NVARCHAR(100) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Assets') AND name = 'OsBuild')
+                    ALTER TABLE dbo.Assets ADD OsBuild NVARCHAR(50) NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                -- AssetId FK on Tickets (optional link to related asset)
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Tickets') AND name = 'AssetId')
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD AssetId INT NULL;
+                    ALTER TABLE dbo.Tickets ADD CONSTRAINT FK_Tickets_Assets
+                        FOREIGN KEY (AssetId) REFERENCES dbo.Assets(Id) ON DELETE SET NULL;
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                -- Assignment history / custody chain
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAssignmentHistory')
+                    CREATE TABLE dbo.AssetAssignmentHistory (
+                        Id              INT IDENTITY PRIMARY KEY,
+                        AssetId         INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        AssignedToId    INT NULL REFERENCES dbo.Employees(Id) ON DELETE NO ACTION,
+                        AssignedById    INT NULL REFERENCES dbo.Employees(Id) ON DELETE NO ACTION,
+                        AssignedDate    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        ReturnedDate    DATETIME2 NULL,
+                        Notes           NVARCHAR(500) NULL
+                    );
+
+                -- Asset change audit log
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAuditLogs')
+                    CREATE TABLE dbo.AssetAuditLogs (
+                        Id              INT IDENTITY PRIMARY KEY,
+                        AssetId         INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        FieldName       NVARCHAR(100) NOT NULL,
+                        OldValue        NVARCHAR(1000) NULL,
+                        NewValue        NVARCHAR(1000) NULL,
+                        ChangedDate     DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        ChangedByEmail  NVARCHAR(200) NOT NULL
+                    );
+
+                -- Password / credential vault
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetCredentials')
+                    CREATE TABLE dbo.AssetCredentials (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        AssetId             INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        Label               NVARCHAR(100) NOT NULL,
+                        Username            NVARCHAR(200) NULL,
+                        EncryptedPassword   NVARCHAR(MAX) NOT NULL,
+                        Url                 NVARCHAR(500) NULL,
+                        Notes               NVARCHAR(500) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2 NULL,
+                        CreatedByEmail      NVARCHAR(200) NOT NULL
+                    );
+
+                -- Asset file attachments
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetAttachments')
+                    CREATE TABLE dbo.AssetAttachments (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        AssetId             INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        FileName            NVARCHAR(260) NOT NULL,
+                        StoredFileName      NVARCHAR(260) NOT NULL,
+                        FileSizeBytes       BIGINT NOT NULL DEFAULT 0,
+                        ContentType         NVARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+                        UploadedDate        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UploadedByEmail     NVARCHAR(200) NOT NULL
+                    );
+
+                -- CMDB-lite asset-to-asset relationship web
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetRelationships')
+                    CREATE TABLE dbo.AssetRelationships (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        SourceAssetId       INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        TargetAssetId       INT NOT NULL REFERENCES dbo.Assets(Id) ON DELETE NO ACTION,
+                        RelationshipType    NVARCHAR(80) NOT NULL DEFAULT 'ConnectedTo',
+                        Notes               NVARCHAR(300) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        CreatedByEmail      NVARCHAR(200) NULL
+                    );");
+
+            // 31. Employee credential vault + Subscription → Asset link
+            context.Database.ExecuteSqlRaw(@"
+                -- Per-employee IT-managed credential vault
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeCredentials')
+                    CREATE TABLE dbo.EmployeeCredentials (
+                        Id                  INT IDENTITY PRIMARY KEY,
+                        EmployeeId          INT NOT NULL REFERENCES dbo.Employees(Id) ON DELETE CASCADE,
+                        Label               NVARCHAR(100) NOT NULL,
+                        Username            NVARCHAR(200) NULL,
+                        EncryptedPassword   NVARCHAR(MAX) NOT NULL,
+                        Url                 NVARCHAR(500) NULL,
+                        Notes               NVARCHAR(500) NULL,
+                        CreatedDate         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2 NULL,
+                        CreatedByEmail      NVARCHAR(200) NOT NULL
+                    );
+
+                -- Link software subscriptions to a specific asset (device-based license tracking)
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Subscriptions') AND name = 'AssetId')
+                BEGIN
+                    ALTER TABLE dbo.Subscriptions ADD AssetId INT NULL;
+                    ALTER TABLE dbo.Subscriptions ADD CONSTRAINT FK_Subscriptions_Assets
+                        FOREIGN KEY (AssetId) REFERENCES dbo.Assets(Id) ON DELETE SET NULL;
+                END");
+
+            // 32. Google Workspace integration settings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'GoogleWorkspaceSettings')
+                    CREATE TABLE dbo.GoogleWorkspaceSettings (
+                        Id                          INT IDENTITY PRIMARY KEY,
+                        EncryptedServiceAccountJson NVARCHAR(MAX) NULL,
+                        AdminEmail                  NVARCHAR(300) NOT NULL DEFAULT '',
+                        Domain                      NVARCHAR(200) NOT NULL DEFAULT '',
+                        IsConfigured                BIT NOT NULL DEFAULT 0,
+                        LastTestedDate              DATETIME2 NULL,
+                        LastTestResult              NVARCHAR(500) NULL,
+                        LastTestPassed              BIT NOT NULL DEFAULT 0,
+                        SignatureTemplate           NVARCHAR(MAX) NULL,
+                        CreatedDate                 DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate                 DATETIME2 NULL
+                    );");
+
+            // 33. CSAT survey table + feature-flag AppSettings
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CsatSurveys')
+                BEGIN
+                    CREATE TABLE dbo.CsatSurveys (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId        INT             NOT NULL
+                            CONSTRAINT FK_CsatSurveys_Tickets
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE CASCADE,
+                        Token           NVARCHAR(64)    NOT NULL,
+                        Score           INT             NULL,
+                        Feedback        NVARCHAR(1000)  NULL,
+                        SentDate        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+                        CompletedDate   DATETIME2       NULL,
+                        CONSTRAINT UQ_CsatSurveys_Token UNIQUE (Token)
+                    );
+
+                    CREATE INDEX IX_CsatSurveys_TicketId
+                        ON dbo.CsatSurveys (TicketId);
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'CsatSurveyEnabled')
+                    INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                    VALUES ('CsatSurveyEnabled', 'false', 'Surveys',
+                            'Send a post-resolution satisfaction survey (1–5 stars) to the ticket requester when a ticket is closed');");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'LastGoogleSignatureSync')
+                    ALTER TABLE dbo.Employees ADD LastGoogleSignatureSync DATETIME2 NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'ScheduledOffboardingDate')
+                    ALTER TABLE dbo.Employees ADD ScheduledOffboardingDate DATETIME2 NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'ManagerEmail')
+                    ALTER TABLE dbo.Employees ADD ManagerEmail NVARCHAR(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'EmployeeType')
+                    ALTER TABLE dbo.Employees ADD EmployeeType NVARCHAR(100) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'FloorSection')
+                    ALTER TABLE dbo.Employees ADD FloorSection NVARCHAR(100) NULL;");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Branches') AND name = 'CostCenter')
+                    ALTER TABLE dbo.Branches ADD CostCenter NVARCHAR(20) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Branches') AND name = 'BuildingId')
+                    ALTER TABLE dbo.Branches ADD BuildingId NVARCHAR(20) NULL;");
+
+            // 35. Asset Manager upgrades — Maintenance logs, Checkouts, Software Licenses, Consumables
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetMaintenanceLogs')
+                BEGIN
+                    CREATE TABLE dbo.AssetMaintenanceLogs (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        AssetId         INT             NOT NULL
+                            CONSTRAINT FK_AssetMaintenanceLogs_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        ServiceDate     DATE            NOT NULL,
+                        ServiceType     NVARCHAR(100)   NOT NULL,
+                        Description     NVARCHAR(1000)  NOT NULL,
+                        Cost            DECIMAL(18,2)   NULL,
+                        Vendor          NVARCHAR(200)   NULL,
+                        PerformedBy     NVARCHAR(200)   NULL,
+                        NextServiceDate DATE            NULL,
+                        CreatedByEmail  NVARCHAR(200)   NOT NULL DEFAULT '',
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AssetCheckouts')
+                BEGIN
+                    CREATE TABLE dbo.AssetCheckouts (
+                        Id                  INT           NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        AssetId             INT           NOT NULL
+                            CONSTRAINT FK_AssetCheckouts_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE CASCADE,
+                        CheckedOutToId      INT           NULL
+                            CONSTRAINT FK_AssetCheckouts_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        CheckedOutByEmail   NVARCHAR(200) NULL,
+                        CheckoutDate        DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+                        DueDate             DATE          NOT NULL,
+                        ReturnedDate        DATE          NULL,
+                        Notes               NVARCHAR(500) NULL
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SoftwareLicenses')
+                BEGIN
+                    CREATE TABLE dbo.SoftwareLicenses (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        ProductName         NVARCHAR(200)   NOT NULL,
+                        Publisher           NVARCHAR(200)   NULL,
+                        LicenseKey          NVARCHAR(500)   NULL,
+                        LicenseType         INT             NOT NULL DEFAULT 0,
+                        TotalSeats          INT             NOT NULL DEFAULT 1,
+                        SeatsInUse          INT             NOT NULL DEFAULT 0,
+                        CostPerSeat         DECIMAL(18,2)   NULL,
+                        PurchaseDate        DATE            NULL,
+                        ExpiryDate          DATE            NULL,
+                        Vendor              NVARCHAR(200)   NULL,
+                        PurchaseOrderNumber NVARCHAR(100)   NULL,
+                        Notes               NVARCHAR(1000)  NULL,
+                        IsActive            BIT             NOT NULL DEFAULT 1,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ConsumableItems')
+                BEGIN
+                    CREATE TABLE dbo.ConsumableItems (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name            NVARCHAR(200)   NOT NULL,
+                        Category        NVARCHAR(100)   NOT NULL,
+                        Manufacturer    NVARCHAR(100)   NULL,
+                        PartNumber      NVARCHAR(100)   NULL,
+                        QuantityOnHand  INT             NOT NULL DEFAULT 0,
+                        ReorderPoint    INT             NULL,
+                        UnitCost        DECIMAL(18,2)   NULL,
+                        Notes           NVARCHAR(1000)  NULL,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ConsumableTransactions')
+                BEGIN
+                    CREATE TABLE dbo.ConsumableTransactions (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        ConsumableItemId    INT             NOT NULL
+                            CONSTRAINT FK_ConsumableTransactions_Items
+                            REFERENCES dbo.ConsumableItems(Id) ON DELETE CASCADE,
+                        TransactionType     INT             NOT NULL DEFAULT 0,
+                        Quantity            INT             NOT NULL,
+                        QuantityBefore      INT             NOT NULL,
+                        QuantityAfter       INT             NOT NULL,
+                        Notes               NVARCHAR(500)   NULL,
+                        PerformedByEmail    NVARCHAR(200)   NULL,
+                        TransactionDate     DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+                END");
+
+            // 36. Ticket time tracking, License seat assignments, Onboarding / Offboarding tasks
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                BEGIN
+                    CREATE TABLE dbo.TicketTimeEntries (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId            INT             NOT NULL
+                            CONSTRAINT FK_TicketTimeEntries_Tickets
+                            REFERENCES dbo.Tickets(Id) ON DELETE CASCADE,
+                        LoggedByEmail       NVARCHAR(200)   NULL,
+                        LoggedByEmployeeId  INT             NULL
+                            CONSTRAINT FK_TicketTimeEntries_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        WorkDate            DATE            NOT NULL,
+                        Hours               DECIMAL(6,2)    NOT NULL,
+                        Description         NVARCHAR(1000)  NULL,
+                        IsBillable          BIT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_TicketTimeEntries_Ticket_Date
+                        ON dbo.TicketTimeEntries (TicketId, WorkDate);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LicenseSeats')
+                BEGIN
+                    CREATE TABLE dbo.LicenseSeats (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        SoftwareLicenseId   INT             NOT NULL
+                            CONSTRAINT FK_LicenseSeats_Licenses
+                            REFERENCES dbo.SoftwareLicenses(Id) ON DELETE CASCADE,
+                        EmployeeId          INT             NULL
+                            CONSTRAINT FK_LicenseSeats_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE SET NULL,
+                        AssetId             INT             NULL
+                            CONSTRAINT FK_LicenseSeats_Assets
+                            REFERENCES dbo.Assets(Id) ON DELETE SET NULL,
+                        AssignedDate        DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        AssignedByEmail     NVARCHAR(200)   NULL,
+                        RevokedDate         DATETIME2       NULL,
+                        RevokedByEmail      NVARCHAR(200)   NULL,
+                        Notes               NVARCHAR(500)   NULL
+                    );
+
+                    CREATE INDEX IX_LicenseSeats_License_Revoked
+                        ON dbo.LicenseSeats (SoftwareLicenseId, RevokedDate);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeTaskTemplates')
+                BEGIN
+                    CREATE TABLE dbo.EmployeeTaskTemplates (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Title                   NVARCHAR(200)   NOT NULL,
+                        Description             NVARCHAR(1000)  NULL,
+                        Category                NVARCHAR(100)   NULL,
+                        TaskType                INT             NOT NULL DEFAULT 0,
+                        DefaultAssigneeEmail    NVARCHAR(200)   NULL,
+                        DueInDays               INT             NULL,
+                        SortOrder               INT             NOT NULL DEFAULT 0,
+                        IsActive                BIT             NOT NULL DEFAULT 1,
+                        CreatedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate             DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_EmployeeTaskTemplates_Type_Active_Sort
+                        ON dbo.EmployeeTaskTemplates (TaskType, IsActive, SortOrder);
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmployeeTasks')
+                BEGIN
+                    CREATE TABLE dbo.EmployeeTasks (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        EmployeeId          INT             NOT NULL
+                            CONSTRAINT FK_EmployeeTasks_Employees
+                            REFERENCES dbo.Employees(Id) ON DELETE CASCADE,
+                        Title               NVARCHAR(200)   NOT NULL,
+                        Description         NVARCHAR(1000)  NULL,
+                        Category            NVARCHAR(100)   NULL,
+                        TaskType            INT             NOT NULL DEFAULT 0,
+                        Status              INT             NOT NULL DEFAULT 0,
+                        AssignedToEmail     NVARCHAR(200)   NULL,
+                        DueDate             DATE            NULL,
+                        CompletedDate       DATETIME2       NULL,
+                        CompletedByEmail    NVARCHAR(200)   NULL,
+                        Notes               NVARCHAR(1000)  NULL,
+                        SortOrder           INT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+                        UpdatedDate         DATETIME2       NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_EmployeeTasks_Employee_Type_Status
+                        ON dbo.EmployeeTasks (EmployeeId, TaskType, Status);
+                END");
+
+        context.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Status ON dbo.Tickets (Status);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Priority ON dbo.Tickets (Priority);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_CreatedDate' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_CreatedDate ON dbo.Tickets (CreatedDate);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_AssignedToId' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_AssignedToId ON dbo.Tickets (AssignedToId);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_SubmittedById' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_SubmittedById ON dbo.Tickets (SubmittedById);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
+                CREATE INDEX IX_Tickets_Status_Priority ON dbo.Tickets (Status, Priority);");
         }
         catch (Exception ex)
         {

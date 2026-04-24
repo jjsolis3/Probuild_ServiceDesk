@@ -1,0 +1,13 @@
+@{
+    ViewData["Title"] = "Thank You";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container text-center mt-5" style="max-width:460px;">
+    <i class="bi bi-check-circle-fill text-success" style="font-size:4rem;"></i>
+    <h2 class="fw-bold mt-3 mb-2">Thank you!</h2>
+    <p class="text-muted lead">Your feedback helps us improve IT support for everyone.</p>
+    <a asp-controller="Portal" asp-action="Index" class="btn btn-outline-secondary mt-3">
+        <i class="bi bi-house me-1"></i>Back to Portal
+    </a>
+</div>

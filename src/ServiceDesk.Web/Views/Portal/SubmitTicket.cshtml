@@ -45,7 +45,7 @@
                             <label asp-for="Category" class="form-label fw-semibold">
                                 <i class="fas fa-tag me-1 text-muted"></i>Category <span class="text-danger">*</span>
                             </label>
-                            <select asp-for="Category" asp-items="Html.GetEnumSelectList<TicketCategory>()"
+                            <select asp-for="Category" asp-items="@ViewBag.CategorySelectList"
                                     class="form-select"></select>
                             <span asp-validation-for="Category" class="text-danger small"></span>
                         </div>
