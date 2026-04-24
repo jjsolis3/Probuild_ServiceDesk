@@ -5,43 +5,180 @@
     ViewData["ActivePage"] = "Store";
     Layout = "_PortalLayout";
 
-    var welcome     = ViewBag.WelcomeMessage as string ?? string.Empty;
-    var quarterVal  = ViewBag.Quarter;
-    var yearVal     = ViewBag.Year;
-    int quarter     = quarterVal is int qi ? qi : (quarterVal != null ? (int)quarterVal : ((DateTime.UtcNow.Month - 1) / 3 + 1));
-    int year        = yearVal    is int yi ? yi : (yearVal    != null ? (int)yearVal    : DateTime.UtcNow.Year);
-    var currentUser = ViewBag.CurrentUser as PortalUser;
+    var welcome    = ViewBag.WelcomeMessage as string ?? string.Empty;
+    var quarterVal = ViewBag.Quarter;
+    var yearVal    = ViewBag.Year;
+    int quarter    = quarterVal is int qi ? qi : (quarterVal != null ? (int)quarterVal : ((DateTime.UtcNow.Month - 1) / 3 + 1));
+    int year       = yearVal    is int yi ? yi : (yearVal    != null ? (int)yearVal    : DateTime.UtcNow.Year);
 
     var categories = Model.Select(p => p.Category ?? "General")
                           .Distinct().OrderBy(c => c).ToList();
+
+    var productDataJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.Select(p => new {
+            id        = p.Id,
+            name      = p.Name,
+            hasSizes  = p.HasSizes,
+            hasGender = p.HasGenderOption,
+            hasColor  = p.HasColorOptions
+        }).ToList());
 }
 
 @section Styles {
 <style>
-.store-product-card { border-radius: 12px; transition: box-shadow .2s; }
-.store-product-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,.12) !important; }
-.product-img { width: 160px; min-width: 160px; height: 160px; object-fit: cover; border-radius: 10px 0 0 10px; background: #f8f9fa; }
-.product-img-placeholder { width: 160px; min-width: 160px; height: 160px; border-radius: 10px 0 0 10px; background: #f1f3f5; display:flex; align-items:center; justify-content:center; }
-.size-btn { border: 2px solid #dee2e6; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: .8rem; font-weight: 600; background: #fff; transition: all .15s; }
+/* ── Product grid ───────────────────────────────────────── */
+.product-grid-card {
+    border-radius: 10px;
+    transition: box-shadow .2s, transform .15s;
+    cursor: pointer;
+    border: 1px solid #dee2e6;
+}
+.product-grid-card:hover {
+    box-shadow: 0 8px 28px rgba(0,0,0,.13) !important;
+    transform: translateY(-2px);
+}
+.product-card-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 8px 8px 0 0;
+}
+.product-card-placeholder {
+    width: 100%;
+    height: 200px;
+    background: #f1f3f5;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.in-cart-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: none;
+}
+.product-grid-card.has-in-cart .in-cart-indicator { display: block; }
+/* ── Variant controls ───────────────────────────────────── */
+.size-btn {
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: .8rem;
+    font-weight: 600;
+    background: #fff;
+    transition: all .15s;
+}
 .size-btn.selected, .size-btn:hover { border-color: #0d6efd; background: #e8f0fe; color: #0d6efd; }
-.color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: border-color .15s; display: inline-block; }
-.color-swatch.selected, .color-swatch:hover { border-color: #0d6efd; }
-.gender-pill { border: 2px solid #dee2e6; border-radius: 20px; padding: 3px 14px; cursor: pointer; font-size: .8rem; background: #fff; transition: all .15s; }
+.color-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: border-color .15s, outline .15s;
+    display: inline-block;
+}
+.color-swatch.selected, .color-swatch:hover {
+    border-color: #0d6efd;
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+}
+.gender-pill {
+    border: 2px solid #dee2e6;
+    border-radius: 20px;
+    padding: 3px 14px;
+    cursor: pointer;
+    font-size: .8rem;
+    background: #fff;
+    transition: all .15s;
+}
 .gender-pill.selected, .gender-pill:hover { border-color: #0d6efd; background: #e8f0fe; color: #0d6efd; }
-.qty-stepper { display: flex; align-items: center; gap: 0; }
-.qty-stepper button { width: 30px; height: 30px; border: 1px solid #dee2e6; background: #f8f9fa; font-size: 1rem; line-height: 1; cursor: pointer; }
+/* ── Qty stepper ────────────────────────────────────────── */
+.qty-stepper { display: flex; align-items: center; }
+.qty-stepper button {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #dee2e6;
+    background: #f8f9fa;
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+}
 .qty-stepper button:first-child { border-radius: 6px 0 0 6px; }
 .qty-stepper button:last-child  { border-radius: 0 6px 6px 0; }
-.qty-stepper input  { width: 48px; height: 30px; border: 1px solid #dee2e6; border-left: 0; border-right: 0; text-align: center; font-size: .9rem; }
+.qty-stepper input {
+    width: 52px;
+    height: 32px;
+    border: 1px solid #dee2e6;
+    border-left: 0;
+    border-right: 0;
+    text-align: center;
+    font-size: .9rem;
+}
 .qty-stepper input::-webkit-inner-spin-button,
 .qty-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.order-summary-sticky { position: sticky; top: 80px; }
-.summary-item { font-size: .82rem; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
-.summary-item:last-child { border-bottom: none; }
+/* ── Floating cart button ───────────────────────────────── */
+#floatingCartBtn {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1040;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,.22);
+    transition: transform .15s;
+    padding: 0;
+}
+#floatingCartBtn:hover { transform: scale(1.08); }
+#cartBadge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    font-size: .7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+/* ── Modal gallery ──────────────────────────────────────── */
+.gallery-main-img {
+    max-height: 280px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+.gallery-thumb {
+    width: 58px;
+    height: 58px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s;
+}
+.gallery-thumb.active { border-color: #0d6efd; }
+/* ── Offcanvas cart ─────────────────────────────────────── */
+.cart-line-item {
+    font-size: .85rem;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 8px 0;
+}
+.cart-line-item:last-child { border-bottom: none; }
+/* ── Category header ────────────────────────────────────── */
 .category-divider { border-left: 4px solid #0d6efd; padding-left: 12px; }
 </style>
 }
 
+<!-- ── Page header ──────────────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h2 class="fw-bold mb-0"><i class="bi bi-shop me-2 text-primary"></i>Company Store</h2>
@@ -68,295 +205,474 @@
 }
 else
 {
-    <form method="post" asp-action="PlaceOrder" asp-antiforgery="true" id="storeForm">
+    <!-- ── Floating cart button ──────────────────────────────────────────────── -->
+    <button id="floatingCartBtn" class="btn btn-primary" type="button"
+            data-bs-toggle="offcanvas" data-bs-target="#cartOffcanvas"
+            aria-label="View cart">
+        <i class="bi bi-cart3 fs-5"></i>
+        <span id="cartBadge" class="badge bg-danger d-none">0</span>
+    </button>
 
-        <div class="row g-4">
-            <!-- Product Catalog (left) -->
-            <div class="col-lg-8">
-
-                @foreach (var category in categories)
+    <!-- ── Product grid by category ─────────────────────────────────────────── -->
+    @foreach (var category in categories)
+    {
+        var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
+        <div class="mb-5">
+            <h5 class="fw-bold mb-3 category-divider text-uppercase small">
+                <i class="bi bi-tag me-1"></i>@category
+            </h5>
+            <div class="row g-3">
+                @foreach (var product in catProducts)
                 {
-                    var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
+                    var mainImage = product.Images?
+                        .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+                        .FirstOrDefault()?.ImagePath
+                        ?? product.ImagePath;
 
-                    <div class="mb-4">
-                        <h5 class="fw-bold mb-3 category-divider text-uppercase small">
-                            <i class="bi bi-tag me-1"></i>@category
-                        </h5>
+                    <div class="col-6 col-md-4 col-lg-3">
+                        <div class="card product-grid-card h-100 shadow-sm border-0 position-relative"
+                             id="grid-card-@product.Id"
+                             onclick="openProductModal(@product.Id)"
+                             role="button"
+                             tabindex="0"
+                             onkeypress="if(event.key==='Enter')openProductModal(@product.Id)">
 
-                        <div class="d-flex flex-column gap-3">
-                            @foreach (var product in catProducts)
+                            <span class="in-cart-indicator badge bg-success">
+                                <i class="bi bi-check-circle-fill me-1"></i>In cart
+                            </span>
+
+                            @if (!string.IsNullOrEmpty(mainImage))
                             {
-                                var sizes  = (product.AvailableSizes  ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                                var colors = (product.AvailableColors ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-                                <div class="card store-product-card shadow-sm border-0" id="card-@product.Id">
-                                    <div class="card-body p-0 d-flex">
-
-                                        <!-- Product Image -->
-                                        @if (!string.IsNullOrEmpty(product.ImagePath))
-                                        {
-                                            <img src="@product.ImagePath" alt="@product.Name" class="product-img" />
-                                        }
-                                        else
-                                        {
-                                            <div class="product-img-placeholder">
-                                                <i class="bi bi-box display-4 text-muted opacity-25"></i>
-                                            </div>
-                                        }
-
-                                        <!-- Product Details -->
-                                        <div class="p-3 flex-grow-1 d-flex flex-column">
-                                            <h6 class="fw-bold mb-1 fs-6">@product.Name</h6>
-
-                                            @if (!string.IsNullOrEmpty(product.Description))
-                                            {
-                                                <p class="text-muted small mb-2" style="line-height:1.4;">@product.Description</p>
-                                            }
-
-                                            @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
-                                            {
-                                                <div class="text-muted" style="font-size:.75rem;">
-                                                    <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
-                                                </div>
-                                            }
-
-                                            <div class="mt-auto pt-2">
-
-                                                <!-- Gender Option -->
-                                                @if (product.HasGenderOption)
-                                                {
-                                                    <div class="mb-2">
-                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">GENDER</div>
-                                                        <div class="d-flex gap-2 flex-wrap" id="gender-group-@product.Id">
-                                                            @foreach (var g in new[]{"Men's","Women's","Unisex"})
-                                                            {
-                                                                <button type="button" class="gender-pill"
-                                                                        data-product="@product.Id" data-value="@g"
-                                                                        onclick="selectVariant('gender',@product.Id,this)">@g</button>
-                                                            }
-                                                        </div>
-                                                        <input type="hidden" name="gender_@product.Id" id="gender_@product.Id" value="" />
-                                                    </div>
-                                                }
-
-                                                <!-- Color Options -->
-                                                @if (product.HasColorOptions && colors.Length > 0)
-                                                {
-                                                    <div class="mb-2">
-                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">
-                                                            COLOR: <span id="color-label-@product.Id" class="text-dark"></span>
-                                                        </div>
-                                                        <div class="d-flex gap-2 flex-wrap" id="color-group-@product.Id">
-                                                            @foreach (var c in colors)
-                                                            {
-                                                                <button type="button" class="color-swatch"
-                                                                        title="@c"
-                                                                        data-product="@product.Id" data-value="@c"
-                                                                        style="background-color:@ColorNameToCss(c);"
-                                                                        onclick="selectColorVariant(@product.Id, this, '@c')"></button>
-                                                            }
-                                                        </div>
-                                                        <input type="hidden" name="color_@product.Id" id="color_@product.Id" value="" />
-                                                    </div>
-                                                }
-
-                                                <!-- Size Options -->
-                                                @if (product.HasSizes && sizes.Length > 0)
-                                                {
-                                                    <div class="mb-2">
-                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">SIZE</div>
-                                                        <div class="d-flex gap-1 flex-wrap" id="size-group-@product.Id">
-                                                            @foreach (var s in sizes)
-                                                            {
-                                                                <button type="button" class="size-btn"
-                                                                        data-product="@product.Id" data-value="@s"
-                                                                        onclick="selectVariant('size',@product.Id,this)">@s</button>
-                                                            }
-                                                        </div>
-                                                        <input type="hidden" name="size_@product.Id" id="size_@product.Id" value="" />
-                                                    </div>
-                                                }
-
-                                                <!-- Quantity Stepper -->
-                                                <div class="d-flex align-items-center gap-3 mt-2">
-                                                    <div>
-                                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">QTY</div>
-                                                        <div class="qty-stepper">
-                                                            <button type="button" onclick="stepQty(@product.Id, -1)">&#8722;</button>
-                                                            <input type="number" class="qty-input"
-                                                                   id="qty_@product.Id" name="qty_@product.Id"
-                                                                   min="0" max="999" value="0"
-                                                                   data-product-id="@product.Id"
-                                                                   oninput="updateOrderSummary()" />
-                                                            <button type="button" onclick="stepQty(@product.Id, 1)">&#43;</button>
-                                                        </div>
-                                                    </div>
-                                                    <div id="added-badge-@product.Id" class="badge bg-success d-none">
-                                                        <i class="bi bi-check-circle me-1"></i>Added
-                                                    </div>
-                                                </div>
-
-                                            </div>
-                                        </div>
-                                    </div>
+                                <img src="@mainImage" alt="@product.Name" class="product-card-img" />
+                            }
+                            else
+                            {
+                                <div class="product-card-placeholder">
+                                    <i class="bi bi-box display-4 text-muted opacity-25"></i>
                                 </div>
                             }
+
+                            <div class="card-body p-3">
+                                <h6 class="fw-semibold mb-1 small" style="line-height:1.3;">@product.Name</h6>
+                                @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
+                                {
+                                    <div class="text-muted" style="font-size:.72rem;">
+                                        <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
+                                    </div>
+                                }
+                                <div class="mt-2">
+                                    <span class="badge bg-primary bg-opacity-10 text-primary small">
+                                        <i class="bi bi-zoom-in me-1"></i>View &amp; Select
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 }
-
             </div>
+        </div>
+    }
 
-            <!-- Order Summary (right, sticky) -->
-            <div class="col-lg-4">
-                <div class="order-summary-sticky">
-                    <div class="card shadow border-primary border-2">
-                        <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0"><i class="bi bi-cart3 me-2"></i>Order Summary</h5>
-                        </div>
-                        <div class="card-body" id="summaryBody">
-                            <p class="text-muted text-center small py-3" id="summaryEmpty">
-                                <i class="bi bi-cart display-4 d-block opacity-25 mb-2"></i>
-                                No items selected yet.<br />Use the quantity stepper to add items.
-                            </p>
-                            <div id="summaryItems" class="d-none"></div>
-                        </div>
+    <!-- ── Product detail modals ─────────────────────────────────────────────── -->
+    @foreach (var product in Model)
+    {
+        var sizes  = (product.AvailableSizes  ?? string.Empty)
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var colors = (product.AvailableColors ?? string.Empty)
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-                        <div class="card-footer bg-transparent">
-                            <div class="mb-3">
-                                <label class="form-label small fw-semibold" for="notes">
-                                    Order Notes <span class="text-muted fw-normal">(optional)</span>
-                                </label>
-                                <textarea class="form-control form-control-sm" id="notes" name="notes" rows="2"
-                                          maxlength="1000"
-                                          placeholder="Special instructions for the operations team…"></textarea>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
-                                <i class="bi bi-check-circle me-1"></i>Place Order for Q@(quarter) @year
-                            </button>
-                        </div>
+        var galleryImages = (product.Images?
+            .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+            .Select(i => i.ImagePath)
+            .ToList()) ?? new List<string>();
+
+        if (!galleryImages.Any() && !string.IsNullOrEmpty(product.ImagePath))
+            galleryImages.Add(product.ImagePath);
+
+        <div class="modal fade" id="modal-@product.Id" tabindex="-1"
+             aria-labelledby="modal-label-@product.Id" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header border-0 pb-1">
+                        <h5 class="modal-title fw-bold" id="modal-label-@product.Id">@product.Name</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
+                    <div class="modal-body pt-1">
+                        <div class="row g-4">
 
-                    <div class="card mt-3 shadow-sm border-0 bg-light">
-                        <div class="card-body py-2 px-3">
-                            <p class="small text-muted mb-0">
-                                <i class="bi bi-info-circle me-1 text-primary"></i>
-                                Orders are fulfilled by the operations team. A confirmation email will be sent once your order is placed.
-                            </p>
+                            <!-- Gallery column -->
+                            <div class="col-md-5">
+                                @if (galleryImages.Any())
+                                {
+                                    <img id="gallery-main-@product.Id"
+                                         src="@galleryImages[0]"
+                                         alt="@product.Name"
+                                         class="img-fluid gallery-main-img w-100 mb-2" />
+                                    @if (galleryImages.Count > 1)
+                                    {
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @for (int gi = 0; gi < galleryImages.Count; gi++)
+                                            {
+                                                <img src="@galleryImages[gi]"
+                                                     alt="Image @(gi + 1)"
+                                                     class="gallery-thumb @(gi == 0 ? "active" : "")"
+                                                     data-src="@galleryImages[gi]"
+                                                     data-product="@product.Id"
+                                                     onclick="switchGalleryImage(@product.Id, this)" />
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="product-card-placeholder" style="height:220px;border-radius:8px;">
+                                        <i class="bi bi-box display-3 text-muted opacity-25"></i>
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- Info + variant selectors column -->
+                            <div class="col-md-7">
+                                @if (!string.IsNullOrEmpty(product.Category))
+                                {
+                                    <span class="badge bg-secondary bg-opacity-10 text-secondary mb-2">@product.Category</span>
+                                }
+                                @if (!string.IsNullOrEmpty(product.Description))
+                                {
+                                    <p class="text-muted small mb-3" style="line-height:1.5;">@product.Description</p>
+                                }
+                                @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
+                                {
+                                    <p class="text-muted small mb-3">
+                                        <i class="bi bi-rulers me-1"></i><strong>Unit:</strong> @product.UnitOfMeasure
+                                    </p>
+                                }
+
+                                @if (product.HasGenderOption)
+                                {
+                                    <div class="mb-3">
+                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">GENDER</div>
+                                        <div class="d-flex gap-2 flex-wrap" id="modal-gender-group-@product.Id">
+                                            @foreach (var g in new[] { "Men's", "Women's", "Unisex" })
+                                            {
+                                                <button type="button" class="gender-pill"
+                                                        data-value="@g"
+                                                        onclick="modalSelectVariant('gender',@product.Id,this)">@g</button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (product.HasColorOptions && colors.Length > 0)
+                                {
+                                    <div class="mb-3">
+                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">
+                                            COLOR: <span id="modal-color-label-@product.Id" class="text-dark fw-semibold"></span>
+                                        </div>
+                                        <div class="d-flex gap-2 flex-wrap" id="modal-color-group-@product.Id">
+                                            @foreach (var c in colors)
+                                            {
+                                                <button type="button" class="color-swatch"
+                                                        title="@c"
+                                                        data-value="@c"
+                                                        style="background-color:@ColorNameToCss(c);"
+                                                        onclick="modalSelectColorVariant(@product.Id,this,'@c')"></button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (product.HasSizes && sizes.Length > 0)
+                                {
+                                    <div class="mb-3">
+                                        <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">SIZE</div>
+                                        <div class="d-flex gap-1 flex-wrap" id="modal-size-group-@product.Id">
+                                            @foreach (var s in sizes)
+                                            {
+                                                <button type="button" class="size-btn"
+                                                        data-value="@s"
+                                                        onclick="modalSelectVariant('size',@product.Id,this)">@s</button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="mb-3">
+                                    <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">QUANTITY</div>
+                                    <div class="qty-stepper">
+                                        <button type="button" onclick="modalStepQty(@product.Id,-1)">&#8722;</button>
+                                        <input type="number" id="modal-qty-@product.Id" value="1" min="1" max="999" />
+                                        <button type="button" onclick="modalStepQty(@product.Id,1)">&#43;</button>
+                                    </div>
+                                </div>
+
+                                <button type="button" class="btn btn-primary w-100"
+                                        onclick="addToCart(@product.Id)">
+                                    <i class="bi bi-cart-plus me-1"></i>Add to Cart
+                                </button>
+
+                                <div id="modal-added-@product.Id" class="text-success small mt-2 d-none">
+                                    <i class="bi bi-check-circle-fill me-1"></i>Added to cart!
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+    }
 
-    </form>
+    <!-- ── Cart offcanvas ───────────────────────────────────────────────────── -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="cartOffcanvas"
+         aria-labelledby="cartOffcanvasLabel" style="width:360px;max-width:100vw;">
+        <div class="offcanvas-header bg-primary text-white">
+            <h5 class="offcanvas-title" id="cartOffcanvasLabel">
+                <i class="bi bi-cart3 me-2"></i>Your Cart
+            </h5>
+            <button type="button" class="btn-close btn-close-white"
+                    data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column p-0">
+
+            <div id="cartEmptyMsg" class="text-center text-muted py-5 px-3 flex-grow-1 d-flex flex-column justify-content-center">
+                <i class="bi bi-cart display-4 d-block opacity-25 mb-2"></i>
+                Your cart is empty.<br />
+                <small class="mt-1">Tap a product card to add items.</small>
+            </div>
+
+            <div id="cartItemsList" class="flex-grow-1 px-3 py-2 overflow-auto d-none"></div>
+
+            <div id="cartFooter" class="border-top p-3 d-none">
+                <form method="post" asp-action="PlaceOrder" asp-antiforgery="true" id="storeForm">
+                    <input type="hidden" name="cartJson" id="cartJsonField" value="[]" />
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="notes">
+                            Order Notes <span class="text-muted fw-normal">(optional)</span>
+                        </label>
+                        <textarea class="form-control form-control-sm" id="notes" name="notes"
+                                  rows="2" maxlength="1000"
+                                  placeholder="Special instructions for the operations team…"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                        <i class="bi bi-check-circle me-1"></i>Place Order for Q@(quarter) @year
+                    </button>
+                </form>
+                <div class="card mt-2 border-0 bg-light">
+                    <div class="card-body py-2 px-3">
+                        <p class="small text-muted mb-0">
+                            <i class="bi bi-info-circle me-1 text-primary"></i>
+                            A confirmation email will be sent after your order is placed.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Product metadata for JS -->
+    <script id="productDataJson" type="application/json">@Html.Raw(productDataJson)</script>
 }
 
 @section Scripts {
 <script>
 (function () {
+    'use strict';
 
-    // Product metadata from server
-    var productMeta = {
-        @foreach (var p in Model)
-        {
-            <text>'@p.Id': { name: '@Html.Raw(p.Name.Replace("'", "\\'"))', hasSizes: @p.HasSizes.ToString().ToLower(), hasGender: @p.HasGenderOption.ToString().ToLower(), hasColor: @p.HasColorOptions.ToString().ToLower() },</text>
-        }
+    var metaEl = document.getElementById('productDataJson');
+    if (!metaEl) return;
+
+    var productList = JSON.parse(metaEl.textContent || metaEl.innerHTML);
+    var metaMap = {};
+    productList.forEach(function (p) { metaMap[p.id] = p; });
+
+    // ── Cart state ────────────────────────────────────────────────────────────
+    var cart     = [];
+    var nextLine = 1;
+
+    // Per-modal transient selections
+    var modalState = {};
+    function getState(id) {
+        if (!modalState[id]) modalState[id] = { gender: '', color: '', size: '' };
+        return modalState[id];
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+
+    window.openProductModal = function (productId) {
+        var el = document.getElementById('modal-' + productId);
+        if (!el) return;
+
+        // Reset state
+        modalState[productId] = { gender: '', color: '', size: '' };
+
+        var qtyEl = document.getElementById('modal-qty-' + productId);
+        if (qtyEl) qtyEl.value = 1;
+
+        el.querySelectorAll('.gender-pill, .size-btn, .color-swatch')
+          .forEach(function (b) { b.classList.remove('selected'); });
+
+        var colorLbl = document.getElementById('modal-color-label-' + productId);
+        if (colorLbl) colorLbl.textContent = '';
+
+        var addedMsg = document.getElementById('modal-added-' + productId);
+        if (addedMsg) addedMsg.classList.add('d-none');
+
+        bootstrap.Modal.getOrCreateInstance(el).show();
     };
 
-    // ── Variant selection helpers ─────────────────────────────────────────────
+    window.switchGalleryImage = function (productId, thumbEl) {
+        var src = thumbEl.dataset.src;
+        var main = document.getElementById('gallery-main-' + productId);
+        if (main) main.src = src;
+        var modal = document.getElementById('modal-' + productId);
+        if (modal) modal.querySelectorAll('.gallery-thumb')
+                        .forEach(function (t) { t.classList.remove('active'); });
+        thumbEl.classList.add('active');
+    };
 
-    window.selectVariant = function (type, productId, btn) {
-        var group = document.getElementById(type + '-group-' + productId);
+    window.modalSelectVariant = function (type, productId, btn) {
+        var group = document.getElementById('modal-' + type + '-group-' + productId);
         if (!group) return;
         var cls = type === 'size' ? 'size-btn' : 'gender-pill';
         group.querySelectorAll('.' + cls).forEach(function (b) { b.classList.remove('selected'); });
         btn.classList.add('selected');
-        document.getElementById(type + '_' + productId).value = btn.dataset.value;
-        updateOrderSummary();
+        getState(productId)[type] = btn.dataset.value;
     };
 
-    window.selectColorVariant = function (productId, btn, colorName) {
-        var group = document.getElementById('color-group-' + productId);
+    window.modalSelectColorVariant = function (productId, btn, colorName) {
+        var group = document.getElementById('modal-color-group-' + productId);
         if (!group) return;
         group.querySelectorAll('.color-swatch').forEach(function (b) { b.classList.remove('selected'); });
         btn.classList.add('selected');
-        document.getElementById('color_' + productId).value = colorName;
-        var lbl = document.getElementById('color-label-' + productId);
+        getState(productId).color = colorName;
+        var lbl = document.getElementById('modal-color-label-' + productId);
         if (lbl) lbl.textContent = colorName;
-        updateOrderSummary();
     };
 
-    // ── Quantity stepper ──────────────────────────────────────────────────────
-
-    window.stepQty = function (productId, delta) {
-        var inp = document.getElementById('qty_' + productId);
+    window.modalStepQty = function (productId, delta) {
+        var inp = document.getElementById('modal-qty-' + productId);
         if (!inp) return;
-        var v = parseInt(inp.value, 10) || 0;
-        v = Math.max(0, Math.min(999, v + delta));
-        inp.value = v;
-        updateOrderSummary();
+        inp.value = Math.max(1, Math.min(999, (parseInt(inp.value, 10) || 1) + delta));
     };
 
-    // ── Order summary ─────────────────────────────────────────────────────────
+    // ── Add to cart ───────────────────────────────────────────────────────────
 
-    window.updateOrderSummary = function () {
-        var inputs  = document.querySelectorAll('.qty-input');
-        var lines   = [];
-        var total   = 0;
+    window.addToCart = function (productId) {
+        var meta = metaMap[productId];
+        if (!meta) return;
 
-        inputs.forEach(function (inp) {
-            var qty = parseInt(inp.value, 10) || 0;
-            var id  = inp.dataset.productId;
-            var meta = productMeta[id] || {};
-            var badge = document.getElementById('added-badge-' + id);
+        var state  = getState(productId);
+        var qtyEl  = document.getElementById('modal-qty-' + productId);
+        var qty    = Math.max(1, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1);
 
-            if (qty > 0) {
-                var size   = meta.hasSizes  ? (document.getElementById('size_'   + id) || {}).value : '';
-                var gender = meta.hasGender ? (document.getElementById('gender_' + id) || {}).value : '';
-                var color  = meta.hasColor  ? (document.getElementById('color_'  + id) || {}).value : '';
-
-                var variants = [gender, size, color].filter(Boolean).join(', ');
-                lines.push({ name: meta.name || 'Product', qty: qty, variants: variants });
-                total += qty;
-                document.getElementById('card-' + id)?.classList.add('border', 'border-primary', 'border-2');
-                if (badge) badge.classList.remove('d-none');
-            } else {
-                document.getElementById('card-' + id)?.classList.remove('border', 'border-primary', 'border-2');
-                if (badge) badge.classList.add('d-none');
-            }
+        cart.push({
+            lineId:    nextLine++,
+            productId: productId,
+            name:      meta.name,
+            qty:       qty,
+            gender:    state.gender || '',
+            color:     state.color  || '',
+            size:      state.size   || ''
         });
 
-        var summaryEmpty = document.getElementById('summaryEmpty');
-        var summaryItems = document.getElementById('summaryItems');
-        var submitBtn    = document.getElementById('submitBtn');
-
-        if (lines.length === 0) {
-            summaryEmpty.classList.remove('d-none');
-            summaryItems.classList.add('d-none');
-            summaryItems.innerHTML = '';
-            submitBtn.disabled = true;
-        } else {
-            summaryEmpty.classList.add('d-none');
-            summaryItems.classList.remove('d-none');
-            summaryItems.innerHTML = lines.map(function (l) {
-                var variantBadge = l.variants
-                    ? '<span class="badge bg-light text-dark border ms-1" style="font-size:.7rem;">' + l.variants + '</span>'
-                    : '';
-                return '<div class="summary-item d-flex justify-content-between align-items-start">' +
-                       '<div><span class="fw-semibold">' + l.name + '</span>' + variantBadge + '</div>' +
-                       '<span class="badge bg-primary ms-2">×' + l.qty + '</span></div>';
-            }).join('') +
-            '<div class="pt-2 text-end text-muted small fw-semibold">' + total + ' item(s) total</div>';
-            submitBtn.disabled = false;
+        var addedMsg = document.getElementById('modal-added-' + productId);
+        if (addedMsg) {
+            addedMsg.classList.remove('d-none');
+            setTimeout(function () { addedMsg.classList.add('d-none'); }, 1800);
         }
+
+        renderCart();
     };
 
-    // Disable submit button while submitting
+    // ── Remove from cart ──────────────────────────────────────────────────────
+
+    window.removeFromCart = function (lineId) {
+        cart = cart.filter(function (l) { return l.lineId !== lineId; });
+        renderCart();
+    };
+
+    // ── Render cart state ─────────────────────────────────────────────────────
+
+    function renderCart() {
+        var emptyMsg  = document.getElementById('cartEmptyMsg');
+        var itemsList = document.getElementById('cartItemsList');
+        var footer    = document.getElementById('cartFooter');
+        var badge     = document.getElementById('cartBadge');
+        var jsonField = document.getElementById('cartJsonField');
+
+        var total = cart.reduce(function (s, l) { return s + l.qty; }, 0);
+
+        // Badge on floating button
+        if (badge) {
+            badge.textContent = total;
+            badge.classList.toggle('d-none', total === 0);
+        }
+
+        // Grid card "in cart" indicators
+        var seenProducts = {};
+        cart.forEach(function (l) { seenProducts[l.productId] = true; });
+        Object.keys(metaMap).forEach(function (id) {
+            var card = document.getElementById('grid-card-' + id);
+            if (card) card.classList.toggle('has-in-cart', !!seenProducts[parseInt(id, 10)]);
+        });
+
+        if (cart.length === 0) {
+            if (emptyMsg)  emptyMsg.classList.remove('d-none');
+            if (itemsList) { itemsList.classList.add('d-none'); itemsList.innerHTML = ''; }
+            if (footer)    footer.classList.add('d-none');
+            if (jsonField) jsonField.value = '[]';
+            return;
+        }
+
+        if (emptyMsg)  emptyMsg.classList.add('d-none');
+        if (itemsList) itemsList.classList.remove('d-none');
+        if (footer)    footer.classList.remove('d-none');
+
+        // Serialise cart for form POST
+        if (jsonField) {
+            jsonField.value = JSON.stringify(cart.map(function (l) {
+                return { productId: l.productId, qty: l.qty,
+                         size: l.size, gender: l.gender, color: l.color };
+            }));
+        }
+
+        // Render list items
+        if (itemsList) {
+            itemsList.innerHTML = cart.map(function (l) {
+                var variants = [l.gender, l.size, l.color].filter(Boolean).join(', ');
+                var variantBadge = variants
+                    ? '<span class="badge bg-light text-dark border ms-1" style="font-size:.7rem;">' + esc(variants) + '</span>'
+                    : '';
+                return '<div class="cart-line-item d-flex align-items-start justify-content-between gap-2">' +
+                       '  <div class="flex-grow-1">' +
+                       '    <div class="fw-semibold">' + esc(l.name) + variantBadge + '</div>' +
+                       '    <div class="text-muted" style="font-size:.78rem;">Qty: ' + l.qty + '</div>' +
+                       '  </div>' +
+                       '  <button type="button" class="btn btn-sm btn-link text-danger p-0 flex-shrink-0"' +
+                       '          onclick="removeFromCart(' + l.lineId + ')" title="Remove">' +
+                       '    <i class="bi bi-x-circle"></i>' +
+                       '  </button>' +
+                       '</div>';
+            }).join('') +
+            '<div class="pt-2 pb-1 text-end text-muted small fw-semibold">' + total + ' item(s) total</div>';
+        }
+    }
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Disable submit while posting
     document.getElementById('storeForm')?.addEventListener('submit', function () {
         var btn = document.getElementById('submitBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Placing Order…';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Placing Order…';
+        }
     });
 
 })();
@@ -368,25 +684,25 @@ else
     {
         return name.ToLowerInvariant() switch
         {
-            "black"       => "#212529",
-            "white"       => "#f8f9fa",
-            "red"         => "#dc3545",
-            "navy" or "navy blue" => "#001f5b",
-            "blue"        => "#0d6efd",
-            "green"       => "#198754",
-            "gray" or "grey" => "#6c757d",
-            "yellow"      => "#ffc107",
-            "orange"      => "#fd7e14",
-            "purple"      => "#6f42c1",
-            "pink"        => "#d63384",
-            "brown"       => "#795548",
-            "teal"        => "#20c997",
-            "gold"        => "#D4AC0D",
-            "silver"      => "#adb5bd",
-            "charcoal"    => "#495057",
-            "khaki"       => "#c3b091",
-            "maroon"      => "#800000",
-            _             => "#dee2e6"
+            "black"                => "#212529",
+            "white"                => "#f8f9fa",
+            "red"                  => "#dc3545",
+            "navy" or "navy blue"  => "#001f5b",
+            "blue"                 => "#0d6efd",
+            "green"                => "#198754",
+            "gray" or "grey"       => "#6c757d",
+            "yellow"               => "#ffc107",
+            "orange"               => "#fd7e14",
+            "purple"               => "#6f42c1",
+            "pink"                 => "#d63384",
+            "brown"                => "#795548",
+            "teal"                 => "#20c997",
+            "gold"                 => "#D4AC0D",
+            "silver"               => "#adb5bd",
+            "charcoal"             => "#495057",
+            "khaki"                => "#c3b091",
+            "maroon"               => "#800000",
+            _                      => "#dee2e6"
         };
     }
 }
