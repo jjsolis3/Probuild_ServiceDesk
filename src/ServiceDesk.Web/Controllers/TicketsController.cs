@@ -569,26 +569,17 @@ public class TicketsController : Controller
                 }
             });
 
-            // Notify assigned agent (fire-and-forget; use scope factory — HTTP scope may be disposed before this runs)
+            // Notify assigned agent (fire-and-forget)
             if (ticket.AssignedToId != null)
-            {
-                var capturedNewTicketId = ticket.Id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedNewTicketId);
-                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == ticket.Id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedNewTicketId);
-                    }
+                    catch { /* email errors must not break ticket creation */ }
                 });
-            }
 
             return RedirectToAction(nameof(Index));
         }
@@ -694,24 +685,15 @@ public class TicketsController : Controller
 
             // Notify new assignee if assignment changed
             if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
-            {
-                var capturedEditId = id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedEditId);
-                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedEditId);
-                    }
+                    catch { }
                 });
-            }
 
             return RedirectToAction(nameof(Index));
         }
@@ -805,45 +787,28 @@ public class TicketsController : Controller
         }
 
         if (notifyAssignment)
-        {
-            var capturedQUAssignId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var scope = _scopeFactory.CreateScope();
-                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedQUAssignId);
-                    if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                    var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                    if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedQUAssignId);
-                }
+                catch { }
             });
-        }
 
         if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
-        {
-            var capturedQUStatusId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var scope = _scopeFactory.CreateScope();
-                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedQUStatusId);
+                    var t = await _context.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == id);
                     if (t?.SubmittedBy?.Email != null)
-                        await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, $"Status changed to: {t.Status}");
+                        await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email,
+                            $"Status changed to: {t.Status}");
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Status-change notification failed for Ticket #{Id}.", capturedQUStatusId);
-                }
+                catch { }
             });
-        }
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
     }
@@ -923,16 +888,6 @@ public class TicketsController : Controller
         });
     }
 
-    private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-        ".txt", ".csv", ".log", ".msg",
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg",
-        ".zip", ".7z", ".tar", ".gz",
-        ".mp4", ".mov", ".avi", ".mkv",
-        ".json", ".xml", ".html", ".htm",
-    };
-
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
@@ -942,14 +897,11 @@ public class TicketsController : Controller
         if (file == null || file.Length == 0) return BadRequest(new { error = "No file provided." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { error = "File size exceeds 10 MB limit." });
 
-        var ext = Path.GetExtension(file.FileName);
-        if (!AllowedUploadExtensions.Contains(ext))
-            return BadRequest(new { error = $"File type '{ext}' is not allowed. Please upload a document, image, or archive." });
-
         var uploadDir = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads", "tickets", id.ToString());
         Directory.CreateDirectory(uploadDir);
 
+        var ext = Path.GetExtension(file.FileName);
         var storedName = $"{Guid.NewGuid():N}{ext}";
         var fullPath = Path.Combine(uploadDir, storedName);
 
@@ -1275,30 +1227,27 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire-and-forget notification
-        var capturedEscalateId = id;
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                var t = await db.Tickets
+                var t = await _context.Tickets
                     .Include(x => x.SubmittedBy)
                     .Include(x => x.AssignedTo)
-                    .FirstOrDefaultAsync(x => x.Id == capturedEscalateId);
+                    .FirstOrDefaultAsync(x => x.Id == id);
                 if (t == null) return;
 
                 var msg = $"Ticket has been escalated to {t.Priority} priority. Reason: {t.EscalationReason ?? "Not specified"}";
+
+                // Notify assignee
                 if (t.AssignedTo?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
+                    await _emailService.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
+
+                // Notify requester
                 if (t.SubmittedBy?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Notification] Escalation notification failed for Ticket #{Id}.", capturedEscalateId);
-            }
+            catch { }
         });
 
         return Json(new { success = true, priority = ticket.Priority.ToString() });
@@ -1371,23 +1320,16 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire status-change notification (resolution notes are internal — not emailed)
-        var capturedResolveId  = id;
-        var capturedResolveMsg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedResolveId);
-                if (t?.SubmittedBy?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, capturedResolveMsg);
+                var t = ticket; // capture for closure
+                var msg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
+                if (t.SubmittedBy?.Email != null)
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Notification] Resolution notification failed for Ticket #{Id}.", capturedResolveId);
-            }
+            catch { /* swallow — notification is non-critical */ }
         });
 
         // Suggest KB article creation when resolution notes are present
@@ -1660,10 +1602,6 @@ public class TicketsController : Controller
             ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
             return View();
         }
-
-        // Clean up any previous abandoned temp file from this session before creating a new one
-        if (TempData.Peek("ImportTempPath") is string prevPath && System.IO.File.Exists(prevPath))
-            System.IO.File.Delete(prevPath);
 
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_ticket_{Guid.NewGuid():N}.dat");

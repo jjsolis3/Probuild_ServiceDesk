@@ -470,20 +470,6 @@ public class ServiceDeskDbContext : DbContext
             .Property(c => c.Id)
             .ValueGeneratedNever();
 
-        // Indexes on Tickets for the most-common filter/sort columns (list page, dashboard, reports)
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => t.Status);
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => t.Priority);
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => t.CreatedDate);
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => t.AssignedToId);
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => t.SubmittedById);
-        modelBuilder.Entity<Ticket>()
-            .HasIndex(t => new { t.Status, t.Priority });
-
         // Index on SubCategory for fast lookup by parent category
         modelBuilder.Entity<TicketSubCategory>()
             .HasIndex(s => new { s.Category, s.IsActive, s.SortOrder });

@@ -1232,20 +1232,6 @@ public static class DbInitializer
                     CREATE INDEX IX_EmployeeTasks_Employee_Type_Status
                         ON dbo.EmployeeTasks (EmployeeId, TaskType, Status);
                 END");
-
-        context.Database.ExecuteSqlRaw(@"
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_Status ON dbo.Tickets (Status);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_Priority ON dbo.Tickets (Priority);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_CreatedDate' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_CreatedDate ON dbo.Tickets (CreatedDate);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_AssignedToId' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_AssignedToId ON dbo.Tickets (AssignedToId);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_SubmittedById' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_SubmittedById ON dbo.Tickets (SubmittedById);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status_Priority' AND object_id = OBJECT_ID('dbo.Tickets'))
-                CREATE INDEX IX_Tickets_Status_Priority ON dbo.Tickets (Status, Priority);");
         }
         catch (Exception ex)
         {

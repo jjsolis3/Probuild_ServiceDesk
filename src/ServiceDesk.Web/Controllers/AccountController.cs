@@ -17,17 +17,12 @@ public class AccountController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
     private readonly IConfiguration _configuration;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<AccountController> _logger;
 
-    public AccountController(ServiceDeskDbContext context, EmailNotificationService emailService,
-        IConfiguration configuration, IServiceScopeFactory scopeFactory, ILogger<AccountController> logger)
+    public AccountController(ServiceDeskDbContext context, EmailNotificationService emailService, IConfiguration configuration)
     {
-        _context       = context;
-        _emailService  = emailService;
+        _context = context;
+        _emailService = emailService;
         _configuration = configuration;
-        _scopeFactory  = scopeFactory;
-        _logger        = logger;
     }
 
     // GET: /Account/Login
@@ -162,22 +157,7 @@ public class AccountController : Controller
             var resetUrl = $"{baseUrl}/Account/ResetPassword?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email)}";
 
             // Fire and forget — don't expose email errors to the user
-            var capturedEmail    = user.Email;
-            var capturedFullName = user.FullName;
-            var capturedUrl      = resetUrl;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    await email.SendPasswordResetEmail(capturedEmail, capturedFullName, capturedUrl);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Password reset email failed for {Email}.", capturedEmail);
-                }
-            });
+            _ = Task.Run(() => _emailService.SendPasswordResetEmail(user.Email, user.FullName, resetUrl));
         }
 
         TempData["Success"] = "If that email is registered, a reset link has been sent. Check your inbox.";
