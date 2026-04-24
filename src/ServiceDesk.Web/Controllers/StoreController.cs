@@ -315,8 +315,7 @@ public class StoreController : Controller
 
     private async Task<bool> CanAccessOpsHubAsync(int portalUserId)
     {
-        var userRole = User.FindFirst("Role")?.Value;
-        if (userRole == "Admin" || userRole == "IT Agent") return true;
+        if (User.IsInRole("Admin") || User.IsInRole("IT Agent")) return true;
 
         try
         {

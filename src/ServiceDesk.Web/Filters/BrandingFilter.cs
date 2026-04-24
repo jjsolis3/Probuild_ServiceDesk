@@ -62,8 +62,8 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
 
                 try
                 {
-                    var userRole = ctx.HttpContext.User.FindFirst("Role")?.Value;
-                    var isAdminOrAgent = userRole == "Admin" || userRole == "IT Agent";
+                    var isAdminOrAgent = ctx.HttpContext.User.IsInRole("Admin")
+                                     || ctx.HttpContext.User.IsInRole("IT Agent");
                     controller.ViewBag.PortalShowOpsHub = isAdminOrAgent ||
                         await context.StoreOperationsAccess
                             .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
