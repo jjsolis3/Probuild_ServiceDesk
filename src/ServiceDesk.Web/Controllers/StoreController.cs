@@ -55,10 +55,19 @@ public class StoreController : Controller
 
         var (q, yr) = GetCurrentQuarter();
 
-        ViewBag.WelcomeMessage = welcome;
-        ViewBag.Quarter        = q;
-        ViewBag.Year           = yr;
-        ViewBag.CurrentUser    = user;
+        // Check for an existing non-cancelled order this quarter
+        var existingOrder = await _context.StoreOrders
+            .Where(o => o.PortalUserId == user.Id
+                     && o.Quarter == q && o.Year == yr
+                     && o.Status != "Cancelled")
+            .OrderByDescending(o => o.OrderDate)
+            .FirstOrDefaultAsync();
+
+        ViewBag.WelcomeMessage       = welcome;
+        ViewBag.Quarter              = q;
+        ViewBag.Year                 = yr;
+        ViewBag.CurrentUser          = user;
+        ViewBag.ExistingOrderNumber  = existingOrder?.OrderNumber;
 
         return View(products);
     }
@@ -113,6 +122,24 @@ public class StoreController : Controller
         foreach (var c in cartItems)
         {
             if (!products.TryGetValue(c.ProductId, out var product)) continue;
+
+            // Reject lines missing required variants
+            if (product.HasSizes && string.IsNullOrWhiteSpace(c.Size))
+            {
+                TempData["Error"] = $"Please select a size for \"{product.Name}\".";
+                return RedirectToAction(nameof(Index));
+            }
+            if (product.HasGenderOption && string.IsNullOrWhiteSpace(c.Gender))
+            {
+                TempData["Error"] = $"Please select a gender option for \"{product.Name}\".";
+                return RedirectToAction(nameof(Index));
+            }
+            if (product.HasColorOptions && string.IsNullOrWhiteSpace(c.Color))
+            {
+                TempData["Error"] = $"Please select a color for \"{product.Name}\".";
+                return RedirectToAction(nameof(Index));
+            }
+
             lineItems.Add(new StoreOrderItem
             {
                 StoreProductId          = product.Id,
@@ -324,6 +351,52 @@ public class StoreController : Controller
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} marked as {newStatus}. A notification email has been sent to {order.PortalUser.Email}.";
+        return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+    }
+
+    // POST /Store/OpsUpdateStatusBulk
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsUpdateStatusBulk(
+        List<int> orderIds, string newStatus, int year, int quarter, string? returnStatus)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+
+        if (!await CanAccessOpsHubAsync(user.Id))
+            return Forbid();
+
+        var validStatuses = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+        if (!validStatuses.Contains(newStatus) || orderIds == null || !orderIds.Any())
+        {
+            TempData["Error"] = "Invalid bulk update request.";
+            return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+        }
+
+        var orders = await _context.StoreOrders
+            .Include(o => o.PortalUser)
+            .Include(o => o.Items)
+            .Where(o => orderIds.Contains(o.Id))
+            .ToListAsync();
+
+        int updated = 0;
+        foreach (var order in orders)
+        {
+            if (order.Status == newStatus) continue;
+            order.Status = newStatus;
+            updated++;
+            try
+            {
+                await _emailNotification.SendOrderStatusUpdateAsync(
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[OpsHub] Bulk: failed to send status email for order #{OrderId}", order.Id);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"{updated} order(s) marked as {newStatus}.";
         return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
     }
 

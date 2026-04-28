@@ -205,6 +205,19 @@
     </div>
 }
 
+@{
+    var existingOrderNum = ViewBag.ExistingOrderNumber as string;
+}
+@if (!string.IsNullOrEmpty(existingOrderNum))
+{
+    <div class="alert alert-warning alert-dismissible border-0 shadow-sm py-2 mb-3" id="existingOrderAlert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        You already have an active order this quarter (<strong>@existingOrderNum</strong>).
+        You can still place another, but it will be a separate order.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
 @if (!Model.Any())
 {
     <div class="card shadow-sm text-center py-5 text-muted">
@@ -222,11 +235,38 @@ else
         <span id="cartBadge" class="badge bg-danger d-none">0</span>
     </button>
 
+    <!-- ── Search / filter bar ───────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm mb-4 py-2 px-3">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="flex-grow-1" style="min-width:180px;">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" id="catalogSearch" class="form-control border-start-0"
+                           placeholder="Search products…" autocomplete="off" />
+                </div>
+            </div>
+            <div>
+                <select id="catalogCategory" class="form-select form-select-sm" style="min-width:150px;">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearCatalogFilter()">
+                <i class="bi bi-x me-1"></i>Clear
+            </button>
+        </div>
+    </div>
+
     <!-- ── Product grid by category ─────────────────────────────────────────── -->
     @foreach (var category in categories)
     {
         var catProducts = Model.Where(p => (p.Category ?? "General") == category).ToList();
-        <div class="mb-5">
+        <div class="mb-5 category-section" data-category="@category">
             <h5 class="fw-bold mb-3 category-divider text-uppercase small">
                 <i class="bi bi-tag me-1"></i>@category
             </h5>
@@ -238,7 +278,9 @@ else
                         .FirstOrDefault()?.ImagePath
                         ?? product.ImagePath;
 
-                    <div class="col-6 col-md-4 col-lg-3">
+                    <div class="col-6 col-md-4 col-lg-3 catalog-col"
+                         data-name="@product.Name.ToLower()"
+                         data-category="@(product.Category ?? "General")">
                         <div class="card product-grid-card h-100 shadow-sm border-0 position-relative"
                              id="grid-card-@product.Id"
                              onclick="openProductModal(@product.Id)"
@@ -252,7 +294,7 @@ else
 
                             @if (!string.IsNullOrEmpty(mainImage))
                             {
-                                <img src="@mainImage" alt="@product.Name" class="product-card-img" />
+                                <img src="@mainImage" alt="@product.Name" class="product-card-img" loading="lazy" />
                             }
                             else
                             {
@@ -381,10 +423,18 @@ else
                                     </div>
                                 </div>
 
-                                <button type="button" class="btn btn-primary w-100"
+                                <button type="button"
+                                        id="modal-addtocart-@product.Id"
+                                        class="btn btn-primary w-100"
+                                        data-needs-size="@product.HasSizes.ToString().ToLower()"
+                                        data-needs-gender="@product.HasGenderOption.ToString().ToLower()"
+                                        data-needs-color="@(product.HasColorOptions && (product.AvailableColors ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 0 ? "true" : "false")"
                                         onclick="addToCart(@product.Id)">
                                     <i class="bi bi-cart-plus me-1"></i>Add to Cart
                                 </button>
+                                <div id="modal-variant-warn-@product.Id" class="text-danger small mt-1 d-none">
+                                    <i class="bi bi-exclamation-circle me-1"></i>Please select all required options above.
+                                </div>
 
                                 <div id="modal-added-@product.Id" class="text-success small mt-2 d-none">
                                     <i class="bi bi-check-circle-fill me-1"></i>Added to cart!
@@ -429,7 +479,10 @@ else
                                   rows="2" maxlength="1000"
                                   placeholder="Special instructions for the operations team…"></textarea>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                    <button type="submit" class="btn btn-primary w-100" id="submitBtn"
+                            @(!string.IsNullOrEmpty(existingOrderNum)
+                                ? $"onclick=\"return confirm('You already have order {existingOrderNum} this quarter. Place another order anyway?');\""
+                                : "")>
                         <i class="bi bi-check-circle me-1"></i>Place Order for Q@(quarter) @year
                     </button>
                 </form>
@@ -551,6 +604,9 @@ else
         var meta = metaMap[productId];
         renderGallery(productId, meta ? meta.images : []);
 
+        // Set initial Add to Cart button state
+        updateAddToCartBtn(productId);
+
         bootstrap.Modal.getOrCreateInstance(el).show();
     };
 
@@ -564,6 +620,23 @@ else
         thumbEl.classList.add('active');
     };
 
+    function updateAddToCartBtn(productId) {
+        var btn = document.getElementById('modal-addtocart-' + productId);
+        if (!btn) return;
+        var state = getState(productId);
+        var needsSize   = btn.dataset.needsSize   === 'true';
+        var needsGender = btn.dataset.needsGender === 'true';
+        var needsColor  = btn.dataset.needsColor  === 'true';
+        var valid = (!needsSize   || !!state.size)
+                 && (!needsGender || !!state.gender)
+                 && (!needsColor  || !!state.color);
+        btn.disabled = !valid;
+        btn.classList.toggle('btn-secondary', !valid);
+        btn.classList.toggle('btn-primary',   valid);
+        var warn = document.getElementById('modal-variant-warn-' + productId);
+        if (warn) warn.classList.toggle('d-none', valid);
+    }
+
     window.modalSelectVariant = function (type, productId, btn) {
         var group = document.getElementById('modal-' + type + '-group-' + productId);
         if (!group) return;
@@ -572,6 +645,7 @@ else
         btn.classList.add('selected');
         getState(productId)[type] = btn.dataset.value;
         updateGalleryForVariant(productId);
+        updateAddToCartBtn(productId);
     };
 
     window.modalSelectColorVariant = function (productId, btn, colorName) {
@@ -583,6 +657,7 @@ else
         var lbl = document.getElementById('modal-color-label-' + productId);
         if (lbl) lbl.textContent = colorName;
         updateGalleryForVariant(productId);
+        updateAddToCartBtn(productId);
     };
 
     window.modalStepQty = function (productId, delta) {
@@ -620,10 +695,22 @@ else
         renderCart();
     };
 
-    // ── Remove from cart ──────────────────────────────────────────────────────
+    // ── Cart qty / remove ─────────────────────────────────────────────────────
 
     window.removeFromCart = function (lineId) {
         cart = cart.filter(function (l) { return l.lineId !== lineId; });
+        renderCart();
+    };
+
+    window.cartChangeQty = function (lineId, delta) {
+        var line = cart.find(function (l) { return l.lineId === lineId; });
+        if (!line) return;
+        var newQty = Math.max(0, Math.min(999, line.qty + delta));
+        if (newQty === 0) {
+            cart = cart.filter(function (l) { return l.lineId !== lineId; });
+        } else {
+            line.qty = newQty;
+        }
         renderCart();
     };
 
@@ -678,19 +765,27 @@ else
         // Render list items
         if (itemsList) {
             itemsList.innerHTML = cart.map(function (l) {
-                var variants = [l.gender, l.size, l.color].filter(Boolean).join(', ');
+                var variants = [l.gender, l.size, l.color].filter(Boolean).join(' / ');
                 var variantBadge = variants
-                    ? '<span class="badge bg-light text-dark border ms-1" style="font-size:.7rem;">' + esc(variants) + '</span>'
+                    ? '<div class="text-muted" style="font-size:.75rem;">' + esc(variants) + '</div>'
                     : '';
-                return '<div class="cart-line-item d-flex align-items-start justify-content-between gap-2">' +
-                       '  <div class="flex-grow-1">' +
-                       '    <div class="fw-semibold">' + esc(l.name) + variantBadge + '</div>' +
-                       '    <div class="text-muted" style="font-size:.78rem;">Qty: ' + l.qty + '</div>' +
+                return '<div class="cart-line-item">' +
+                       '  <div class="d-flex align-items-start gap-2">' +
+                       '    <div class="flex-grow-1 min-w-0">' +
+                       '      <div class="fw-semibold text-truncate" style="font-size:.85rem;">' + esc(l.name) + '</div>' +
+                       variantBadge +
+                       '    </div>' +
+                       '    <button type="button" class="btn btn-link text-danger p-0 flex-shrink-0" style="font-size:.8rem;line-height:1;" ' +
+                       '            onclick="removeFromCart(' + l.lineId + ')" title="Remove"><i class="bi bi-trash3"></i></button>' +
                        '  </div>' +
-                       '  <button type="button" class="btn btn-sm btn-link text-danger p-0 flex-shrink-0"' +
-                       '          onclick="removeFromCart(' + l.lineId + ')" title="Remove">' +
-                       '    <i class="bi bi-x-circle"></i>' +
-                       '  </button>' +
+                       '  <div class="d-flex align-items-center gap-2 mt-1">' +
+                       '    <div class="qty-stepper" style="transform:scale(.85);transform-origin:left center;">' +
+                       '      <button type="button" onclick="cartChangeQty(' + l.lineId + ',-1)">&#8722;</button>' +
+                       '      <input type="number" value="' + l.qty + '" min="1" max="999" readonly style="width:40px;" />' +
+                       '      <button type="button" onclick="cartChangeQty(' + l.lineId + ',1)">&#43;</button>' +
+                       '    </div>' +
+                       '    <span class="text-muted" style="font-size:.75rem;">qty</span>' +
+                       '  </div>' +
                        '</div>';
             }).join('') +
             '<div class="pt-2 pb-1 text-end text-muted small fw-semibold">' + total + ' item(s) total</div>';
@@ -702,6 +797,40 @@ else
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+
+    // ── Catalog search / filter ───────────────────────────────────────────────
+
+    function applyCatalogFilter() {
+        var q    = (document.getElementById('catalogSearch')?.value || '').toLowerCase().trim();
+        var cat  = document.getElementById('catalogCategory')?.value || '';
+        var cols = document.querySelectorAll('.catalog-col');
+        var catVisible = {};
+
+        cols.forEach(function (col) {
+            var name    = col.dataset.name || '';
+            var colCat  = col.dataset.category || '';
+            var matchQ  = !q   || name.indexOf(q) !== -1;
+            var matchC  = !cat || colCat === cat;
+            var visible = matchQ && matchC;
+            col.style.display = visible ? '' : 'none';
+            if (visible) catVisible[colCat] = true;
+        });
+
+        document.querySelectorAll('.category-section').forEach(function (sec) {
+            sec.style.display = catVisible[sec.dataset.category] ? '' : 'none';
+        });
+    }
+
+    window.clearCatalogFilter = function () {
+        var s = document.getElementById('catalogSearch');
+        var c = document.getElementById('catalogCategory');
+        if (s) s.value = '';
+        if (c) c.value = '';
+        applyCatalogFilter();
+    };
+
+    document.getElementById('catalogSearch')?.addEventListener('input', applyCatalogFilter);
+    document.getElementById('catalogCategory')?.addEventListener('change', applyCatalogFilter);
 
     // Disable submit while posting
     document.getElementById('storeForm')?.addEventListener('submit', function () {

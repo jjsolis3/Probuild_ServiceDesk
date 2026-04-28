@@ -2467,6 +2467,8 @@ public class SettingsController : Controller
 
     // ── Store image helpers ───────────────────────────────────────────────────
 
+    private const int StoreImageMaxPx = 800;
+
     private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)
     {
         if (file == null || file.Length == 0) return existing;
@@ -2478,11 +2480,34 @@ public class SettingsController : Controller
         var dir = Path.Combine(_env.WebRootPath, "images", "store");
         Directory.CreateDirectory(dir);
 
-        var fileName = $"{Guid.NewGuid()}{ext}";
+        // Always save as .jpg for resized output (except .png → keep as .png to preserve transparency)
+        var saveExt = ext == ".png" ? ".png" : ".jpg";
+        var fileName = $"{Guid.NewGuid()}{saveExt}";
         var path = Path.Combine(dir, fileName);
 
-        using var stream = new FileStream(path, FileMode.Create);
-        await file.CopyToAsync(stream);
+        try
+        {
+            using var img = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
+            if (img.Width > StoreImageMaxPx || img.Height > StoreImageMaxPx)
+            {
+                img.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+                {
+                    Size = new SixLabors.ImageSharp.Size(StoreImageMaxPx, StoreImageMaxPx),
+                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max
+                }));
+            }
+
+            if (saveExt == ".png")
+                await img.SaveAsPngAsync(path);
+            else
+                await img.SaveAsJpegAsync(path, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
+        }
+        catch
+        {
+            // Fallback: save original if ImageSharp fails
+            using var stream = new FileStream(path, FileMode.Create);
+            await file.CopyToAsync(stream);
+        }
 
         if (!string.IsNullOrEmpty(existing))
             DeleteStoreImage(existing);
