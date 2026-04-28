@@ -42,7 +42,7 @@
                     <dd class="col-sm-7 fw-semibold">@Model.OrderNumber</dd>
 
                     <dt class="col-sm-5">Date Placed</dt>
-                    <dd class="col-sm-7">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
+                    <dd class="col-sm-7">@Model.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMMM d, yyyy 'at' h:mm tt")</dd>
 
                     <dt class="col-sm-5">Quarter</dt>
                     <dd class="col-sm-7">Q@(Model.Quarter) @Model.Year</dd>

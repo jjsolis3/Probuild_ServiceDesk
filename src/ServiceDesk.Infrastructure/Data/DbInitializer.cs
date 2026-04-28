@@ -1507,6 +1507,18 @@ public static class DbInitializer
         context.SaveChanges();
 
         // Seed Store AppSettings
+        // Ensure the Timezone setting exists (IANA ID used for display conversion)
+        if (!context.AppSettings.Any(s => s.Key == "Timezone"))
+        {
+            context.AppSettings.Add(new AppSetting
+            {
+                Key         = "Timezone",
+                Value       = "UTC",
+                Category    = "General",
+                Description = "IANA timezone ID used when displaying dates (e.g. America/Los_Angeles, America/New_York)."
+            });
+        }
+
         var storeSettings = new[]
         {
             ("StoreEnabled",        "false",    "Store", "Enables or disables the quarterly store for portal users."),

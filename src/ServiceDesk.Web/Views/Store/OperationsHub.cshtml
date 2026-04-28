@@ -210,7 +210,7 @@
                                         <span class="ms-2 opacity-75">@order.PortalUser.Email</span>
                                     </div>
                                     <div class="text-muted" style="font-size:.75rem;">
-                                        <i class="bi bi-calendar me-1"></i>@order.OrderDate.ToString("MMM d, yyyy h:mm tt") UTC
+                                        <i class="bi bi-calendar me-1"></i>@order.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM d, yyyy h:mm tt")
                                         &nbsp;·&nbsp;
                                         @order.Items.Count item type(s), @order.Items.Sum(i => i.Quantity) total qty
                                     </div>

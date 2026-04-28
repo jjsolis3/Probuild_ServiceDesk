@@ -26,7 +26,8 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
                 var keys = new[] {
                     "CompanyName", "CompanyLogoUrl", "CompanyPhone", "CompanyWebsite", "CompanyAddress",
                     "PortalWelcomeMessage", "PortalSupportTitle",
-                    "PortalAnnouncement", "PortalAnnouncementType", "PortalShowKnowledgeBase"
+                    "PortalAnnouncement", "PortalAnnouncementType", "PortalShowKnowledgeBase",
+                    "Timezone"
                 };
                 return await context.AppSettings
                     .Where(s => keys.Contains(s.Key))
@@ -45,6 +46,8 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             controller.ViewBag.PortalAnnouncementType = branding!.GetValueOrDefault("PortalAnnouncementType", "info");
             controller.ViewBag.PortalShowKnowledgeBase = !branding!.GetValueOrDefault("PortalShowKnowledgeBase", "true")
                                                                     .Equals("false", StringComparison.OrdinalIgnoreCase);
+
+            controller.ViewBag.OrgTz = branding!.GetValueOrDefault("Timezone", "UTC");
 
             // Inject store and ops-hub access flags for the portal nav (per-user, not cached)
             controller.ViewBag.PortalShowStore  = false;
