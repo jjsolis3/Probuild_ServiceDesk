@@ -134,32 +134,47 @@
                         <label class="form-label fw-semibold">Gallery Images</label>
                         @if (Model.Images != null && Model.Images.Any())
                         {
-                            <div class="d-flex flex-wrap gap-2 mb-2">
-                                @foreach (var img in Model.Images.OrderBy(i => i.SortOrder))
-                                {
-                                    <div class="position-relative" style="width:80px;height:80px;">
-                                        <img src="@img.ImagePath" alt="Gallery image"
-                                             style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" />
-                                        <form method="post" asp-action="StoreProductImageDelete"
-                                              asp-antiforgery="true"
-                                              class="position-absolute top-0 end-0"
-                                              style="transform:translate(25%,-25%);"
-                                              onsubmit="return confirm('Delete this gallery image?');">
-                                            <input type="hidden" name="imageId" value="@img.Id" />
-                                            <button type="submit" class="btn btn-danger btn-sm rounded-circle p-0"
-                                                    style="width:22px;height:22px;line-height:18px;font-size:.7rem;" title="Delete">
-                                                <i class="bi bi-x"></i>
-                                            </button>
-                                        </form>
-                                    </div>
-                                }
+                            <div class="mb-3">
+                                <div class="form-text mb-2">
+                                    Set a <strong>Variant Tag</strong> on each image (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>)
+                                    so it only appears in the store when that variant is selected.
+                                    Leave blank to show for all variants.
+                                </div>
+                                <div class="d-flex flex-column gap-2">
+                                    @foreach (var img in Model.Images.OrderBy(i => i.SortOrder))
+                                    {
+                                        <div class="d-flex align-items-center gap-3 p-2 border rounded" style="background:#f9f9f9;">
+                                            <img src="@img.ImagePath" alt="Gallery image"
+                                                 style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
+                                            <div class="flex-grow-1">
+                                                <input type="text"
+                                                       name="imageTags[@img.Id]"
+                                                       value="@img.VariantTag"
+                                                       class="form-control form-control-sm"
+                                                       placeholder="Variant tag — leave blank for all"
+                                                       maxlength="100" />
+                                            </div>
+                                            <form method="post" asp-action="StoreProductImageDelete"
+                                                  asp-antiforgery="true"
+                                                  onsubmit="return confirm('Delete this gallery image?');"
+                                                  class="flex-shrink-0">
+                                                <input type="hidden" name="imageId" value="@img.Id" />
+                                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete image">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
-                        <input type="file" class="form-control" name="galleryFiles"
-                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple />
+                        <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple
+                               onchange="buildGalleryTagRows(this)" />
                         <div class="form-text">
-                            Additional images appear in the product detail modal. Select multiple files at once to upload them.
+                            Select additional images to add. After selecting, optionally tag each with a variant value.
                         </div>
+                        <div id="galleryTagRows" class="mt-2 d-flex flex-column gap-2"></div>
                     </div>
 
                     <div class="d-flex gap-2">
@@ -181,6 +196,30 @@ function toggleVariantFields() {
     var hasColors = document.getElementById('HasColorOptions').checked;
     document.getElementById('sizeField').classList.toggle('d-none', !hasSizes);
     document.getElementById('colorField').classList.toggle('d-none', !hasColors);
+}
+
+function buildGalleryTagRows(input) {
+    var container = document.getElementById('galleryTagRows');
+    container.innerHTML = '';
+    Array.from(input.files).forEach(function (file) {
+        var row = document.createElement('div');
+        row.className = 'input-group input-group-sm';
+        row.innerHTML =
+            '<span class="input-group-text text-truncate" style="max-width:200px;" title="' + escAttr(file.name) + '">' +
+                escHtml(file.name) +
+            '</span>' +
+            '<input type="text" class="form-control" name="galleryTags" ' +
+                   'placeholder="Variant tag (e.g. Red, Navy) — leave blank for all" ' +
+                   'maxlength="100" />';
+        container.appendChild(row);
+    });
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
 }
 </script>
 }

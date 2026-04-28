@@ -118,12 +118,18 @@
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label fw-semibold">Additional Gallery Images <span class="text-muted fw-normal small">(optional)</span></label>
-                        <input type="file" class="form-control" name="galleryFiles"
-                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple />
+                        <label class="form-label fw-semibold">
+                            Additional Gallery Images
+                            <span class="text-muted fw-normal small">(optional)</span>
+                        </label>
+                        <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple
+                               onchange="buildGalleryTagRows(this)" />
                         <div class="form-text">
-                            Select multiple images to display in the product detail modal alongside the main image.
+                            After selecting files, optionally tag each image with a variant value (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>) so it only shows when that variant is selected in the store.
+                            Leave blank to show the image for all variants.
                         </div>
+                        <div id="galleryTagRows" class="mt-2 d-flex flex-column gap-2"></div>
                     </div>
 
                     <div class="d-flex gap-2">
@@ -147,5 +153,29 @@ function toggleVariantFields() {
     document.getElementById('colorField').classList.toggle('d-none', !hasColors);
 }
 toggleVariantFields();
+
+function buildGalleryTagRows(input) {
+    var container = document.getElementById('galleryTagRows');
+    container.innerHTML = '';
+    Array.from(input.files).forEach(function (file, i) {
+        var row = document.createElement('div');
+        row.className = 'input-group input-group-sm';
+        row.innerHTML =
+            '<span class="input-group-text text-truncate" style="max-width:200px;" title="' + escAttr(file.name) + '">' +
+                escHtml(file.name) +
+            '</span>' +
+            '<input type="text" class="form-control" name="galleryTags" ' +
+                   'placeholder="Variant tag (e.g. Red, Navy) — leave blank for all" ' +
+                   'maxlength="100" />';
+        container.appendChild(row);
+    });
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
 </script>
 }

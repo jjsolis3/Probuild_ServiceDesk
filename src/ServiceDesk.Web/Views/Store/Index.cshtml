@@ -15,12 +15,21 @@
                           .Distinct().OrderBy(c => c).ToList();
 
     var productDataJson = System.Text.Json.JsonSerializer.Serialize(
-        Model.Select(p => new {
-            id        = p.Id,
-            name      = p.Name,
-            hasSizes  = p.HasSizes,
-            hasGender = p.HasGenderOption,
-            hasColor  = p.HasColorOptions
+        Model.Select(p => {
+            var imgs = (p.Images ?? Enumerable.Empty<StoreProductImage>())
+                .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+                .Select(i => new { src = i.ImagePath, tag = i.VariantTag ?? "" })
+                .ToList();
+            if (!imgs.Any() && !string.IsNullOrEmpty(p.ImagePath))
+                imgs.Add(new { src = p.ImagePath!, tag = "" });
+            return new {
+                id        = p.Id,
+                name      = p.Name,
+                hasSizes  = p.HasSizes,
+                hasGender = p.HasGenderOption,
+                hasColor  = p.HasColorOptions,
+                images    = imgs
+            };
         }).ToList());
 }
 
@@ -281,14 +290,6 @@ else
         var colors = (product.AvailableColors ?? string.Empty)
                         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        var galleryImages = (product.Images?
-            .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
-            .Select(i => i.ImagePath)
-            .ToList()) ?? new List<string>();
-
-        if (!galleryImages.Any() && !string.IsNullOrEmpty(product.ImagePath))
-            galleryImages.Add(product.ImagePath);
-
         <div class="modal fade" id="modal-@product.Id" tabindex="-1"
              aria-labelledby="modal-label-@product.Id" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -300,35 +301,9 @@ else
                     <div class="modal-body pt-1">
                         <div class="row g-4">
 
-                            <!-- Gallery column -->
+                            <!-- Gallery column — populated by JS so variant-tagged images can filter -->
                             <div class="col-md-5">
-                                @if (galleryImages.Any())
-                                {
-                                    <img id="gallery-main-@product.Id"
-                                         src="@galleryImages[0]"
-                                         alt="@product.Name"
-                                         class="img-fluid gallery-main-img w-100 mb-2" />
-                                    @if (galleryImages.Count > 1)
-                                    {
-                                        <div class="d-flex gap-2 flex-wrap">
-                                            @for (int gi = 0; gi < galleryImages.Count; gi++)
-                                            {
-                                                <img src="@galleryImages[gi]"
-                                                     alt="Image @(gi + 1)"
-                                                     class="gallery-thumb @(gi == 0 ? "active" : "")"
-                                                     data-src="@galleryImages[gi]"
-                                                     data-product="@product.Id"
-                                                     onclick="switchGalleryImage(@product.Id, this)" />
-                                            }
-                                        </div>
-                                    }
-                                }
-                                else
-                                {
-                                    <div class="product-card-placeholder" style="height:220px;border-radius:8px;">
-                                        <i class="bi bi-box display-3 text-muted opacity-25"></i>
-                                    </div>
-                                }
+                                <div id="modal-gallery-@product.Id"></div>
                             </div>
 
                             <!-- Info + variant selectors column -->
@@ -487,9 +462,62 @@ else
     var metaMap = {};
     productList.forEach(function (p) { metaMap[p.id] = p; });
 
+    // ── Gallery rendering ─────────────────────────────────────────────────────
+
+    function renderGallery(productId, images) {
+        var container = document.getElementById('modal-gallery-' + productId);
+        if (!container) return;
+        if (!images || images.length === 0) {
+            container.innerHTML =
+                '<div class="product-card-placeholder" style="height:220px;border-radius:8px;">' +
+                '<i class="bi bi-box display-3 text-muted opacity-25"></i></div>';
+            return;
+        }
+        var main = '<img id="gallery-main-' + productId + '" src="' + esc(images[0].src) +
+                   '" alt="" class="img-fluid gallery-main-img w-100 mb-2" />';
+        var thumbs = '';
+        if (images.length > 1) {
+            thumbs = '<div class="d-flex gap-2 flex-wrap mt-1">' +
+                images.map(function (img, i) {
+                    return '<img src="' + esc(img.src) + '" alt="Image ' + (i + 1) + '" ' +
+                           'class="gallery-thumb' + (i === 0 ? ' active' : '') + '" ' +
+                           'data-src="' + esc(img.src) + '" ' +
+                           'onclick="switchGalleryImage(' + productId + ', this)" />';
+                }).join('') + '</div>';
+        }
+        container.innerHTML = main + thumbs;
+    }
+
+    function updateGalleryForVariant(productId) {
+        var meta = metaMap[productId];
+        if (!meta || !meta.images) return;
+        var state = getState(productId);
+        var active = [state.color, state.gender, state.size]
+                     .filter(Boolean).map(function (v) { return v.toLowerCase(); });
+        var filtered = active.length
+            ? meta.images.filter(function (img) {
+                  return !img.tag || active.indexOf(img.tag.toLowerCase()) !== -1;
+              })
+            : meta.images;
+        if (!filtered.length) filtered = meta.images;
+        renderGallery(productId, filtered);
+    }
+
     // ── Cart state ────────────────────────────────────────────────────────────
     var cart     = [];
     var nextLine = 1;
+
+    // Restore cart from sessionStorage so it survives page navigation within the tab
+    try {
+        var _saved = sessionStorage.getItem('storeCart');
+        if (_saved) {
+            var _r = JSON.parse(_saved);
+            if (Array.isArray(_r) && _r.length) {
+                cart     = _r;
+                nextLine = Math.max.apply(null, _r.map(function (l) { return l.lineId || 0; })) + 1;
+            }
+        }
+    } catch (e) { /* ignore */ }
 
     // Per-modal transient selections
     var modalState = {};
@@ -519,6 +547,10 @@ else
         var addedMsg = document.getElementById('modal-added-' + productId);
         if (addedMsg) addedMsg.classList.add('d-none');
 
+        // Render gallery (all images, no variant filter yet)
+        var meta = metaMap[productId];
+        renderGallery(productId, meta ? meta.images : []);
+
         bootstrap.Modal.getOrCreateInstance(el).show();
     };
 
@@ -526,9 +558,9 @@ else
         var src = thumbEl.dataset.src;
         var main = document.getElementById('gallery-main-' + productId);
         if (main) main.src = src;
-        var modal = document.getElementById('modal-' + productId);
-        if (modal) modal.querySelectorAll('.gallery-thumb')
-                        .forEach(function (t) { t.classList.remove('active'); });
+        var container = document.getElementById('modal-gallery-' + productId);
+        if (container) container.querySelectorAll('.gallery-thumb')
+                                .forEach(function (t) { t.classList.remove('active'); });
         thumbEl.classList.add('active');
     };
 
@@ -539,6 +571,7 @@ else
         group.querySelectorAll('.' + cls).forEach(function (b) { b.classList.remove('selected'); });
         btn.classList.add('selected');
         getState(productId)[type] = btn.dataset.value;
+        updateGalleryForVariant(productId);
     };
 
     window.modalSelectColorVariant = function (productId, btn, colorName) {
@@ -549,6 +582,7 @@ else
         getState(productId).color = colorName;
         var lbl = document.getElementById('modal-color-label-' + productId);
         if (lbl) lbl.textContent = colorName;
+        updateGalleryForVariant(productId);
     };
 
     window.modalStepQty = function (productId, delta) {
@@ -603,6 +637,9 @@ else
         var jsonField = document.getElementById('cartJsonField');
 
         var total = cart.reduce(function (s, l) { return s + l.qty; }, 0);
+
+        // Persist across page navigations
+        try { sessionStorage.setItem('storeCart', JSON.stringify(cart)); } catch (e) { /* ignore */ }
 
         // Badge on floating button
         if (badge) {
@@ -674,6 +711,9 @@ else
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Placing Order…';
         }
     });
+
+    // Render restored cart immediately on page load
+    renderCart();
 
 })();
 </script>

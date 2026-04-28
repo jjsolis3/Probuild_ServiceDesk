@@ -1383,6 +1383,19 @@ public static class DbInitializer
                         ON dbo.StoreProductImages (StoreProductId);
                 END");
 
+            // 45. Add VariantTag to StoreProductImages so images can be associated with
+            //     a specific color, size, or gender variant (null = shown for all variants)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID('dbo.StoreProductImages')
+                      AND name = 'VariantTag'
+                )
+                BEGIN
+                    ALTER TABLE dbo.StoreProductImages
+                        ADD VariantTag NVARCHAR(100) NULL;
+                END");
+
         }
         catch (Exception ex)
         {

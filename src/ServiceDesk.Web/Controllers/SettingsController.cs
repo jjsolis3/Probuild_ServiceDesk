@@ -2169,7 +2169,8 @@ public class SettingsController : Controller
     public async Task<IActionResult> StoreProductCreate(
         ServiceDesk.Core.Models.StoreProduct product,
         IFormFile? imageFile,
-        List<IFormFile>? galleryFiles)
+        List<IFormFile>? galleryFiles,
+        List<string>? galleryTags)
     {
         if (!ModelState.IsValid) return View(product);
 
@@ -2181,15 +2182,18 @@ public class SettingsController : Controller
         if (galleryFiles != null && galleryFiles.Count > 0)
         {
             var sort = 100;
-            foreach (var f in galleryFiles)
+            for (var i = 0; i < galleryFiles.Count; i++)
             {
-                var path = await SaveStoreImageAsync(f, null);
+                var path = await SaveStoreImageAsync(galleryFiles[i], null);
                 if (!string.IsNullOrEmpty(path))
                 {
+                    var tag = galleryTags != null && i < galleryTags.Count
+                        ? galleryTags[i]?.Trim() : null;
                     _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
                     {
                         StoreProductId = product.Id,
                         ImagePath      = path,
+                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
                         SortOrder      = sort,
                         CreatedDate    = DateTime.UtcNow
                     });
@@ -2219,6 +2223,8 @@ public class SettingsController : Controller
         ServiceDesk.Core.Models.StoreProduct product,
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
+        List<string>? galleryTags,
+        Dictionary<int, string>? imageTags,
         bool clearImage = false)
     {
         if (id != product.Id) return BadRequest();
@@ -2251,18 +2257,31 @@ public class SettingsController : Controller
             existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
         }
 
+        // Update variant tags on existing gallery images
+        if (imageTags != null)
+        {
+            foreach (var img in existing.Images)
+            {
+                if (imageTags.TryGetValue(img.Id, out var tag))
+                    img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+            }
+        }
+
         if (galleryFiles != null && galleryFiles.Count > 0)
         {
             var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
-            foreach (var f in galleryFiles)
+            for (var i = 0; i < galleryFiles.Count; i++)
             {
-                var path = await SaveStoreImageAsync(f, null);
+                var path = await SaveStoreImageAsync(galleryFiles[i], null);
                 if (!string.IsNullOrEmpty(path))
                 {
+                    var tag = galleryTags != null && i < galleryTags.Count
+                        ? galleryTags[i]?.Trim() : null;
                     _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
                     {
                         StoreProductId = existing.Id,
                         ImagePath      = path,
+                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
                         SortOrder      = sort,
                         CreatedDate    = DateTime.UtcNow
                     });
