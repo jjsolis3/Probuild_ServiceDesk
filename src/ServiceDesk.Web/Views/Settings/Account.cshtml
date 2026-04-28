@@ -107,9 +107,7 @@
                                 else if (timezoneKeys.Contains(setting.Key))
                                 {
                                     <!-- Dropdown for Timezone — IANA IDs, avoids free-text typos -->
-                                    @{
-                                        var currentTz = (setting.Value ?? "UTC").Replace(' ', '_');
-                                    }
+                                    var currentTz = (setting.Value ?? "UTC").Replace(' ', '_');
                                     <select name="@setting.Key" class="form-select" id="setting_@setting.Key" data-no-picker="true">
                                         @foreach (var (tzId, tzLabel) in commonTimezones)
                                         {
