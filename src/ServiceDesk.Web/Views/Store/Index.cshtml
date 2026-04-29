@@ -492,9 +492,9 @@ else
                                 <button type="button"
                                         id="modal-addtocart-@product.Id"
                                         class="btn btn-primary w-100"
-                                        data-needs-size="@product.HasSizes.ToString().ToLower()"
+                                        data-needs-size="@((product.HasSizes && sizes.Length > 0) ? "true" : "false")"
                                         data-needs-gender="@product.HasGenderOption.ToString().ToLower()"
-                                        data-needs-color="@(product.HasColorOptions && (product.AvailableColors ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 0 ? "true" : "false")"
+                                        data-needs-color="@((product.HasColorOptions && colors.Length > 0) ? "true" : "false")"
                                         onclick="addToCart(@product.Id)">
                                     <i class="bi bi-cart-plus me-1"></i>Add to Cart
                                 </button>

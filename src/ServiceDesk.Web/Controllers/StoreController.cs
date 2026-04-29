@@ -123,8 +123,12 @@ public class StoreController : Controller
         {
             if (!products.TryGetValue(c.ProductId, out var product)) continue;
 
-            // Reject lines missing required variants
-            if (product.HasSizes && string.IsNullOrWhiteSpace(c.Size))
+            // Reject lines missing required variants — but only when the product
+            // actually has values configured for that variant (otherwise the UI
+            // would have no way to satisfy the requirement).
+            var hasSizeChoices  = !string.IsNullOrWhiteSpace(product.AvailableSizes);
+            var hasColorChoices = !string.IsNullOrWhiteSpace(product.AvailableColors);
+            if (product.HasSizes && hasSizeChoices && string.IsNullOrWhiteSpace(c.Size))
             {
                 TempData["Error"] = $"Please select a size for \"{product.Name}\".";
                 return RedirectToAction(nameof(Index));
@@ -134,7 +138,7 @@ public class StoreController : Controller
                 TempData["Error"] = $"Please select a gender option for \"{product.Name}\".";
                 return RedirectToAction(nameof(Index));
             }
-            if (product.HasColorOptions && string.IsNullOrWhiteSpace(c.Color))
+            if (product.HasColorOptions && hasColorChoices && string.IsNullOrWhiteSpace(c.Color))
             {
                 TempData["Error"] = $"Please select a color for \"{product.Name}\".";
                 return RedirectToAction(nameof(Index));
@@ -202,16 +206,33 @@ public class StoreController : Controller
         var (quarter, year) = GetCurrentQuarter();
         var notes = form["notes"].ToString().Trim();
 
+        // Resolve the ordering employee's branch for fulfilment routing.
+        int?    branchId   = null;
+        string? branchName = null;
+        if (user.EmployeeId.HasValue)
+        {
+            var emp = await _context.Employees
+                .Include(e => e.Branch)
+                .FirstOrDefaultAsync(e => e.Id == user.EmployeeId.Value);
+            if (emp != null)
+            {
+                branchId   = emp.BranchId;
+                branchName = emp.Branch?.Name;
+            }
+        }
+
         var order = new StoreOrder
         {
-            PortalUserId = user.Id,
-            OrderDate    = DateTime.UtcNow,
-            Status       = "Pending",
-            Quarter      = quarter,
-            Year         = year,
-            Notes        = string.IsNullOrEmpty(notes) ? null : notes,
-            OrderNumber  = "SO-PENDING",
-            Items        = lineItems
+            PortalUserId       = user.Id,
+            OrderDate          = DateTime.UtcNow,
+            Status             = "Pending",
+            Quarter            = quarter,
+            Year               = year,
+            Notes              = string.IsNullOrEmpty(notes) ? null : notes,
+            OrderNumber        = "SO-PENDING",
+            BranchId           = branchId,
+            BranchNameSnapshot = branchName,
+            Items              = lineItems
         };
 
         _context.StoreOrders.Add(order);
@@ -274,6 +295,7 @@ public class StoreController : Controller
         if (user == null) return RedirectToAction("Login", "Account");
 
         var order = await _context.StoreOrders
+            .Include(o => o.Branch)
             .Include(o => o.Items)
                 .ThenInclude(i => i.StoreProduct)
             .FirstOrDefaultAsync(o => o.Id == id && o.PortalUserId == user.Id);
@@ -312,6 +334,7 @@ public class StoreController : Controller
 
         var query = baseQuery
             .Include(o => o.PortalUser)
+            .Include(o => o.Branch)
             .Include(o => o.Items)
                 .ThenInclude(i => i.StoreProduct)
             .AsQueryable();
@@ -324,16 +347,28 @@ public class StoreController : Controller
             .ThenBy(o => o.OrderDate)
             .ToListAsync();
 
-        // Product totals for the current view
+        // Build product totals with a per-branch breakdown so fulfilment can see
+        // which locations need each item.
         var productTotals = orders
-            .SelectMany(o => o.Items)
-            .GroupBy(i => new { i.StoreProductId, i.ProductNameSnapshot, i.ProductCategorySnapshot })
+            .SelectMany(o => o.Items.Select(i => new {
+                Item   = i,
+                Order  = o,
+                Branch = o.Branch?.Name ?? o.BranchNameSnapshot ?? "Unassigned"
+            }))
+            .GroupBy(x => new { x.Item.StoreProductId, x.Item.ProductNameSnapshot, x.Item.ProductCategorySnapshot })
             .Select(g => new
             {
                 Name       = g.Key.ProductNameSnapshot,
                 Category   = g.Key.ProductCategorySnapshot,
-                TotalQty   = g.Sum(i => i.Quantity),
-                OrderCount = g.Select(i => i.StoreOrderId).Distinct().Count()
+                TotalQty   = g.Sum(x => x.Item.Quantity),
+                OrderCount = g.Select(x => x.Item.StoreOrderId).Distinct().Count(),
+                ByBranch   = g.GroupBy(x => x.Branch)
+                              .Select(b => new {
+                                  Branch = b.Key,
+                                  Qty    = b.Sum(x => x.Item.Quantity)
+                              })
+                              .OrderByDescending(b => b.Qty)
+                              .ToList()
             })
             .OrderByDescending(p => p.TotalQty)
             .ToList();

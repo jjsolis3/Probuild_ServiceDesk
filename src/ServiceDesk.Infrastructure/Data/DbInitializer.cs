@@ -1414,6 +1414,21 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'UnitPriceSnapshot')
                     ALTER TABLE dbo.StoreOrderItems ADD UnitPriceSnapshot DECIMAL(10, 2) NULL;");
 
+            // 47. Branch tracking on store orders — captures the originating
+            //     branch/location of the ordering employee for fulfilment routing
+            //     and reporting. BranchNameSnapshot keeps historical exports stable.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrders') AND name = 'BranchId')
+                BEGIN
+                    ALTER TABLE dbo.StoreOrders
+                        ADD BranchId INT NULL
+                        CONSTRAINT FK_StoreOrders_Branches
+                        REFERENCES dbo.Branches(Id)
+                        ON DELETE SET NULL;
+                END
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrders') AND name = 'BranchNameSnapshot')
+                    ALTER TABLE dbo.StoreOrders ADD BranchNameSnapshot NVARCHAR(200) NULL;");
+
         }
         catch (Exception ex)
         {

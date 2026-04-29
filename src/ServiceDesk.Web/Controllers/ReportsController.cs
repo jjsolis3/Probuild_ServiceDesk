@@ -620,6 +620,7 @@ public class ReportsController : Controller
 
         var query = _context.StoreOrders
             .Include(o => o.PortalUser)
+            .Include(o => o.Branch)
             .Include(o => o.Items)
             .Where(o => o.Year == year && o.Quarter == quarter)
             .AsQueryable();
@@ -630,16 +631,34 @@ public class ReportsController : Controller
         var orders = await query.OrderBy(o => o.OrderNumber).ToListAsync();
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Order #,User Name,Email,Order Date,Quarter,Year,Status,Product,Category,Gender,Size,Color,Qty,Notes");
+        sb.AppendLine("Order #,User Name,Email,Branch / Location,Order Date,Quarter,Year,Status,Product,Category,Gender,Size,Color,Custom Options,Qty,Unit Price,Subtotal,Notes");
 
         foreach (var order in orders)
         {
+            var branchLabel = order.Branch?.Name ?? order.BranchNameSnapshot ?? "Unassigned";
             foreach (var item in order.Items)
             {
+                // Flatten custom selections JSON into a "Label: Value; Label: Value" string.
+                var customParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.CustomSelectionsJson);
+                        foreach (var prop in doc.RootElement.EnumerateObject())
+                            customParts.Add($"{prop.Name}: {prop.Value.GetString()}");
+                    }
+                    catch { /* malformed — skip */ }
+                }
+                var subtotal = item.UnitPriceSnapshot.HasValue
+                    ? (item.UnitPriceSnapshot.Value * item.Quantity).ToString("0.00")
+                    : string.Empty;
+
                 sb.AppendLine(string.Join(",",
                     CsvEscape(order.OrderNumber),
                     CsvEscape(order.PortalUser.FullName),
                     CsvEscape(order.PortalUser.Email),
+                    CsvEscape(branchLabel),
                     CsvEscape(order.OrderDate.ToString("yyyy-MM-dd HH:mm")),
                     $"Q{order.Quarter}",
                     order.Year.ToString(),
@@ -649,7 +668,10 @@ public class ReportsController : Controller
                     CsvEscape(item.SelectedGender ?? string.Empty),
                     CsvEscape(item.SelectedSize   ?? string.Empty),
                     CsvEscape(item.SelectedColor  ?? string.Empty),
+                    CsvEscape(string.Join("; ", customParts)),
                     item.Quantity.ToString(),
+                    CsvEscape(item.UnitPriceSnapshot?.ToString("0.00") ?? string.Empty),
+                    CsvEscape(subtotal),
                     CsvEscape(order.Notes ?? string.Empty)
                 ));
             }

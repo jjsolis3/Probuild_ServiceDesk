@@ -47,6 +47,15 @@
                     <dt class="col-sm-5">Quarter</dt>
                     <dd class="col-sm-7">Q@(Model.Quarter) @Model.Year</dd>
 
+                    @{
+                        var branchDisplay = Model.Branch?.Name ?? Model.BranchNameSnapshot;
+                    }
+                    @if (!string.IsNullOrEmpty(branchDisplay))
+                    {
+                        <dt class="col-sm-5">Branch / Location</dt>
+                        <dd class="col-sm-7"><i class="bi bi-geo-alt me-1 text-muted"></i>@branchDisplay</dd>
+                    }
+
                     <dt class="col-sm-5">Status</dt>
                     <dd class="col-sm-7">
                         <span class="badge @StatusBadge(Model.Status)">@Model.Status</span>

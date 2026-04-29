@@ -592,6 +592,14 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(o => o.PortalUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // StoreOrder -> Branch (nullable; SET NULL on branch delete so historical
+        // orders survive, with the snapshot column preserving the name).
+        modelBuilder.Entity<StoreOrder>()
+            .HasOne(o => o.Branch)
+            .WithMany()
+            .HasForeignKey(o => o.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // StoreOrderItem -> StoreOrder
         modelBuilder.Entity<StoreOrderItem>()
             .HasOne(i => i.StoreOrder)

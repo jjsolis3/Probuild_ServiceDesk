@@ -60,6 +60,33 @@
 .fulfilled-dot { width:8px;height:8px;border-radius:50%;background:#198754;display:inline-block; }
 .cancelled-dot { width:8px;height:8px;border-radius:50%;background:#dc3545;display:inline-block; }
 .bulk-toolbar { background:#e8f0fe; border-radius:6px; padding:6px 12px; font-size:.85rem; }
+
+/* Sticky right column — anchors below the navbar and confines its own height
+   to the viewport so it never pushes the page past the footer. Internal
+   overflow scrolls instead of the page growing. */
+.ops-side-sticky {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.ops-totals-scroll { max-height: none; overflow: visible; }
+@@media (max-width: 991.98px) {
+    /* On narrow screens the sticky behaviour stops; let the panel flow normally. */
+    .ops-side-sticky { position: static; max-height: none; overflow: visible; }
+}
+.branch-chip {
+    display: inline-flex;
+    align-items: center;
+    background:#eef5ff;
+    color:#0a4d99;
+    border:1px solid #cfe2ff;
+    border-radius: 10px;
+    font-size: 11px;
+    padding: 1px 7px;
+    line-height: 1.4;
+}
 </style>
 }
 
@@ -244,6 +271,21 @@
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
                                         <span class="fw-bold small">@order.OrderNumber</span>
                                         <span class="badge @BadgeClass(order.Status)">@order.Status</span>
+                                        @{
+                                            var branchLabel = order.Branch?.Name ?? order.BranchNameSnapshot;
+                                        }
+                                        @if (!string.IsNullOrEmpty(branchLabel))
+                                        {
+                                            <span class="badge bg-secondary bg-opacity-10 text-secondary border" title="Fulfilment location">
+                                                <i class="bi bi-geo-alt me-1"></i>@branchLabel
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning bg-opacity-25 text-warning-emphasis border" title="No branch assigned to ordering employee">
+                                                <i class="bi bi-geo-alt me-1"></i>Unassigned
+                                            </span>
+                                        }
                                     </div>
                                     <div class="text-muted" style="font-size:.8rem;">
                                         <i class="bi bi-person me-1"></i>@order.PortalUser.FullName
@@ -372,77 +414,90 @@
 
     <!-- Product Totals (right panel) -->
     <div class="col-lg-4">
-        <div class="card shadow-sm" style="position:sticky;top:80px;">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-bar-chart me-2"></i>Product Totals
-                    <span class="text-muted fw-normal small">Q@(quarter) @year</span>
-                </h5>
-            </div>
-            @if (!productTotals.Any())
-            {
-                <div class="card-body text-center text-muted py-4 small">
-                    No orders in this period.
+        <div class="ops-side-sticky">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bar-chart me-2"></i>Product Totals
+                        <span class="text-muted fw-normal small">Q@(quarter) @year</span>
+                    </h5>
                 </div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Product</th>
-                                <th class="text-end">Qty</th>
-                                <th class="text-end">Orders</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var p in productTotals)
-                            {
+                @if (!productTotals.Any())
+                {
+                    <div class="card-body text-center text-muted py-4 small">
+                        No orders in this period.
+                    </div>
+                }
+                else
+                {
+                    <div class="ops-totals-scroll">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
                                 <tr>
-                                    <td>
-                                        <div class="small fw-semibold">@p.Name</div>
-                                        @if (p.Category != null)
-                                        {
-                                            <div class="text-muted" style="font-size:11px;">@p.Category</div>
-                                        }
-                                    </td>
-                                    <td class="text-end fw-bold">@p.TotalQty</td>
-                                    <td class="text-end text-muted small">@p.OrderCount</td>
+                                    <th>Product</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Orders</th>
                                 </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in productTotals)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="small fw-semibold">@p.Name</div>
+                                            @if (p.Category != null)
+                                            {
+                                                <div class="text-muted" style="font-size:11px;">@p.Category</div>
+                                            }
+                                            @if (p.ByBranch != null && p.ByBranch.Count > 0)
+                                            {
+                                                <div class="mt-1 d-flex flex-wrap gap-1">
+                                                    @foreach (var b in p.ByBranch)
+                                                    {
+                                                        <span class="branch-chip" title="Branch / Location">
+                                                            <i class="bi bi-geo-alt me-1"></i>@b.Branch:&nbsp;<strong>@b.Qty</strong>
+                                                        </span>
+                                                    }
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="text-end fw-bold">@p.TotalQty</td>
+                                        <td class="text-end text-muted small">@p.OrderCount</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer bg-transparent py-2">
+                        <p class="text-muted small mb-0">
+                            <i class="bi bi-info-circle me-1"></i>
+                            @if (!string.IsNullOrEmpty(activeStatus))
+                            {
+                                <span>Showing totals for <strong>@activeStatus</strong> orders only.</span>
                             }
-                        </tbody>
-                    </table>
-                </div>
-                <div class="card-footer bg-transparent py-2">
-                    <p class="text-muted small mb-0">
-                        <i class="bi bi-info-circle me-1"></i>
-                        @if (!string.IsNullOrEmpty(activeStatus))
-                        {
-                            <span>Showing totals for <strong>@activeStatus</strong> orders only.</span>
-                        }
-                        else
-                        {
-                            <span>Totals across all order statuses.</span>
-                        }
+                            else
+                            {
+                                <span>Totals across all order statuses.</span>
+                            }
+                        </p>
+                    </div>
+                }
+            </div>
+
+            <div class="card mt-3 border-0 bg-light shadow-sm">
+                <div class="card-body py-3">
+                    <h6 class="fw-bold mb-2 small"><i class="bi bi-info-circle me-1 text-primary"></i>Workflow Guide</h6>
+                    <ul class="small text-muted mb-0 ps-3">
+                        <li class="mb-1"><span class="pending-dot me-1"></span><strong>Pending</strong> — New, not yet reviewed</li>
+                        <li class="mb-1"><span class="confirmed-dot me-1"></span><strong>Confirmed</strong> — Reviewed, being processed</li>
+                        <li class="mb-1"><span class="fulfilled-dot me-1"></span><strong>Fulfilled</strong> — Items delivered / ready</li>
+                        <li><span class="cancelled-dot me-1"></span><strong>Cancelled</strong> — Order will not be processed</li>
+                    </ul>
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="bi bi-envelope me-1"></i>
+                        Each status change sends an automatic email notification to the employee.
                     </p>
                 </div>
-            }
-        </div>
-
-        <div class="card mt-3 border-0 bg-light shadow-sm">
-            <div class="card-body py-3">
-                <h6 class="fw-bold mb-2 small"><i class="bi bi-info-circle me-1 text-primary"></i>Workflow Guide</h6>
-                <ul class="small text-muted mb-0 ps-3">
-                    <li class="mb-1"><span class="pending-dot me-1"></span><strong>Pending</strong> — New, not yet reviewed</li>
-                    <li class="mb-1"><span class="confirmed-dot me-1"></span><strong>Confirmed</strong> — Reviewed, being processed</li>
-                    <li class="mb-1"><span class="fulfilled-dot me-1"></span><strong>Fulfilled</strong> — Items delivered / ready</li>
-                    <li><span class="cancelled-dot me-1"></span><strong>Cancelled</strong> — Order will not be processed</li>
-                </ul>
-                <p class="small text-muted mt-2 mb-0">
-                    <i class="bi bi-envelope me-1"></i>
-                    Each status change sends an automatic email notification to the employee.
-                </p>
             </div>
         </div>
     </div>
