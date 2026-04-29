@@ -137,7 +137,7 @@
 
 <footer class="border-top bg-white py-3 mt-5">
     <div class="container text-center text-muted small">
-        @companyName IT Support &copy; @DateTime.Now.Year
+        @companyName IT Support 
         @if (!string.IsNullOrEmpty(companyPhone))
         {
             <span class="mx-2">&mdash;</span>
@@ -149,7 +149,8 @@
             <a href="@companyWebsite" target="_blank" rel="noopener" class="text-muted">@companyWebsite</a>
         }
         <span class="mx-2">&mdash;</span>
-        <span class="opacity-50">Powered by ServiceSphere</span>
+        <span class="opacity-50">Powered by ServiceSphere</span> 
+        &copy; @DateTime.Now.Year
     </div>
 </footer>
 
