@@ -1,4 +1,5 @@
 @model Ticket
+@using ServiceDesk.Web.Helpers
 @{
     var _catById = ViewBag.CategoriesById as Dictionary<int, string> ?? new Dictionary<int, string>();
     var _mdPrefix = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
@@ -28,23 +29,23 @@
 </div>
 <div style="height:3px;background:@_mStatusAccent;border-radius:2px;margin-bottom:1rem;"></div>
 
-<div class="row g-3">
-    <div class="col-md-7">
-        <div class="card">
+<div class="row g-3" style="min-height:300px;">
+    <div class="col-md-7 d-flex flex-column">
+        <div class="card flex-grow-1">
             <div class="card-header">Description</div>
             @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
             {
-                <div class="card-body p-0">
+                <div class="card-body p-0 flex-grow-1">
                     <iframe srcdoc="@(_mdPrefix + Model.DescriptionHtml + _mdSuffix)"
-                            style="width:100%;border:none;min-height:150px;max-height:600px;display:block;"
+                            style="width:100%;border:none;min-height:180px;max-height:600px;display:block;"
                             sandbox="allow-same-origin"
                             title="Email description"
-                            onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;var h=d.body.scrollHeight;f.style.height=Math.min(600,Math.max(150,h))+'px';})(this)"></iframe>
+                            onload="(function(f){var d=f.contentDocument;if(!d||!d.body)return;var h=d.body.scrollHeight;f.style.height=Math.min(600,Math.max(180,h))+'px';})(this)"></iframe>
                 </div>
             }
             else
             {
-                <div class="card-body">
+                <div class="card-body flex-grow-1" style="min-height:180px;">
                     <p class="mb-0" style="white-space:pre-wrap; word-break:break-word;">@Model.Description</p>
                 </div>
             }
@@ -59,8 +60,8 @@
             </div>
         }
     </div>
-    <div class="col-md-5">
-        <div class="card">
+    <div class="col-md-5 d-flex flex-column">
+        <div class="card h-100">
             <div class="card-header">Details</div>
             <div class="card-body">
                 <dl class="mb-0">
