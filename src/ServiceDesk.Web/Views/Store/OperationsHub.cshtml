@@ -102,7 +102,13 @@
             }
         </p>
     </div>
-    <div class="d-flex gap-2 align-items-center">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <a asp-action="OpsProducts" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-box-seam me-1"></i>Products
+        </a>
+        <a asp-action="OpsStoreSettings" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-gear me-1"></i>Store Settings
+        </a>
         <a asp-controller="Reports" asp-action="StoreOrdersExport"
            asp-route-year="@year" asp-route-quarter="@quarter"
            class="btn btn-sm btn-outline-success">
