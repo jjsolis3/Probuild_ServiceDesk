@@ -2166,7 +2166,11 @@ public class SettingsController : Controller
     }
 
     // GET: Settings/StoreProductCreate
-    public IActionResult StoreProductCreate() => View(new ServiceDesk.Core.Models.StoreProduct());
+    public async Task<IActionResult> StoreProductCreate()
+    {
+        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        return View(new ServiceDesk.Core.Models.StoreProduct());
+    }
 
     // POST: Settings/StoreProductCreate
     [HttpPost, ValidateAntiForgeryToken]
@@ -2176,7 +2180,18 @@ public class SettingsController : Controller
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags)
     {
-        if (!ModelState.IsValid) return View(product);
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            return View(product);
+        }
+
+        // Normalize new fields
+        if (!product.HasPrice) product.Price = null;
+        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
+            ? null
+            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        product.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
 
         product.ImagePath = await SaveStoreImageAsync(imageFile, null);
         product.CreatedDate = DateTime.UtcNow;
@@ -2218,6 +2233,7 @@ public class SettingsController : Controller
             .Include(p => p.Images)
             .FirstOrDefaultAsync(p => p.Id == id);
         if (product == null) return NotFound();
+        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
         return View(product);
     }
 
@@ -2229,10 +2245,16 @@ public class SettingsController : Controller
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
         Dictionary<int, string>? imageTags,
+        Dictionary<int, string>? imageAlts,
+        Dictionary<int, int>? imageOrders,
         bool clearImage = false)
     {
         if (id != product.Id) return BadRequest();
-        if (!ModelState.IsValid) return View(product);
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            return View(product);
+        }
 
         var existing = await _context.StoreProducts
             .Include(p => p.Images)
@@ -2251,6 +2273,15 @@ public class SettingsController : Controller
         existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes) ? null : product.AvailableSizes.Trim();
         existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors) ? null : product.AvailableColors.Trim();
 
+        // New flexibility fields
+        existing.HasPrice          = product.HasPrice;
+        existing.Price             = product.HasPrice ? product.Price : null;
+        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
+        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
+            ? null
+            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        existing.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
+
         if (clearImage)
         {
             DeleteStoreImage(existing.ImagePath);
@@ -2261,14 +2292,17 @@ public class SettingsController : Controller
             existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
         }
 
-        // Update variant tags on existing gallery images
-        if (imageTags != null)
+        // Update tag / alt text / sort order on existing gallery images
+        foreach (var img in existing.Images)
         {
-            foreach (var img in existing.Images)
-            {
-                if (imageTags.TryGetValue(img.Id, out var tag))
-                    img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
-            }
+            if (imageTags != null && imageTags.TryGetValue(img.Id, out var tag))
+                img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+
+            if (imageAlts != null && imageAlts.TryGetValue(img.Id, out var alt))
+                img.Alt = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
+
+            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var order))
+                img.SortOrder = Math.Clamp(order, 0, 9999);
         }
 
         if (galleryFiles != null && galleryFiles.Count > 0)
@@ -2525,5 +2559,41 @@ public class SettingsController : Controller
         var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
         if (System.IO.File.Exists(full))
             System.IO.File.Delete(full);
+    }
+
+    private async Task<List<string>> GetExistingCategoriesAsync()
+    {
+        return await _context.StoreProducts
+            .Where(p => p.Category != null && p.Category != "")
+            .Select(p => p.Category!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync();
+    }
+
+    // Validates the JSON payload from the Custom Options builder. Returns null
+    // for empty or malformed input so the DB stays clean.
+    private static string? NormalizeCustomOptionsJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+            var keep = new List<object>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var label = el.TryGetProperty("label", out var l) ? l.GetString() : null;
+                var values = el.TryGetProperty("values", out var v) ? v.GetString() : null;
+                var required = el.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
+                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(values)) continue;
+                keep.Add(new { label = label!.Trim(), values = values!.Trim(), required });
+            }
+            return keep.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(keep);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

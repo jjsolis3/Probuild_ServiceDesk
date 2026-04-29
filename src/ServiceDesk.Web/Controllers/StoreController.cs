@@ -140,15 +140,56 @@ public class StoreController : Controller
                 return RedirectToAction(nameof(Index));
             }
 
+            // Reject lines exceeding the per-product max qty
+            var qty = Math.Clamp(c.Qty, 1, 999);
+            if (product.MaxQtyPerOrder.HasValue && qty > product.MaxQtyPerOrder.Value)
+            {
+                TempData["Error"] =
+                    $"\"{product.Name}\" has a per-order maximum of {product.MaxQtyPerOrder.Value}.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            // Validate any required custom options
+            var customSelections = c.CustomSelections ?? new Dictionary<string, string>();
+            string? customJson = null;
+            if (!string.IsNullOrWhiteSpace(product.CustomOptionsJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(product.CustomOptionsJson);
+                    foreach (var opt in doc.RootElement.EnumerateArray())
+                    {
+                        var label    = opt.TryGetProperty("label", out var l)    ? l.GetString() : null;
+                        var required = opt.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
+                        if (string.IsNullOrEmpty(label)) continue;
+                        var picked = customSelections.TryGetValue(label, out var pv) ? pv?.Trim() : null;
+                        if (required && string.IsNullOrWhiteSpace(picked))
+                        {
+                            TempData["Error"] = $"Please select \"{label}\" for \"{product.Name}\".";
+                            return RedirectToAction(nameof(Index));
+                        }
+                    }
+                }
+                catch { /* malformed product config — skip */ }
+
+                var trimmed = customSelections
+                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Trim());
+                if (trimmed.Any())
+                    customJson = System.Text.Json.JsonSerializer.Serialize(trimmed);
+            }
+
             lineItems.Add(new StoreOrderItem
             {
                 StoreProductId          = product.Id,
-                Quantity                = Math.Clamp(c.Qty, 1, 999),
+                Quantity                = qty,
                 ProductNameSnapshot     = product.Name,
                 ProductCategorySnapshot = product.Category,
                 SelectedSize            = string.IsNullOrWhiteSpace(c.Size)   ? null : c.Size.Trim(),
                 SelectedGender          = string.IsNullOrWhiteSpace(c.Gender) ? null : c.Gender.Trim(),
-                SelectedColor           = string.IsNullOrWhiteSpace(c.Color)  ? null : c.Color.Trim()
+                SelectedColor           = string.IsNullOrWhiteSpace(c.Color)  ? null : c.Color.Trim(),
+                CustomSelectionsJson    = customJson,
+                UnitPriceSnapshot       = product.HasPrice ? product.Price : null
             });
         }
 
@@ -480,5 +521,6 @@ public class StoreController : Controller
         public string? Size { get; set; }
         public string? Gender { get; set; }
         public string? Color { get; set; }
+        public Dictionary<string, string>? CustomSelections { get; set; }
     }
 }

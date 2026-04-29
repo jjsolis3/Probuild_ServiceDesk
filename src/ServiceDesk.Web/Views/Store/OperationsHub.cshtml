@@ -320,6 +320,16 @@
                                                 if (!string.IsNullOrEmpty(item.SelectedGender)) vparts.Add(item.SelectedGender);
                                                 if (!string.IsNullOrEmpty(item.SelectedSize))   vparts.Add(item.SelectedSize);
                                                 if (!string.IsNullOrEmpty(item.SelectedColor))  vparts.Add(item.SelectedColor);
+                                                if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
+                                                {
+                                                    try
+                                                    {
+                                                        using var _d = System.Text.Json.JsonDocument.Parse(item.CustomSelectionsJson);
+                                                        foreach (var _p in _d.RootElement.EnumerateObject())
+                                                            vparts.Add($"{_p.Name}: {_p.Value.GetString()}");
+                                                    }
+                                                    catch { }
+                                                }
 
                                                 <tr>
                                                     <td>

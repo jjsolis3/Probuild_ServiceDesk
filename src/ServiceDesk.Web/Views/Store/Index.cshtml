@@ -22,12 +22,33 @@
                 .ToList();
             if (!imgs.Any() && !string.IsNullOrEmpty(p.ImagePath))
                 imgs.Add(new { src = p.ImagePath!, tag = "" });
+
+            // Parse custom-options JSON into a typed array for the modal
+            object[] customOpts = Array.Empty<object>();
+            if (!string.IsNullOrWhiteSpace(p.CustomOptionsJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(p.CustomOptionsJson);
+                    customOpts = doc.RootElement.EnumerateArray().Select(el => (object)new {
+                        label    = el.TryGetProperty("label",    out var l) ? l.GetString() : "",
+                        values   = el.TryGetProperty("values",   out var v) ? v.GetString() : "",
+                        required = el.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True
+                    }).ToArray();
+                }
+                catch { customOpts = Array.Empty<object>(); }
+            }
+
             return new {
                 id        = p.Id,
                 name      = p.Name,
                 hasSizes  = p.HasSizes,
                 hasGender = p.HasGenderOption,
                 hasColor  = p.HasColorOptions,
+                hasPrice  = p.HasPrice,
+                price     = p.Price,
+                maxQty    = p.MaxQtyPerOrder,
+                customOptions = customOpts,
                 images    = imgs
             };
         }).ToList());
@@ -279,7 +300,7 @@ else
                         ?? product.ImagePath;
 
                     <div class="col-6 col-md-4 col-lg-3 catalog-col"
-                         data-name="@product.Name.ToLower()"
+                         data-name="@((product.Name + " " + (product.Tags ?? "")).ToLower())"
                          data-category="@(product.Category ?? "General")">
                         <div class="card product-grid-card h-100 shadow-sm border-0 position-relative"
                              id="grid-card-@product.Id"
@@ -303,12 +324,32 @@ else
                                 </div>
                             }
 
+                            @{
+                                var productTags = (product.Tags ?? string.Empty)
+                                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                            }
+                            @if (productTags.Any())
+                            {
+                                <div class="position-absolute" style="top:8px;left:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:75%;">
+                                    @foreach (var t in productTags.Take(2))
+                                    {
+                                        <span class="badge bg-info text-dark" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;">@t</span>
+                                    }
+                                </div>
+                            }
+
                             <div class="card-body p-3">
                                 <h6 class="fw-semibold mb-1 small" style="line-height:1.3;">@product.Name</h6>
                                 @if (!string.IsNullOrEmpty(product.UnitOfMeasure))
                                 {
                                     <div class="text-muted" style="font-size:.72rem;">
                                         <i class="bi bi-rulers me-1"></i>@product.UnitOfMeasure
+                                    </div>
+                                }
+                                @if (product.HasPrice && product.Price.HasValue)
+                                {
+                                    <div class="fw-bold text-success mt-1" style="font-size:.95rem;">
+                                        @product.Price.Value.ToString("C")
                                     </div>
                                 }
                                 <div class="mt-2">
@@ -350,9 +391,25 @@ else
 
                             <!-- Info + variant selectors column -->
                             <div class="col-md-7">
-                                @if (!string.IsNullOrEmpty(product.Category))
+                                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                                    @if (!string.IsNullOrEmpty(product.Category))
+                                    {
+                                        <span class="badge bg-secondary bg-opacity-10 text-secondary">@product.Category</span>
+                                    }
+                                    @{
+                                        var modalTags = (product.Tags ?? string.Empty)
+                                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                    }
+                                    @foreach (var t in modalTags)
+                                    {
+                                        <span class="badge bg-info bg-opacity-25 text-dark" style="font-size:.7rem;text-transform:uppercase;">@t</span>
+                                    }
+                                </div>
+                                @if (product.HasPrice && product.Price.HasValue)
                                 {
-                                    <span class="badge bg-secondary bg-opacity-10 text-secondary mb-2">@product.Category</span>
+                                    <div class="fw-bold text-success mb-2" style="font-size:1.4rem;">
+                                        @product.Price.Value.ToString("C")
+                                    </div>
                                 }
                                 @if (!string.IsNullOrEmpty(product.Description))
                                 {
@@ -362,6 +419,12 @@ else
                                 {
                                     <p class="text-muted small mb-3">
                                         <i class="bi bi-rulers me-1"></i><strong>Unit:</strong> @product.UnitOfMeasure
+                                    </p>
+                                }
+                                @if (product.MaxQtyPerOrder.HasValue)
+                                {
+                                    <p class="text-muted small mb-3">
+                                        <i class="bi bi-info-circle me-1"></i>Max <strong>@product.MaxQtyPerOrder</strong> per order.
                                     </p>
                                 }
 
@@ -413,6 +476,9 @@ else
                                         </div>
                                     </div>
                                 }
+
+                                <!-- Custom options (rendered by JS based on product metadata) -->
+                                <div id="modal-customopts-@product.Id"></div>
 
                                 <div class="mb-3">
                                     <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;">QUANTITY</div>
@@ -575,9 +641,46 @@ else
     // Per-modal transient selections
     var modalState = {};
     function getState(id) {
-        if (!modalState[id]) modalState[id] = { gender: '', color: '', size: '' };
+        if (!modalState[id]) modalState[id] = { gender: '', color: '', size: '', custom: {} };
+        if (!modalState[id].custom) modalState[id].custom = {};
         return modalState[id];
     }
+
+    function renderCustomOptions(productId) {
+        var meta = metaMap[productId];
+        var container = document.getElementById('modal-customopts-' + productId);
+        if (!container || !meta) return;
+        var opts = meta.customOptions || [];
+        if (!opts.length) { container.innerHTML = ''; return; }
+
+        container.innerHTML = opts.map(function (o, idx) {
+            var values = (o.values || '').split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+            var reqMark = o.required ? '<span class="text-danger">*</span>' : '';
+            var btns = values.map(function (v) {
+                return '<button type="button" class="size-btn custom-opt-btn" ' +
+                       'data-product="' + productId + '" data-label="' + esc(o.label) + '" ' +
+                       'data-value="' + esc(v) + '" ' +
+                       'onclick="modalSelectCustom(this)">' + esc(v) + '</button>';
+            }).join('');
+            return '<div class="mb-3">' +
+                   '  <div class="text-muted mb-1" style="font-size:.75rem;font-weight:600;text-transform:uppercase;">' +
+                       esc(o.label) + ' ' + reqMark +
+                   '  </div>' +
+                   '  <div class="d-flex gap-1 flex-wrap" data-custom-group="' + idx + '">' + btns + '</div>' +
+                   '</div>';
+        }).join('');
+    }
+
+    window.modalSelectCustom = function (btn) {
+        var pid    = parseInt(btn.dataset.product, 10);
+        var label  = btn.dataset.label;
+        var value  = btn.dataset.value;
+        var group  = btn.parentElement;
+        group.querySelectorAll('.custom-opt-btn').forEach(function (b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        getState(pid).custom[label] = value;
+        updateAddToCartBtn(pid);
+    };
 
     // ── Modal ─────────────────────────────────────────────────────────────────
 
@@ -586,12 +689,16 @@ else
         if (!el) return;
 
         // Reset state
-        modalState[productId] = { gender: '', color: '', size: '' };
+        modalState[productId] = { gender: '', color: '', size: '', custom: {} };
 
+        var meta = metaMap[productId];
         var qtyEl = document.getElementById('modal-qty-' + productId);
-        if (qtyEl) qtyEl.value = 1;
+        if (qtyEl) {
+            qtyEl.value = 1;
+            qtyEl.max = meta && meta.maxQty ? meta.maxQty : 999;
+        }
 
-        el.querySelectorAll('.gender-pill, .size-btn, .color-swatch')
+        el.querySelectorAll('.gender-pill, .size-btn, .color-swatch, .custom-opt-btn')
           .forEach(function (b) { b.classList.remove('selected'); });
 
         var colorLbl = document.getElementById('modal-color-label-' + productId);
@@ -601,10 +708,10 @@ else
         if (addedMsg) addedMsg.classList.add('d-none');
 
         // Render gallery (all images, no variant filter yet)
-        var meta = metaMap[productId];
         renderGallery(productId, meta ? meta.images : []);
 
-        // Set initial Add to Cart button state
+        // Render custom options + set initial Add to Cart button state
+        renderCustomOptions(productId);
         updateAddToCartBtn(productId);
 
         bootstrap.Modal.getOrCreateInstance(el).show();
@@ -627,9 +734,22 @@ else
         var needsSize   = btn.dataset.needsSize   === 'true';
         var needsGender = btn.dataset.needsGender === 'true';
         var needsColor  = btn.dataset.needsColor  === 'true';
+
+        var meta = metaMap[productId];
+        var customMissing = false;
+        if (meta && meta.customOptions) {
+            for (var i = 0; i < meta.customOptions.length; i++) {
+                var o = meta.customOptions[i];
+                if (o.required && !(state.custom && state.custom[o.label])) {
+                    customMissing = true; break;
+                }
+            }
+        }
+
         var valid = (!needsSize   || !!state.size)
                  && (!needsGender || !!state.gender)
-                 && (!needsColor  || !!state.color);
+                 && (!needsColor  || !!state.color)
+                 && !customMissing;
         btn.disabled = !valid;
         btn.classList.toggle('btn-secondary', !valid);
         btn.classList.toggle('btn-primary',   valid);
@@ -663,7 +783,9 @@ else
     window.modalStepQty = function (productId, delta) {
         var inp = document.getElementById('modal-qty-' + productId);
         if (!inp) return;
-        inp.value = Math.max(1, Math.min(999, (parseInt(inp.value, 10) || 1) + delta));
+        var meta = metaMap[productId];
+        var max  = meta && meta.maxQty ? meta.maxQty : 999;
+        inp.value = Math.max(1, Math.min(max, (parseInt(inp.value, 10) || 1) + delta));
     };
 
     // ── Add to cart ───────────────────────────────────────────────────────────
@@ -674,16 +796,28 @@ else
 
         var state  = getState(productId);
         var qtyEl  = document.getElementById('modal-qty-' + productId);
-        var qty    = Math.max(1, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1);
+        var max    = meta.maxQty ? meta.maxQty : 999;
+        var qty    = Math.max(1, Math.min(max, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1));
+
+        // Snapshot custom selections (only labels with values)
+        var custom = {};
+        if (state.custom) {
+            Object.keys(state.custom).forEach(function (k) {
+                if (state.custom[k]) custom[k] = state.custom[k];
+            });
+        }
 
         cart.push({
-            lineId:    nextLine++,
-            productId: productId,
-            name:      meta.name,
-            qty:       qty,
-            gender:    state.gender || '',
-            color:     state.color  || '',
-            size:      state.size   || ''
+            lineId:           nextLine++,
+            productId:        productId,
+            name:             meta.name,
+            qty:              qty,
+            gender:           state.gender || '',
+            color:            state.color  || '',
+            size:             state.size   || '',
+            customSelections: custom,
+            unitPrice:        meta.hasPrice ? meta.price : null,
+            maxQty:           max
         });
 
         var addedMsg = document.getElementById('modal-added-' + productId);
@@ -705,7 +839,8 @@ else
     window.cartChangeQty = function (lineId, delta) {
         var line = cart.find(function (l) { return l.lineId === lineId; });
         if (!line) return;
-        var newQty = Math.max(0, Math.min(999, line.qty + delta));
+        var max = line.maxQty || 999;
+        var newQty = Math.max(0, Math.min(max, line.qty + delta));
         if (newQty === 0) {
             cart = cart.filter(function (l) { return l.lineId !== lineId; });
         } else {
@@ -754,26 +889,44 @@ else
         if (itemsList) itemsList.classList.remove('d-none');
         if (footer)    footer.classList.remove('d-none');
 
-        // Serialise cart for form POST
+        // Serialise cart for form POST (includes custom selections)
         if (jsonField) {
             jsonField.value = JSON.stringify(cart.map(function (l) {
                 return { productId: l.productId, qty: l.qty,
-                         size: l.size, gender: l.gender, color: l.color };
+                         size: l.size, gender: l.gender, color: l.color,
+                         customSelections: l.customSelections || {} };
             }));
         }
+
+        // Compute price total across priced lines
+        var priceTotal = cart.reduce(function (s, l) {
+            return s + (l.unitPrice ? l.unitPrice * l.qty : 0);
+        }, 0);
+        var anyPriced = cart.some(function (l) { return l.unitPrice; });
 
         // Render list items
         if (itemsList) {
             itemsList.innerHTML = cart.map(function (l) {
-                var variants = [l.gender, l.size, l.color].filter(Boolean).join(' / ');
-                var variantBadge = variants
-                    ? '<div class="text-muted" style="font-size:.75rem;">' + esc(variants) + '</div>'
+                var variantParts = [l.gender, l.size, l.color].filter(Boolean);
+                if (l.customSelections) {
+                    Object.keys(l.customSelections).forEach(function (k) {
+                        variantParts.push(k + ': ' + l.customSelections[k]);
+                    });
+                }
+                var variantBadge = variantParts.length
+                    ? '<div class="text-muted" style="font-size:.75rem;">' + esc(variantParts.join(' / ')) + '</div>'
+                    : '';
+                var priceLine = l.unitPrice
+                    ? '<div class="text-success fw-semibold" style="font-size:.78rem;">' +
+                      formatCurrency(l.unitPrice) + ' × ' + l.qty + ' = ' + formatCurrency(l.unitPrice * l.qty) +
+                      '</div>'
                     : '';
                 return '<div class="cart-line-item">' +
                        '  <div class="d-flex align-items-start gap-2">' +
                        '    <div class="flex-grow-1 min-w-0">' +
                        '      <div class="fw-semibold text-truncate" style="font-size:.85rem;">' + esc(l.name) + '</div>' +
                        variantBadge +
+                       priceLine +
                        '    </div>' +
                        '    <button type="button" class="btn btn-link text-danger p-0 flex-shrink-0" style="font-size:.8rem;line-height:1;" ' +
                        '            onclick="removeFromCart(' + l.lineId + ')" title="Remove"><i class="bi bi-trash3"></i></button>' +
@@ -788,8 +941,16 @@ else
                        '  </div>' +
                        '</div>';
             }).join('') +
-            '<div class="pt-2 pb-1 text-end text-muted small fw-semibold">' + total + ' item(s) total</div>';
+            '<div class="pt-2 pb-1 text-end small fw-semibold">' +
+                (anyPriced ? '<span class="text-success me-2">Total: ' + formatCurrency(priceTotal) + '</span>' : '') +
+                '<span class="text-muted">' + total + ' item(s)</span>' +
+            '</div>';
         }
+    }
+
+    function formatCurrency(n) {
+        try { return n.toLocaleString(undefined, { style:'currency', currency:'USD' }); }
+        catch (e) { return '$' + n.toFixed(2); }
     }
 
     function esc(str) {

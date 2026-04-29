@@ -1396,6 +1396,24 @@ public static class DbInitializer
                         ADD VariantTag NVARCHAR(100) NULL;
                 END");
 
+            // 46. Store product flexibility — pricing toggle, free-form custom options,
+            //     tags, per-product max-qty cap, and order-item snapshot fields.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'HasPrice')
+                    ALTER TABLE dbo.StoreProducts ADD HasPrice BIT NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'Price')
+                    ALTER TABLE dbo.StoreProducts ADD Price DECIMAL(10, 2) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'CustomOptionsJson')
+                    ALTER TABLE dbo.StoreProducts ADD CustomOptionsJson NVARCHAR(4000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'Tags')
+                    ALTER TABLE dbo.StoreProducts ADD Tags NVARCHAR(500) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreProducts') AND name = 'MaxQtyPerOrder')
+                    ALTER TABLE dbo.StoreProducts ADD MaxQtyPerOrder INT NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'CustomSelectionsJson')
+                    ALTER TABLE dbo.StoreOrderItems ADD CustomSelectionsJson NVARCHAR(2000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrderItems') AND name = 'UnitPriceSnapshot')
+                    ALTER TABLE dbo.StoreOrderItems ADD UnitPriceSnapshot DECIMAL(10, 2) NULL;");
+
         }
         catch (Exception ex)
         {

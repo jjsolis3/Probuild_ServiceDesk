@@ -2,6 +2,7 @@
 @model StoreProduct
 @{
     ViewData["Title"] = "Edit Product";
+    var existingCategories = ViewBag.ExistingCategories as List<string> ?? new List<string>();
 }
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -33,11 +34,33 @@
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label asp-for="Category" class="form-label fw-semibold"></label>
-                            <input asp-for="Category" class="form-control" />
+                            <input asp-for="Category" class="form-control" list="categoryList" autocomplete="off" />
+                            <datalist id="categoryList">
+                                @foreach (var c in existingCategories)
+                                {
+                                    <option value="@c"></option>
+                                }
+                            </datalist>
+                            <div class="form-text">Pick from existing or type a new one.</div>
                         </div>
                         <div class="col-md-6">
                             <label asp-for="UnitOfMeasure" class="form-label fw-semibold"></label>
                             <input asp-for="UnitOfMeasure" class="form-control" />
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Tags" class="form-label fw-semibold"></label>
+                            <input asp-for="Tags" class="form-control"
+                                   placeholder="featured, new, clearance" />
+                            <div class="form-text">Comma-separated. Shown as small badges on the catalog card.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="MaxQtyPerOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="MaxQtyPerOrder" type="number" class="form-control" min="1"
+                                   placeholder="No limit" />
+                            <div class="form-text">Optional cap on quantity per order line.</div>
                         </div>
                     </div>
 
@@ -56,6 +79,27 @@
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" asp-for="IsActive" />
                                 <label class="form-check-label" asp-for="IsActive">Visible in catalog</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pricing -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-currency-dollar me-2 text-primary"></i>Pricing</h6>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" asp-for="HasPrice"
+                                       id="HasPrice" onchange="togglePriceField()" />
+                                <label class="form-check-label fw-semibold" asp-for="HasPrice">Charge a price for this product</label>
+                                <div class="form-text">Leave off if items are free-issue (no employee cost).</div>
+                            </div>
+                            <div id="priceField" class="@(Model.HasPrice ? "" : "d-none")" style="max-width:240px;">
+                                <label asp-for="Price" class="form-label fw-semibold"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input asp-for="Price" type="number" step="0.01" min="0"
+                                           class="form-control" placeholder="0.00" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -108,6 +152,22 @@
                         </div>
                     </div>
 
+                    <!-- Custom Options Builder -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-2"><i class="bi bi-list-check me-2 text-primary"></i>Custom Options</h6>
+                            <p class="small text-muted mb-3">
+                                Add any extra selectable options shoppers must (or may) choose — works for any product type.
+                                Examples: <em>Imprint Color</em>, <em>Material</em>, <em>Logo Placement</em>, <em>Pack Size</em>.
+                            </p>
+                            <input type="hidden" asp-for="CustomOptionsJson" id="CustomOptionsJson" />
+                            <div id="customOptionsList" class="d-flex flex-column gap-2"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addCustomOptionRow()">
+                                <i class="bi bi-plus-lg me-1"></i>Add Option
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Main Product Image -->
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Main Product Image</label>
@@ -141,18 +201,40 @@
                                     Leave blank to show for all variants.
                                 </div>
                                 <div class="d-flex flex-column gap-2">
-                                    @foreach (var img in Model.Images.OrderBy(i => i.SortOrder))
+                                    @foreach (var img in Model.Images.OrderBy(i => i.SortOrder).ThenBy(i => i.Id))
                                     {
-                                        <div class="d-flex align-items-center gap-3 p-2 border rounded" style="background:#f9f9f9;">
+                                        <div class="d-flex align-items-start gap-3 p-2 border rounded" style="background:#f9f9f9;">
                                             <img src="@img.ImagePath" alt="Gallery image"
                                                  style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
                                             <div class="flex-grow-1">
-                                                <input type="text"
-                                                       name="imageTags[@img.Id]"
-                                                       value="@img.VariantTag"
-                                                       class="form-control form-control-sm"
-                                                       placeholder="Variant tag — leave blank for all"
-                                                       maxlength="100" />
+                                                <div class="row g-2">
+                                                    <div class="col-md-5">
+                                                        <input type="text"
+                                                               name="imageTags[@img.Id]"
+                                                               value="@img.VariantTag"
+                                                               class="form-control form-control-sm"
+                                                               placeholder="Variant tag (e.g. Red)"
+                                                               maxlength="100" />
+                                                        <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
+                                                    </div>
+                                                    <div class="col-md-5">
+                                                        <input type="text"
+                                                               name="imageAlts[@img.Id]"
+                                                               value="@img.Alt"
+                                                               class="form-control form-control-sm"
+                                                               placeholder="Alt text / caption"
+                                                               maxlength="200" />
+                                                        <small class="text-muted" style="font-size:.7rem;">Alt text</small>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <input type="number"
+                                                               name="imageOrders[@img.Id]"
+                                                               value="@img.SortOrder"
+                                                               class="form-control form-control-sm"
+                                                               min="0" max="9999" />
+                                                        <small class="text-muted" style="font-size:.7rem;">Sort</small>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <form method="post" asp-action="StoreProductImageDelete"
                                                   asp-antiforgery="true"
@@ -197,6 +279,62 @@ function toggleVariantFields() {
     document.getElementById('sizeField').classList.toggle('d-none', !hasSizes);
     document.getElementById('colorField').classList.toggle('d-none', !hasColors);
 }
+
+function togglePriceField() {
+    var on = document.getElementById('HasPrice').checked;
+    document.getElementById('priceField').classList.toggle('d-none', !on);
+}
+
+// ── Custom Options builder ──────────────────────────────────────────────
+function addCustomOptionRow(label, values, required) {
+    var list = document.getElementById('customOptionsList');
+    var row = document.createElement('div');
+    row.className = 'custom-option-row border rounded p-2 bg-white';
+    row.innerHTML =
+        '<div class="row g-2 align-items-center">' +
+        '  <div class="col-md-3"><input type="text" class="form-control form-control-sm opt-label" ' +
+        '         placeholder="Label (e.g. Imprint Color)" maxlength="60" /></div>' +
+        '  <div class="col-md-6"><input type="text" class="form-control form-control-sm opt-values" ' +
+        '         placeholder="Comma-separated values (Red, Blue, Black)" maxlength="500" /></div>' +
+        '  <div class="col-md-2"><div class="form-check"><input type="checkbox" class="form-check-input opt-required" /> ' +
+        '         <label class="form-check-label small">Required</label></div></div>' +
+        '  <div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger" ' +
+        '         onclick="this.closest(\'.custom-option-row\').remove(); serializeCustomOptions();">' +
+        '         <i class="bi bi-trash"></i></button></div>' +
+        '</div>';
+    list.appendChild(row);
+    if (label)    row.querySelector('.opt-label').value    = label;
+    if (values)   row.querySelector('.opt-values').value   = values;
+    if (required) row.querySelector('.opt-required').checked = true;
+    row.querySelectorAll('input').forEach(function(i) {
+        i.addEventListener('input',  serializeCustomOptions);
+        i.addEventListener('change', serializeCustomOptions);
+    });
+    serializeCustomOptions();
+}
+
+function serializeCustomOptions() {
+    var rows = document.querySelectorAll('#customOptionsList .custom-option-row');
+    var arr = [];
+    rows.forEach(function(r) {
+        var label  = (r.querySelector('.opt-label').value  || '').trim();
+        var values = (r.querySelector('.opt-values').value || '').trim();
+        var req    = r.querySelector('.opt-required').checked;
+        if (label && values) arr.push({ label: label, values: values, required: req });
+    });
+    document.getElementById('CustomOptionsJson').value = arr.length ? JSON.stringify(arr) : '';
+}
+
+(function () {
+    var existing = document.getElementById('CustomOptionsJson');
+    if (!existing || !existing.value) return;
+    try {
+        var arr = JSON.parse(existing.value);
+        if (Array.isArray(arr)) arr.forEach(function(o) {
+            addCustomOptionRow(o.label || '', o.values || '', !!o.required);
+        });
+    } catch (e) { /* ignore */ }
+})();
 
 function buildGalleryTagRows(input) {
     var container = document.getElementById('galleryTagRows');
