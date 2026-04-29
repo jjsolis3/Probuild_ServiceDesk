@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -610,7 +611,7 @@ public class ReportsController : Controller
         return View(orders);
     }
 
-    // GET: Reports/StoreOrdersExport  — CSV download
+    // GET: Reports/StoreOrdersExport  — XLSX download
     [Authorize(Roles = "Admin,IT Agent")]
     public async Task<IActionResult> StoreOrdersExport(int? year, int? quarter, string? status)
     {
@@ -630,15 +631,85 @@ public class ReportsController : Controller
 
         var orders = await query.OrderBy(o => o.OrderNumber).ToListAsync();
 
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Order #,User Name,Email,Branch / Location,Order Date,Quarter,Year,Status,Product,Category,Gender,Size,Color,Custom Options,Qty,Unit Price,Subtotal,Notes");
+        var companyName = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ProBuild";
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Store Orders");
+
+        // ── Colour palette ────────────────────────────────────────────────
+        var brandBlue   = XLColor.FromHtml("#0d6efd");
+        var headerGray  = XLColor.FromHtml("#343a40");
+        var altRow      = XLColor.FromHtml("#f8f9fa");
+        var totalBg     = XLColor.FromHtml("#e9ecef");
+
+        // ── Row 1: Company name ───────────────────────────────────────────
+        var r1 = ws.Cell(1, 1);
+        r1.Value = companyName;
+        r1.Style.Font.Bold        = true;
+        r1.Style.Font.FontSize    = 18;
+        r1.Style.Font.FontColor   = brandBlue;
+        ws.Range(1, 1, 1, 18).Merge();
+
+        // ── Row 2: Document title ─────────────────────────────────────────
+        var r2 = ws.Cell(2, 1);
+        r2.Value = "Quarterly Store — Purchase Order Sheet";
+        r2.Style.Font.Bold      = true;
+        r2.Style.Font.FontSize  = 13;
+        r2.Style.Font.FontColor = XLColor.FromHtml("#495057");
+        ws.Range(2, 1, 2, 18).Merge();
+
+        // ── Row 3: Quarter / Year ─────────────────────────────────────────
+        var r3 = ws.Cell(3, 1);
+        r3.Value = $"Q{quarter} — {year}";
+        r3.Style.Font.Bold      = true;
+        r3.Style.Font.FontSize  = 11;
+        r3.Style.Font.FontColor = XLColor.FromHtml("#6c757d");
+        ws.Range(3, 1, 3, 18).Merge();
+
+        // ── Row 4: Meta info ──────────────────────────────────────────────
+        var r4 = ws.Cell(4, 1);
+        var filterDesc = !string.IsNullOrEmpty(status) ? $"  |  Status filter: {status}" : "  |  All statuses";
+        r4.Value = $"Generated: {now:MMM d, yyyy 'at' h:mm tt} UTC{filterDesc}  |  Orders: {orders.Count}";
+        r4.Style.Font.FontSize  = 9;
+        r4.Style.Font.FontColor = XLColor.FromHtml("#6c757d");
+        ws.Range(4, 1, 4, 18).Merge();
+
+        // ── Row 5: spacer ─────────────────────────────────────────────────
+        ws.Row(5).Height = 6;
+
+        // ── Row 6: Column headers ─────────────────────────────────────────
+        var headers = new[]
+        {
+            "Order #", "Employee Name", "Email", "Branch / Location",
+            "Order Date", "Quarter", "Year", "Status",
+            "Product", "Category", "Gender", "Size", "Color", "Custom Options",
+            "Qty", "Unit Price", "Subtotal", "Notes"
+        };
+
+        for (int col = 1; col <= headers.Length; col++)
+        {
+            var hCell = ws.Cell(6, col);
+            hCell.Value = headers[col - 1];
+            hCell.Style.Font.Bold           = true;
+            hCell.Style.Font.FontColor      = XLColor.White;
+            hCell.Style.Fill.BackgroundColor = headerGray;
+            hCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            hCell.Style.Border.BottomBorder  = XLBorderStyleValues.Thin;
+        }
+
+        // ── Data rows ─────────────────────────────────────────────────────
+        int row = 7;
+        decimal grandTotal = 0m;
+        int    itemCount   = 0;
 
         foreach (var order in orders)
         {
             var branchLabel = order.Branch?.Name ?? order.BranchNameSnapshot ?? "Unassigned";
+            bool isFirst    = true;
+
             foreach (var item in order.Items)
             {
-                // Flatten custom selections JSON into a "Label: Value; Label: Value" string.
                 var customParts = new List<string>();
                 if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
                 {
@@ -648,41 +719,104 @@ public class ReportsController : Controller
                         foreach (var prop in doc.RootElement.EnumerateObject())
                             customParts.Add($"{prop.Name}: {prop.Value.GetString()}");
                     }
-                    catch { /* malformed — skip */ }
+                    catch { /* malformed JSON — skip */ }
                 }
-                var subtotal = item.UnitPriceSnapshot.HasValue
-                    ? (item.UnitPriceSnapshot.Value * item.Quantity).ToString("0.00")
-                    : string.Empty;
 
-                sb.AppendLine(string.Join(",",
-                    CsvEscape(order.OrderNumber),
-                    CsvEscape(order.PortalUser.FullName),
-                    CsvEscape(order.PortalUser.Email),
-                    CsvEscape(branchLabel),
-                    CsvEscape(order.OrderDate.ToString("yyyy-MM-dd HH:mm")),
-                    $"Q{order.Quarter}",
-                    order.Year.ToString(),
-                    CsvEscape(order.Status),
-                    CsvEscape(item.ProductNameSnapshot),
-                    CsvEscape(item.ProductCategorySnapshot ?? string.Empty),
-                    CsvEscape(item.SelectedGender ?? string.Empty),
-                    CsvEscape(item.SelectedSize   ?? string.Empty),
-                    CsvEscape(item.SelectedColor  ?? string.Empty),
-                    CsvEscape(string.Join("; ", customParts)),
-                    item.Quantity.ToString(),
-                    CsvEscape(item.UnitPriceSnapshot?.ToString("0.00") ?? string.Empty),
-                    CsvEscape(subtotal),
-                    CsvEscape(order.Notes ?? string.Empty)
-                ));
+                decimal subtotalVal = item.UnitPriceSnapshot.HasValue
+                    ? item.UnitPriceSnapshot.Value * item.Quantity
+                    : 0m;
+                grandTotal += subtotalVal;
+                itemCount++;
+
+                bool altBg = (row % 2 == 0);
+                var rowBg  = altBg ? altRow : XLColor.White;
+
+                void SetCell(int col, object? val, bool isMoney = false, bool isCenter = false)
+                {
+                    var c = ws.Cell(row, col);
+                    if (val is decimal d) c.Value = d;
+                    else if (val is int i) c.Value = i;
+                    else c.Value = val?.ToString() ?? string.Empty;
+                    c.Style.Fill.BackgroundColor     = rowBg;
+                    c.Style.Border.BottomBorder      = XLBorderStyleValues.Hair;
+                    c.Style.Border.BottomBorderColor = XLColor.FromHtml("#dee2e6");
+                    if (isMoney)  c.Style.NumberFormat.Format = "#,##0.00";
+                    if (isCenter) c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                }
+
+                SetCell(1,  isFirst ? order.OrderNumber : string.Empty, isCenter: true);
+                SetCell(2,  order.PortalUser.FullName);
+                SetCell(3,  order.PortalUser.Email);
+                SetCell(4,  branchLabel);
+                SetCell(5,  order.OrderDate.ToString("yyyy-MM-dd HH:mm"), isCenter: true);
+                SetCell(6,  $"Q{order.Quarter}", isCenter: true);
+                SetCell(7,  order.Year, isCenter: true);
+                SetCell(8,  order.Status, isCenter: true);
+                SetCell(9,  item.ProductNameSnapshot);
+                SetCell(10, item.ProductCategorySnapshot ?? string.Empty);
+                SetCell(11, item.SelectedGender ?? string.Empty, isCenter: true);
+                SetCell(12, item.SelectedSize   ?? string.Empty, isCenter: true);
+                SetCell(13, item.SelectedColor  ?? string.Empty, isCenter: true);
+                SetCell(14, string.Join("; ", customParts));
+                SetCell(15, item.Quantity, isCenter: true);
+                SetCell(16, item.UnitPriceSnapshot.HasValue ? (object)item.UnitPriceSnapshot.Value : string.Empty, isMoney: true, isCenter: true);
+                SetCell(17, subtotalVal > 0 ? (object)subtotalVal : string.Empty, isMoney: true, isCenter: true);
+                SetCell(18, isFirst ? (order.Notes ?? string.Empty) : string.Empty);
+
+                row++;
+                isFirst = false;
             }
         }
 
-        var filename = $"StoreOrders-Q{quarter}-{year}.csv";
-        var bytes = System.Text.Encoding.UTF8.GetPreamble()
-            .Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString()))
-            .ToArray();
+        // ── Totals row ────────────────────────────────────────────────────
+        int totalsRow = row + 1;
+        var tLabel = ws.Cell(totalsRow, 14);
+        tLabel.Value = $"TOTAL  ({itemCount} line item{(itemCount != 1 ? "s" : "")})";
+        tLabel.Style.Font.Bold           = true;
+        tLabel.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        tLabel.Style.Fill.BackgroundColor = totalBg;
+        ws.Range(totalsRow, 1, totalsRow, 14).Style.Fill.BackgroundColor = totalBg;
+        ws.Range(totalsRow, 1, totalsRow, 14).Style.Border.TopBorder     = XLBorderStyleValues.Medium;
 
-        return File(bytes, "text/csv", filename);
+        var tVal = ws.Cell(totalsRow, 17);
+        tVal.Value = grandTotal;
+        tVal.Style.Font.Bold             = true;
+        tVal.Style.NumberFormat.Format   = "#,##0.00";
+        tVal.Style.Fill.BackgroundColor  = totalBg;
+        tVal.Style.Border.TopBorder      = XLBorderStyleValues.Medium;
+        ws.Range(totalsRow, 15, totalsRow, 18).Style.Fill.BackgroundColor = totalBg;
+        ws.Range(totalsRow, 15, totalsRow, 18).Style.Border.TopBorder     = XLBorderStyleValues.Medium;
+
+        // ── Column widths ─────────────────────────────────────────────────
+        ws.Column(1).Width  = 13;  // Order #
+        ws.Column(2).Width  = 22;  // Name
+        ws.Column(3).Width  = 26;  // Email
+        ws.Column(4).Width  = 20;  // Branch
+        ws.Column(5).Width  = 18;  // Order Date
+        ws.Column(6).Width  = 9;   // Quarter
+        ws.Column(7).Width  = 7;   // Year
+        ws.Column(8).Width  = 12;  // Status
+        ws.Column(9).Width  = 24;  // Product
+        ws.Column(10).Width = 16;  // Category
+        ws.Column(11).Width = 10;  // Gender
+        ws.Column(12).Width = 10;  // Size
+        ws.Column(13).Width = 12;  // Color
+        ws.Column(14).Width = 28;  // Custom Options
+        ws.Column(15).Width = 7;   // Qty
+        ws.Column(16).Width = 12;  // Unit Price
+        ws.Column(17).Width = 12;  // Subtotal
+        ws.Column(18).Width = 30;  // Notes
+
+        ws.SheetView.FreezeRows(6);
+
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var filename = $"StoreOrders-Q{quarter}-{year}.xlsx";
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename);
     }
 
     // POST: Reports/StoreOrderUpdateStatus — update order status from the report dashboard
