@@ -5,6 +5,7 @@
     ViewData["ActivePage"] = "OpsHub";
     Layout = "_PortalLayout";
     var existingCategories = ViewBag.ExistingCategories as List<string> ?? new List<string>();
+    var galleryImages = Model.Images?.OrderBy(i => i.SortOrder).ThenBy(i => i.Id).ToList() ?? new List<StoreProductImage>();
 }
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -187,64 +188,66 @@
                     <!-- Gallery Images -->
                     <div class="mb-4">
                         <label class="form-label fw-semibold">Gallery Images</label>
-                        @if (Model.Images != null && Model.Images.Any())
+
+                        @if (galleryImages.Any())
                         {
-                            <div class="mb-3">
-                                <div class="form-text mb-2">
-                                    Set a <strong>Variant Tag</strong> on each image (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>)
-                                    so it only appears in the store when that variant is selected.
-                                    Leave blank to show for all variants.
-                                </div>
-                                <div class="d-flex flex-column gap-2">
-                                    @foreach (var img in Model.Images.OrderBy(i => i.SortOrder).ThenBy(i => i.Id))
-                                    {
-                                        <div class="d-flex align-items-start gap-3 p-2 border rounded" style="background:#f9f9f9;">
-                                            <img src="@img.ImagePath" alt="Gallery image"
-                                                 style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
-                                            <div class="flex-grow-1">
-                                                <div class="row g-2">
-                                                    <div class="col-md-5">
-                                                        <input type="text"
-                                                               name="imageTags[@img.Id]"
-                                                               value="@img.VariantTag"
-                                                               class="form-control form-control-sm"
-                                                               placeholder="Variant tag (e.g. Red)"
-                                                               maxlength="100" />
-                                                        <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
-                                                    </div>
-                                                    <div class="col-md-5">
-                                                        <input type="text"
-                                                               name="imageAlts[@img.Id]"
-                                                               value="@img.Alt"
-                                                               class="form-control form-control-sm"
-                                                               placeholder="Alt text / caption"
-                                                               maxlength="200" />
-                                                        <small class="text-muted" style="font-size:.7rem;">Alt text</small>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <input type="number"
-                                                               name="imageOrders[@img.Id]"
-                                                               value="@img.SortOrder"
-                                                               class="form-control form-control-sm"
-                                                               min="0" max="9999" />
-                                                        <small class="text-muted" style="font-size:.7rem;">Sort</small>
-                                                    </div>
+                            <div class="form-text mb-2">
+                                Set a <strong>Variant Tag</strong> on each image (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>)
+                                so it only appears in the store when that variant is selected.
+                                Leave blank to show for all variants.
+                            </div>
+                            <div id="galleryMetaList" class="d-flex flex-column gap-2 mb-3">
+                                @foreach (var img in galleryImages)
+                                {
+                                    <div class="d-flex align-items-start gap-3 p-2 border rounded gallery-meta-row"
+                                         style="background:#f9f9f9;"
+                                         data-img-id="@img.Id"
+                                         data-img-tag="@(img.VariantTag ?? "")"
+                                         data-img-alt="@(img.Alt ?? "")"
+                                         data-img-sort="@img.SortOrder">
+                                        <img src="@img.ImagePath" alt="Gallery image"
+                                             style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
+                                        <div class="flex-grow-1">
+                                            <div class="row g-2">
+                                                <div class="col-md-5">
+                                                    <input type="text" class="form-control form-control-sm img-tag-input"
+                                                           placeholder="Variant tag (e.g. Red)"
+                                                           maxlength="100"
+                                                           value="@(img.VariantTag ?? "")"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <input type="text" class="form-control form-control-sm img-alt-input"
+                                                           placeholder="Alt text / caption"
+                                                           maxlength="200"
+                                                           value="@(img.Alt ?? "")"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Alt text</small>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <input type="number" class="form-control form-control-sm img-sort-input"
+                                                           min="0" max="9999"
+                                                           value="@img.SortOrder"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Sort</small>
                                                 </div>
                                             </div>
-                                            <form method="post" asp-action="OpsProductImageDelete"
-                                                  asp-controller="Store" asp-antiforgery="true"
-                                                  onsubmit="return confirm('Delete this gallery image?');"
-                                                  class="flex-shrink-0">
-                                                <input type="hidden" name="imageId" value="@img.Id" />
-                                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete image">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </form>
                                         </div>
-                                    }
-                                </div>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-sm flex-shrink-0"
+                                                title="Delete image"
+                                                onclick="deleteGalleryImage(@img.Id, @Model.Id, this)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                }
                             </div>
                         }
+
+                        <!-- Hidden field carries all gallery metadata as JSON -->
+                        <input type="hidden" name="galleryMetaJson" id="galleryMetaJson" value="" />
+
                         <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
                                accept=".jpg,.jpeg,.png,.webp,.gif" multiple
                                onchange="buildGalleryTagRows(this)" />
@@ -329,6 +332,52 @@ function serializeCustomOptions() {
         });
     } catch (e) { }
 })();
+
+// Gallery metadata — serialise all existing gallery rows to JSON on every change.
+function serializeGalleryMeta() {
+    var rows = document.querySelectorAll('#galleryMetaList .gallery-meta-row');
+    var arr = [];
+    rows.forEach(function(r) {
+        arr.push({
+            Id:   parseInt(r.dataset.imgId, 10),
+            Tag:  r.querySelector('.img-tag-input').value  || '',
+            Alt:  r.querySelector('.img-alt-input').value  || '',
+            Sort: parseInt(r.querySelector('.img-sort-input').value, 10) || 0
+        });
+    });
+    document.getElementById('galleryMetaJson').value = arr.length ? JSON.stringify(arr) : '';
+}
+
+// Initialise metadata JSON from current state.
+(function() { serializeGalleryMeta(); })();
+
+// Delete a gallery image via fetch so we stay on the same page.
+function deleteGalleryImage(imageId, productId, btn) {
+    if (!confirm('Delete this gallery image?')) return;
+    btn.disabled = true;
+
+    var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    var fd = new FormData();
+    fd.append('imageId', imageId);
+    fd.append('__RequestVerificationToken', token);
+
+    fetch('@Url.Action("OpsProductImageDelete", "Store")', {
+        method: 'POST',
+        body: fd
+    }).then(function(r) {
+        if (r.ok || r.redirected) {
+            // Remove the row from the DOM and re-serialise.
+            btn.closest('.gallery-meta-row').remove();
+            serializeGalleryMeta();
+        } else {
+            btn.disabled = false;
+            alert('Could not delete image. Please try again.');
+        }
+    }).catch(function() {
+        btn.disabled = false;
+        alert('Network error. Please try again.');
+    });
+}
 
 function buildGalleryTagRows(input) {
     var container = document.getElementById('galleryTagRows');

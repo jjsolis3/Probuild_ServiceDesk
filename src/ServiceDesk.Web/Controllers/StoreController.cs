@@ -704,13 +704,12 @@ public class StoreController : Controller
     // POST /Store/OpsProductEdit/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsProductEdit(int id,
+        [Bind("Id,Name,Description,Category,UnitOfMeasure,IsActive,SortOrder,HasSizes,HasGenderOption,HasColorOptions,AvailableSizes,AvailableColors,HasPrice,Price,CustomOptionsJson,Tags,MaxQtyPerOrder")]
         StoreProduct product,
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        Dictionary<int, string>? imageTags,
-        Dictionary<int, string>? imageAlts,
-        Dictionary<int, int>? imageOrders,
+        string? galleryMetaJson,
         bool clearImage = false)
     {
         var user = await GetCurrentPortalUserAsync();
@@ -721,6 +720,10 @@ public class StoreController : Controller
         if (!ModelState.IsValid)
         {
             ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            // Reload image data from DB so the view renders existing images correctly.
+            var dbSnap = await _context.StoreProducts.Include(p => p.Images).AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == id);
+            if (dbSnap != null) { product.ImagePath = dbSnap.ImagePath; product.Images = dbSnap.Images; }
             return View(product);
         }
 
@@ -751,14 +754,25 @@ public class StoreController : Controller
         if (clearImage) { DeleteStoreImage(existing.ImagePath); existing.ImagePath = null; }
         else existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
 
-        foreach (var img in existing.Images)
+        // Apply per-image tag / alt / sort updates from serialised JSON.
+        if (!string.IsNullOrWhiteSpace(galleryMetaJson))
         {
-            if (imageTags   != null && imageTags.TryGetValue(img.Id,   out var tag))
-                img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
-            if (imageAlts   != null && imageAlts.TryGetValue(img.Id,   out var alt))
-                img.Alt        = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
-            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var ord))
-                img.SortOrder  = Math.Clamp(ord, 0, 9999);
+            try
+            {
+                var metas = System.Text.Json.JsonSerializer.Deserialize<List<GalleryImageMeta>>(galleryMetaJson);
+                if (metas != null)
+                {
+                    foreach (var meta in metas)
+                    {
+                        var img = existing.Images.FirstOrDefault(i => i.Id == meta.Id);
+                        if (img == null) continue;
+                        img.VariantTag = string.IsNullOrWhiteSpace(meta.Tag) ? null : meta.Tag.Trim();
+                        img.Alt        = string.IsNullOrWhiteSpace(meta.Alt) ? null : meta.Alt.Trim();
+                        img.SortOrder  = Math.Clamp(meta.Sort, 0, 9999);
+                    }
+                }
+            }
+            catch { /* malformed JSON — skip */ }
         }
 
         if (galleryFiles != null && galleryFiles.Count > 0)
@@ -837,6 +851,8 @@ public class StoreController : Controller
     }
 
     // ── Shared image / category helpers ───────────────────────────────────────
+
+    private sealed record GalleryImageMeta(int Id, string? Tag, string? Alt, int Sort);
 
     private const int StoreImageMaxPx = 800;
 
