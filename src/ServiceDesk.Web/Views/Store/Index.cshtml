@@ -16,12 +16,16 @@
 
     var productDataJson = System.Text.Json.JsonSerializer.Serialize(
         Model.Select(p => {
-            var imgs = (p.Images ?? Enumerable.Empty<StoreProductImage>())
-                .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
-                .Select(i => new { src = i.ImagePath, tag = i.VariantTag ?? "" })
-                .ToList();
-            if (!imgs.Any() && !string.IsNullOrEmpty(p.ImagePath))
+            var imgs = new List<object>();
+            // Always include the main product image first (no variant tag → shows for all variants).
+            if (!string.IsNullOrEmpty(p.ImagePath))
                 imgs.Add(new { src = p.ImagePath!, tag = "" });
+            // Then append gallery images in sort order.
+            foreach (var i in (p.Images ?? Enumerable.Empty<StoreProductImage>())
+                         .OrderBy(g => g.SortOrder).ThenBy(g => g.Id))
+            {
+                imgs.Add(new { src = i.ImagePath, tag = i.VariantTag ?? "" });
+            }
 
             // Parse custom-options JSON into a typed array for the modal
             object[] customOpts = Array.Empty<object>();
@@ -180,12 +184,51 @@
     padding: 0 4px;
 }
 /* ── Modal gallery ──────────────────────────────────────── */
-.gallery-main-img {
-    max-height: 280px;
-    object-fit: contain;
-    border-radius: 8px;
+.gallery-main-wrap {
+    position: relative;
     background: #f8f9fa;
+    border-radius: 8px;
+    overflow: hidden;
 }
+.gallery-main-img {
+    max-height: 320px;
+    object-fit: contain;
+    cursor: zoom-in;
+    transition: transform .2s;
+}
+.gallery-main-img:hover { transform: scale(1.02); }
+.gallery-counter {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0,0,0,.55);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    pointer-events: none;
+}
+.gallery-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255,255,255,.92);
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .15s;
+}
+.gallery-nav-btn:hover { background: #fff; }
+.gallery-nav-btn.prev { left: 8px; }
+.gallery-nav-btn.next { right: 8px; }
 .gallery-thumb {
     width: 58px;
     height: 58px;
@@ -196,6 +239,23 @@
     transition: border-color .15s;
 }
 .gallery-thumb.active { border-color: #0d6efd; }
+/* Lightbox overlay */
+.gallery-lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    cursor: zoom-out;
+}
+.gallery-lightbox img {
+    max-width: 92vw;
+    max-height: 92vh;
+    object-fit: contain;
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+}
 /* ── Offcanvas cart ─────────────────────────────────────── */
 .cart-line-item {
     font-size: .85rem;
@@ -294,10 +354,13 @@ else
             <div class="row g-3">
                 @foreach (var product in catProducts)
                 {
-                    var mainImage = product.Images?
-                        .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
-                        .FirstOrDefault()?.ImagePath
-                        ?? product.ImagePath;
+                    // Prefer the main product image; fall back to the first gallery image
+                    // only when no main image is configured.
+                    var mainImage = !string.IsNullOrEmpty(product.ImagePath)
+                        ? product.ImagePath
+                        : product.Images?
+                            .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+                            .FirstOrDefault()?.ImagePath;
 
                     <div class="col-6 col-md-4 col-lg-3 catalog-col"
                          data-name="@((product.Name + " " + (product.Tags ?? "")).ToLower())"
@@ -583,29 +646,92 @@ else
 
     // ── Gallery rendering ─────────────────────────────────────────────────────
 
+    // Track which image index is showing for each modal so prev/next + keyboard nav work.
+    var galleryIndex = {};
+
     function renderGallery(productId, images) {
         var container = document.getElementById('modal-gallery-' + productId);
         if (!container) return;
         if (!images || images.length === 0) {
             container.innerHTML =
-                '<div class="product-card-placeholder" style="height:220px;border-radius:8px;">' +
+                '<div class="product-card-placeholder" style="height:240px;border-radius:8px;">' +
                 '<i class="bi bi-box display-3 text-muted opacity-25"></i></div>';
+            galleryIndex[productId] = 0;
             return;
         }
-        var main = '<img id="gallery-main-' + productId + '" src="' + esc(images[0].src) +
-                   '" alt="" class="img-fluid gallery-main-img w-100 mb-2" />';
+        galleryIndex[productId] = 0;
+        var multi = images.length > 1;
+        var main =
+            '<div class="gallery-main-wrap mb-2 d-flex align-items-center justify-content-center" ' +
+                 'style="min-height:240px;">' +
+                '<img id="gallery-main-' + productId + '" src="' + esc(images[0].src) +
+                   '" alt="" class="img-fluid gallery-main-img" ' +
+                   'onclick="openLightbox(' + productId + ')" />' +
+                (multi
+                    ? '<button type="button" class="gallery-nav-btn prev" aria-label="Previous image" ' +
+                             'onclick="navGallery(' + productId + ',-1)">' +
+                        '<i class="bi bi-chevron-left"></i></button>' +
+                      '<button type="button" class="gallery-nav-btn next" aria-label="Next image" ' +
+                             'onclick="navGallery(' + productId + ',1)">' +
+                        '<i class="bi bi-chevron-right"></i></button>' +
+                      '<span id="gallery-counter-' + productId + '" class="gallery-counter">1 / ' +
+                        images.length + '</span>'
+                    : '') +
+            '</div>';
         var thumbs = '';
-        if (images.length > 1) {
-            thumbs = '<div class="d-flex gap-2 flex-wrap mt-1">' +
+        if (multi) {
+            thumbs = '<div class="d-flex gap-2 flex-wrap mt-1" id="gallery-thumbs-' + productId + '">' +
                 images.map(function (img, i) {
                     return '<img src="' + esc(img.src) + '" alt="Image ' + (i + 1) + '" ' +
                            'class="gallery-thumb' + (i === 0 ? ' active' : '') + '" ' +
                            'data-src="' + esc(img.src) + '" ' +
+                           'data-index="' + i + '" ' +
                            'onclick="switchGalleryImage(' + productId + ', this)" />';
                 }).join('') + '</div>';
         }
+        // Stash the current image list on the container for prev/next + lightbox lookup.
+        container._images = images;
         container.innerHTML = main + thumbs;
     }
+
+    window.navGallery = function (productId, delta) {
+        var container = document.getElementById('modal-gallery-' + productId);
+        if (!container || !container._images) return;
+        var imgs = container._images;
+        var cur  = galleryIndex[productId] || 0;
+        var next = (cur + delta + imgs.length) % imgs.length;
+        showGalleryImageAt(productId, next);
+    };
+
+    function showGalleryImageAt(productId, index) {
+        var container = document.getElementById('modal-gallery-' + productId);
+        if (!container || !container._images) return;
+        var imgs = container._images;
+        if (index < 0 || index >= imgs.length) return;
+        galleryIndex[productId] = index;
+        var main = document.getElementById('gallery-main-' + productId);
+        if (main) main.src = imgs[index].src;
+        var counter = document.getElementById('gallery-counter-' + productId);
+        if (counter) counter.textContent = (index + 1) + ' / ' + imgs.length;
+        var thumbsWrap = document.getElementById('gallery-thumbs-' + productId);
+        if (thumbsWrap) {
+            thumbsWrap.querySelectorAll('.gallery-thumb').forEach(function (t) {
+                t.classList.toggle('active', parseInt(t.dataset.index, 10) === index);
+            });
+        }
+    }
+
+    window.openLightbox = function (productId) {
+        var container = document.getElementById('modal-gallery-' + productId);
+        if (!container || !container._images) return;
+        var idx = galleryIndex[productId] || 0;
+        var src = container._images[idx].src;
+        var box = document.createElement('div');
+        box.className = 'gallery-lightbox';
+        box.innerHTML = '<img src="' + esc(src) + '" alt="" />';
+        box.addEventListener('click', function () { box.remove(); });
+        document.body.appendChild(box);
+    };
 
     function updateGalleryForVariant(productId) {
         var meta = metaMap[productId];
@@ -613,13 +739,20 @@ else
         var state = getState(productId);
         var active = [state.color, state.gender, state.size]
                      .filter(Boolean).map(function (v) { return v.toLowerCase(); });
-        var filtered = active.length
-            ? meta.images.filter(function (img) {
-                  return !img.tag || active.indexOf(img.tag.toLowerCase()) !== -1;
-              })
+
+        var matching = [], generic = [];
+        meta.images.forEach(function (img) {
+            var t = (img.tag || '').toLowerCase();
+            if (!t) generic.push(img);
+            else if (active.length && active.indexOf(t) !== -1) matching.push(img);
+        });
+
+        // When a variant is active and has tagged images, show those first so
+        // the matching image becomes the default — generic images stay as thumbs.
+        var ordered = active.length && matching.length
+            ? matching.concat(generic)
             : meta.images;
-        if (!filtered.length) filtered = meta.images;
-        renderGallery(productId, filtered);
+        renderGallery(productId, ordered);
     }
 
     // ── Cart state ────────────────────────────────────────────────────────────
@@ -718,14 +851,19 @@ else
     };
 
     window.switchGalleryImage = function (productId, thumbEl) {
-        var src = thumbEl.dataset.src;
-        var main = document.getElementById('gallery-main-' + productId);
-        if (main) main.src = src;
-        var container = document.getElementById('modal-gallery-' + productId);
-        if (container) container.querySelectorAll('.gallery-thumb')
-                                .forEach(function (t) { t.classList.remove('active'); });
-        thumbEl.classList.add('active');
+        var idx = parseInt(thumbEl.dataset.index, 10);
+        if (!isNaN(idx)) showGalleryImageAt(productId, idx);
     };
+
+    // Arrow-key navigation while a product modal is open.
+    document.addEventListener('keydown', function (e) {
+        var openModal = document.querySelector('.modal.show[id^="modal-"]');
+        if (!openModal) return;
+        var pid = parseInt(openModal.id.replace('modal-', ''), 10);
+        if (!pid) return;
+        if (e.key === 'ArrowLeft')       navGallery(pid, -1);
+        else if (e.key === 'ArrowRight') navGallery(pid,  1);
+    });
 
     function updateAddToCartBtn(productId) {
         var btn = document.getElementById('modal-addtocart-' + productId);
