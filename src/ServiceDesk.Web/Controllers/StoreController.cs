@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace ServiceDesk.Web.Controllers;
 
