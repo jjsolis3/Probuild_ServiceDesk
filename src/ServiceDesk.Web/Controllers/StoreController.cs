@@ -70,11 +70,30 @@ public class StoreController : Controller
             .OrderByDescending(o => o.OrderDate)
             .FirstOrDefaultAsync();
 
+        // Build previously-ordered badges: total qty + most-recent quarter, keyed by product ID
+        var prevOrderRows = await _context.StoreOrders
+            .Where(o => o.PortalUserId == user.Id && o.Status != "Cancelled")
+            .SelectMany(o => o.Items.Select(i => new {
+                o.Quarter, o.Year, i.StoreProductId, i.Quantity }))
+            .ToListAsync();
+
+        var prevOrderBadges = prevOrderRows
+            .GroupBy(x => x.StoreProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => {
+                    var totalQty = g.Sum(x => x.Quantity);
+                    var latest   = g.OrderByDescending(x => x.Year)
+                                    .ThenByDescending(x => x.Quarter).First();
+                    return $"{totalQty} ordered · Q{latest.Quarter} {latest.Year}";
+                });
+
         ViewBag.WelcomeMessage       = welcome;
         ViewBag.Quarter              = q;
         ViewBag.Year                 = yr;
         ViewBag.CurrentUser          = user;
         ViewBag.ExistingOrderNumber  = existingOrder?.OrderNumber;
+        ViewBag.PreviousOrderBadges  = prevOrderBadges;
 
         return View(products);
     }
