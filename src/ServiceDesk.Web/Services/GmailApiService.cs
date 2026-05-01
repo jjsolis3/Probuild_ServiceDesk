@@ -665,7 +665,7 @@ public class GmailApiService : BackgroundService
 
         msgBuilder.AppendLine($"From: ServiceSphere IT Support <{config.EmailAddress}>");
         msgBuilder.AppendLine($"To: {toEmail}");
-        msgBuilder.AppendLine($"Subject: {subject}");
+        msgBuilder.AppendLine($"Subject: {EncodeMailHeaderValue(subject)}");
         msgBuilder.AppendLine($"Message-ID: {ourMessageId}");
 
         // Threading headers
@@ -799,6 +799,19 @@ public class GmailApiService : BackgroundService
     #endregion
 
     #region Parsing Helpers
+
+    /// <summary>
+    /// Encodes a mail header value using RFC 2047 base64 encoding when it contains
+    /// non-ASCII characters (e.g. em dashes, accented letters, emoji).
+    /// Pure-ASCII values are returned unchanged.
+    /// </summary>
+    private static string EncodeMailHeaderValue(string value)
+    {
+        if (value.All(c => c < 128))
+            return value;
+        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+        return $"=?utf-8?B?{encoded}?=";
+    }
 
     private static string GetHeader(List<GmailHeader> headers, string name)
     {
