@@ -627,6 +627,11 @@ body {
     min-height: 100% !important;
 }
 
+#main-wrapper {
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+}
+
 /* =====================================================================
    Employee Details — tab pane content bounds
    Prevents tall tab content (e.g. signature rendered preview, long
