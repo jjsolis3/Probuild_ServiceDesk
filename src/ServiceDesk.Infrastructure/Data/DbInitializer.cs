@@ -1458,12 +1458,15 @@ public static class DbInitializer
 
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
                 BEGIN
+                    -- NOTE: ContractorId uses NO ACTION (SQL Server default) instead of CASCADE
+                    -- because PayrollReceipts has a second FK back to Employees (ApprovedById),
+                    -- and SQL Server forbids multiple cascade paths from the same parent.
+                    -- Contractors with payroll history shouldn't be hard-deleted anyway.
                     CREATE TABLE dbo.PayrollReceipts (
                         Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
                         ContractorId        INT             NOT NULL
                             CONSTRAINT FK_PayrollReceipts_Contractor
-                            REFERENCES dbo.Employees(Id)
-                            ON DELETE CASCADE,
+                            REFERENCES dbo.Employees(Id),
                         PeriodStart         DATE            NOT NULL,
                         PeriodEnd           DATE            NOT NULL,
                         TotalHours          DECIMAL(10,2)   NOT NULL,

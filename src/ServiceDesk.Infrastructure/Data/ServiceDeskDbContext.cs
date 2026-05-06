@@ -345,6 +345,11 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(e => e.BranchId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Decimal precision for contractor hourly rate
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.HourlyRate)
+            .HasPrecision(10, 2);
+
         // Ticket -> Branch relationship (location snapshot)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.Branch)
@@ -567,12 +572,14 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(e => e.PayrollReceiptId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // PayrollReceipt -> Contractor (Employee, cascade)
+        // PayrollReceipt -> Contractor (Employee, restrict — SQL Server forbids
+        // multiple cascade paths to the same table, and ApprovedById already uses SET NULL.
+        // Contractors with payroll history shouldn't be hard-deleted anyway).
         modelBuilder.Entity<PayrollReceipt>()
             .HasOne(r => r.Contractor)
             .WithMany()
             .HasForeignKey(r => r.ContractorId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // PayrollReceipt -> ApprovedBy (Employee, set null — restrict would block cascade from Employee)
         modelBuilder.Entity<PayrollReceipt>()
