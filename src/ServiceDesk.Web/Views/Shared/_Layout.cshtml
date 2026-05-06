@@ -218,14 +218,41 @@
                         </ul>
                     </li>
 
+                    <!-- CONTRACTOR HUB -->
+                    @if (User.IsInRole("Contractor"))
+                    {
+                        <li class="menu-title"><span>Contractor Hub</span></li>
+                        <li class="@NavClass("Contractor","Projects")">
+                            <a asp-controller="Contractor" asp-action="Projects" aria-expanded="false">
+                                <i class="fas fa-briefcase"></i>
+                                <span class="nav-text">My Projects</span>
+                            </a>
+                        </li>
+                        <li class="@NavClass("Contractor","Payroll") @(currentController == "Contractor" && (currentAction == "Payroll" || currentAction == "NewReceipt" || currentAction == "ReceiptDetail") ? "mm-active" : "")">
+                            <a asp-controller="Contractor" asp-action="Payroll" aria-expanded="false">
+                                <i class="fas fa-file-invoice-dollar"></i>
+                                <span class="nav-text">Payroll</span>
+                            </a>
+                        </li>
+                    }
+
                     <!-- ADMINISTRATION -->
-                    @if (User.IsInRole("Admin"))
+                    @if (User.IsInRole("Admin") || User.IsInRole("IT Agent"))
                     {
                         <li class="menu-title"><span>Administration</span></li>
-                        <li class="@NavClass("Settings")">
-                            <a asp-controller="Settings" asp-action="Index">
-                                <i class="fas fa-sliders-h"></i>
-                                <span class="nav-text">Settings</span>
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <li class="@NavClass("Settings")">
+                                <a asp-controller="Settings" asp-action="Index">
+                                    <i class="fas fa-sliders-h"></i>
+                                    <span class="nav-text">Settings</span>
+                                </a>
+                            </li>
+                        }
+                        <li class="@NavClass("AdminPayroll")">
+                            <a asp-controller="AdminPayroll" asp-action="Index" aria-expanded="false">
+                                <i class="fas fa-money-check-alt"></i>
+                                <span class="nav-text">Contractor Payroll</span>
                             </a>
                         </li>
                     }

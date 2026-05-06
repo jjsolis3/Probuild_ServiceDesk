@@ -1,0 +1,148 @@
+@model IEnumerable<ServiceDesk.Core.Models.PayrollReceipt>
+@{
+    var contractor = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
+}
+
+<div class="row page-titles">
+    <div class="col-sm-6">
+        <h4>Payroll</h4>
+        <p class="text-muted mb-0">Your payroll receipts</p>
+    </div>
+    <div class="col-sm-6 text-end">
+        <a asp-action="NewReceipt" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>New Receipt
+        </a>
+    </div>
+</div>
+
+@* New Receipt Quick Form *@
+<div class="card shadow-sm mb-4" id="newReceiptPanel" style="display:none;">
+    <div class="card-header"><i class="fas fa-file-invoice-dollar me-1"></i>New Payroll Receipt</div>
+    <div class="card-body">
+        <form asp-action="NewReceipt" method="post">
+            @Html.AntiForgeryToken()
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Period Start</label>
+                    <input type="date" name="periodStart" class="form-control" required />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Period End</label>
+                    <input type="date" name="periodEnd" class="form-control" required />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Notes (optional)</label>
+                    <input type="text" name="notes" class="form-control" placeholder="e.g. May 2026 invoice" maxlength="2000" />
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-save me-1"></i>Create Draft
+                    </button>
+                </div>
+            </div>
+            <p class="small text-muted mt-2 mb-0">
+                This will draft a receipt from all unclaimed billable time entries in the selected period at your current rate of
+                <strong>$@contractor?.HourlyRate?.ToString("0.00") / hr</strong>.
+            </p>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>No payroll receipts yet. Click <strong>New Receipt</strong> to generate your first one.
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="payrollTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Period</th>
+                            <th class="text-end">Total Hrs</th>
+                            <th class="text-end">Billable Hrs</th>
+                            <th class="text-end">Amount</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var receipt in Model)
+                        {
+                            var badgeClass = receipt.Status switch {
+                                "Draft"     => "secondary",
+                                "Submitted" => "warning text-dark",
+                                "Approved"  => "info text-dark",
+                                "Paid"      => "success",
+                                _           => "secondary"
+                            };
+                            <tr>
+                                <td><a asp-action="ReceiptDetail" asp-route-id="@receipt.Id">#@receipt.Id</a></td>
+                                <td>@receipt.PeriodStart.ToString("MMM d") – @receipt.PeriodEnd.ToString("MMM d, yyyy")</td>
+                                <td class="text-end">@receipt.TotalHours.ToString("0.##")</td>
+                                <td class="text-end">@receipt.TotalBillableHours.ToString("0.##")</td>
+                                <td class="text-end fw-semibold">$@receipt.TotalAmount.ToString("N2")</td>
+                                <td><span class="badge bg-@badgeClass">@receipt.Status</span></td>
+                                <td class="small text-muted">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                                <td>
+                                    <a asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
+                                       class="btn btn-sm btn-outline-primary me-1" title="View">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    @if (receipt.Status == "Draft")
+                                    {
+                                        <form asp-action="SubmitReceipt" asp-route-id="@receipt.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-success me-1" title="Submit">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </button>
+                                        </form>
+                                        <form asp-action="DeleteReceipt" asp-route-id="@receipt.Id" method="post" class="d-inline"
+                                              data-confirm-title="Delete Draft Receipt"
+                                              data-confirm-message="Delete this draft receipt? The time entries will be released.">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        document.querySelector('a[href*="NewReceipt"]')?.addEventListener('click', function (e) {
+            var panel = document.getElementById('newReceiptPanel');
+            if (panel) {
+                e.preventDefault();
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
+        });
+
+        // Set default date range to current month
+        (function () {
+            var now = new Date();
+            var y = now.getFullYear(), m = now.getMonth();
+            var start = new Date(y, m, 1);
+            var end   = new Date(y, m + 1, 0);
+            var fmt = d => d.toISOString().split('T')[0];
+            var s = document.querySelector('input[name="periodStart"]');
+            var e = document.querySelector('input[name="periodEnd"]');
+            if (s) s.value = fmt(start);
+            if (e) e.value = fmt(end);
+        })();
+    </script>
+}

@@ -1442,6 +1442,59 @@ public static class DbInitializer
                         ON DELETE SET NULL;
                 END");
 
+            // 49. Contractor payroll — IsContractor + HourlyRate on Employees,
+            //     PayrollReceipts table, and PayrollReceiptId claim column on
+            //     TicketTimeEntries so each billable entry can be locked to one receipt.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'IsContractor')
+                BEGIN
+                    ALTER TABLE dbo.Employees ADD IsContractor BIT NOT NULL DEFAULT 0;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'HourlyRate')
+                BEGIN
+                    ALTER TABLE dbo.Employees ADD HourlyRate DECIMAL(10,2) NULL;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    CREATE TABLE dbo.PayrollReceipts (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        ContractorId        INT             NOT NULL
+                            CONSTRAINT FK_PayrollReceipts_Contractor
+                            REFERENCES dbo.Employees(Id)
+                            ON DELETE CASCADE,
+                        PeriodStart         DATE            NOT NULL,
+                        PeriodEnd           DATE            NOT NULL,
+                        TotalHours          DECIMAL(10,2)   NOT NULL,
+                        TotalBillableHours  DECIMAL(10,2)   NOT NULL,
+                        HourlyRateSnapshot  DECIMAL(10,2)   NOT NULL,
+                        TotalAmount         DECIMAL(12,2)   NOT NULL,
+                        Status              NVARCHAR(20)    NOT NULL DEFAULT 'Draft',
+                        Notes               NVARCHAR(2000)  NULL,
+                        SubmittedDate       DATETIME        NULL,
+                        ApprovedDate        DATETIME        NULL,
+                        ApprovedById        INT             NULL
+                            CONSTRAINT FK_PayrollReceipts_ApprovedBy
+                            REFERENCES dbo.Employees(Id)
+                            ON DELETE SET NULL,
+                        PaidDate            DATETIME        NULL,
+                        CreatedDate         DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_PayrollReceipts_Contractor_Status
+                        ON dbo.PayrollReceipts (ContractorId, Status);
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'PayrollReceiptId')
+                BEGIN
+                    ALTER TABLE dbo.TicketTimeEntries
+                        ADD PayrollReceiptId INT NULL
+                        CONSTRAINT FK_TicketTimeEntries_PayrollReceipt
+                        REFERENCES dbo.PayrollReceipts(Id)
+                        ON DELETE SET NULL;
+                END");
+
         }
         catch (Exception ex)
         {
@@ -1480,6 +1533,8 @@ public static class DbInitializer
                          "Portal", true),
             ("Viewer",   "Read-only access to the web app (dashboard, tickets, assets, subscriptions, services, reports). Can also use the portal for own tickets.",
                          "ViewReports,ViewDashboard,ViewTickets,ViewAssets,ViewSubscriptions,ViewServices", true),
+            ("Contractor", "Contract worker — view assigned projects, log time, and generate payroll receipts.",
+                           "ViewMyProjects,LogTime,SubmitPayroll", true),
         };
 
         foreach (var (name, desc, perms, isSystem) in roleNames)

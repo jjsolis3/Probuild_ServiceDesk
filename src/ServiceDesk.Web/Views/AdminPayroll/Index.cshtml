@@ -1,0 +1,140 @@
+@model IEnumerable<ServiceDesk.Core.Models.PayrollReceipt>
+@{
+    var contractors       = ViewBag.Contractors as IEnumerable<ServiceDesk.Core.Models.Employee> ?? Enumerable.Empty<ServiceDesk.Core.Models.Employee>();
+    var filterStatus      = ViewBag.FilterStatus as string;
+    var filterContractorId = (int?)ViewBag.FilterContractorId;
+}
+
+<div class="row page-titles">
+    <div class="col-sm-6">
+        <h4>Contractor Payroll</h4>
+        <p class="text-muted mb-0">Review and approve submitted payroll receipts</p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small">Contractor</label>
+                <select name="contractorId" class="form-select form-select-sm">
+                    <option value="">All Contractors</option>
+                    @foreach (var c in contractors)
+                    {
+                        <option value="@c.Id" selected="@(filterContractorId == c.Id)">@c.FullName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All Statuses</option>
+                    @foreach (var s in new[] { "Draft", "Submitted", "Approved", "Paid" })
+                    {
+                        <option value="@s" selected="@(filterStatus == s)">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100">
+                    <i class="fas fa-filter me-1"></i>Filter
+                </button>
+            </div>
+            <div class="col-md-2">
+                <a asp-action="Index" class="btn btn-sm btn-outline-secondary w-100">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>No payroll receipts match the current filter.
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="adminPayrollTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Contractor</th>
+                            <th>Period</th>
+                            <th class="text-end">Total Hrs</th>
+                            <th class="text-end">Billable Hrs</th>
+                            <th class="text-end">Amount</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th>Approved</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var receipt in Model)
+                        {
+                            var badgeClass = receipt.Status switch {
+                                "Draft"     => "secondary",
+                                "Submitted" => "warning text-dark",
+                                "Approved"  => "info text-dark",
+                                "Paid"      => "success",
+                                _           => "secondary"
+                            };
+                            <tr>
+                                <td>
+                                    <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id">#@receipt.Id</a>
+                                </td>
+                                <td>@receipt.Contractor?.FullName</td>
+                                <td class="small">@receipt.PeriodStart.ToString("MMM d") – @receipt.PeriodEnd.ToString("MMM d, yyyy")</td>
+                                <td class="text-end small">@receipt.TotalHours.ToString("0.##")</td>
+                                <td class="text-end small">@receipt.TotalBillableHours.ToString("0.##")</td>
+                                <td class="text-end fw-semibold">$@receipt.TotalAmount.ToString("N2")</td>
+                                <td><span class="badge bg-@badgeClass">@receipt.Status</span></td>
+                                <td class="small text-muted">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                                <td class="small text-muted">@(receipt.ApprovedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                                <td>
+                                    @if (receipt.Status == "Submitted" && User.IsInRole("Admin"))
+                                    {
+                                        <form asp-action="Approve" asp-route-id="@receipt.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-success me-1" title="Approve">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        </form>
+                                    }
+                                    @if (receipt.Status == "Approved" && User.IsInRole("Admin"))
+                                    {
+                                        <form asp-action="MarkPaid" asp-route-id="@receipt.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-primary" title="Mark as Paid">
+                                                <i class="fas fa-money-bill-wave"></i> Mark Paid
+                                            </button>
+                                        </form>
+                                    }
+                                    @if (receipt.Status is "Submitted" or "Approved" or "Paid")
+                                    {
+                                        <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
+                                           class="btn btn-sm btn-outline-secondary" title="View">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        if (typeof $ !== 'undefined' && $.fn.DataTable) {
+            $('#adminPayrollTable').DataTable({ order: [[0, 'desc']], pageLength: 25 });
+        }
+    </script>
+}

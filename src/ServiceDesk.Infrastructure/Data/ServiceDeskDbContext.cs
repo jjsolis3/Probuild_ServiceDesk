@@ -84,6 +84,9 @@ public class ServiceDeskDbContext : DbContext
     // Ticket time tracking
     public DbSet<TicketTimeEntry> TicketTimeEntries => Set<TicketTimeEntry>();
 
+    // Contractor payroll receipts
+    public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
+
     // Software license seat assignments
     public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
 
@@ -556,6 +559,46 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<TicketTimeEntry>()
             .HasIndex(e => new { e.TicketId, e.WorkDate });
+
+        // TicketTimeEntry -> PayrollReceipt (set null — releasing an entry doesn't delete the receipt)
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.PayrollReceipt)
+            .WithMany(r => r.TimeEntries)
+            .HasForeignKey(e => e.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // PayrollReceipt -> Contractor (Employee, cascade)
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasOne(r => r.Contractor)
+            .WithMany()
+            .HasForeignKey(r => r.ContractorId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // PayrollReceipt -> ApprovedBy (Employee, set null — restrict would block cascade from Employee)
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasOne(r => r.ApprovedBy)
+            .WithMany()
+            .HasForeignKey(r => r.ApprovedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalBillableHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.HourlyRateSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalAmount)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasIndex(r => new { r.ContractorId, r.Status });
 
         // LicenseSeat -> SoftwareLicense (cascade)
         modelBuilder.Entity<LicenseSeat>()

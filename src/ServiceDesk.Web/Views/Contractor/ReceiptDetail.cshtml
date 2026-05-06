@@ -1,0 +1,203 @@
+@model ServiceDesk.Core.Models.PayrollReceipt
+@{
+    var companyName = ViewBag.CompanyName as string ?? "ServiceSphere";
+    var badgeClass = Model.Status switch {
+        "Draft"     => "secondary",
+        "Submitted" => "warning text-dark",
+        "Approved"  => "info text-dark",
+        "Paid"      => "success",
+        _           => "secondary"
+    };
+}
+
+@section Styles {
+    <style>
+        @@media print {
+            .no-print { display: none !important; }
+            .card { border: none !important; box-shadow: none !important; }
+            .card-header { background: #343a40 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+}
+
+<div class="row page-titles no-print">
+    <div class="col-sm-6">
+        <h4>Receipt #@Model.Id</h4>
+        <p class="text-muted mb-0">
+            @Model.PeriodStart.ToString("MMMM d, yyyy") – @Model.PeriodEnd.ToString("MMMM d, yyyy")
+        </p>
+    </div>
+    <div class="col-sm-6 text-end">
+        <a asp-action="Payroll" class="btn btn-outline-secondary me-1 no-print">
+            <i class="fas fa-arrow-left me-1"></i>Back
+        </a>
+        <button onclick="window.print()" class="btn btn-outline-dark me-1 no-print">
+            <i class="fas fa-print me-1"></i>Print / PDF
+        </button>
+        <a asp-action="ReceiptExcel" asp-route-id="@Model.Id" class="btn btn-outline-success me-1 no-print">
+            <i class="fas fa-file-excel me-1"></i>Download Excel
+        </a>
+        @if (Model.Status == "Draft")
+        {
+            <form asp-action="SubmitReceipt" asp-route-id="@Model.Id" method="post" class="d-inline no-print">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane me-1"></i>Submit to HR
+                </button>
+            </form>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header text-white" style="background:#343a40;">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 fw-bold">@companyName</h5>
+                <small class="opacity-75">Contractor Payroll Receipt</small>
+            </div>
+            <span class="badge bg-@badgeClass fs-6">@Model.Status</span>
+        </div>
+    </div>
+    <div class="card-body">
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <h6 class="text-muted text-uppercase small fw-bold mb-2">Contractor</h6>
+                <div class="fw-semibold">@Model.Contractor?.FullName</div>
+                <div class="text-muted small">@Model.Contractor?.Email</div>
+                <div class="text-muted small">@(Model.Contractor?.JobTitle ?? Model.Contractor?.Department)</div>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted text-uppercase small fw-bold mb-2">Period</h6>
+                <div>@Model.PeriodStart.ToString("MMM d, yyyy")</div>
+                <div class="text-muted">to @Model.PeriodEnd.ToString("MMM d, yyyy")</div>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted text-uppercase small fw-bold mb-2">Receipt #</h6>
+                <div class="fw-bold fs-5">@Model.Id</div>
+                <div class="text-muted small">Created @Model.CreatedDate.ToString("MMM d, yyyy")</div>
+            </div>
+        </div>
+
+        <div class="row g-2 mb-4 text-center">
+            <div class="col-md-3">
+                <div class="bg-light rounded p-3">
+                    <div class="text-muted small">Total Hours</div>
+                    <div class="fw-bold fs-4">@Model.TotalHours.ToString("0.##")</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-light rounded p-3">
+                    <div class="text-muted small">Billable Hours</div>
+                    <div class="fw-bold fs-4 text-success">@Model.TotalBillableHours.ToString("0.##")</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-light rounded p-3">
+                    <div class="text-muted small">Rate / hr</div>
+                    <div class="fw-bold fs-4">$@Model.HourlyRateSnapshot.ToString("N2")</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-primary bg-opacity-10 rounded p-3 border border-primary">
+                    <div class="text-muted small">Total Amount</div>
+                    <div class="fw-bold fs-4 text-primary">$@Model.TotalAmount.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <h6 class="text-muted text-uppercase small fw-bold mb-2">Time Entries</h6>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Work Date</th>
+                        <th>Ticket #</th>
+                        <th>Description</th>
+                        <th class="text-center">Hours</th>
+                        <th class="text-center">Billable</th>
+                        <th class="text-end">Rate</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model.TimeEntries.OrderBy(e => e.WorkDate))
+                    {
+                        var amount = entry.IsBillable ? entry.Hours * Model.HourlyRateSnapshot : 0m;
+                        <tr>
+                            <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
+                            <td class="small">@(entry.Ticket?.Id.ToString() ?? "—")</td>
+                            <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
+                            <td class="text-center small">@entry.Hours.ToString("0.##")</td>
+                            <td class="text-center">
+                                @if (entry.IsBillable)
+                                {
+                                    <span class="badge bg-success">Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">No</span>
+                                }
+                            </td>
+                            <td class="text-end small">@(entry.IsBillable ? "$" + Model.HourlyRateSnapshot.ToString("N2") : "—")</td>
+                            <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-secondary fw-semibold">
+                    <tr>
+                        <td colspan="3" class="text-end">Total</td>
+                        <td class="text-center">@Model.TotalHours.ToString("0.##")</td>
+                        <td></td>
+                        <td></td>
+                        <td class="text-end">$@Model.TotalAmount.ToString("N2")</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.Notes))
+        {
+            <div class="mb-4">
+                <h6 class="text-muted text-uppercase small fw-bold mb-1">Notes</h6>
+                <p class="mb-0">@Model.Notes</p>
+            </div>
+        }
+
+        <div class="row g-3">
+            @if (Model.SubmittedDate.HasValue)
+            {
+                <div class="col-md-4">
+                    <div class="border rounded p-2 text-center">
+                        <div class="text-muted small">Submitted</div>
+                        <div class="small fw-semibold">@Model.SubmittedDate.Value.ToString("MMM d, yyyy HH:mm") UTC</div>
+                    </div>
+                </div>
+            }
+            @if (Model.ApprovedDate.HasValue)
+            {
+                <div class="col-md-4">
+                    <div class="border rounded p-2 text-center">
+                        <div class="text-muted small">Approved</div>
+                        <div class="small fw-semibold">@Model.ApprovedDate.Value.ToString("MMM d, yyyy HH:mm") UTC</div>
+                        @if (Model.ApprovedBy != null)
+                        {
+                            <div class="small text-muted">by @Model.ApprovedBy.FullName</div>
+                        }
+                    </div>
+                </div>
+            }
+            @if (Model.PaidDate.HasValue)
+            {
+                <div class="col-md-4">
+                    <div class="border border-success rounded p-2 text-center">
+                        <div class="text-muted small">Paid</div>
+                        <div class="small fw-semibold text-success">@Model.PaidDate.Value.ToString("MMM d, yyyy HH:mm") UTC</div>
+                    </div>
+                </div>
+            }
+        </div>
+
+    </div>
+</div>

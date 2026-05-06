@@ -1,0 +1,151 @@
+@model IEnumerable<ServiceDesk.Core.Models.TicketTimeEntry>
+@{
+    var contractor  = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
+    var periodStart = ViewBag.PeriodStart as string;
+    var periodEnd   = ViewBag.PeriodEnd   as string;
+    var totalHours    = Model.Sum(e => e.Hours);
+    var billableHours = Model.Where(e => e.IsBillable).Sum(e => e.Hours);
+    var rate          = contractor?.HourlyRate ?? 0m;
+    var estimated     = billableHours * rate;
+}
+
+<div class="row page-titles">
+    <div class="col-sm-6">
+        <h4>New Payroll Receipt</h4>
+        <p class="text-muted mb-0">Preview unclaimed billable time entries for the selected period</p>
+    </div>
+    <div class="col-sm-6 text-end">
+        <a asp-action="Payroll" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back to Payroll
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header"><i class="fas fa-calendar-alt me-1"></i>Select Period</div>
+    <div class="card-body">
+        <form method="get" asp-action="NewReceipt" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Period Start</label>
+                <input type="date" name="periodStart" class="form-control" value="@periodStart" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Period End</label>
+                <input type="date" name="periodEnd" class="form-control" value="@periodEnd" required />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search me-1"></i>Preview
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        No unclaimed billable time entries found for <strong>@periodStart</strong> to <strong>@periodEnd</strong>.
+        <br><span class="small text-muted">Already-claimed entries (in a submitted/approved/paid receipt) are excluded.</span>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-list me-1"></i>Time Entries Preview</span>
+            <span class="badge bg-primary">@Model.Count() entries</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Work Date</th>
+                            <th>Ticket</th>
+                            <th>Description</th>
+                            <th class="text-center">Hours</th>
+                            <th class="text-center">Billable</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in Model)
+                        {
+                            var amount = entry.IsBillable ? entry.Hours * rate : 0m;
+                            <tr>
+                                <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
+                                <td class="small">
+                                    @if (entry.Ticket != null)
+                                    {
+                                        <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@entry.Ticket.Id">#@entry.Ticket.Id</a>
+                                    }
+                                </td>
+                                <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
+                                <td class="text-center small">@entry.Hours.ToString("0.##")</td>
+                                <td class="text-center">
+                                    @if (entry.IsBillable)
+                                    {
+                                        <span class="badge bg-success">Yes</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">No</span>
+                                    }
+                                </td>
+                                <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-secondary fw-semibold">
+                        <tr>
+                            <td colspan="3" class="text-end">Totals:</td>
+                            <td class="text-center">@totalHours.ToString("0.##")</td>
+                            <td></td>
+                            <td class="text-end">$@estimated.ToString("N2")</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><i class="fas fa-file-invoice-dollar me-1"></i>Summary</div>
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3 text-center">
+                    <div class="text-muted small">Total Hours</div>
+                    <div class="fw-bold fs-4">@totalHours.ToString("0.##")</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="text-muted small">Billable Hours</div>
+                    <div class="fw-bold fs-4 text-success">@billableHours.ToString("0.##")</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="text-muted small">Rate / hr</div>
+                    <div class="fw-bold fs-4">$@rate.ToString("N2")</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="text-muted small">Estimated Total</div>
+                    <div class="fw-bold fs-4 text-primary">$@estimated.ToString("N2")</div>
+                </div>
+            </div>
+            <form asp-action="NewReceipt" method="post" class="row g-3 align-items-end">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="periodStart" value="@periodStart" />
+                <input type="hidden" name="periodEnd" value="@periodEnd" />
+                <div class="col-md-8">
+                    <label class="form-label">Notes (optional)</label>
+                    <input type="text" name="notes" class="form-control" placeholder="e.g. May 2026 invoice" maxlength="2000" />
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-save me-1"></i>Save as Draft
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
