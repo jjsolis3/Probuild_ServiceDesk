@@ -1536,8 +1536,6 @@ public static class DbInitializer
                          "Portal", true),
             ("Viewer",   "Read-only access to the web app (dashboard, tickets, assets, subscriptions, services, reports). Can also use the portal for own tickets.",
                          "ViewReports,ViewDashboard,ViewTickets,ViewAssets,ViewSubscriptions,ViewServices", true),
-            ("Contractor", "Contract worker — view assigned projects, log time, and generate payroll receipts.",
-                           "ViewMyProjects,LogTime,SubmitPayroll", true),
         };
 
         foreach (var (name, desc, perms, isSystem) in roleNames)

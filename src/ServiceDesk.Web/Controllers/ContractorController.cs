@@ -7,7 +7,7 @@ using ServiceDesk.Infrastructure.Data;
 
 namespace ServiceDesk.Web.Controllers;
 
-[Authorize(Roles = "Contractor")]
+[Authorize]
 public class ContractorController : Controller
 {
     private readonly ServiceDeskDbContext _context;
@@ -33,29 +33,6 @@ public class ContractorController : Controller
             .FirstOrDefaultAsync(e => e.Id == portalUser.EmployeeId && e.IsContractor);
     }
 
-    // ── My Projects ───────────────────────────────────────────────────────────
-
-    // GET /Contractor/Projects
-    public async Task<IActionResult> Projects()
-    {
-        var contractor = await GetContractorEmployeeAsync();
-        if (contractor == null)
-        {
-            TempData["Error"] = "No contractor employee profile is linked to your account. Please contact your administrator.";
-            return RedirectToAction("Index", "Home");
-        }
-
-        var tickets = await _context.Tickets
-            .Include(t => t.TimeEntries)
-            .Where(t => t.AssignedToId == contractor.Id)
-            .OrderByDescending(t => t.CreatedDate)
-            .ToListAsync();
-
-        ViewBag.Contractor = contractor;
-        ViewData["Title"] = "My Projects";
-        return View(tickets);
-    }
-
     // ── Payroll Dashboard ─────────────────────────────────────────────────────
 
     // GET /Contractor/Payroll
@@ -64,7 +41,7 @@ public class ContractorController : Controller
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null)
         {
-            TempData["Error"] = "No contractor employee profile is linked to your account.";
+            TempData["Error"] = "Your employee profile is not flagged as a contractor. Ask an Admin to enable 'Is Contractor' on your employee record.";
             return RedirectToAction("Index", "Home");
         }
 

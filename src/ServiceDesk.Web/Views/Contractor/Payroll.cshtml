@@ -5,8 +5,8 @@
 
 <div class="row page-titles">
     <div class="col-sm-6">
-        <h4>Payroll</h4>
-        <p class="text-muted mb-0">Your payroll receipts</p>
+        <h4>My Payroll</h4>
+        <p class="text-muted mb-0">Track billable hours and generate invoices for the work you've done</p>
     </div>
     <div class="col-sm-6 text-end">
         <a asp-action="NewReceipt" class="btn btn-primary">
@@ -41,8 +41,10 @@
                 </div>
             </div>
             <p class="small text-muted mt-2 mb-0">
-                This will draft a receipt from all unclaimed billable time entries in the selected period at your current rate of
+                Pulls all unclaimed billable time entries you logged (on any ticket) within the selected period at your rate of
                 <strong>$@contractor?.HourlyRate?.ToString("0.00") / hr</strong>.
+                Already-claimed entries are excluded — you can never bill the same hour twice.
+                Work in progress? Log time as you go; future receipts will pick up any hours not yet claimed.
             </p>
         </form>
     </div>
@@ -51,7 +53,8 @@
 @if (!Model.Any())
 {
     <div class="alert alert-info">
-        <i class="fas fa-info-circle me-2"></i>No payroll receipts yet. Click <strong>New Receipt</strong> to generate your first one.
+        <i class="fas fa-info-circle me-2"></i>No payroll receipts yet.
+        Log billable time on your tickets as usual, then click <strong>New Receipt</strong> to bundle those hours into an invoice.
     </div>
 }
 else
