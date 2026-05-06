@@ -510,6 +510,13 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(r => r.SuggestedAssigneeId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // AiRecommendation -> SuggestedSubCategory (set null)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.SuggestedSubCategory)
+            .WithMany()
+            .HasForeignKey(r => r.SuggestedSubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // CsatSurvey -> Ticket (cascade)
         modelBuilder.Entity<CsatSurvey>()
             .HasOne(s => s.Ticket)

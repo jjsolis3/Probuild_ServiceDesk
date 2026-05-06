@@ -610,6 +610,7 @@ public class TicketsController : Controller
         // Sequential _context queries — DbContext is not thread-safe
         var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
+            .Include(r => r.SuggestedSubCategory)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
@@ -695,7 +696,8 @@ public class TicketsController : Controller
                     catch { }
                 });
 
-            return RedirectToAction(nameof(Index));
+            TempData["Success"] = "Ticket updated successfully.";
+            return RedirectToAction(nameof(Edit), new { id });
         }
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -1360,6 +1362,8 @@ public class TicketsController : Controller
             ticket.Priority = (ServiceDesk.Core.Enums.TicketPriority)rec.SuggestedPriority.Value;
         if (rec.SuggestedAssigneeId.HasValue)
             ticket.AssignedToId = rec.SuggestedAssigneeId.Value;
+        if (rec.SuggestedSubCategoryId.HasValue)
+            ticket.SubCategoryId = rec.SuggestedSubCategoryId.Value;
 
         ticket.UpdatedDate = DateTime.UtcNow;
 
@@ -1550,6 +1554,26 @@ public class TicketsController : Controller
             return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
 
         return Json(new { success = true, summary });
+    }
+
+    /// <summary>
+    /// Calls Ollama to generate recommended IT resolution steps for the ticket.
+    /// Returns { success, solution } JSON.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestSolution(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        var (solution, error) = await _ollama.SuggestSolutionWithErrorAsync(
+            ticket.Title, ticket.Description ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(solution))
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+
+        return Json(new { success = true, solution });
     }
 
     public async Task<IActionResult> Delete(int? id)

@@ -235,6 +235,13 @@
                                     <span class="badge bg-warning text-dark ms-1">@priPct%</span>
                                 </span>
                             }
+                            @if (aiRec.SuggestedSubCategory != null)
+                            {
+                                <span>
+                                    <i class="bi bi-diagram-3 me-1 text-info"></i>
+                                    <strong>Sub-Category:</strong> @aiRec.SuggestedSubCategory.Name
+                                </span>
+                            }
                             @if (aiRec.SuggestedAssignee != null)
                             {
                                 <span>
@@ -288,6 +295,9 @@
                         <i class="bi bi-journal-text me-1"></i>Summarize Thread
                     </button>
                 }
+                <button type="button" id="btnSuggestSolution" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-tools me-1"></i>AI Solution
+                </button>
                 <button type="button" id="btnDraftAiReply" class="btn btn-sm btn-outline-info">
                     <i class="bi bi-robot me-1"></i>Draft AI Reply
                 </button>
@@ -1485,6 +1495,51 @@ function filterSelectOptions(input) {
 </script>
 
 <script>
+// ── AI Solution button (Ollama) ───────────────────────────────────────────
+(function () {
+    var btn = document.getElementById('btnSuggestSolution');
+    if (!btn) return;
+
+    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+
+    btn.addEventListener('click', function () {
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Generating…';
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken);
+
+        fetch('/Tickets/SuggestSolution/' + ticketId, { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (data.success && data.solution) {
+                    var existing = document.getElementById('aiSolutionBanner');
+                    if (existing) existing.remove();
+                    var banner = document.createElement('div');
+                    banner.id = 'aiSolutionBanner';
+                    banner.className = 'alert alert-success alert-dismissible fade show mb-3 small';
+                    banner.innerHTML =
+                        '<strong><i class="bi bi-tools me-1"><\/i>AI Recommended Solution (for IT staff):<\/strong>' +
+                        '<div class="mt-1" style="white-space:pre-wrap;">' + data.solution + '<\/div>' +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert"><\/button>';
+                    var tabs = document.getElementById('ticketTabs');
+                    if (tabs) tabs.parentNode.insertBefore(banner, tabs);
+                } else {
+                    alert(data.error || 'Solution generation failed. Ensure Ollama is running.');
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alert('Failed to reach the server. Please try again.');
+            });
+    });
+})();
+
 // ── Summarize Thread button (Ollama) ──────────────────────────────────────
 (function () {
     var btn = document.getElementById('btnSummarizeThread');

@@ -243,6 +243,25 @@ public class OllamaService
     }
 
     /// <summary>
+    /// Generates recommended resolution steps for IT staff based on the ticket content.
+    /// Returns (Solution, Error) — Error is non-null when Ollama is unavailable.
+    /// </summary>
+    public async Task<(string? Solution, string? Error)> SuggestSolutionWithErrorAsync(
+        string title, string description, CancellationToken ct = default)
+    {
+        var prompt =
+            "You are an experienced IT support engineer. A help desk ticket has been submitted. " +
+            "Recommend concise, actionable resolution steps that the IT staff member should follow " +
+            "to diagnose and fix the issue. Use a numbered list. Focus only on technical steps — " +
+            "do not write a reply to the user, do not use greetings or sign-offs.\n\n" +
+            $"Ticket title: {title}\n\nIssue description:\n{description}\n\n" +
+            "Write only the numbered resolution steps.";
+
+        var result = await GenerateAsync(prompt, ct);
+        return (result.Text, result.Error);
+    }
+
+    /// <summary>
     /// Tests the Ollama connection and returns a diagnostic result.
     /// Does not require Ollama to be enabled — tests the raw connection.
     /// </summary>

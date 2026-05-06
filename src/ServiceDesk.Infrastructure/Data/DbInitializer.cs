@@ -1429,6 +1429,19 @@ public static class DbInitializer
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrders') AND name = 'BranchNameSnapshot')
                     ALTER TABLE dbo.StoreOrders ADD BranchNameSnapshot NVARCHAR(200) NULL;");
 
+            // 48. AI sub-category suggestion — adds SuggestedSubCategoryId to
+            //     AiRecommendations so the triage engine can recommend not just
+            //     category but also the most common sub-category for that category.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AiRecommendations') AND name = 'SuggestedSubCategoryId')
+                BEGIN
+                    ALTER TABLE dbo.AiRecommendations
+                        ADD SuggestedSubCategoryId INT NULL
+                        CONSTRAINT FK_AiRecommendations_SubCategory
+                        REFERENCES dbo.TicketSubCategories(Id)
+                        ON DELETE SET NULL;
+                END");
+
         }
         catch (Exception ex)
         {
