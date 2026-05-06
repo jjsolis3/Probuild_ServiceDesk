@@ -46,7 +46,6 @@ public class ContractorController : Controller
         }
 
         var tickets = await _context.Tickets
-            .Include(t => t.TicketState)
             .Include(t => t.TimeEntries)
             .Where(t => t.AssignedToId == contractor.Id)
             .OrderByDescending(t => t.CreatedDate)

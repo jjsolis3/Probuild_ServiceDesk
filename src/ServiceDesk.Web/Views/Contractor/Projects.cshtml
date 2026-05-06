@@ -23,8 +23,16 @@ else
         {
             var totalHours    = ticket.TimeEntries.Sum(e => e.Hours);
             var billableHours = ticket.TimeEntries.Where(e => e.IsBillable).Sum(e => e.Hours);
-            var stateBadge    = ticket.TicketState?.Color ?? "#6c757d";
-            var stateName     = ticket.TicketState?.Name ?? "Unknown";
+            var stateBadge = ticket.Status switch {
+                ServiceDesk.Core.Enums.TicketStatus.Open       => "primary",
+                ServiceDesk.Core.Enums.TicketStatus.InProgress => "warning",
+                ServiceDesk.Core.Enums.TicketStatus.OnHold     => "secondary",
+                ServiceDesk.Core.Enums.TicketStatus.Resolved   => "success",
+                ServiceDesk.Core.Enums.TicketStatus.Closed     => "dark",
+                ServiceDesk.Core.Enums.TicketStatus.Cancelled  => "danger",
+                _                                              => "secondary"
+            };
+            var stateName = ticket.Status.ToString();
 
             <div class="col-md-6 col-xl-4">
                 <div class="card shadow-sm h-100">
@@ -32,7 +40,7 @@ else
                         <span class="fw-semibold text-truncate" style="max-width:200px;" title="@ticket.Title">
                             <i class="fas fa-ticket-alt me-1 text-primary"></i>#@ticket.Id — @ticket.Title
                         </span>
-                        <span class="badge" style="background-color:@stateBadge">@stateName</span>
+                        <span class="badge bg-@stateBadge">@stateName</span>
                     </div>
                     <div class="card-body py-2">
                         <div class="small text-muted mb-2">
