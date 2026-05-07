@@ -133,6 +133,30 @@ public class EmailNotificationService
         return prefix != null ? $"{prefix} {baseSubject}" : baseSubject;
     }
 
+    private async Task LogNotificationAsync(string type, string recipientEmail, string? recipientName,
+        string? subject, int? ticketId, bool success, string? errorMessage = null)
+    {
+        try
+        {
+            _context.NotificationLogs.Add(new Core.Models.NotificationLog
+            {
+                NotificationType = type,
+                RecipientEmail   = recipientEmail,
+                RecipientName    = recipientName,
+                Subject          = subject,
+                TicketId         = ticketId,
+                Success          = success,
+                ErrorMessage     = errorMessage,
+                SentDate         = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to write notification log entry");
+        }
+    }
+
     /// <summary>
     /// Returns true when a notification trigger key is enabled in AppSettings.
     /// Defaults to true if the key has never been seeded (safe fallback).
@@ -195,10 +219,12 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
             _logger.LogInformation("Sent ticket confirmation for #{TicketId} to {Email}", ticket.Id, recipientEmail);
+            await LogNotificationAsync("TicketCreated", recipientEmail, recipientName, subject, ticket.Id, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send ticket confirmation for #{TicketId}", ticket.Id);
+            await LogNotificationAsync("TicketCreated", recipientEmail, recipientName, subject, ticket.Id, false, ex.Message);
         }
     }
 
@@ -249,13 +275,17 @@ public class EmailNotificationService
             <div style='background:#f9fafb;padding:12px;border-radius:6px;margin:10px 0;'>{ticket.Description}</div>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        var assigneeEmail = ticket.AssignedTo.Email;
+        var assigneeName2 = ticket.AssignedTo.FirstName + " " + ticket.AssignedTo.LastName;
         try
         {
-            await _gmailApiService.SendEmailViaGmailApi(config, _context, ticket.AssignedTo.Email, subject, htmlBody, ticket.Id, inReplyTo, references);
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, assigneeEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
+            await LogNotificationAsync("TicketAssigned", assigneeEmail, assigneeName2, subject, ticket.Id, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send assignment notification for #{TicketId}", ticket.Id);
+            await LogNotificationAsync("TicketAssigned", assigneeEmail, assigneeName2, subject, ticket.Id, false, ex.Message);
         }
     }
 
@@ -315,10 +345,12 @@ public class EmailNotificationService
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
+            await LogNotificationAsync("TicketUpdated", recipientEmail, null, subject, ticket.Id, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send update notification for #{TicketId}", ticket.Id);
+            await LogNotificationAsync("TicketUpdated", recipientEmail, null, subject, ticket.Id, false, ex.Message);
         }
     }
 
@@ -360,10 +392,12 @@ public class EmailNotificationService
         try
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, ticket.Id, inReplyTo, references);
+            await LogNotificationAsync("NoteAdded", recipientEmail, null, subject, ticket.Id, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send note notification for #{TicketId}", ticket.Id);
+            await LogNotificationAsync("NoteAdded", recipientEmail, null, subject, ticket.Id, false, ex.Message);
         }
     }
 
@@ -412,10 +446,12 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("Sent password reset email to {Email}", recipientEmail);
+            await LogNotificationAsync("PasswordReset", recipientEmail, recipientName, subject, null, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send password reset email to {Email}", recipientEmail);
+            await LogNotificationAsync("PasswordReset", recipientEmail, recipientName, subject, null, false, ex.Message);
         }
     }
 

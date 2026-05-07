@@ -2596,4 +2596,40 @@ public class SettingsController : Controller
             return null;
         }
     }
+
+    // ── Email Activity Log ────────────────────────────────────────────────────
+
+    // GET: Settings/EmailActivity
+    public async Task<IActionResult> EmailActivity(string? type, string? recipient, bool? success, int page = 1)
+    {
+        const int pageSize = 50;
+
+        var query = _context.NotificationLogs.AsQueryable();
+
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(n => n.NotificationType == type);
+        if (!string.IsNullOrEmpty(recipient))
+            query = query.Where(n => n.RecipientEmail.Contains(recipient));
+        if (success.HasValue)
+            query = query.Where(n => n.Success == success.Value);
+
+        var total   = await query.CountAsync();
+        var entries = await query
+            .OrderByDescending(n => n.SentDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(n => n.Ticket)
+            .ToListAsync();
+
+        ViewBag.FilterType      = type;
+        ViewBag.FilterRecipient = recipient;
+        ViewBag.FilterSuccess   = success;
+        ViewBag.Page            = page;
+        ViewBag.PageSize        = pageSize;
+        ViewBag.TotalCount      = total;
+        ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
+        ViewBag.NotificationTypes = new[] { "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded", "PasswordReset" };
+        ViewData["Title"]       = "Email Activity Log";
+        return View(entries);
+    }
 }

@@ -87,6 +87,9 @@ public class ServiceDeskDbContext : DbContext
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
 
+    // Notification / email activity log
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
     // Software license seat assignments
     public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
 

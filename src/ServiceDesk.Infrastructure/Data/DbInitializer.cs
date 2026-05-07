@@ -1498,6 +1498,32 @@ public static class DbInitializer
                         ON DELETE SET NULL;
                 END");
 
+            // 50. Notification activity log — records every outbound notification email
+            //     so admins can audit what was sent, when, and whether it succeeded.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'NotificationLogs')
+                BEGIN
+                    CREATE TABLE dbo.NotificationLogs (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        TicketId            INT             NULL
+                            CONSTRAINT FK_NotificationLogs_Ticket
+                            REFERENCES dbo.Tickets(Id)
+                            ON DELETE SET NULL,
+                        NotificationType    NVARCHAR(50)    NOT NULL,
+                        RecipientEmail      NVARCHAR(200)   NOT NULL,
+                        RecipientName       NVARCHAR(200)   NULL,
+                        Subject             NVARCHAR(500)   NULL,
+                        Success             BIT             NOT NULL DEFAULT 1,
+                        ErrorMessage        NVARCHAR(1000)  NULL,
+                        SentDate            DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_NotificationLogs_TicketId
+                        ON dbo.NotificationLogs (TicketId);
+                    CREATE INDEX IX_NotificationLogs_SentDate
+                        ON dbo.NotificationLogs (SentDate DESC);
+                END");
+
         }
         catch (Exception ex)
         {

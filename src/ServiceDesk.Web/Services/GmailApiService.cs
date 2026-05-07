@@ -586,11 +586,15 @@ public class GmailApiService : BackgroundService
 
     /// <summary>
     /// Fetches unread messages from the inbox (initial sync or fallback).
+    /// Scoped to the last 48 hours so a stale historyId never causes a flood of old messages.
     /// </summary>
     private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, CancellationToken ct)
     {
         var messages = new List<GmailMessage>();
-        var url = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox&maxResults=50";
+        // "after:" uses Unix epoch seconds — limit to 48 h so a reset historyId never
+        // re-processes weeks of old inbox messages and fires notifications for them all.
+        var after = DateTimeOffset.UtcNow.AddHours(-48).ToUnixTimeSeconds();
+        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=50";
         var response = await httpClient.GetAsync(url, ct);
 
         if (!response.IsSuccessStatusCode) return messages;
