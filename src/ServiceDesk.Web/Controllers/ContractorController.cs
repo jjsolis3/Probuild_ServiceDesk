@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
+using System.Security.Claims;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -21,16 +22,13 @@ public class ContractorController : Controller
 
     private async Task<Employee?> GetContractorEmployeeAsync()
     {
-        var email = User.Identity?.Name;
-        if (string.IsNullOrEmpty(email)) return null;
-
-        var portalUser = await _context.PortalUsers
-            .FirstOrDefaultAsync(u => u.Email == email && u.EmployeeId != null);
-
-        if (portalUser?.EmployeeId == null) return null;
+        // EmployeeId claim is baked into the login cookie — use it directly rather than
+        // looking up by User.Identity.Name, which is the display name (FullName), not email.
+        var empIdStr = User.FindFirstValue("EmployeeId");
+        if (!int.TryParse(empIdStr, out var empId) || empId == 0) return null;
 
         return await _context.Employees
-            .FirstOrDefaultAsync(e => e.Id == portalUser.EmployeeId && e.IsContractor);
+            .FirstOrDefaultAsync(e => e.Id == empId && e.IsContractor);
     }
 
     // ── Payroll Dashboard ─────────────────────────────────────────────────────
