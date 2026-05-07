@@ -1524,6 +1524,14 @@ public static class DbInitializer
                         ON dbo.NotificationLogs (SentDate DESC);
                 END");
 
+            // 51. Payroll receipt rejection — allows admin to return a Submitted
+            //     receipt to Draft with a written reason for revision.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'RejectionNote')
+                BEGIN
+                    ALTER TABLE dbo.PayrollReceipts ADD RejectionNote NVARCHAR(1000) NULL;
+                END");
+
         }
         catch (Exception ex)
         {

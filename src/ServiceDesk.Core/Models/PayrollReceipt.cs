@@ -54,6 +54,10 @@ public class PayrollReceipt
 
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
+    // Set by admin when returning a receipt to Draft with feedback
+    [StringLength(1000)]
+    public string? RejectionNote { get; set; }
+
     // Time entries claimed by this receipt
     public ICollection<TicketTimeEntry> TimeEntries { get; set; } = new List<TicketTimeEntry>();
 }

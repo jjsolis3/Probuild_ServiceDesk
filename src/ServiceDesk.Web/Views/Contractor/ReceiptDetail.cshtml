@@ -407,6 +407,17 @@
                 </div>
             }
 
+            @if (Model.Status == "Draft" && !string.IsNullOrEmpty(Model.RejectionNote))
+            {
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+                    <i class="bi bi-exclamation-triangle-fill" style="color:#856404;font-size:1.1rem;flex-shrink:0;margin-top:2px;"></i>
+                    <div>
+                        <div style="font-weight:700;color:#856404;font-size:.88rem;margin-bottom:3px;">Returned by HR for Revision</div>
+                        <div style="color:#533f03;font-size:.875rem;">@Model.RejectionNote</div>
+                    </div>
+                </div>
+            }
+
             <!-- Status timeline -->
             <div class="status-trail">
                 @{

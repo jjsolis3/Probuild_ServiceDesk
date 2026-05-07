@@ -68,6 +68,11 @@ public class EmployeesController : Controller
         ViewBag.Branches            = await _context.Branches
             .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
 
+        // KPI tile counts (always unfiltered)
+        ViewBag.KpiTotal       = await _context.Employees.CountAsync();
+        ViewBag.KpiActive      = await _context.Employees.CountAsync(e => e.IsActive);
+        ViewBag.KpiContractors = await _context.Employees.CountAsync(e => e.IsContractor && e.IsActive);
+
         var employees = await query
             .Include(e => e.Branch)
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName).ToListAsync();

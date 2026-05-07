@@ -249,6 +249,8 @@
     .ap-btn-paid:hover { background: var(--ap-blue); color: #fff; border-color: var(--ap-blue); }
     .ap-btn-view    { background: #f8f9fa; color: #495057; border-color: var(--ap-border); }
     .ap-btn-view:hover { background: #eef4ff; color: var(--ap-blue); border-color: var(--ap-blue); }
+    .ap-btn-reject  { background: #f8d7da; color: #842029; border-color: #f5c2c7; }
+    .ap-btn-reject:hover { background: var(--ap-red); color: #fff; border-color: var(--ap-red); }
 
     /* Contractor avatar */
     .contractor-avatar {
@@ -419,6 +421,11 @@
             <table class="ap-table" id="adminPayrollTable">
                 <thead>
                     <tr>
+                        <th style="width:36px;">
+                            <input type="checkbox" id="chkAll" title="Select all"
+                                   style="accent-color:var(--ap-blue);cursor:pointer;"
+                                   onchange="toggleAllRows(this.checked)" />
+                        </th>
                         <th>#</th>
                         <th>Contractor</th>
                         <th>Period</th>
@@ -444,7 +451,12 @@
                         var fn = receipt.Contractor?.FirstName ?? "?";
                         var ln = receipt.Contractor?.LastName  ?? "?";
                         var initials = $"{fn[0]}{ln[0]}";
-                        <tr>
+                        <tr data-status="@receipt.Status">
+                            <td>
+                                <input type="checkbox" class="row-chk" value="@receipt.Id"
+                                       style="accent-color:var(--ap-blue);cursor:pointer;"
+                                       onchange="updateBulkBar()" />
+                            </td>
                             <td>
                                 <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
                                    class="fw-bold text-decoration-none" style="color:var(--ap-blue);">#@receipt.Id</a>
@@ -477,6 +489,10 @@
                                                 <i class="bi bi-check-lg"></i>Approve
                                             </button>
                                         </form>
+                                        <button type="button" class="ap-btn ap-btn-reject"
+                                                onclick="openRejectModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
+                                            <i class="bi bi-x-lg"></i>Reject
+                                        </button>
                                     }
                                     @if (receipt.Status == "Approved" && User.IsInRole("Admin"))
                                     {
@@ -500,3 +516,105 @@
         </div>
     }
 </div>
+
+@* ── Bulk Action Floating Bar ─────────────────────────────────────────────── *@
+<div id="bulkBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+     background:var(--ap-navy);color:#fff;border-radius:10px;padding:12px 24px;
+     box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:1050;display:none;
+     align-items:center;gap:12px;font-size:.875rem;font-weight:600;white-space:nowrap;">
+    <span id="bulkCount"></span>
+    <form asp-action="BulkApprove" method="post" id="bulkApproveForm" class="d-inline">
+        @Html.AntiForgeryToken()
+        <span id="bulkApproveIds"></span>
+        <button type="submit" style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+            <i class="bi bi-check-lg me-1"></i>Approve Selected
+        </button>
+    </form>
+    <form asp-action="BulkMarkPaid" method="post" id="bulkPaidForm" class="d-inline">
+        @Html.AntiForgeryToken()
+        <span id="bulkPaidIds"></span>
+        <button type="submit" style="background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+            <i class="bi bi-currency-dollar me-1"></i>Mark Paid Selected
+        </button>
+    </form>
+    <button type="button" onclick="clearSelection()"
+            style="background:transparent;color:#adb5bd;border:none;font-size:1rem;cursor:pointer;line-height:1;">
+        <i class="bi bi-x-lg"></i>
+    </button>
+</div>
+
+@* ── Reject Modal ─────────────────────────────────────────────────────────── *@
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-red);color:#fff;">
+                <h5 class="modal-title" id="rejectModalLabel">
+                    <i class="bi bi-x-circle me-2"></i>Return Receipt for Revision
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectForm" asp-action="Reject" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="rejectReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        This will return the receipt from <strong id="rejectContractorName"></strong> to
+                        <span class="badge" style="background:#e9ecef;color:#495057;">Draft</span> status
+                        so the contractor can revise and resubmit.
+                    </p>
+                    <div>
+                        <label class="form-label fw-semibold">Reason for return <span class="text-muted fw-normal">(optional but recommended)</span></label>
+                        <textarea name="rejectionNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Please correct the date range or add missing descriptions..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Return for Revision
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function openRejectModal(id, name) {
+    document.getElementById('rejectReceiptId').value = id;
+    document.getElementById('rejectContractorName').textContent = name;
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+function toggleAllRows(checked) {
+    document.querySelectorAll('.row-chk').forEach(cb => cb.checked = checked);
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const checked = [...document.querySelectorAll('.row-chk:checked')];
+    const bar = document.getElementById('bulkBar');
+    if (checked.length === 0) { bar.style.display = 'none'; return; }
+
+    bar.style.display = 'flex';
+    document.getElementById('bulkCount').textContent = checked.length + ' selected';
+
+    // Build hidden inputs for each form
+    ['bulkApproveIds','bulkPaidIds'].forEach(spanId => {
+        const span = document.getElementById(spanId);
+        span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
+    });
+
+    document.getElementById('chkAll').indeterminate =
+        checked.length > 0 && checked.length < document.querySelectorAll('.row-chk').length;
+    document.getElementById('chkAll').checked = checked.length === document.querySelectorAll('.row-chk').length;
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-chk').forEach(cb => cb.checked = false);
+    document.getElementById('chkAll').checked = false;
+    updateBulkBar();
+}
+</script>
+}

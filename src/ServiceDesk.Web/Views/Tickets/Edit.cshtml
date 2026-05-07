@@ -818,11 +818,13 @@
                                         <th>Description</th>
                                         <th>Billable</th>
                                         <th>By</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var e in modalTimeEntries)
                                     {
+                                        var claimed = e.PayrollReceiptId != null;
                                         <tr>
                                             <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
                                             <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
@@ -834,6 +836,20 @@
                                                 { <span class="text-muted small">—</span> }
                                             </td>
                                             <td class="small text-muted">@e.LoggedByEmail</td>
+                                            <td>
+                                                @if (!claimed)
+                                                {
+                                                    <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1"
+                                                            title="Edit entry"
+                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"))">
+                                                        <i class="bi bi-pencil" style="font-size:.7rem;"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary" style="font-size:.65rem;" title="Claimed on a payroll receipt">Claimed</span>
+                                                }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -852,9 +868,56 @@
                     </button>
                 </div>
             </form>
+
+            <!-- Edit existing entry form (hidden until pencil clicked) -->
+            <div id="editEntryPanel" class="border-top px-4 py-3" style="display:none;background:#f8f9fb;">
+                <form asp-action="EditTimeEntry" asp-route-id="@Model.Id" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="entryId" id="editEntryId" />
+                    <input type="hidden" name="returnAction" value="Edit" />
+                    <div class="fw-semibold small mb-2 text-primary"><i class="bi bi-pencil me-1"></i>Edit Entry</div>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label small">Date</label>
+                            <input type="date" name="workDate" id="editWorkDate" class="form-control form-control-sm" required />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Hours</label>
+                            <input type="number" name="hours" id="editHours" step="0.25" min="0.25" max="999" class="form-control form-control-sm" required />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small">Description</label>
+                            <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small d-block">&nbsp;</label>
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="editBillable" />
+                                <label class="form-check-label small" for="editBillable">Billable</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('editEntryPanel').style.display='none'">Cancel</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+function fillEditEntry(id, date, hours, desc, billable) {
+    document.getElementById('editEntryId').value   = id;
+    document.getElementById('editWorkDate').value  = date;
+    document.getElementById('editHours').value     = hours;
+    document.getElementById('editDescription').value = desc;
+    document.getElementById('editBillable').checked = billable;
+    document.getElementById('editEntryPanel').style.display = 'block';
+    document.getElementById('editEntryPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
 
 <!-- ── Resolution Modal ─────────────────────────────────────────────────── -->
 <div class="modal fade" id="resolveModal" tabindex="-1" aria-labelledby="resolveModalLabel" aria-hidden="true">

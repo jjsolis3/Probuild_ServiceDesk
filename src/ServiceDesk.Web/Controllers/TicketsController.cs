@@ -371,6 +371,19 @@ public class TicketsController : Controller
                 t => t.Id,
                 t => _slaRisk.GetRisk(t.Category, (int)t.Priority, t.CreatedDate));
 
+        // ── Dashboard KPI counts (always unfiltered, fast scalar queries) ──────
+        ViewBag.KpiOpen       = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.Open);
+        ViewBag.KpiInProgress = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.InProgress);
+        ViewBag.KpiUnassigned = await _context.Tickets.CountAsync(t => t.AssignedToId == null
+                                    && t.Status != TicketStatus.Resolved
+                                    && t.Status != TicketStatus.Closed
+                                    && t.Status != TicketStatus.Cancelled);
+        var today = DateTime.UtcNow.Date;
+        ViewBag.KpiResolvedToday = await _context.Tickets.CountAsync(t =>
+                                    t.Status == TicketStatus.Resolved
+                                    && t.ResolvedDate.HasValue
+                                    && t.ResolvedDate.Value >= today);
+
         // Persist the current URL so that returning to /Tickets after editing a ticket
         // restores this exact view instead of falling back to the default saved view.
         // The cookie is a session cookie (no Expires) so it clears on browser close or sign-out.
@@ -443,7 +456,15 @@ public class TicketsController : Controller
         if (hours <= 0)
         {
             TempData["Error"] = "Hours must be greater than zero.";
-            return RedirectToAction(nameof(Details), new { id });
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
         }
 
         var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
@@ -488,6 +509,46 @@ public class TicketsController : Controller
 
         TempData["Success"] = "Time entry removed.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
+        string? description, bool isBillable, string? returnAction = null)
+    {
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
+        if (entry == null) return NotFound();
+
+        if (entry.PayrollReceiptId != null)
+        {
+            TempData["Error"] = "This entry is claimed on a payroll receipt and cannot be edited.";
+            var t0 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t0, new { id });
+        }
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
+        }
+
+        entry.WorkDate    = workDate.Date;
+        entry.Hours       = hours;
+        entry.Description = description;
+        entry.IsBillable  = isBillable;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpGet]

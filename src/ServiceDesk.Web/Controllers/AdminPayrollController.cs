@@ -109,4 +109,87 @@ public class AdminPayrollController : Controller
         TempData["Success"] = "Receipt marked as Paid.";
         return RedirectToAction(nameof(Index));
     }
+
+    // POST /AdminPayroll/Reject/{id}
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reject(int id, string? rejectionNote)
+    {
+        var receipt = await _context.PayrollReceipts.FindAsync(id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status != "Submitted")
+        {
+            TempData["Error"] = "Only Submitted receipts can be rejected.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        receipt.Status        = "Draft";
+        receipt.RejectionNote = rejectionNote?.Trim();
+        receipt.ApprovedDate  = null;
+        receipt.ApprovedById  = null;
+
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Receipt returned to contractor for revision.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // POST /AdminPayroll/BulkApprove
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkApprove(int[] ids)
+    {
+        if (ids == null || ids.Length == 0)
+        {
+            TempData["Error"] = "No receipts selected.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var approverEmail = User.Identity?.Name;
+        var approver = approverEmail != null
+            ? await _context.PortalUsers.FirstOrDefaultAsync(u => u.Email == approverEmail)
+            : null;
+
+        var receipts = await _context.PayrollReceipts
+            .Where(r => ids.Contains(r.Id) && r.Status == "Submitted")
+            .ToListAsync();
+
+        foreach (var r in receipts)
+        {
+            r.Status       = "Approved";
+            r.ApprovedDate = DateTime.UtcNow;
+            r.ApprovedById = approver?.EmployeeId;
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"{receipts.Count} receipt(s) approved.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // POST /AdminPayroll/BulkMarkPaid
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkMarkPaid(int[] ids)
+    {
+        if (ids == null || ids.Length == 0)
+        {
+            TempData["Error"] = "No receipts selected.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var receipts = await _context.PayrollReceipts
+            .Where(r => ids.Contains(r.Id) && r.Status == "Approved")
+            .ToListAsync();
+
+        foreach (var r in receipts)
+        {
+            r.Status   = "Paid";
+            r.PaidDate = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"{receipts.Count} receipt(s) marked as Paid.";
+        return RedirectToAction(nameof(Index));
+    }
 }
