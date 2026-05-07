@@ -435,7 +435,7 @@ public class TicketsController : Controller
     // ──────────────────────────── Time Tracking ────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
-        string? description, bool isBillable)
+        string? description, bool isBillable, string? returnAction = null)
     {
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
@@ -472,7 +472,8 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Logged {hours:0.##} hours.";
-        return RedirectToAction(nameof(Details), new { id });
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
