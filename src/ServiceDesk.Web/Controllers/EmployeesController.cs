@@ -18,6 +18,11 @@ public class EmployeesController : Controller
     private readonly IDataProtector _protector;
     private readonly GoogleWorkspaceService _googleWorkspace;
 
+    /// <summary>Initial password applied when a portal user is auto-provisioned for a new
+    /// employee. Surfaced to the admin in the success toast so they can share it with the user;
+    /// admins/users can change it from the password page after first login.</summary>
+    private const string DefaultPortalPassword = "Welcome!23";
+
     public EmployeesController(ServiceDeskDbContext context,
         IDataProtectionProvider dpProvider,
         GoogleWorkspaceService googleWorkspace)
@@ -275,10 +280,49 @@ public class EmployeesController : Controller
         {
             _context.Add(employee);
             await _context.SaveChangesAsync();
+
+            // Auto-provision a portal login so admins don't have to do it as a separate step.
+            // Skipped silently if a portal user with this email already exists.
+            var loginCreated = await TryAutoProvisionPortalUserAsync(employee);
+
+            TempData["Success"] = loginCreated
+                ? $"Employee created. Portal login also created with default password '{DefaultPortalPassword}'."
+                : "Employee created.";
+
             return RedirectToAction(nameof(Index));
         }
         ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
+    }
+
+    /// <summary>Create an "End User" portal login for an employee using the default password.
+    /// Returns true if a new login was created, false if one already existed for that email.</summary>
+    private async Task<bool> TryAutoProvisionPortalUserAsync(Employee employee)
+    {
+        if (string.IsNullOrWhiteSpace(employee.Email)) return false;
+
+        var emailLower = employee.Email.ToLower();
+        var alreadyExists = await _context.PortalUsers.AnyAsync(u => u.Email.ToLower() == emailLower);
+        if (alreadyExists) return false;
+
+        var endUserRoleId = await _context.Roles
+            .Where(r => r.Name == "End User")
+            .Select(r => (int?)r.Id)
+            .FirstOrDefaultAsync();
+
+        _context.PortalUsers.Add(new PortalUser
+        {
+            FirstName    = employee.FirstName,
+            LastName     = employee.LastName,
+            Email        = employee.Email,
+            PasswordHash = PasswordService.HashPassword(DefaultPortalPassword),
+            IsActive     = employee.IsActive,
+            RoleId       = endUserRoleId,
+            EmployeeId   = employee.Id,
+            CreatedDate  = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     public async Task<IActionResult> Edit(int? id)
@@ -425,7 +469,7 @@ public class EmployeesController : Controller
         var toImport = rows.Where(r => r.CanImport).ToList();
 
         int empCount = 0, userCount = 0;
-        const string defaultPassword = "Welcome@1";
+        var defaultPassword = DefaultPortalPassword;
 
         foreach (var row in toImport)
         {
@@ -467,6 +511,149 @@ public class EmployeesController : Controller
         TempData["Success"] = $"Import complete: {empCount} employee(s) added" +
             (userCount > 0 ? $", {userCount} login account(s) created (password: {defaultPassword})" : "") +
             (skipped > 0 ? $", {skipped} skipped." : ".");
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    // ── Google Workspace Import ───────────────────────────────────────────────
+
+    /// <summary>Pull the Google Workspace user directory and present a checkbox table
+    /// so the admin can pick which users to import as Employees.</summary>
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ImportFromGoogle()
+    {
+        var (success, users, error) = await _googleWorkspace.ListDomainUsersAsync();
+        if (!success)
+        {
+            TempData["Error"] = $"Could not load Google Workspace users: {error}";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Lower-cased lookups so the existence check is case-insensitive
+        var existingEmployeeEmails = await _context.Employees
+            .Select(e => e.Email.ToLower())
+            .ToHashSetAsync();
+        var existingPortalEmails = await _context.PortalUsers
+            .Select(u => u.Email.ToLower())
+            .ToHashSetAsync();
+
+        var rows = users
+            .OrderBy(u => u.Email)
+            .Select(u =>
+            {
+                var emailLower = u.Email.ToLower();
+                return new GoogleImportRow
+                {
+                    Email             = u.Email,
+                    FirstName         = u.FirstName,
+                    LastName          = u.LastName,
+                    FullName          = u.FullName,
+                    JobTitle          = u.JobTitle,
+                    Department        = u.Department,
+                    Phone             = u.Phone,
+                    OrgUnit           = u.OrgUnit,
+                    Suspended         = u.Suspended,
+                    AlreadyExists      = existingEmployeeEmails.Contains(emailLower),
+                    LoginAlreadyExists = existingPortalEmails.Contains(emailLower),
+                };
+            })
+            .ToList();
+
+        ViewBag.DefaultPassword = DefaultPortalPassword;
+        return View(rows);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportFromGoogleConfirm(string[] selectedEmails)
+    {
+        if (selectedEmails == null || selectedEmails.Length == 0)
+        {
+            TempData["Warning"] = "No users were selected to import.";
+            return RedirectToAction(nameof(ImportFromGoogle));
+        }
+
+        // Pull a fresh directory snapshot so we have authoritative field values for the
+        // selected emails (don't trust hidden form values).
+        var (success, users, error) = await _googleWorkspace.ListDomainUsersAsync();
+        if (!success)
+        {
+            TempData["Error"] = $"Could not refresh Google Workspace users: {error}";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var selectedSet = new HashSet<string>(selectedEmails.Select(e => e.ToLower()), StringComparer.OrdinalIgnoreCase);
+
+        var existingEmployeeEmails = await _context.Employees
+            .Select(e => e.Email.ToLower())
+            .ToHashSetAsync();
+
+        var endUserRoleId = await _context.Roles
+            .Where(r => r.Name == "End User")
+            .Select(r => (int?)r.Id)
+            .FirstOrDefaultAsync();
+
+        int empCount  = 0;
+        int userCount = 0;
+        int skipped   = 0;
+
+        foreach (var u in users)
+        {
+            if (!selectedSet.Contains(u.Email.ToLower())) continue;
+            if (existingEmployeeEmails.Contains(u.Email.ToLower()))
+            {
+                skipped++;
+                continue;
+            }
+
+            // Sensible fallbacks — Google profiles can be sparse
+            var firstName = string.IsNullOrWhiteSpace(u.FirstName)
+                ? (string.IsNullOrWhiteSpace(u.FullName) ? u.Email.Split('@')[0] : u.FullName.Split(' ')[0])
+                : u.FirstName;
+            var lastName = string.IsNullOrWhiteSpace(u.LastName)
+                ? (u.FullName?.Contains(' ') == true ? u.FullName[(u.FullName.IndexOf(' ') + 1)..] : "")
+                : u.LastName;
+
+            var emp = new Employee
+            {
+                FirstName  = firstName,
+                LastName   = lastName,
+                Email      = u.Email,
+                Phone      = u.Phone,
+                Department = string.IsNullOrWhiteSpace(u.Department) ? "General" : u.Department,
+                JobTitle   = u.JobTitle,
+                IsActive   = !u.Suspended,
+                HireDate   = DateTime.UtcNow,
+            };
+            _context.Employees.Add(emp);
+            await _context.SaveChangesAsync(); // get emp.Id before creating login
+            empCount++;
+
+            // Auto-provision portal login (skips silently if email already taken)
+            var emailLower    = emp.Email.ToLower();
+            var loginExists   = await _context.PortalUsers.AnyAsync(p => p.Email.ToLower() == emailLower);
+            if (!loginExists)
+            {
+                _context.PortalUsers.Add(new PortalUser
+                {
+                    FirstName    = emp.FirstName,
+                    LastName     = emp.LastName,
+                    Email        = emp.Email,
+                    PasswordHash = PasswordService.HashPassword(DefaultPortalPassword),
+                    IsActive     = emp.IsActive,
+                    RoleId       = endUserRoleId,
+                    EmployeeId   = emp.Id,
+                    CreatedDate  = DateTime.UtcNow,
+                });
+                await _context.SaveChangesAsync();
+                userCount++;
+            }
+        }
+
+        TempData["Success"] = $"Imported {empCount} employee(s) from Google Workspace" +
+            (userCount > 0 ? $", {userCount} portal login(s) created (password: {DefaultPortalPassword})" : "") +
+            (skipped > 0 ? $", {skipped} skipped (already existed)." : ".");
 
         return RedirectToAction(nameof(Index));
     }

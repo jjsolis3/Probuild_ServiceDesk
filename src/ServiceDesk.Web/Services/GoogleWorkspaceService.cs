@@ -430,6 +430,110 @@ public class GoogleWorkspaceService
         return (true, info, null);
     }
 
+    /// <summary>List all users in the configured Google Workspace domain.
+    /// Pages through results so orgs with > 500 users are fully covered.</summary>
+    public async Task<(bool Success, List<GoogleDirectoryUser> Users, string? Error)> ListDomainUsersAsync()
+    {
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrWhiteSpace(settings.Domain))
+            return (false, [], "Google Workspace not configured.");
+
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var users    = new List<GoogleDirectoryUser>();
+        string? page = null;
+        int safetyCap = 20; // hard ceiling: 20 pages × 500 = 10,000 users
+
+        do
+        {
+            var url  = $"{AdminApiBase}/users?domain={Uri.EscapeDataString(settings.Domain)}" +
+                       $"&maxResults=500&projection=full&orderBy=email" +
+                       (page != null ? $"&pageToken={Uri.EscapeDataString(page)}" : "");
+            var resp = await client.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                _logger.LogWarning("ListDomainUsers failed: {Error}", err);
+                return (false, users, $"API error {(int)resp.StatusCode}: {err}");
+            }
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("users", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var u in arr.EnumerateArray())
+                {
+                    var email     = u.TryGetProperty("primaryEmail", out var pe) ? pe.GetString() ?? "" : "";
+                    if (string.IsNullOrEmpty(email)) continue;
+
+                    var firstName = "";
+                    var lastName  = "";
+                    var fullName  = "";
+                    if (u.TryGetProperty("name", out var nameEl))
+                    {
+                        firstName = nameEl.TryGetProperty("givenName",  out var gn) ? gn.GetString() ?? "" : "";
+                        lastName  = nameEl.TryGetProperty("familyName", out var fn) ? fn.GetString() ?? "" : "";
+                        fullName  = nameEl.TryGetProperty("fullName",   out var ful) ? ful.GetString() ?? "" : "";
+                    }
+
+                    string? jobTitle  = null;
+                    string? department = null;
+                    if (u.TryGetProperty("organizations", out var orgs) && orgs.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var o in orgs.EnumerateArray())
+                        {
+                            if (jobTitle == null && o.TryGetProperty("title", out var t))
+                                jobTitle = t.GetString();
+                            if (department == null && o.TryGetProperty("department", out var d))
+                                department = d.GetString();
+                            if (jobTitle != null && department != null) break;
+                        }
+                    }
+
+                    string? phone = null;
+                    if (u.TryGetProperty("phones", out var phones) && phones.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var p in phones.EnumerateArray())
+                        {
+                            if (p.TryGetProperty("value", out var v))
+                            {
+                                phone = v.GetString();
+                                break;
+                            }
+                        }
+                    }
+
+                    var suspended = u.TryGetProperty("suspended", out var sus) && sus.GetBoolean();
+                    var orgUnit   = u.TryGetProperty("orgUnitPath", out var ouEl) ? ouEl.GetString() : null;
+
+                    users.Add(new GoogleDirectoryUser(
+                        Email:      email,
+                        FirstName:  firstName,
+                        LastName:   lastName,
+                        FullName:   string.IsNullOrEmpty(fullName) ? $"{firstName} {lastName}".Trim() : fullName,
+                        JobTitle:   string.IsNullOrWhiteSpace(jobTitle)   ? null : jobTitle,
+                        Department: string.IsNullOrWhiteSpace(department) ? null : department,
+                        Phone:      string.IsNullOrWhiteSpace(phone)      ? null : phone,
+                        Suspended:  suspended,
+                        OrgUnit:    orgUnit
+                    ));
+                }
+            }
+
+            page = root.TryGetProperty("nextPageToken", out var npt) ? npt.GetString() : null;
+            safetyCap--;
+        }
+        while (!string.IsNullOrEmpty(page) && safetyCap > 0);
+
+        return (true, users, null);
+    }
+
     /// <summary>Update Google Workspace user profile fields (org info, location, manager).</summary>
     public async Task<(bool Success, string? Error)> UpdateUserInfoAsync(string userEmail,
         string? jobTitle, string? department, string? costCenter, string? employeeType,
@@ -1258,6 +1362,20 @@ public class GoogleWorkspaceService
         string FullName,
         bool Suspended,
         bool ChangePasswordAtNextLogin,
+        string? OrgUnit
+    );
+
+    /// <summary>One user as returned by the Admin Directory list endpoint —
+    /// includes the fields needed to seed an Employee record.</summary>
+    public sealed record GoogleDirectoryUser(
+        string Email,
+        string FirstName,
+        string LastName,
+        string FullName,
+        string? JobTitle,
+        string? Department,
+        string? Phone,
+        bool Suspended,
         string? OrgUnit
     );
 
