@@ -30,8 +30,9 @@
         Google Workspace returned no users. Confirm your domain and service account credentials in
         <a asp-controller="Settings" asp-action="GoogleWorkspace">Settings → Google Workspace</a>.
     </div>
-    @return;
 }
+else
+{
 
 <!-- Summary cards -->
 <div class="row g-3 mb-4">
@@ -144,6 +145,8 @@
         </div>
     </div>
 </form>
+
+} @* end else *@
 
 @section Scripts {
     <script>
