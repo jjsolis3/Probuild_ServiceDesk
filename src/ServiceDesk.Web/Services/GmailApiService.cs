@@ -145,6 +145,20 @@ public class GmailApiService : BackgroundService
         var inReplyTo = GetHeader(headers, "In-Reply-To");
         var references = GetHeader(headers, "References");
 
+        // ---- GUARDRAIL 0: Age gate — skip emails older than 72 hours ----
+        // Prevents a reset historyId or a flooded inbox from creating tickets from
+        // weeks-old messages. internalDate is ms since Unix epoch; 0 means unknown.
+        if (fullMessage.InternalDate > 0)
+        {
+            var emailAge = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(fullMessage.InternalDate);
+            if (emailAge.TotalHours > 72)
+            {
+                _logger.LogInformation("Skipping old email ({Age:0}h): {Subject}", emailAge.TotalHours, subject);
+                UpdateHistoryId(config, fullMessage.HistoryId);
+                return;
+            }
+        }
+
         // Parse sender email and name
         var (fromEmail, fromName) = ParseEmailAddress(from);
 
@@ -973,6 +987,8 @@ public class GmailApiService : BackgroundService
         public string Id { get; set; } = "";
         public string? ThreadId { get; set; }
         public string? HistoryId { get; set; }
+        // Unix epoch in milliseconds — returned by the Gmail API as "internalDate"
+        public long InternalDate { get; set; }
         public GmailMessagePart? Payload { get; set; }
     }
 
