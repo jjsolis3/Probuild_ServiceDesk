@@ -441,9 +441,9 @@
                             "Paid"      => "sp-paid",
                             _           => "sp-draft"
                         };
-                        var initials = string.Concat(
-                            (receipt.Contractor?.FirstName ?? "?").Take(1),
-                            (receipt.Contractor?.LastName  ?? "?").Take(1));
+                        var fn = receipt.Contractor?.FirstName ?? "?";
+                        var ln = receipt.Contractor?.LastName  ?? "?";
+                        var initials = $"{fn[0]}{ln[0]}";
                         <tr>
                             <td>
                                 <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
