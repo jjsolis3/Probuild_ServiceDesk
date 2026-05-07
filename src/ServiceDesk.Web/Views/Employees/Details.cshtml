@@ -1817,6 +1817,7 @@
 })();
 
 // ── Ticket Viewer Modal ────────────────────────────────────────────────────
+// Replace "</" with "<\/" so a ticket title containing "</script>" can't terminate this tag.
 var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
     ((IEnumerable<dynamic>)(ViewBag.RecentSubmitted ?? Enumerable.Empty<dynamic>()))
     .Select(t => new {
@@ -1828,7 +1829,7 @@ var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         category    = (int)t.Category,
         createdDate = ((DateTime)t.CreatedDate).ToString("MMM dd, yyyy")
     })
-));
+).Replace("</", "<\\/"));
 
 (function () {
     var statusLabels = {0:'Open',1:'In Progress',2:'On Hold',3:'Resolved',4:'Closed',5:'Cancelled'};

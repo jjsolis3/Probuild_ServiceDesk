@@ -377,8 +377,10 @@
 {
     <script>
     (function () {
-        // Safely embed the sanitized HTML as a JS string
-        var rawHtml = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.DescriptionHtml));
+        // Safely embed the sanitized HTML as a JS string. Replace "</" with "<\/"
+        // so the browser's HTML parser can't see a stray "</script>" inside the email
+        // body and prematurely close this script tag. JavaScript still parses "\/" as "/".
+        var rawHtml = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.DescriptionHtml).Replace("</", "<\\/"));
 
         var frame = document.getElementById('emailBodyFrame');
         if (!frame) return;
