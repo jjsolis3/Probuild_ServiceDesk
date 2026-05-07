@@ -18,30 +18,42 @@ public class AdminPayrollController : Controller
     // GET /AdminPayroll
     public async Task<IActionResult> Index(string? status, int? contractorId)
     {
-        var query = _context.PayrollReceipts
+        // Summary stats from ALL receipts (unfiltered) for KPI tiles
+        var allReceipts = await _context.PayrollReceipts
             .Include(r => r.Contractor)
-            .AsQueryable();
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        ViewBag.CountSubmitted     = allReceipts.Count(r => r.Status == "Submitted");
+        ViewBag.CountApproved      = allReceipts.Count(r => r.Status == "Approved");
+        ViewBag.AmountSubmitted    = allReceipts.Where(r => r.Status == "Submitted").Sum(r => r.TotalAmount);
+        ViewBag.AmountApproved     = allReceipts.Where(r => r.Status == "Approved").Sum(r => r.TotalAmount);
+        ViewBag.CountPaidMonth     = allReceipts.Count(r => r.Status == "Paid" && r.PaidDate.HasValue
+                                         && r.PaidDate.Value.Year == now.Year && r.PaidDate.Value.Month == now.Month);
+        ViewBag.AmountPaidMonth    = allReceipts.Where(r => r.Status == "Paid" && r.PaidDate.HasValue
+                                         && r.PaidDate.Value.Year == now.Year && r.PaidDate.Value.Month == now.Month)
+                                         .Sum(r => r.TotalAmount);
+        ViewBag.AmountPaidAllTime  = allReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+
+        // Apply filters
+        IEnumerable<ServiceDesk.Core.Models.PayrollReceipt> receipts = allReceipts
+            .OrderByDescending(r => r.CreatedDate);
 
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(r => r.Status == status);
-
+            receipts = receipts.Where(r => r.Status == status);
         if (contractorId.HasValue)
-            query = query.Where(r => r.ContractorId == contractorId.Value);
-
-        var receipts = await query
-            .OrderByDescending(r => r.CreatedDate)
-            .ToListAsync();
+            receipts = receipts.Where(r => r.ContractorId == contractorId.Value);
 
         var contractors = await _context.Employees
             .Where(e => e.IsContractor && e.IsActive)
             .OrderBy(e => e.LastName)
             .ToListAsync();
 
-        ViewBag.Contractors    = contractors;
-        ViewBag.FilterStatus   = status;
+        ViewBag.Contractors        = contractors;
+        ViewBag.FilterStatus       = status;
         ViewBag.FilterContractorId = contractorId;
-        ViewData["Title"] = "Contractor Payroll";
-        return View(receipts);
+        ViewData["Title"]          = "Contractor Payroll";
+        return View(receipts.ToList());
     }
 
     // POST /AdminPayroll/Approve/{id}
