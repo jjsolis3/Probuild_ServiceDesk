@@ -362,6 +362,13 @@ public class EmployeesController : Controller
             existing.EmployeeType = employee.EmployeeType;
             existing.FloorSection = employee.FloorSection;
 
+            // Contractor settings — Admin-only inputs on the form
+            if (User.IsInRole("Admin"))
+            {
+                existing.IsContractor = employee.IsContractor;
+                existing.HourlyRate   = employee.HourlyRate;
+            }
+
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
