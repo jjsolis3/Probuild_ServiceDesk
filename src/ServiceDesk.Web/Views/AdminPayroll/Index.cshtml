@@ -329,7 +329,13 @@
                         <option value="">All Contractors</option>
                         @foreach (var c in contractors)
                         {
-                            <option value="@c.Id" @(filterContractorId == c.Id ? "selected" : "")>@c.FullName</option>
+                            if (filterContractorId == c.Id) {
+                                <option value = "@c.Id" selected="selected">@c.FullName</option>
+                            }
+                            else
+                            {
+                                <option value = "@c.Id">@c.FullName</option>
+                            }
                         }
                     </select>
                 </div>
@@ -339,7 +345,13 @@
                         <option value="">All Statuses</option>
                         @foreach (var s in new[] { "Draft", "Submitted", "Approved", "Paid" })
                         {
-                            <option value="@s" @(filterStatus == s ? "selected" : "")>@s</option>
+                            if ( filterStatus == s ) {
+                                <option value="@s" selected="selected">@s</option>
+                            }
+                            else
+                            {
+                                <option value="@s">@s</option>
+                            }
                         }
                     </select>
                 </div>
