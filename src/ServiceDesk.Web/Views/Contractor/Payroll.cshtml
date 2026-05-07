@@ -1,6 +1,12 @@
 @model IEnumerable<ServiceDesk.Core.Models.PayrollReceipt>
+@using ServiceDesk.Core.Models
 @{
-    var contractor = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
+    var contractor       = ViewBag.Contractor as Employee;
+    var unclaimed        = ViewBag.UnclaimedEntries as List<TicketTimeEntry> ?? new();
+    var unclaimedBillHrs = (decimal)(ViewBag.UnclaimedBillableHrs ?? 0m);
+    var unclaimedAmt     = (decimal)(ViewBag.UnclaimedAmount ?? 0m);
+    var unclaimedTotal   = unclaimed.Sum(e => e.Hours);
+    var earliestDate     = unclaimed.Count > 0 ? unclaimed.Min(e => e.WorkDate) : (DateTime?)null;
 }
 
 <div class="row page-titles">
@@ -14,6 +20,132 @@
         </a>
     </div>
 </div>
+
+@* ── Outstanding Hours Card (A) ─────────────────────────────────────── *@
+<div class="card shadow-sm mb-4 border-@(unclaimedBillHrs > 0 ? "warning" : "success")">
+    <div class="card-header d-flex align-items-center justify-content-between
+                bg-@(unclaimedBillHrs > 0 ? "warning bg-opacity-10" : "success bg-opacity-10")">
+        <span class="fw-semibold">
+            <i class="fas fa-clock me-1"></i>Outstanding Billable Hours
+        </span>
+        @if (unclaimed.Count > 0)
+        {
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#unclaimedEntries">
+                <i class="fas fa-list me-1"></i>View Entries
+            </button>
+        }
+    </div>
+    <div class="card-body">
+        <div class="row g-4 text-center">
+            <div class="col-sm-3">
+                <div class="fs-2 fw-bold text-primary">@unclaimedBillHrs.ToString("0.##")</div>
+                <div class="text-muted small">Billable hrs unpaid</div>
+            </div>
+            <div class="col-sm-3">
+                <div class="fs-2 fw-bold text-success">$@unclaimedAmt.ToString("N2")</div>
+                <div class="text-muted small">Estimated amount</div>
+            </div>
+            <div class="col-sm-3">
+                <div class="fs-2 fw-bold text-secondary">@unclaimedTotal.ToString("0.##")</div>
+                <div class="text-muted small">Total hrs (all entries)</div>
+            </div>
+            <div class="col-sm-3">
+                <div class="fs-2 fw-bold text-muted">
+                    @(earliestDate.HasValue ? earliestDate.Value.ToString("MMM d") : "—")
+                </div>
+                <div class="text-muted small">Earliest unclaimed</div>
+            </div>
+        </div>
+        @if (unclaimed.Count == 0)
+        {
+            <p class="text-success text-center mb-0 mt-3">
+                <i class="fas fa-check-circle me-1"></i>All logged hours have been claimed in a receipt. Nothing outstanding.
+            </p>
+        }
+        else
+        {
+            <div class="text-center mt-3">
+                <a asp-action="NewReceipt" class="btn btn-warning">
+                    <i class="fas fa-file-invoice-dollar me-1"></i>Generate Receipt for These Hours
+                </a>
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Unclaimed Entries Table (B) ────────────────────────────────────── *@
+@if (unclaimed.Count > 0)
+{
+    <div class="collapse mb-4" id="unclaimedEntries">
+        <div class="card shadow-sm">
+            <div class="card-header fw-semibold">
+                <i class="fas fa-list-ul me-1"></i>Unclaimed Time Entries (@unclaimed.Count)
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Ticket</th>
+                                <th class="text-end">Hours</th>
+                                <th class="text-center">Billable</th>
+                                <th class="text-end">Est. Amount</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in unclaimed)
+                            {
+                                var entryAmt = entry.IsBillable ? entry.Hours * (contractor?.HourlyRate ?? 0) : 0;
+                                <tr>
+                                    <td class="text-nowrap small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
+                                    <td>
+                                        @if (entry.Ticket != null)
+                                        {
+                                            <a asp-controller="Tickets" asp-action="Details" asp-route-id="@entry.TicketId"
+                                               class="fw-semibold text-decoration-none">#@entry.TicketId</a>
+                                            <span class="text-muted small ms-1">@entry.Ticket.Title</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Ticket #@entry.TicketId</span>
+                                        }
+                                    </td>
+                                    <td class="text-end fw-semibold">@entry.Hours.ToString("0.##")</td>
+                                    <td class="text-center">
+                                        @if (entry.IsBillable)
+                                        {
+                                            <span class="badge bg-success">Billable</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Non-billable</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @(entry.IsBillable ? "$" + entryAmt.ToString("N2") : "—")
+                                    </td>
+                                    <td class="small text-muted">@(entry.Description ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-light fw-semibold">
+                            <tr>
+                                <td colspan="2" class="text-end">Totals</td>
+                                <td class="text-end">@unclaimedTotal.ToString("0.##")</td>
+                                <td class="text-center text-success">@unclaimedBillHrs.ToString("0.##") billable</td>
+                                <td class="text-end text-success">$@unclaimedAmt.ToString("N2")</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @* New Receipt Quick Form *@
 <div class="card shadow-sm mb-4" id="newReceiptPanel" style="display:none;">

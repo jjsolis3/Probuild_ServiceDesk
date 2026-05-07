@@ -50,7 +50,18 @@ public class ContractorController : Controller
             .OrderByDescending(r => r.PeriodStart)
             .ToListAsync();
 
-        ViewBag.Contractor = contractor;
+        // All unclaimed time entries — no date filter — for the outstanding-hours dashboard
+        var unclaimed = await _context.TicketTimeEntries
+            .Include(e => e.Ticket)
+            .Where(e => e.LoggedByEmployeeId == contractor.Id && e.PayrollReceiptId == null)
+            .OrderByDescending(e => e.WorkDate)
+            .ToListAsync();
+
+        ViewBag.Contractor          = contractor;
+        ViewBag.UnclaimedEntries    = unclaimed;
+        ViewBag.UnclaimedBillableHrs = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours);
+        ViewBag.UnclaimedAmount     = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours)
+                                        * (contractor.HourlyRate ?? 0);
         ViewData["Title"] = "Payroll";
         return View(receipts);
     }
