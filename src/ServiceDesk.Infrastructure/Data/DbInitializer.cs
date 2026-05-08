@@ -1532,6 +1532,55 @@ public static class DbInitializer
                     ALTER TABLE dbo.PayrollReceipts ADD RejectionNote NVARCHAR(1000) NULL;
                 END");
 
+            // 52. Performance indexes on the Tickets table — every ticket query
+            //     filters by Status, AssignedToId, or sorts by CreatedDate. Without
+            //     indexes these queries do full table scans on every page load.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Tickets')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status' AND object_id = OBJECT_ID('dbo.Tickets'))
+                        CREATE INDEX IX_Tickets_Status ON dbo.Tickets (Status);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_AssignedToId' AND object_id = OBJECT_ID('dbo.Tickets'))
+                        CREATE INDEX IX_Tickets_AssignedToId ON dbo.Tickets (AssignedToId);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_CreatedDate' AND object_id = OBJECT_ID('dbo.Tickets'))
+                        CREATE INDEX IX_Tickets_CreatedDate ON dbo.Tickets (CreatedDate DESC);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_SubmittedById' AND object_id = OBJECT_ID('dbo.Tickets'))
+                        CREATE INDEX IX_Tickets_SubmittedById ON dbo.Tickets (SubmittedById);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Tickets_Status_AssignedToId' AND object_id = OBJECT_ID('dbo.Tickets'))
+                        CREATE INDEX IX_Tickets_Status_AssignedToId ON dbo.Tickets (Status, AssignedToId);
+                END");
+
+            // 53. Performance indexes on TicketTimeEntries — payroll receipt
+            //     queries filter by TicketId and PayrollReceiptId.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TicketTimeEntries_TicketId' AND object_id = OBJECT_ID('dbo.TicketTimeEntries'))
+                        CREATE INDEX IX_TicketTimeEntries_TicketId ON dbo.TicketTimeEntries (TicketId);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TicketTimeEntries_PayrollReceiptId' AND object_id = OBJECT_ID('dbo.TicketTimeEntries'))
+                        CREATE INDEX IX_TicketTimeEntries_PayrollReceiptId ON dbo.TicketTimeEntries (PayrollReceiptId);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TicketTimeEntries_LoggedByEmployeeId' AND object_id = OBJECT_ID('dbo.TicketTimeEntries'))
+                        CREATE INDEX IX_TicketTimeEntries_LoggedByEmployeeId ON dbo.TicketTimeEntries (LoggedByEmployeeId);
+                END");
+
+            // 54. Performance indexes on PayrollReceipts — Admin payroll queries
+            //     filter by Status and ContractorId.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PayrollReceipts_Status' AND object_id = OBJECT_ID('dbo.PayrollReceipts'))
+                        CREATE INDEX IX_PayrollReceipts_Status ON dbo.PayrollReceipts (Status);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PayrollReceipts_ContractorId' AND object_id = OBJECT_ID('dbo.PayrollReceipts'))
+                        CREATE INDEX IX_PayrollReceipts_ContractorId ON dbo.PayrollReceipts (ContractorId);
+                END");
+
         }
         catch (Exception ex)
         {
