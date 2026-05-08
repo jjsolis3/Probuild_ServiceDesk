@@ -877,7 +877,7 @@ public class EmployeesController : Controller
                 } : (object)new { error = vacErr },
 
                 groups = grpOk
-                    ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
+                    ? grps.Select(g => new { email = g.Email, name = g.Name, memberCount = g.MemberCount }).ToList()
                     : (object)new { error = grpErr }
             });
         }
@@ -957,7 +957,7 @@ public class EmployeesController : Controller
         var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
         if (!ok) return Json(new { success = false, error = err });
         return Json(new { success = true,
-            groups = groups.Select(g => new { g.Email, g.Name, g.MemberCount }) });
+            groups = groups.Select(g => new { email = g.Email, name = g.Name, memberCount = g.MemberCount }) });
     }
 
     [HttpPost, ValidateAntiForgeryToken]

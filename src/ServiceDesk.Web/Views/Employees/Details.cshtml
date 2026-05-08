@@ -624,7 +624,7 @@
 
                 <div class="card shadow-sm border-0">
                     <div class="card-header fw-semibold small"><i class="bi bi-info-circle me-1"></i>Template Variables</div>
-                    <div class="card-body py-2">
+                    <div class="card-body py-2" style="max-height:320px;overflow-y:auto;">
                         <table class="table table-sm table-borderless mb-0 small">
                             <tbody>
                                 <tr><td><code>{FIRST_NAME}</code></td><td class="text-muted">@Model.FirstName</td></tr>
@@ -1498,10 +1498,10 @@
             sel.innerHTML = '<option value="">— Select a group to add —</option>';
             if (domGrps.success && Array.isArray(domGrps.groups)) {
                 domGrps.groups.forEach(function (g) {
-                    var already = wsState.groups.some(function (m) { return m.Email === g.Email; });
+                    var already = wsState.groups.some(function (m) { return m.email === g.email; });
                     if (!already) {
                         var o = document.createElement('option');
-                        o.value = g.Email; o.textContent = g.Name + ' (' + g.Email + ')';
+                        o.value = g.email; o.textContent = g.name + ' (' + g.email + ')';
                         sel.appendChild(o);
                     }
                 });
@@ -1521,10 +1521,10 @@
             return;
         }
         var rows = grps.map(function (g) {
-            return '<tr><td><code class="small">' + escHtml(g.Email) + '</code></td>' +
-                   '<td>' + escHtml(g.Name) + '</td>' +
+            return '<tr><td><code class="small">' + escHtml(g.email) + '</code></td>' +
+                   '<td>' + escHtml(g.name) + '</td>' +
                    '<td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="removeFromGroup(' +
-                   "'" + escHtml(g.Email) + "'" + ')"><i class="bi bi-x-lg"></i></button></td></tr>';
+                   "'" + escHtml(g.email) + "'" + ')"><i class="bi bi-x-lg"></i></button></td></tr>';
         }).join('');
         el.innerHTML = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
             '<tr><th>Email</th><th>Name</th><th class="text-end">Remove</th></tr></thead><tbody>' +
@@ -1636,7 +1636,8 @@
     // ── Onboarding ────────────────────────────────────────────────────────────
 
     window.provisionAccount = function () {
-        if (!confirm('Create a new Google Workspace account for @Html.Raw(Model.Email ?? Model.FullName)?\n\nMake sure this account does not already exist in your domain.')) return;
+        var _provEmail = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Email ?? Model.FullName));
+        if (!confirm('Create a new Google Workspace account for ' + _provEmail + '?\n\nMake sure this account does not already exist in your domain.')) return;
         var ou = document.getElementById('wsOrgUnitInput').value.trim();
         post('@Url.Action("ProvisionWorkspaceAccount","Employees",new{id=Model.Id})', { orgUnit: ou })
             .then(function (d) {
