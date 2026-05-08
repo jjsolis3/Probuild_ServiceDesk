@@ -15,6 +15,37 @@
     };
 }
 
+<style>
+    :root {
+        --tke-navy: #1a3a5c;
+        --tke-navy-dark: #0f2845;
+        --tke-blue: #2563eb;
+        --tke-gray-200: #e5e7eb;
+    }
+    /* Card polish for the Edit page — keep functional structure, refresh look */
+    .ticket-edit-page .card {
+        border: 1px solid var(--tke-gray-200);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.04);
+        margin-bottom: 14px;
+    }
+    .ticket-edit-page .card > .card-header,
+    .ticket-edit-page .card > .card-body > .border-bottom:first-child {
+        background: linear-gradient(135deg, var(--tke-navy) 0%, var(--tke-navy-dark) 100%);
+        color: #fff;
+        border-bottom: none;
+        font-weight: 600;
+        border-radius: 8px 8px 0 0 !important;
+    }
+    .ticket-edit-page .card > .card-header .text-muted,
+    .ticket-edit-page .card > .card-header .text-secondary { color: rgba(255,255,255,.85) !important; }
+    .ticket-edit-page .card > .card-header a { color: #fff; }
+    .ticket-edit-page .breadcrumb { background: transparent; padding: 0; margin-bottom: .5rem; font-size: .85rem; }
+    .ticket-edit-page .breadcrumb a { color: var(--tke-navy); text-decoration: none; }
+    .ticket-edit-page .breadcrumb a:hover { text-decoration: underline; }
+</style>
+<div class="ticket-edit-page">
+
 <!-- SolarWinds-style ticket edit page -->
 <form asp-action="Edit" id="ticketEditForm" data-loading-btn="btnSaveTicket">
     <input type="hidden" asp-for="Id" />
@@ -1018,6 +1049,8 @@ function fillEditEntry(id, date, hours, desc, billable) {
         </div>
     </div>
 </div>
+
+</div> @* /.ticket-edit-page *@
 
 @section Scripts {
 @{ var ollamaOn = (bool)(ViewBag.OllamaEnabled ?? false); }

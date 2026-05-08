@@ -4,6 +4,87 @@
     ViewData["Title"] = $"Ticket #{Model.Id}";
 }
 
+<style>
+    :root {
+        --tk-navy: #1a3a5c;
+        --tk-navy-dark: #0f2845;
+        --tk-blue: #2563eb;
+        --tk-amber: #f59e0b;
+        --tk-green: #10b981;
+        --tk-red: #ef4444;
+        --tk-gray-50: #f9fafb;
+        --tk-gray-100: #f3f4f6;
+        --tk-gray-200: #e5e7eb;
+        --tk-gray-500: #6b7280;
+        --tk-gray-700: #374151;
+    }
+    .ticket-details .breadcrumb {
+        background: transparent;
+        padding: 0;
+        margin-bottom: .75rem;
+        font-size: .85rem;
+    }
+    .ticket-details .breadcrumb a { color: var(--tk-navy); text-decoration: none; }
+    .ticket-details .breadcrumb a:hover { text-decoration: underline; }
+    .ticket-details h1 {
+        color: var(--tk-navy-dark);
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin: 0;
+    }
+    .ticket-details .card {
+        border: 1px solid var(--tk-gray-200);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .ticket-details .card-header {
+        background: linear-gradient(135deg, var(--tk-navy) 0%, var(--tk-navy-dark) 100%);
+        color: #fff;
+        border-bottom: none;
+        font-weight: 600;
+        border-radius: 8px 8px 0 0 !important;
+    }
+    .ticket-details .card-header .text-secondary,
+    .ticket-details .card-header .text-muted { color: rgba(255,255,255,.85) !important; }
+    .ticket-details .card-header .badge.bg-secondary { background: rgba(255,255,255,.2) !important; }
+    .ticket-details .card-header a { color: #fff; }
+    .ticket-details .card-header .btn-outline-secondary,
+    .ticket-details .card-header .btn-outline-light {
+        color: #fff;
+        border-color: rgba(255,255,255,.4);
+    }
+    .ticket-details .card-header .btn-outline-secondary:hover,
+    .ticket-details .card-header .btn-outline-light:hover {
+        background: rgba(255,255,255,.15);
+        color: #fff;
+    }
+    .ticket-details .status-pill {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: .75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+    .ticket-details .priority-pill {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: .7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+    .ticket-details .accent-bar {
+        height: 3px;
+        background: linear-gradient(90deg, var(--tk-navy), var(--tk-blue));
+        border-radius: 0 0 8px 8px;
+        margin-bottom: 1rem;
+    }
+</style>
+
+<div class="ticket-details">
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a asp-action="Index">Tickets</a></li>
@@ -372,6 +453,8 @@
         }
     </div>
 </div>
+
+</div> @* /.ticket-details *@
 
 @section Scripts {
 @if (!string.IsNullOrEmpty(Model.DescriptionHtml))

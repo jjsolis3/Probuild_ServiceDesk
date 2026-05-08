@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Services;
 using System.Security.Claims;
 
 namespace ServiceDesk.Web.Controllers;
@@ -12,10 +13,12 @@ namespace ServiceDesk.Web.Controllers;
 public class ContractorController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly EmailNotificationService _emailService;
 
-    public ContractorController(ServiceDeskDbContext context)
+    public ContractorController(ServiceDeskDbContext context, EmailNotificationService emailService)
     {
         _context = context;
+        _emailService = emailService;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -191,7 +194,12 @@ public class ContractorController : Controller
 
         receipt.Status        = "Submitted";
         receipt.SubmittedDate = DateTime.UtcNow;
+        receipt.RejectionNote = null;  // clear any prior rejection note on resubmit
         await _context.SaveChangesAsync();
+
+        receipt.Contractor ??= contractor;
+        try { await _emailService.NotifyReceiptSubmittedAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
 
         TempData["Success"] = "Receipt submitted for review.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Infrastructure.Data;
+using ServiceDesk.Web.Services;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -9,10 +10,12 @@ namespace ServiceDesk.Web.Controllers;
 public class AdminPayrollController : Controller
 {
     private readonly ServiceDeskDbContext _context;
+    private readonly EmailNotificationService _emailService;
 
-    public AdminPayrollController(ServiceDeskDbContext context)
+    public AdminPayrollController(ServiceDeskDbContext context, EmailNotificationService emailService)
     {
         _context = context;
+        _emailService = emailService;
     }
 
     // GET /AdminPayroll
@@ -83,6 +86,9 @@ public class AdminPayrollController : Controller
 
         await _context.SaveChangesAsync();
 
+        try { await _emailService.NotifyReceiptApprovedAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
+
         TempData["Success"] = "Receipt approved.";
         return RedirectToAction(nameof(Index));
     }
@@ -105,6 +111,9 @@ public class AdminPayrollController : Controller
         receipt.PaidDate = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        try { await _emailService.NotifyReceiptPaidAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
 
         TempData["Success"] = "Receipt marked as Paid.";
         return RedirectToAction(nameof(Index));
@@ -130,6 +139,9 @@ public class AdminPayrollController : Controller
         receipt.ApprovedById  = null;
 
         await _context.SaveChangesAsync();
+
+        try { await _emailService.NotifyReceiptRejectedAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
 
         TempData["Success"] = "Receipt returned to contractor for revision.";
         return RedirectToAction(nameof(Index));
@@ -163,6 +175,13 @@ public class AdminPayrollController : Controller
         }
 
         await _context.SaveChangesAsync();
+
+        foreach (var r in receipts)
+        {
+            try { await _emailService.NotifyReceiptApprovedAsync(r); }
+            catch (Exception) { /* email failure should not block UI flow */ }
+        }
+
         TempData["Success"] = $"{receipts.Count} receipt(s) approved.";
         return RedirectToAction(nameof(Index));
     }
@@ -189,6 +208,13 @@ public class AdminPayrollController : Controller
         }
 
         await _context.SaveChangesAsync();
+
+        foreach (var r in receipts)
+        {
+            try { await _emailService.NotifyReceiptPaidAsync(r); }
+            catch (Exception) { /* email failure should not block UI flow */ }
+        }
+
         TempData["Success"] = $"{receipts.Count} receipt(s) marked as Paid.";
         return RedirectToAction(nameof(Index));
     }

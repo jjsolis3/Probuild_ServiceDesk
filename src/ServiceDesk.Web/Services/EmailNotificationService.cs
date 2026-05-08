@@ -670,6 +670,180 @@ public class EmailNotificationService
         }
     }
 
+    // ── Payroll notifications ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Notifies the first active Admin user when a contractor submits a payroll receipt.
+    /// </summary>
+    public async Task NotifyReceiptSubmittedAsync(Core.Models.PayrollReceipt receipt)
+    {
+        if (!await IsNotificationEnabled("NotifyOnPayrollSubmit")) return;
+
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        // Find first Admin user with an email
+        var admin = await _context.PortalUsers
+            .Include(u => u.Role)
+            .Where(u => u.Role != null && u.Role.Name == "Admin" && !string.IsNullOrEmpty(u.Email))
+            .OrderBy(u => u.Id)
+            .FirstOrDefaultAsync();
+
+        if (admin == null)
+        {
+            _logger.LogWarning("[Payroll] No Admin user found to notify on receipt #{Id} submit.", receipt.Id);
+            return;
+        }
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var subject = $"Receipt #{receipt.Id} submitted by {contractorName} — {receipt.TotalAmount:C}";
+
+        var innerContent = $@"<h3>New Payroll Receipt Submitted</h3>
+            <p>A contractor has submitted a payroll receipt for review.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:140px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.TotalHours:0.##}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+            </table>
+            <p>Open the <strong>Contractor Payroll</strong> page in ServiceSphere to review, approve, or reject this receipt.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, admin.Email, subject, htmlBody, null, null, null);
+            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Failed to notify admin of receipt #{Id} submit", receipt.Id);
+            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Notifies the contractor that their submitted receipt has been approved.
+    /// </summary>
+    public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt)
+    {
+        if (!await IsNotificationEnabled("NotifyOnPayrollApproved")) return;
+        await SendContractorReceiptStatusEmailAsync(receipt,
+            statusLabel: "Approved",
+            subject: $"Your receipt #{receipt.Id} has been approved",
+            heading: "Receipt Approved",
+            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.",
+            barColor: "#10b981",
+            logType: "PayrollApproved");
+    }
+
+    /// <summary>
+    /// Notifies the contractor that their receipt was returned for revision with a note.
+    /// </summary>
+    public async Task NotifyReceiptRejectedAsync(Core.Models.PayrollReceipt receipt)
+    {
+        if (!await IsNotificationEnabled("NotifyOnPayrollRejected")) return;
+
+        var note = string.IsNullOrWhiteSpace(receipt.RejectionNote)
+            ? "Please review and resubmit."
+            : receipt.RejectionNote;
+        var noteBlock = $@"<div style='background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+            <strong style='color:#92400e;'>HR Note:</strong>
+            <div style='margin-top:6px;color:#78350f;'>{System.Net.WebUtility.HtmlEncode(note)}</div>
+        </div>";
+
+        await SendContractorReceiptStatusEmailAsync(receipt,
+            statusLabel: "Returned",
+            subject: $"Your receipt #{receipt.Id} was returned for revision",
+            heading: "Receipt Returned for Revision",
+            body: $"Your payroll receipt has been returned for revision. Please review the note below, update your time entries or receipt as needed, and resubmit.{noteBlock}",
+            barColor: "#f59e0b",
+            logType: "PayrollRejected");
+    }
+
+    /// <summary>
+    /// Notifies the contractor that payment has been confirmed.
+    /// </summary>
+    public async Task NotifyReceiptPaidAsync(Core.Models.PayrollReceipt receipt)
+    {
+        if (!await IsNotificationEnabled("NotifyOnPayrollPaid")) return;
+        await SendContractorReceiptStatusEmailAsync(receipt,
+            statusLabel: "Paid",
+            subject: $"Payment confirmed for receipt #{receipt.Id} — {receipt.TotalAmount:C}",
+            heading: "Payment Confirmed",
+            body: $"Payment for your payroll receipt has been processed. Please allow 1–3 business days for the funds to appear in your account.",
+            barColor: "#0ea5e9",
+            logType: "PayrollPaid");
+    }
+
+    /// <summary>
+    /// Shared helper for sending contractor-facing receipt status emails.
+    /// </summary>
+    private async Task SendContractorReceiptStatusEmailAsync(
+        Core.Models.PayrollReceipt receipt,
+        string statusLabel,
+        string subject,
+        string heading,
+        string body,
+        string barColor,
+        string logType)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        if (receipt.Contractor == null || string.IsNullOrEmpty(receipt.Contractor.Email))
+        {
+            _logger.LogWarning("[Payroll] Receipt #{Id} contractor missing or has no email; skipping {LogType}.", receipt.Id, logType);
+            return;
+        }
+
+        var contractorName = $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}";
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var innerContent = $@"<div style='border-left:4px solid {barColor};padding-left:14px;margin-bottom:16px;'>
+                <h3 style='margin:0;color:#111827;'>{heading}</h3>
+                <p style='margin:4px 0 0;color:#6b7280;font-size:13px;'>Receipt #{receipt.Id}</p>
+            </div>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(receipt.Contractor.FirstName)},</p>
+            <p>{body}</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:140px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.TotalHours:0.##}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;'><span style='background:{barColor};color:white;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'>{statusLabel}</span></td></tr>
+            </table>
+            <p style='color:#6b7280;font-size:13px;'>Sign in to ServiceSphere to view the full receipt and time entries.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, receipt.Contractor.Email, subject, htmlBody, null, null, null);
+            await LogNotificationAsync(logType, receipt.Contractor.Email, contractorName, subject, null, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Failed to send {LogType} email for receipt #{Id}", logType, receipt.Id);
+            await LogNotificationAsync(logType, receipt.Contractor.Email, contractorName, subject, null, false, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Builds a branded HTML email wrapper. Company name and brand colour come from AppSettings.
     /// </summary>
