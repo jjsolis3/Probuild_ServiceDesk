@@ -674,6 +674,14 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(i => i.StoreProductId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<StoreOrderItem>()
+            .Property(i => i.UnitPriceSnapshot)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<StoreProduct>()
+            .Property(p => p.Price)
+            .HasPrecision(18, 2);
+
         // StoreAccessList -> PortalUser
         modelBuilder.Entity<StoreAccessList>()
             .HasOne(a => a.PortalUser)

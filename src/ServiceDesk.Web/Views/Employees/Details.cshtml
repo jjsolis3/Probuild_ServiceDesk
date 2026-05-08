@@ -1,5 +1,64 @@
 @model Employee
 @using ServiceDesk.Core.Enums
+
+@section Styles {
+<style>
+/* ── Employee Details — tab navigation ─────────────────────────────────── */
+:root {
+    --edt-navy:   #1a3a5c;
+    --edt-blue:   #0d6efd;
+    --edt-border: #dee2e6;
+}
+#empTabs {
+    gap: 2px;
+    border-bottom: 3px solid var(--edt-navy);
+    padding-bottom: 0;
+}
+#empTabs .nav-item { margin-bottom: 0; }
+#empTabs .nav-link {
+    color: var(--edt-navy);
+    background: #f0f4f8;
+    border: 1px solid transparent;
+    border-radius: 8px 8px 0 0;
+    padding: 8px 16px;
+    font-size: .82rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    transition: background .15s, color .15s, border-color .15s;
+    white-space: nowrap;
+}
+#empTabs .nav-link:hover:not(.active) {
+    background: #dce8f5;
+    color: var(--edt-navy);
+    border-color: var(--edt-border) var(--edt-border) transparent;
+}
+#empTabs .nav-link.active {
+    background: var(--edt-navy);
+    color: #fff;
+    border-color: var(--edt-navy) var(--edt-navy) var(--edt-navy);
+    position: relative;
+    z-index: 1;
+}
+#empTabs .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--edt-navy);
+}
+#empTabs .nav-link .badge {
+    font-size: .65rem;
+    padding: 2px 5px;
+}
+#empTabs .nav-link.active .badge {
+    background: rgba(255,255,255,.25) !important;
+    color: #fff;
+}
+</style>
+}
+
 @{
     ViewData["Title"] = Model.FullName;
     var categoryBreakdown   = ViewBag.CategoryBreakdown   as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
