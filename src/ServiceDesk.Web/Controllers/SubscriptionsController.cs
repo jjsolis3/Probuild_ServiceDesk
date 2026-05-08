@@ -32,6 +32,15 @@ public class SubscriptionsController : Controller
         ViewBag.CurrentQuery     = q;
 
         var subscriptions = await query.OrderBy(s => s.Name).ToListAsync();
+
+        // KPI counts derived from full table (so the tiles don't shift with active filters)
+        var allSubs = await _context.Subscriptions.AsNoTracking().ToListAsync();
+        ViewBag.KpiTotal       = allSubs.Count;
+        ViewBag.KpiActive      = allSubs.Count(s => s.Status == SubscriptionStatus.Active);
+        ViewBag.KpiExpiring    = allSubs.Count(s => s.Status == SubscriptionStatus.Expiring || s.Status == SubscriptionStatus.PendingRenewal);
+        ViewBag.KpiExpired     = allSubs.Count(s => s.Status == SubscriptionStatus.Expired);
+        ViewBag.KpiMonthlyCost = allSubs.Where(s => s.Status == SubscriptionStatus.Active).Sum(s => s.MonthlyCost);
+
         return View(subscriptions);
     }
 

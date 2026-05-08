@@ -568,7 +568,7 @@
 
         <div id="sigStatus" class="d-none mb-3"></div>
 
-        <div class="row g-4">
+        <div class="row g-4 align-items-start">
             <!-- Editor -->
             <div class="col-md-6">
                 <div class="card shadow-sm border-0">
@@ -624,7 +624,7 @@
 
                 <div class="card shadow-sm border-0">
                     <div class="card-header fw-semibold small"><i class="bi bi-info-circle me-1"></i>Template Variables</div>
-                    <div class="card-body py-2" style="max-height:320px;overflow-y:auto;">
+                    <div class="card-body py-2" style="max-height:240px;overflow-y:auto;">
                         <table class="table table-sm table-borderless mb-0 small">
                             <tbody>
                                 <tr><td><code>{FIRST_NAME}</code></td><td class="text-muted">@Model.FirstName</td></tr>
@@ -1489,9 +1489,22 @@
                 oooBadge.textContent = 'Unavailable'; oooBadge.className = 'badge bg-secondary';
             }
 
-            // Groups
-            wsState.groups = Array.isArray(info.groups) ? info.groups : [];
-            renderGroups(wsState.groups);
+            // Groups — surface API errors instead of silently rendering "Not a member of any groups"
+            if (Array.isArray(info.groups)) {
+                wsState.groups = info.groups;
+                renderGroups(wsState.groups);
+            } else if (info.groups && info.groups.error) {
+                wsState.groups = [];
+                document.getElementById('wsGroupsList').innerHTML =
+                    '<div class="alert alert-warning small mb-0 m-3"><i class="bi bi-exclamation-triangle me-1"></i>' +
+                    '<strong>Could not load groups:</strong> ' + escHtml(info.groups.error) +
+                    '<div class="text-muted small mt-1">Verify the service account has Domain-Wide Delegation for ' +
+                    '<code>https://www.googleapis.com/auth/admin.directory.group</code> and that the admin email in ' +
+                    'Settings → Google Workspace can read groups.</div></div>';
+            } else {
+                wsState.groups = [];
+                renderGroups([]);
+            }
 
             // Domain group dropdown
             var sel = document.getElementById('wsGroupSelect');
@@ -1505,6 +1518,11 @@
                         sel.appendChild(o);
                     }
                 });
+            } else if (domGrps.error) {
+                var errOpt = document.createElement('option');
+                errOpt.value = ''; errOpt.disabled = true;
+                errOpt.textContent = '⚠ Domain groups unavailable: ' + domGrps.error;
+                sel.appendChild(errOpt);
             }
 
             wsLoaded = true;
@@ -1818,7 +1836,8 @@
 })();
 
 // ── Ticket Viewer Modal ────────────────────────────────────────────────────
-// Replace "</" with "<\/" so a ticket title containing "</script>" can't terminate this tag.
+// Ticket titles get JSON-serialized below; the .Replace call escapes any "</"
+// sequence as "<\/" so the HTML parser can't terminate this script tag early.
 var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
     ((IEnumerable<dynamic>)(ViewBag.RecentSubmitted ?? Enumerable.Empty<dynamic>()))
     .Select(t => new {

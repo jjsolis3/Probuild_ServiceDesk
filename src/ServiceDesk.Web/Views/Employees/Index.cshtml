@@ -38,9 +38,13 @@
     .emp-card-accent { height:5px;background:linear-gradient(90deg,var(--emp-navy),var(--emp-blue)); }
 
     .emp-table { width:100%;border-collapse:collapse;font-size:.875rem; }
-    .emp-table thead tr { background:var(--emp-navy);color:#fff; }
-    .emp-table thead th { padding:10px 14px;font-size:.7rem;font-weight:700;
-                          letter-spacing:.07em;text-transform:uppercase;white-space:nowrap; }
+    .emp-table thead tr { background:var(--emp-navy) !important; }
+    .emp-table thead th,
+    table.emp-table.dataTable thead th,
+    table.emp-table.dataTable thead td { padding:10px 14px;font-size:.7rem;font-weight:700;
+                          letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
+                          color:#fff !important;background:var(--emp-navy) !important;
+                          border-bottom:none !important; }
     .emp-table tbody tr { border-bottom:1px solid #f0f0f0; }
     .emp-table tbody tr:nth-child(even) { background:#f8f9fb; }
     .emp-table tbody tr:hover { background:#eef4ff; }
