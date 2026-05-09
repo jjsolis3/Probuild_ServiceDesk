@@ -978,6 +978,93 @@ public class EmployeesController : Controller
         return Json(new { success = ok, message = ok ? $"Removed from {groupEmail}." : err });
     }
 
+    // ── Email Aliases ─────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetAliases(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, error = "Employee has no email address." });
+        var (ok, aliases, err) = await _googleWorkspace.GetUserAliasesAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true, aliases });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddAlias(int id, string alias)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(alias))
+            return Json(new { success = false, message = "Alias cannot be empty." });
+        var (ok, err) = await _googleWorkspace.AddAliasAsync(employee.Email, alias.Trim().ToLower());
+        return Json(new { success = ok, message = ok ? $"Alias {alias} added." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveAlias(int id, string alias)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveAliasAsync(employee.Email, alias);
+        return Json(new { success = ok, message = ok ? $"Alias {alias} removed." : err });
+    }
+
+    // ── Org Unit Browser ──────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetOrgUnits()
+    {
+        var (ok, units, err) = await _googleWorkspace.GetOrgUnitsAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            units = units.Select(u => new { u.Name, u.OrgUnitPath, u.ParentOrgUnitPath }) });
+    }
+
+    // ── Chat Spaces ───────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetUserSpaces(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, error = "Employee has no email address." });
+        var (ok, spaces, err) = await _googleWorkspace.GetUserSpacesAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            spaces = spaces.Select(s => new { s.Name, s.DisplayName, s.SpaceType, s.MemberCount }) });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDomainSpaces()
+    {
+        var (ok, spaces, err) = await _googleWorkspace.ListDomainSpacesAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            spaces = spaces.Select(s => new { s.Name, s.DisplayName, s.SpaceType, s.MemberCount }) });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddToSpace(int id, string spaceName)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.AddToSpaceAsync(spaceName, employee.Email);
+        return Json(new { success = ok, message = ok ? "Added to space." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveFromSpace(int id, string spaceName)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveFromSpaceAsync(spaceName, employee.Email);
+        return Json(new { success = ok, message = ok ? "Removed from space." : err });
+    }
+
     // ── Onboarding ────────────────────────────────────────────────────────────
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -1007,6 +1094,7 @@ public class EmployeesController : Controller
     public async Task<IActionResult> RunOffboarding(int id,
         bool suspend         = true,
         bool removeGroups    = true,
+        bool removeSpaces    = false,
         bool setOoo          = true,
         string? oooSubject   = null,
         string? oooBody      = null,
@@ -1053,7 +1141,16 @@ public class EmployeesController : Controller
                 message = grpOk ? $"Removed from {removed} group(s)." : "Groups API unavailable." });
         }
 
-        // 4. OOO Responder
+        // 4. Remove from all Chat Spaces
+        if (removeSpaces)
+        {
+            var (ok, count, spErr) = await _googleWorkspace.RemoveFromAllSpacesAsync(email);
+            steps.Add(new { step = "Remove from Chat Spaces", ok,
+                message = ok ? $"Removed from {count} space(s)." : (spErr ?? "Spaces step failed.") });
+            if (!ok) anyFail = true;
+        }
+
+        // 5. OOO Responder
         if (setOoo)
         {
             var vac = new GoogleWorkspaceService.VacationResponder(

@@ -906,6 +906,45 @@
                     </div>
                 </div>
 
+                <!-- ── Email Aliases ───────────────────────────────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-envelope-at me-2"></i>Email Aliases</span>
+                            <div class="d-flex gap-2 align-items-center">
+                                <input type="text" class="form-control form-control-sm font-monospace"
+                                       id="wsAliasInput" placeholder="alias@domain.com" style="max-width:230px;" />
+                                <button class="btn btn-sm btn-primary" onclick="addAlias()">
+                                    <i class="bi bi-plus-lg me-1"></i>Add Alias
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0" id="wsAliasList">
+                            <div class="text-muted small p-3">Loading aliases…</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Chat Spaces ─────────────────────────────────────── -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header fw-semibold small d-flex justify-content-between align-items-center bg-info-light bg-opacity-10">
+                            <span><i class="bi bi-chat-square-text me-2"></i>Chat Spaces</span>
+                            <div class="d-flex gap-2 align-items-center">
+                                <select class="form-select form-select-sm" id="wsSpaceSelect" style="max-width:280px;">
+                                    <option value="">— Select a space to add —</option>
+                                </select>
+                                <button class="btn btn-sm btn-primary" onclick="addToSpace()">
+                                    <i class="bi bi-plus-lg me-1"></i>Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0" id="wsSpacesList">
+                            <div class="text-muted small p-3">Loading spaces…</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ── Security: OAuth Apps + Login Activity ───────────── -->
                 <div class="col-12">
                     <div class="card border-0 shadow-sm">
@@ -965,9 +1004,11 @@
                     <div class="card-body">
                         <p class="text-muted small mb-3">Create a new Google Workspace account for this employee. A temporary password will be generated and the employee will be required to change it on first sign-in.</p>
                         <div class="mb-3">
-                            <label class="form-label small">Organizational Unit <span class="text-muted">(optional)</span></label>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="wsOrgUnitInput" placeholder="/ or /Sales" />
-                            <div class="form-text">Leave blank for root OU. E.g. <code>/Engineering</code></div>
+                            <label class="form-label small">Organizational Unit</label>
+                            <select class="form-select form-select-sm" id="wsOrgUnitInput">
+                                <option value="/">/ (Root)</option>
+                            </select>
+                            <div class="form-text">Select the OU for this account. Loaded from your Workspace domain.</div>
                         </div>
                         <div id="wsProvisionResult" class="d-none mb-3">
                             <div class="alert alert-success py-2 small mb-2" id="wsProvisionMsg"></div>
@@ -1170,6 +1211,7 @@
                             <div class="form-check"><input type="checkbox" class="form-check-input" id="offSuspend" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offSuspend">Suspend account</label></div>
                             <div class="form-check"><input type="checkbox" class="form-check-input" id="offRevoke" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offRevoke">Revoke all OAuth app access</label></div>
                             <div class="form-check"><input type="checkbox" class="form-check-input" id="offGroups" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offGroups">Remove from all groups</label></div>
+                            <div class="form-check"><input type="checkbox" class="form-check-input" id="offSpaces" @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offSpaces">Remove from all Chat Spaces <span class="text-muted">(requires chat.memberships scope)</span></label></div>
                             <div class="form-check"><input type="checkbox" class="form-check-input" id="offOoo" checked @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offOoo">Enable out-of-office auto-reply</label></div>
                             <div class="form-check"><input type="checkbox" class="form-check-input" id="offTransfer" @(!dateSet ? "disabled" : "") /><label class="form-check-label small" for="offTransfer">Transfer Drive files to:</label></div>
                             <div class="ms-4 mt-1" id="offTransferDest" style="display:none;">
@@ -1492,7 +1534,7 @@
 // ── Google Workspace Tab ──────────────────────────────────────────────────
 (function () {
     var wsLoaded    = false;
-    var wsState     = { suspended: false, groups: [] };
+    var wsState     = { suspended: false, groups: [], aliases: [], spaces: [] };
     var antiForgery = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
 
     function wsAlert(msg, type) {
@@ -1518,8 +1560,12 @@
 
         Promise.all([
             fetch('@Url.Action("GetWorkspaceInfo","Employees",new{id=Model.Id})').then(r => r.json()),
-            fetch('@Url.Action("GetDomainGroups","Employees")').then(r => r.json())
-        ]).then(function ([info, domGrps]) {
+            fetch('@Url.Action("GetDomainGroups","Employees")').then(r => r.json()),
+            fetch('@Url.Action("GetAliases","Employees",new{id=Model.Id})').then(r => r.json()),
+            fetch('@Url.Action("GetUserSpaces","Employees",new{id=Model.Id})').then(r => r.json()),
+            fetch('@Url.Action("GetDomainSpaces","Employees")').then(r => r.json()),
+            fetch('@Url.Action("GetOrgUnits","Employees")').then(r => r.json())
+        ]).then(function ([info, domGrps, aliasRes, userSpaces, domSpaces, ouRes]) {
             document.getElementById('wsLoader').classList.add('d-none');
             document.getElementById('wsContent').classList.remove('d-none');
 
@@ -1583,6 +1629,59 @@
                 errOpt.textContent = '⚠ Domain groups unavailable: ' + domGrps.error;
                 sel.appendChild(errOpt);
             }
+
+            // Email aliases
+            if (aliasRes.success) {
+                wsState.aliases = aliasRes.aliases || [];
+                renderAliases(wsState.aliases);
+            } else {
+                document.getElementById('wsAliasList').innerHTML =
+                    '<div class="alert alert-warning small mb-0 m-3"><i class="bi bi-exclamation-triangle me-1"></i>' +
+                    escHtml(aliasRes.error || 'Could not load aliases.') + '</div>';
+            }
+
+            // Chat Spaces — user's memberships
+            if (userSpaces.success) {
+                wsState.spaces = userSpaces.spaces || [];
+                renderSpaces(wsState.spaces);
+            } else {
+                document.getElementById('wsSpacesList').innerHTML =
+                    '<div class="alert alert-warning small mb-0 m-3"><i class="bi bi-exclamation-triangle me-1"></i>' +
+                    '<strong>Could not load Chat Spaces:</strong> ' + escHtml(userSpaces.error || 'Unknown error') +
+                    '<div class="text-muted small mt-1">Ensure Google Chat is enabled for the domain and that ' +
+                    '<code>chat.spaces</code> is added to DWD.</div></div>';
+            }
+
+            // Domain spaces dropdown (for add)
+            var spaceSel = document.getElementById('wsSpaceSelect');
+            spaceSel.innerHTML = '<option value="">— Select a space to add —</option>';
+            if (domSpaces.success && Array.isArray(domSpaces.spaces)) {
+                domSpaces.spaces.forEach(function (s) {
+                    var already = (wsState.spaces || []).some(function (m) { return m.name === s.name; });
+                    if (!already) {
+                        var o = document.createElement('option');
+                        o.value = s.name;
+                        o.textContent = s.displayName || s.name;
+                        if (s.memberCount) o.textContent += ' (' + s.memberCount + ' members)';
+                        spaceSel.appendChild(o);
+                    }
+                });
+            }
+
+            // OU picker — populate in both Workspace tab and provisioning dropdown
+            ['wsOrgUnitInput'].forEach(function (selId) {
+                var ouSel = document.getElementById(selId);
+                if (!ouSel || ouSel.tagName !== 'SELECT') return;
+                ouSel.innerHTML = '<option value="/">/ (Root)</option>';
+                if (ouRes.success && Array.isArray(ouRes.units)) {
+                    ouRes.units.forEach(function (u) {
+                        var o = document.createElement('option');
+                        o.value = u.orgUnitPath;
+                        o.textContent = u.orgUnitPath;
+                        ouSel.appendChild(o);
+                    });
+                }
+            });
 
             wsLoaded = true;
         }).catch(function (e) {
@@ -1710,6 +1809,89 @@
             });
     };
 
+    // ── Email Aliases ─────────────────────────────────────────────────────────
+
+    function renderAliases(aliases) {
+        var el = document.getElementById('wsAliasList');
+        if (!aliases || aliases.length === 0) {
+            el.innerHTML = '<p class="text-muted small p-3 mb-0">No email aliases configured.</p>';
+            return;
+        }
+        var rows = aliases.map(function (a) {
+            return '<tr><td class="font-monospace small">' + escHtml(a) + '</td>' +
+                   '<td class="text-end"><button class="btn btn-sm btn-outline-danger" ' +
+                   "onclick=\"removeAlias('" + escHtml(a) + "')\">" +
+                   '<i class="bi bi-x-lg"></i></button></td></tr>';
+        }).join('');
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+            '<tr><th>Alias Email</th><th class="text-end">Remove</th></tr></thead><tbody>' +
+            rows + '</tbody></table></div>';
+    }
+
+    window.addAlias = function () {
+        var alias = document.getElementById('wsAliasInput').value.trim().toLowerCase();
+        if (!alias) { wsAlert('Enter an alias email address.', 'warning'); return; }
+        post('@Url.Action("AddAlias","Employees",new{id=Model.Id})', { alias })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) { document.getElementById('wsAliasInput').value = ''; loadWorkspaceInfo(); }
+            });
+    };
+
+    window.removeAlias = function (alias) {
+        if (!confirm('Remove alias ' + alias + '?')) return;
+        post('@Url.Action("RemoveAlias","Employees",new{id=Model.Id})', { alias })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    // ── Chat Spaces ───────────────────────────────────────────────────────────
+
+    function renderSpaces(spaces) {
+        var el = document.getElementById('wsSpacesList');
+        if (!spaces || spaces.length === 0) {
+            el.innerHTML = '<p class="text-muted small p-3 mb-0">Not a member of any Chat Spaces.</p>';
+            return;
+        }
+        var rows = spaces.map(function (s) {
+            var label = s.displayName || s.name;
+            var badge = s.spaceType === 'GROUP_CHAT'
+                ? '<span class="badge bg-secondary ms-1 small">Group Chat</span>' : '';
+            var members = s.memberCount ? '<span class="text-muted small ms-2">' + s.memberCount + ' members</span>' : '';
+            return '<tr><td><i class="bi bi-chat-square-text me-1 text-info"></i>' +
+                   escHtml(label) + badge + members + '</td>' +
+                   '<td class="font-monospace small text-muted">' + escHtml(s.name) + '</td>' +
+                   '<td class="text-end"><button class="btn btn-sm btn-outline-danger" ' +
+                   "onclick=\"removeFromSpace('" + escHtml(s.name) + "')\">" +
+                   '<i class="bi bi-x-lg"></i></button></td></tr>';
+        }).join('');
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light">' +
+            '<tr><th>Space</th><th>Resource Name</th><th class="text-end">Remove</th></tr></thead><tbody>' +
+            rows + '</tbody></table></div>';
+    }
+
+    window.addToSpace = function () {
+        var sel = document.getElementById('wsSpaceSelect');
+        var spaceName = sel.value;
+        if (!spaceName) return;
+        post('@Url.Action("AddToSpace","Employees",new{id=Model.Id})', { spaceName })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
+    window.removeFromSpace = function (spaceName) {
+        if (!confirm('Remove from ' + spaceName + '?')) return;
+        post('@Url.Action("RemoveFromSpace","Employees",new{id=Model.Id})', { spaceName })
+            .then(function (d) {
+                wsAlert(d.message, d.success ? 'success' : 'danger');
+                if (d.success) loadWorkspaceInfo();
+            });
+    };
+
     // ── Onboarding ────────────────────────────────────────────────────────────
 
     window.provisionAccount = function () {
@@ -1743,6 +1925,7 @@
         var data = {
             suspend:          document.getElementById('offSuspend').checked,
             removeGroups:     document.getElementById('offGroups').checked,
+            removeSpaces:     document.getElementById('offSpaces').checked,
             setOoo:           document.getElementById('offOoo').checked,
             oooSubject:       document.getElementById('offOooSubject').value,
             oooBody:          document.getElementById('offOooBody').value,

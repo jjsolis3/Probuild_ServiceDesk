@@ -41,6 +41,12 @@ public class GoogleWorkspaceService
         "https://www.googleapis.com/auth/admin.datatransfer " +
         "https://www.googleapis.com/auth/admin.directory.user";
 
+    private const string OrgUnitScope = "https://www.googleapis.com/auth/admin.directory.orgunit";
+    private const string ChatScope    =
+        "https://www.googleapis.com/auth/chat.memberships " +
+        "https://www.googleapis.com/auth/chat.spaces";
+    private const string ChatApiBase  = "https://chat.googleapis.com/v1";
+
     public GoogleWorkspaceService(
         IServiceScopeFactory scopeFactory,
         IDataProtectionProvider dpProvider,
@@ -1295,7 +1301,284 @@ public class GoogleWorkspaceService
         return (passed, message);
     }
 
+    // ── Email Aliases ─────────────────────────────────────────────────────────
+
+    public async Task<(bool Success, List<string> Aliases, string? Error)> GetUserAliasesAsync(string email)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, [], "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(email)}/aliases");
+        if (!resp.IsSuccessStatusCode)
+        {
+            if ((int)resp.StatusCode == 404) return (true, [], null);
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        var list = new List<string>();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        if (doc.RootElement.TryGetProperty("aliases", out var arr))
+            foreach (var a in arr.EnumerateArray())
+                if (a.TryGetProperty("alias", out var ae) && ae.GetString() is string alias)
+                    list.Add(alias);
+
+        return (true, list, null);
+    }
+
+    public async Task<(bool Success, string? Error)> AddAliasAsync(string email, string alias)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var payload = JsonSerializer.Serialize(new { alias });
+        var resp = await client.PostAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(email)}/aliases",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("AddAlias failed for {Email}: {Error}", email, err);
+            return (false, $"API error {(int)resp.StatusCode}: {err}");
+        }
+        return (true, null);
+    }
+
+    public async Task<(bool Success, string? Error)> RemoveAliasAsync(string email, string alias)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return (false, "Admin service account not configured or auth failed.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.DeleteAsync(
+            $"{AdminApiBase}/users/{Uri.EscapeDataString(email)}/aliases/{Uri.EscapeDataString(alias)}");
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("RemoveAlias failed for {Email}: {Error}", email, err);
+            return (false, $"API error {(int)resp.StatusCode}: {err}");
+        }
+        return (true, null);
+    }
+
+    // ── Org Unit Browser ──────────────────────────────────────────────────────
+
+    public async Task<(bool Success, List<OrgUnitInfo> OrgUnits, string? Error)> GetOrgUnitsAsync()
+    {
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, [], "Google Workspace not configured.");
+
+        var token = await GetAccessTokenAsync(settings.AdminEmail, OrgUnitScope);
+        if (token == null) return (false, [], "Auth failed — add 'admin.directory.orgunit' scope to DWD.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{AdminApiBase}/customer/my_customer/orgunits?type=all");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"API error {(int)resp.StatusCode}: {err}");
+        }
+
+        var list = new List<OrgUnitInfo>();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        if (doc.RootElement.TryGetProperty("organizationUnits", out var arr))
+            foreach (var ou in arr.EnumerateArray())
+            {
+                var name   = ou.TryGetProperty("name",             out var n)  ? n.GetString()  ?? "" : "";
+                var path   = ou.TryGetProperty("orgUnitPath",      out var p)  ? p.GetString()  ?? "/" : "/";
+                var parent = ou.TryGetProperty("parentOrgUnitPath", out var pp) ? pp.GetString() ?? "/" : "/";
+                list.Add(new OrgUnitInfo(name, path, parent));
+            }
+
+        list.Sort((a, b) => string.Compare(a.OrgUnitPath, b.OrgUnitPath, StringComparison.OrdinalIgnoreCase));
+        return (true, list, null);
+    }
+
+    // ── Google Chat Spaces ────────────────────────────────────────────────────
+
+    /// <summary>Get the Google Directory user ID (immutable numeric string) for a given email.</summary>
+    private async Task<string?> GetGoogleUserIdAsync(string email)
+    {
+        var token = await GetAdminAccessTokenAsync();
+        if (token == null) return null;
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{AdminApiBase}/users/{Uri.EscapeDataString(email)}?fields=id");
+        if (!resp.IsSuccessStatusCode) return null;
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+    }
+
+    /// <summary>List all Chat Spaces the given user is a member of (impersonates the user).</summary>
+    public async Task<(bool Success, List<SpaceInfo> Spaces, string? Error)> GetUserSpacesAsync(string userEmail)
+    {
+        if (string.IsNullOrWhiteSpace(userEmail))
+            return (false, [], "Employee has no email address.");
+
+        var token = await GetAccessTokenAsync(userEmail, ChatScope);
+        if (token == null)
+            return (false, [], "Auth failed — add 'chat.spaces' scope to DWD and ensure Google Chat is enabled for the domain.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{ChatApiBase}/spaces?pageSize=100");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"Chat API error {(int)resp.StatusCode}: {err}");
+        }
+
+        return (true, ParseSpaces(await resp.Content.ReadAsStringAsync()), null);
+    }
+
+    /// <summary>List all named (non-DM) Spaces in the domain (impersonates admin).</summary>
+    public async Task<(bool Success, List<SpaceInfo> Spaces, string? Error)> ListDomainSpacesAsync()
+    {
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, [], "Google Workspace not configured.");
+
+        var token = await GetAccessTokenAsync(settings.AdminEmail, ChatScope);
+        if (token == null)
+            return (false, [], "Auth failed — add 'chat.spaces' scope to DWD.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.GetAsync($"{ChatApiBase}/spaces?filter=spaceType%3DSPACE&pageSize=200");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            return (false, [], $"Chat API error {(int)resp.StatusCode}: {err}");
+        }
+
+        return (true, ParseSpaces(await resp.Content.ReadAsStringAsync()), null);
+    }
+
+    /// <summary>Add a user to a Chat Space (uses admin DWD token).</summary>
+    public async Task<(bool Success, string? Error)> AddToSpaceAsync(string spaceName, string userEmail)
+    {
+        var userId = await GetGoogleUserIdAsync(userEmail);
+        if (userId == null) return (false, "Could not resolve Google user ID for this email.");
+
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, "Google Workspace not configured.");
+
+        var token = await GetAccessTokenAsync(settings.AdminEmail, ChatScope);
+        if (token == null) return (false, "Auth failed — add 'chat.memberships' scope to DWD.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var payload = JsonSerializer.Serialize(new { member = new { name = $"users/{userId}", type = "HUMAN" } });
+        var resp = await client.PostAsync($"{ChatApiBase}/{spaceName}/members",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("AddToSpace {Space} failed for {User}: {Error}", spaceName, userEmail, err);
+            return (false, $"Chat API error {(int)resp.StatusCode}: {err}");
+        }
+        return (true, null);
+    }
+
+    /// <summary>Remove a user from a Chat Space (uses admin DWD token).</summary>
+    public async Task<(bool Success, string? Error)> RemoveFromSpaceAsync(string spaceName, string userEmail)
+    {
+        var userId = await GetGoogleUserIdAsync(userEmail);
+        if (userId == null) return (false, "Could not resolve Google user ID for this email.");
+
+        var settings = await GetSettingsAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.AdminEmail))
+            return (false, "Google Workspace not configured.");
+
+        var token = await GetAccessTokenAsync(settings.AdminEmail, ChatScope);
+        if (token == null) return (false, "Auth failed — add 'chat.memberships' scope to DWD.");
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var memberName = $"{spaceName}/members/{userId}";
+        var resp = await client.DeleteAsync($"{ChatApiBase}/{memberName}");
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            _logger.LogWarning("RemoveFromSpace {Space} failed for {User}: {Error}", spaceName, userEmail, err);
+            return (false, $"Chat API error {(int)resp.StatusCode}: {err}");
+        }
+        return (true, null);
+    }
+
+    /// <summary>Remove a user from all Chat Spaces they belong to (for offboarding).</summary>
+    public async Task<(bool Success, int Removed, string? Error)> RemoveFromAllSpacesAsync(string userEmail)
+    {
+        var (ok, spaces, err) = await GetUserSpacesAsync(userEmail);
+        if (!ok) return (false, 0, err);
+        if (spaces.Count == 0) return (true, 0, null);
+
+        int removed = 0, failed = 0;
+        foreach (var space in spaces)
+        {
+            var (rok, _) = await RemoveFromSpaceAsync(space.Name, userEmail);
+            if (rok) removed++; else failed++;
+        }
+        return (failed == 0, removed,
+            failed > 0 ? $"{failed} space(s) could not be removed." : null);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static List<SpaceInfo> ParseSpaces(string json)
+    {
+        var list = new List<SpaceInfo>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("spaces", out var arr)) return list;
+            foreach (var s in arr.EnumerateArray())
+            {
+                var name        = s.TryGetProperty("name",        out var n)  ? n.GetString()  ?? "" : "";
+                var displayName = s.TryGetProperty("displayName", out var dn) ? dn.GetString() ?? "" : "";
+                var spaceType   = s.TryGetProperty("spaceType",   out var st) ? st.GetString() ?? "SPACE" : "SPACE";
+                int memberCount = 0;
+                if (s.TryGetProperty("membershipCount", out var mc) &&
+                    mc.TryGetProperty("joinedDirectHumanUserCount", out var jc))
+                    jc.TryGetInt32(out memberCount);
+                if (!string.IsNullOrEmpty(name) && spaceType != "DIRECT_MESSAGE")
+                    list.Add(new SpaceInfo(name, displayName, spaceType, memberCount));
+            }
+        }
+        catch { /* malformed response */ }
+        return list;
+    }
 
     private static List<GroupInfo> ParseGroups(string json)
     {
@@ -1403,6 +1686,10 @@ public class GoogleWorkspaceService
     public sealed record OAuthTokenInfo(string AppName, string ClientId, List<string> Scopes);
 
     public sealed record LoginEvent(DateTimeOffset Time, string EventName, string IpAddress);
+
+    public sealed record OrgUnitInfo(string Name, string OrgUnitPath, string ParentOrgUnitPath);
+
+    public sealed record SpaceInfo(string Name, string DisplayName, string SpaceType, int MemberCount);
 
     public sealed record UserSecurityInfo(
         string Email,
