@@ -57,6 +57,9 @@ public class ServiceDeskDbContext : DbContext
     // Routing & assignment
     public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
 
+    // Automation workflow rules
+    public DbSet<WorkflowRule> WorkflowRules => Set<WorkflowRule>();
+
     // Saved ticket view presets (per-user filter shortcuts)
     public DbSet<SavedTicketView> SavedTicketViews => Set<SavedTicketView>();
 
@@ -727,5 +730,9 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<StoreOrder>()
             .HasIndex(o => new { o.PortalUserId, o.Year, o.Quarter });
+
+        // WorkflowRule — no FK relationships; conditions/actions stored as JSON text
+        modelBuilder.Entity<WorkflowRule>()
+            .HasIndex(r => new { r.IsActive, r.Trigger, r.SortOrder });
     }
 }

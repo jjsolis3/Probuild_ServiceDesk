@@ -270,6 +270,50 @@ public class HomeController : Controller
         return Json(data);
     }
 
+    // GET /Home/GlobalSearch?q=...
+    // Command palette backend — searches Tickets, Assets, Employees, KB articles
+    public async Task<IActionResult> GlobalSearch(string q)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Json(new { groups = Array.Empty<object>() });
+
+        q = q.Trim();
+        const int maxPerGroup = 5;
+
+        var tickets = await _context.Tickets
+            .Where(t => t.Title.Contains(q) || t.Description.Contains(q) || t.Id.ToString() == q)
+            .OrderByDescending(t => t.CreatedDate)
+            .Take(maxPerGroup)
+            .Select(t => new { t.Id, Label = $"#{t.Id} — {t.Title}", Sub = t.Status.ToString(), Url = $"/Tickets/Details/{t.Id}" })
+            .ToListAsync();
+
+        var assets = await _context.Assets
+            .Where(a => a.Name.Contains(q) || a.AssetTag.Contains(q) || (a.SerialNumber != null && a.SerialNumber.Contains(q)))
+            .Take(maxPerGroup)
+            .Select(a => new { a.Id, Label = a.Name, Sub = a.AssetTag, Url = $"/Assets/Details/{a.Id}" })
+            .ToListAsync();
+
+        var employees = await _context.Employees
+            .Where(e => (e.FirstName + " " + e.LastName).Contains(q) || e.Email.Contains(q))
+            .Take(maxPerGroup)
+            .Select(e => new { e.Id, Label = e.FirstName + " " + e.LastName, Sub = e.Email, Url = $"/Employees/Details/{e.Id}" })
+            .ToListAsync();
+
+        var kb = await _context.KbArticles
+            .Where(k => k.IsPublished && (k.Title.Contains(q) || k.Body.Contains(q)))
+            .Take(maxPerGroup)
+            .Select(k => new { k.Id, Label = k.Title, Sub = "Knowledge Base", Url = $"/Kb/Details/{k.Id}" })
+            .ToListAsync();
+
+        var groups = new List<object>();
+        if (tickets.Any())  groups.Add(new { group = "Tickets",   icon = "bi-ticket-alt",   items = tickets.Cast<object>().ToList() });
+        if (assets.Any())   groups.Add(new { group = "Assets",    icon = "bi-laptop",        items = assets.Cast<object>().ToList() });
+        if (employees.Any())groups.Add(new { group = "Employees", icon = "bi-person",        items = employees.Cast<object>().ToList() });
+        if (kb.Any())       groups.Add(new { group = "KB",        icon = "bi-book",          items = kb.Cast<object>().ToList() });
+
+        return Json(new { groups });
+    }
+
     // Error handler — called by UseExceptionHandler in production
     [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

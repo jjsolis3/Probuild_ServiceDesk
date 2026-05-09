@@ -1581,6 +1581,29 @@ public static class DbInitializer
                         CREATE INDEX IX_PayrollReceipts_ContractorId ON dbo.PayrollReceipts (ContractorId);
                 END");
 
+            // Create WorkflowRules table (automation engine)
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')
+                BEGIN
+                    CREATE TABLE dbo.WorkflowRules (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Name            NVARCHAR(200)   NOT NULL,
+                        Description     NVARCHAR(500)   NULL,
+                        Trigger         INT             NOT NULL DEFAULT 0,
+                        ConditionsJson  NVARCHAR(MAX)   NOT NULL DEFAULT '[]',
+                        ActionsJson     NVARCHAR(MAX)   NOT NULL DEFAULT '[]',
+                        IsActive        BIT             NOT NULL DEFAULT 1,
+                        SortOrder       INT             NOT NULL DEFAULT 100,
+                        StopOnMatch     BIT             NOT NULL DEFAULT 0,
+                        RunCount        INT             NOT NULL DEFAULT 0,
+                        LastRunAt       DATETIME2       NULL,
+                        CreatedDate     DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+
+                    CREATE INDEX IX_WorkflowRules_Active_Trigger_Sort
+                        ON dbo.WorkflowRules (IsActive, Trigger, SortOrder);
+                END");
+
         }
         catch (Exception ex)
         {

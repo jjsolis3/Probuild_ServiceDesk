@@ -2597,6 +2597,141 @@ public class SettingsController : Controller
         }
     }
 
+    // ── Automation Workflow Rules ─────────────────────────────────────────────
+
+    // GET: Settings/Workflows
+    public async Task<IActionResult> Workflows()
+    {
+        var rules = await _context.WorkflowRules
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
+        ViewData["Title"] = "Automation Workflows";
+        return View(rules);
+    }
+
+    // POST: Settings/ToggleWorkflow
+    [HttpPost]
+    public async Task<IActionResult> ToggleWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        rule.IsActive = !rule.IsActive;
+        await _context.SaveChangesAsync();
+        return Ok(new { active = rule.IsActive });
+    }
+
+    // POST: Settings/DeleteWorkflow
+    [HttpPost]
+    public async Task<IActionResult> DeleteWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        _context.WorkflowRules.Remove(rule);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Workflow rule '{rule.Name}' deleted.";
+        return RedirectToAction(nameof(Workflows));
+    }
+
+    // GET: Settings/CreateWorkflow
+    public async Task<IActionResult> CreateWorkflow()
+    {
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Create Automation Rule";
+        return View(new WorkflowRule { SortOrder = 100, IsActive = true });
+    }
+
+    // POST: Settings/CreateWorkflow
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateWorkflow(WorkflowRule rule,
+        string[] conditionField, string[] conditionOp, string[] conditionValue,
+        string[] actionType, string[] actionValue, string[] actionLabel)
+    {
+        rule.ConditionsJson = BuildConditionsJson(conditionField, conditionOp, conditionValue);
+        rule.ActionsJson    = BuildActionsJson(actionType, actionValue, actionLabel);
+        rule.CreatedDate    = DateTime.UtcNow;
+        ModelState.Remove("ConditionsJson");
+        ModelState.Remove("ActionsJson");
+
+        if (ModelState.IsValid)
+        {
+            _context.WorkflowRules.Add(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Workflow rule '{rule.Name}' created.";
+            return RedirectToAction(nameof(Workflows));
+        }
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Create Automation Rule";
+        return View(rule);
+    }
+
+    // GET: Settings/EditWorkflow/5
+    public async Task<IActionResult> EditWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Edit Automation Rule";
+        return View(rule);
+    }
+
+    // POST: Settings/EditWorkflow/5
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditWorkflow(int id, WorkflowRule rule,
+        string[] conditionField, string[] conditionOp, string[] conditionValue,
+        string[] actionType, string[] actionValue, string[] actionLabel)
+    {
+        if (id != rule.Id) return BadRequest();
+
+        rule.ConditionsJson = BuildConditionsJson(conditionField, conditionOp, conditionValue);
+        rule.ActionsJson    = BuildActionsJson(actionType, actionValue, actionLabel);
+        ModelState.Remove("ConditionsJson");
+        ModelState.Remove("ActionsJson");
+
+        if (ModelState.IsValid)
+        {
+            _context.Update(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Workflow rule '{rule.Name}' updated.";
+            return RedirectToAction(nameof(Workflows));
+        }
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Edit Automation Rule";
+        return View(rule);
+    }
+
+    private static string BuildConditionsJson(string[] fields, string[] ops, string[] values)
+    {
+        var conditions = new List<object>();
+        for (int i = 0; i < fields.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(fields[i]))
+                conditions.Add(new { Field = fields[i], Operator = ops.ElementAtOrDefault(i) ?? "equals", Value = values.ElementAtOrDefault(i) ?? "" });
+        }
+        return System.Text.Json.JsonSerializer.Serialize(conditions);
+    }
+
+    private static string BuildActionsJson(string[] types, string[] values, string[] labels)
+    {
+        var actions = new List<object>();
+        for (int i = 0; i < types.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(types[i]))
+                actions.Add(new { Type = types[i], Value = values.ElementAtOrDefault(i) ?? "", Label = labels.ElementAtOrDefault(i) ?? "" });
+        }
+        return System.Text.Json.JsonSerializer.Serialize(actions);
+    }
+
+    private async Task LoadWorkflowViewBag()
+    {
+        var agents     = await _context.Employees.Where(e => e.IsActive).OrderBy(e => e.FirstName).ToListAsync();
+        var branches   = await _context.Branches.OrderBy(b => b.Name).ToListAsync();
+        var categories = await _context.TicketCategories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.Agents     = agents;
+        ViewBag.Branches   = branches;
+        ViewBag.Categories = categories;
+    }
+
     // ── Email Activity Log ────────────────────────────────────────────────────
 
     // GET: Settings/EmailActivity

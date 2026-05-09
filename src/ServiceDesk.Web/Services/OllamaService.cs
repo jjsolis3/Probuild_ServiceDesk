@@ -401,6 +401,17 @@ public class OllamaService
         }
     }
 
+    /// <summary>
+    /// Returns the raw Ollama text response for arbitrary prompts.
+    /// Used by the workflow engine for AI-based routing/classification.
+    /// Returns null when Ollama is disabled or unreachable.
+    /// </summary>
+    public async Task<string?> GenerateRawAsync(string prompt, CancellationToken ct = default)
+    {
+        var result = await GenerateAsync(prompt, ct);
+        return result.Text;
+    }
+
     // ── Core generation (non-streaming) ─────────────────────────────────────
 
     private async Task<OllamaResult> GenerateAsync(string prompt, CancellationToken ct)

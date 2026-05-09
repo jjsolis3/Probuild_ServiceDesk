@@ -24,6 +24,7 @@ public class TicketsController : Controller
     private readonly OllamaService _ollama;
     private readonly TicketSimilarityService _similarity;
     private readonly SlaRiskService _slaRisk;
+    private readonly WorkflowEngineService _workflowEngine;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketsController> _logger;
 
@@ -35,6 +36,7 @@ public class TicketsController : Controller
         OllamaService ollama,
         TicketSimilarityService similarity,
         SlaRiskService slaRisk,
+        WorkflowEngineService workflowEngine,
         IServiceScopeFactory scopeFactory,
         ILogger<TicketsController> logger)
     {
@@ -45,6 +47,7 @@ public class TicketsController : Controller
         _ollama             = ollama;
         _similarity         = similarity;
         _slaRisk            = slaRisk;
+        _workflowEngine     = workflowEngine;
         _scopeFactory       = scopeFactory;
         _logger             = logger;
     }
@@ -594,6 +597,9 @@ public class TicketsController : Controller
 
             _context.Add(ticket);
             await _context.SaveChangesAsync();
+
+            // Run automation workflow rules in the background (fire-and-forget)
+            _ = _workflowEngine.EvaluateOnNewTicketAsync(ticket.Id);
 
             // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
             _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
