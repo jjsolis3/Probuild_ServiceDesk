@@ -1,0 +1,539 @@
+@using ServiceDesk.Core.Models
+@model List<StoreOrder>
+@{
+    ViewData["Title"]      = "Operations Hub";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+
+    var quarterVal = ViewBag.Quarter;
+    var yearVal    = ViewBag.Year;
+    int quarter    = quarterVal is int qi ? qi : (quarterVal != null ? (int)quarterVal : ((DateTime.UtcNow.Month - 1) / 3 + 1));
+    int year       = yearVal    is int yi ? yi : (yearVal    != null ? (int)yearVal    : DateTime.UtcNow.Year);
+    string? activeStatus  = ViewBag.Status as string;
+    var statuses  = ViewBag.Statuses as string[] ?? Array.Empty<string>();
+    var statusCounts = ViewBag.StatusCounts as Dictionary<string, int> ?? new();
+    var productTotals = ViewBag.ProductTotals as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    int totalOrders = (int)(ViewBag.TotalOrders ?? 0);
+
+    int[] quarters = { 1, 2, 3, 4 };
+    int[] years    = Enumerable.Range(DateTime.UtcNow.Year - 2, 4).ToArray();
+
+    string BadgeClass(string s) => s switch
+    {
+        "Pending"   => "bg-warning text-dark",
+        "Confirmed" => "bg-info text-dark",
+        "Fulfilled" => "bg-success",
+        "Cancelled" => "bg-danger",
+        _           => "bg-secondary"
+    };
+
+    string CardAccent(string s) => s switch
+    {
+        "Pending"   => "border-warning",
+        "Confirmed" => "border-info",
+        "Fulfilled" => "border-success",
+        "Cancelled" => "border-danger",
+        _           => ""
+    };
+
+    string NextStatuses(string current) => current switch
+    {
+        "Pending"   => "Confirmed,Cancelled",
+        "Confirmed" => "Fulfilled,Cancelled",
+        "Fulfilled" => "",
+        "Cancelled" => "Pending",
+        _           => ""
+    };
+}
+
+@section Styles {
+<style>
+.ops-stat-card { border-left: 4px solid transparent; cursor: pointer; transition: box-shadow .15s; }
+.ops-stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1) !important; }
+.ops-stat-card.active-filter { box-shadow: 0 0 0 3px rgba(13,110,253,.35) !important; }
+.order-row-header { cursor: pointer; user-select: none; }
+.order-row-header:hover { background: #f8f9fa; }
+.variant-chip { font-size:.7rem; background:#f1f3f5; border-radius:4px; padding:2px 7px; color:#495057; }
+.action-btn { font-size:.78rem; padding:3px 10px; }
+.pending-dot  { width:8px;height:8px;border-radius:50%;background:#ffc107;display:inline-block; }
+.confirmed-dot { width:8px;height:8px;border-radius:50%;background:#0dcaf0;display:inline-block; }
+.fulfilled-dot { width:8px;height:8px;border-radius:50%;background:#198754;display:inline-block; }
+.cancelled-dot { width:8px;height:8px;border-radius:50%;background:#dc3545;display:inline-block; }
+.bulk-toolbar { background:#e8f0fe; border-radius:6px; padding:6px 12px; font-size:.85rem; }
+
+/* Sticky right column — anchors below the navbar and confines its own height
+   to the viewport so it never pushes the page past the footer. Internal
+   overflow scrolls instead of the page growing. */
+.ops-side-sticky {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.ops-totals-scroll { max-height: none; overflow: visible; }
+@@media (max-width: 991.98px) {
+    /* On narrow screens the sticky behaviour stops; let the panel flow normally. */
+    .ops-side-sticky { position: static; max-height: none; overflow: visible; }
+}
+.branch-chip {
+    display: inline-flex;
+    align-items: center;
+    background:#eef5ff;
+    color:#0a4d99;
+    border:1px solid #cfe2ff;
+    border-radius: 10px;
+    font-size: 11px;
+    padding: 1px 7px;
+    line-height: 1.4;
+}
+</style>
+}
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-boxes me-2 text-primary"></i>Operations Hub</h2>
+        <p class="text-muted small mb-0">
+            Q@(quarter) @year — @totalOrders order(s) total
+            @if (!string.IsNullOrEmpty(activeStatus))
+            {
+                <span> &mdash; filtered: <strong>@activeStatus</strong></span>
+            }
+        </p>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <a asp-action="OpsProducts" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-box-seam me-1"></i>Products
+        </a>
+        <a asp-action="OpsStoreSettings" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-gear me-1"></i>Store Settings
+        </a>
+        <a asp-controller="Reports" asp-action="StoreOrdersExport"
+           asp-route-year="@year" asp-route-quarter="@quarter"
+           class="btn btn-sm btn-outline-success">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export XLSX
+        </a>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Quarter / Year Selector -->
+<form method="get" asp-action="OperationsHub" class="mb-4">
+    <div class="card shadow-sm">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 align-items-end">
+                <div>
+                    <label class="form-label small fw-semibold mb-1">Year</label>
+                    <select name="year" class="form-select form-select-sm" style="width:100px;">
+                        @foreach (var y in years)
+                        {
+                            <option value="@y" selected="@(y == year)">@y</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label small fw-semibold mb-1">Quarter</label>
+                    <select name="quarter" class="form-select form-select-sm" style="width:90px;">
+                        @foreach (var q in quarters)
+                        {
+                            <option value="@q" selected="@(q == quarter)">Q@(q)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-search me-1"></i>View
+                    </button>
+                    @if (!string.IsNullOrEmpty(activeStatus))
+                    {
+                        <a asp-action="OperationsHub" asp-route-year="@year" asp-route-quarter="@quarter"
+                           class="btn btn-outline-secondary btn-sm ms-1">
+                            <i class="bi bi-x me-1"></i>Clear Filter
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Status Summary Cards -->
+<div class="row g-3 mb-4">
+    @foreach (var s in statuses)
+    {
+        var count = statusCounts.GetValueOrDefault(s, 0);
+        var isActive = activeStatus == s;
+        <div class="col-6 col-md-3">
+            <a asp-action="OperationsHub" asp-route-year="@year" asp-route-quarter="@quarter"
+               asp-route-status="@(isActive ? null : s)"
+               class="text-decoration-none">
+                <div class="card ops-stat-card shadow-sm @CardAccent(s) @(isActive ? "active-filter" : "")">
+                    <div class="card-body py-3 text-center">
+                        <div class="display-6 fw-bold @(s == "Pending" ? "text-warning" : s == "Confirmed" ? "text-info" : s == "Fulfilled" ? "text-success" : "text-danger")">
+                            @count
+                        </div>
+                        <div class="small text-muted fw-semibold">@s</div>
+                        @if (isActive)
+                        {
+                            <div style="font-size:.65rem;" class="text-primary">click to clear</div>
+                        }
+                    </div>
+                </div>
+            </a>
+        </div>
+    }
+</div>
+
+<div class="row g-4">
+    <!-- Orders List -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>Orders
+                        @if (!string.IsNullOrEmpty(activeStatus))
+                        {
+                            <span class="badge @BadgeClass(activeStatus) ms-1">@activeStatus</span>
+                        }
+                    </h5>
+                    <span class="badge bg-secondary">@Model.Count</span>
+                </div>
+                @if (Model.Any())
+                {
+                    <form method="post" asp-action="OpsUpdateStatusBulk" asp-antiforgery="true"
+                          id="bulkForm" class="mt-2">
+                        <input type="hidden" name="year"         value="@year" />
+                        <input type="hidden" name="quarter"      value="@quarter" />
+                        <input type="hidden" name="returnStatus" value="@activeStatus" />
+                        <div class="bulk-toolbar d-flex align-items-center gap-2 flex-wrap">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="selectAllOrders"
+                                       onchange="toggleSelectAll(this)" />
+                                <label class="form-check-label small fw-semibold" for="selectAllOrders">
+                                    Select All
+                                </label>
+                            </div>
+                            <span class="text-muted small" id="selectedCount">0 selected</span>
+                            <div class="ms-auto d-flex gap-2 align-items-center">
+                                <select name="newStatus" class="form-select form-select-sm" style="width:140px;" required>
+                                    <option value="">— Set Status —</option>
+                                    @foreach (var s in statuses)
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-primary"
+                                        onclick="return validateBulk(this.form)">
+                                    <i class="bi bi-check-all me-1"></i>Apply
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                }
+            </div>
+
+            @if (!Model.Any())
+            {
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-bag display-3 d-block mb-2 opacity-25"></i>
+                    <p class="mb-0">No orders found for Q@(quarter) @year@(string.IsNullOrEmpty(activeStatus) ? "" : $" ({activeStatus})").</p>
+                </div>
+            }
+            else
+            {
+                <div class="list-group list-group-flush" id="orderList">
+                    @foreach (var order in Model)
+                    {
+                        var collapseId = $"items-{order.Id}";
+                        var nextActions = NextStatuses(order.Status)
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+                        <div class="list-group-item p-0">
+                            <!-- Order Row Header (clickable to expand) -->
+                            <div class="order-row-header d-flex align-items-center gap-3 px-3 py-3"
+                                 data-bs-toggle="collapse" data-bs-target="#@collapseId">
+                                <div class="form-check mb-0 flex-shrink-0" onclick="event.stopPropagation();">
+                                    <input class="form-check-input order-checkbox" type="checkbox"
+                                           name="orderIds" value="@order.Id" form="bulkForm"
+                                           onchange="updateSelectedCount()" />
+                                </div>
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <span class="fw-bold small">@order.OrderNumber</span>
+                                        <span class="badge @BadgeClass(order.Status)">@order.Status</span>
+                                        @{
+                                            var branchLabel = order.Branch?.Name ?? order.BranchNameSnapshot;
+                                        }
+                                        @if (!string.IsNullOrEmpty(branchLabel))
+                                        {
+                                            <span class="badge bg-secondary bg-opacity-10 text-secondary border" title="Fulfilment location">
+                                                <i class="bi bi-geo-alt me-1"></i>@branchLabel
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning bg-opacity-25 text-warning-emphasis border" title="No branch assigned to ordering employee">
+                                                <i class="bi bi-geo-alt me-1"></i>Unassigned
+                                            </span>
+                                        }
+                                    </div>
+                                    <div class="text-muted" style="font-size:.8rem;">
+                                        <i class="bi bi-person me-1"></i>@order.PortalUser.FullName
+                                        <span class="ms-2 opacity-75">@order.PortalUser.Email</span>
+                                    </div>
+                                    <div class="text-muted" style="font-size:.75rem;">
+                                        <i class="bi bi-calendar me-1"></i>@order.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM d, yyyy h:mm tt")
+                                        &nbsp;·&nbsp;
+                                        @order.Items.Count item type(s), @order.Items.Sum(i => i.Quantity) total qty
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-1 flex-shrink-0">
+                                    @foreach (var ns in nextActions)
+                                    {
+                                        <form method="post" asp-action="OpsUpdateStatus" asp-antiforgery="true"
+                                              onclick="event.stopPropagation();">
+                                            <input type="hidden" name="orderId"      value="@order.Id" />
+                                            <input type="hidden" name="newStatus"    value="@ns" />
+                                            <input type="hidden" name="year"         value="@year" />
+                                            <input type="hidden" name="quarter"      value="@quarter" />
+                                            <input type="hidden" name="returnStatus" value="@activeStatus" />
+                                            <button type="submit" class="btn btn-sm action-btn @(ns == "Cancelled" ? "btn-outline-danger" : ns == "Fulfilled" ? "btn-success" : "btn-outline-primary")"
+                                                    title="Mark as @ns"
+                                                    onclick="return confirm('Mark order @Html.Raw(order.OrderNumber.Replace("'","\\'")??"") as @ns and notify @Html.Raw(order.PortalUser.FullName.Replace("'","\\'")??"")\'s?')">
+                                                @if (ns == "Fulfilled")
+                                                {
+                                                    <i class="bi bi-check2-all me-1"></i>
+                                                }
+                                                else if (ns == "Confirmed")
+                                                {
+                                                    <i class="bi bi-check2 me-1"></i>
+                                                }
+                                                else if (ns == "Cancelled")
+                                                {
+                                                    <i class="bi bi-x me-1"></i>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>
+                                                }
+                                                @ns
+                                            </button>
+                                        </form>
+                                    }
+                                    <button class="btn btn-sm btn-outline-secondary action-btn" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#@collapseId">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Expanded Order Items -->
+                            <div class="collapse" id="@collapseId">
+                                <div class="px-3 pb-3 pt-1 border-top bg-light">
+                                    @if (!string.IsNullOrEmpty(order.Notes))
+                                    {
+                                        <div class="alert alert-light border py-2 mb-2 small">
+                                            <i class="bi bi-chat-text me-1 text-muted"></i>
+                                            <strong>Note:</strong> @order.Notes
+                                        </div>
+                                    }
+                                    <table class="table table-sm align-middle mb-0 bg-white rounded">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Product</th>
+                                                <th>Variants</th>
+                                                <th class="text-end">Qty</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in order.Items)
+                                            {
+                                                var vparts = new List<string>();
+                                                if (!string.IsNullOrEmpty(item.SelectedGender)) vparts.Add(item.SelectedGender);
+                                                if (!string.IsNullOrEmpty(item.SelectedSize))   vparts.Add(item.SelectedSize);
+                                                if (!string.IsNullOrEmpty(item.SelectedColor))  vparts.Add(item.SelectedColor);
+                                                if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
+                                                {
+                                                    try
+                                                    {
+                                                        using var _d = System.Text.Json.JsonDocument.Parse(item.CustomSelectionsJson);
+                                                        foreach (var _p in _d.RootElement.EnumerateObject())
+                                                            vparts.Add($"{_p.Name}: {_p.Value.GetString()}");
+                                                    }
+                                                    catch { }
+                                                }
+
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold small">@item.ProductNameSnapshot</div>
+                                                        @if (!string.IsNullOrEmpty(item.ProductCategorySnapshot))
+                                                        {
+                                                            <span class="variant-chip">@item.ProductCategorySnapshot</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (vparts.Count > 0)
+                                                        {
+                                                            foreach (var vp in vparts)
+                                                            {
+                                                                <span class="variant-chip me-1">@vp</span>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted small">—</span>
+                                                        }
+                                                    </td>
+                                                    <td class="text-end fw-bold">@item.Quantity</td>
+                                                </tr>
+                                            }
+                                            <tr class="table-light">
+                                                <td colspan="2" class="text-end text-muted small fw-semibold">Total Qty</td>
+                                                <td class="text-end fw-bold">@order.Items.Sum(i => i.Quantity)</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Product Totals (right panel) -->
+    <div class="col-lg-4">
+        <div class="ops-side-sticky">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bar-chart me-2"></i>Product Totals
+                        <span class="text-muted fw-normal small">Q@(quarter) @year</span>
+                    </h5>
+                </div>
+                @if (!productTotals.Any())
+                {
+                    <div class="card-body text-center text-muted py-4 small">
+                        No orders in this period.
+                    </div>
+                }
+                else
+                {
+                    <div class="ops-totals-scroll">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Product</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Orders</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in productTotals)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="small fw-semibold">@p.Name</div>
+                                            @if (p.Category != null)
+                                            {
+                                                <div class="text-muted" style="font-size:11px;">@p.Category</div>
+                                            }
+                                            @if (p.ByBranch != null && p.ByBranch.Count > 0)
+                                            {
+                                                <div class="mt-1 d-flex flex-wrap gap-1">
+                                                    @foreach (var b in p.ByBranch)
+                                                    {
+                                                        <span class="branch-chip" title="Branch / Location">
+                                                            <i class="bi bi-geo-alt me-1"></i>@b.Branch:&nbsp;<strong>@b.Qty</strong>
+                                                        </span>
+                                                    }
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="text-end fw-bold">@p.TotalQty</td>
+                                        <td class="text-end text-muted small">@p.OrderCount</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer bg-transparent py-2">
+                        <p class="text-muted small mb-0">
+                            <i class="bi bi-info-circle me-1"></i>
+                            @if (!string.IsNullOrEmpty(activeStatus))
+                            {
+                                <span>Showing totals for <strong>@activeStatus</strong> orders only.</span>
+                            }
+                            else
+                            {
+                                <span>Totals across all order statuses.</span>
+                            }
+                        </p>
+                    </div>
+                }
+            </div>
+
+            <div class="card mt-3 border-0 bg-light shadow-sm">
+                <div class="card-body py-3">
+                    <h6 class="fw-bold mb-2 small"><i class="bi bi-info-circle me-1 text-primary"></i>Workflow Guide</h6>
+                    <ul class="small text-muted mb-0 ps-3">
+                        <li class="mb-1"><span class="pending-dot me-1"></span><strong>Pending</strong> — New, not yet reviewed</li>
+                        <li class="mb-1"><span class="confirmed-dot me-1"></span><strong>Confirmed</strong> — Reviewed, being processed</li>
+                        <li class="mb-1"><span class="fulfilled-dot me-1"></span><strong>Fulfilled</strong> — Items delivered / ready</li>
+                        <li><span class="cancelled-dot me-1"></span><strong>Cancelled</strong> — Order will not be processed</li>
+                    </ul>
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="bi bi-envelope me-1"></i>
+                        Each status change sends an automatic email notification to the employee.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function toggleSelectAll(cb) {
+    document.querySelectorAll('.order-checkbox').forEach(function(c) { c.checked = cb.checked; });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    var n = document.querySelectorAll('.order-checkbox:checked').length;
+    var el = document.getElementById('selectedCount');
+    if (el) el.textContent = n + ' selected';
+    var all = document.getElementById('selectAllOrders');
+    if (all) {
+        var total = document.querySelectorAll('.order-checkbox').length;
+        all.indeterminate = n > 0 && n < total;
+        all.checked = total > 0 && n === total;
+    }
+}
+
+function validateBulk(form) {
+    var checked = document.querySelectorAll('.order-checkbox:checked').length;
+    if (checked === 0) { alert('Please select at least one order.'); return false; }
+    var status = form.querySelector('[name="newStatus"]').value;
+    if (!status) { alert('Please choose a target status.'); return false; }
+    return confirm('Mark ' + checked + ' order(s) as "' + status + '" and notify each employee?');
+}
+</script>
+}

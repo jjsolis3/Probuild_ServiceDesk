@@ -3,7 +3,108 @@
 @using ServiceDesk.Core.Extensions
 @{
     ViewData["Title"] = "Tickets";
+    var kpiOpen          = (int)(ViewBag.KpiOpen          ?? 0);
+    var kpiInProgress    = (int)(ViewBag.KpiInProgress    ?? 0);
+    var kpiUnassigned    = (int)(ViewBag.KpiUnassigned    ?? 0);
+    var kpiResolvedToday = (int)(ViewBag.KpiResolvedToday ?? 0);
 }
+
+<style>
+    :root {
+        --tk-navy: #1a3a5c;
+        --tk-navy-dark: #0f2845;
+        --tk-blue: #2563eb;
+    }
+    /* Page header */
+    .tk-page-header h1 {
+        color: var(--tk-navy-dark);
+        font-size: 1.5rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+    }
+    .tk-page-header h1 i { color: var(--tk-blue); }
+    /* Filter bar */
+    .filter-bar {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px 14px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    /* Tickets table — navy header */
+    .table-responsive .table.table-striped.table-hover thead.table-dark {
+        background: linear-gradient(135deg, var(--tk-navy) 0%, var(--tk-navy-dark) 100%);
+    }
+    .table-responsive .table.table-striped.table-hover thead.table-dark th {
+        background-color: transparent !important;
+        color: #fff !important;
+        font-weight: 600;
+        font-size: .82rem;
+        letter-spacing: .02em;
+        text-transform: uppercase;
+        border-color: rgba(255,255,255,.15);
+        padding: 10px 8px;
+    }
+    .table-responsive .table.table-striped.table-hover thead.table-dark th a { color: #fff !important; }
+    .table-responsive .table.table-striped.table-hover tbody tr:hover {
+        background: #f0f6ff !important;
+    }
+    .table-responsive .table.table-striped.table-hover tbody td {
+        vertical-align: middle;
+        font-size: .9rem;
+    }
+    /* Status & priority pill polish */
+    .table-responsive .badge[class*="badge-"] {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: .72rem;
+        letter-spacing: .02em;
+    }
+</style>
+
+@* ── KPI tiles ─────────────────────────────────────────────────────────────── *@
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+    <a asp-action="Index" asp-route-statuses="Open" class="text-decoration-none"
+       style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:14px 18px;
+              box-shadow:0 2px 8px rgba(0,0,0,.05);position:relative;overflow:hidden;display:block;
+              transition:transform .15s,box-shadow .15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.09)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.05)'">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#fd7e14;border-radius:8px 8px 0 0;"></div>
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6c757d;margin:4px 0 6px;">Open</div>
+        <div style="font-size:1.8rem;font-weight:700;line-height:1;color:#1a3a5c;">@kpiOpen</div>
+        <div style="font-size:.78rem;color:#fd7e14;margin-top:3px;font-weight:600;">awaiting action</div>
+    </a>
+    <a asp-action="Index" asp-route-statuses="InProgress" class="text-decoration-none"
+       style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:14px 18px;
+              box-shadow:0 2px 8px rgba(0,0,0,.05);position:relative;overflow:hidden;display:block;
+              transition:transform .15s,box-shadow .15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.09)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.05)'">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#0d6efd;border-radius:8px 8px 0 0;"></div>
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6c757d;margin:4px 0 6px;">In Progress</div>
+        <div style="font-size:1.8rem;font-weight:700;line-height:1;color:#1a3a5c;">@kpiInProgress</div>
+        <div style="font-size:.78rem;color:#0d6efd;margin-top:3px;font-weight:600;">being worked</div>
+    </a>
+    <a asp-action="Index" asp-route-statuses="Resolved" class="text-decoration-none"
+       style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:14px 18px;
+              box-shadow:0 2px 8px rgba(0,0,0,.05);position:relative;overflow:hidden;display:block;
+              transition:transform .15s,box-shadow .15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.09)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.05)'">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#198754;border-radius:8px 8px 0 0;"></div>
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6c757d;margin:4px 0 6px;">Resolved Today</div>
+        <div style="font-size:1.8rem;font-weight:700;line-height:1;color:#1a3a5c;">@kpiResolvedToday</div>
+        <div style="font-size:.78rem;color:#198754;margin-top:3px;font-weight:600;">closed out</div>
+    </a>
+    <a asp-action="Index" asp-route-unassigned="true" class="text-decoration-none"
+       style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:14px 18px;
+              box-shadow:0 2px 8px rgba(0,0,0,.05);position:relative;overflow:hidden;display:block;
+              transition:transform .15s,box-shadow .15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.09)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.05)'">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#dc3545;border-radius:8px 8px 0 0;"></div>
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6c757d;margin:4px 0 6px;">Unassigned</div>
+        <div style="font-size:1.8rem;font-weight:700;line-height:1;color:@(kpiUnassigned > 0 ? "#dc3545" : "#1a3a5c");">@kpiUnassigned</div>
+        <div style="font-size:.78rem;color:#dc3545;margin-top:3px;font-weight:600;">need assignment</div>
+    </a>
+</div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1><i class="bi bi-ticket-detailed"></i> Tickets</h1>

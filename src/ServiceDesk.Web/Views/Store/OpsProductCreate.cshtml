@@ -1,0 +1,288 @@
+@using ServiceDesk.Core.Models
+@model StoreProduct
+@{
+    ViewData["Title"]      = "Add Product";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+    var existingCategories = ViewBag.ExistingCategories as List<string> ?? new List<string>();
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="OperationsHub">Operations Hub</a></li>
+        <li class="breadcrumb-item"><a asp-action="OpsProducts">Products</a></li>
+        <li class="breadcrumb-item active">Add Product</li>
+    </ol>
+</nav>
+
+<h2 class="fw-bold mb-4"><i class="bi bi-plus-circle text-primary me-2"></i>Add Product</h2>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="post" asp-action="OpsProductCreate" asp-controller="Store"
+                      asp-antiforgery="true" enctype="multipart/form-data">
+                    @Html.ValidationSummary(true, "", new { @class = "text-danger small" })
+
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label fw-semibold"></label>
+                        <input asp-for="Name" class="form-control" placeholder="e.g. Company T-Shirt" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Category" class="form-label fw-semibold"></label>
+                            <input asp-for="Category" class="form-control" list="categoryList"
+                                   placeholder="e.g. Apparel, Supplies" autocomplete="off" />
+                            <datalist id="categoryList">
+                                @foreach (var c in existingCategories)
+                                {
+                                    <option value="@c"></option>
+                                }
+                            </datalist>
+                            <div class="form-text">Pick from existing or type a new one.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="UnitOfMeasure" class="form-label fw-semibold"></label>
+                            <input asp-for="UnitOfMeasure" class="form-control" placeholder="e.g. Each, Box of 10" />
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Tags" class="form-label fw-semibold"></label>
+                            <input asp-for="Tags" class="form-control" placeholder="featured, new, clearance" />
+                            <div class="form-text">Comma-separated. Shown as small badges on the catalog card.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="MaxQtyPerOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="MaxQtyPerOrder" type="number" class="form-control" min="1"
+                                   placeholder="No limit" />
+                            <div class="form-text">Optional cap on quantity per order line.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label fw-semibold"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3"
+                                  placeholder="Brief description shown in the store catalog"></textarea>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="SortOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="SortOrder" type="number" class="form-control" min="0" />
+                            <div class="form-text">Lower numbers appear first.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Active</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" asp-for="IsActive" checked />
+                                <label class="form-check-label" asp-for="IsActive">Visible in catalog</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pricing -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-currency-dollar me-2 text-primary"></i>Pricing</h6>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" asp-for="HasPrice"
+                                       id="HasPrice" onchange="togglePriceField()" />
+                                <label class="form-check-label fw-semibold" asp-for="HasPrice">Charge a price for this product</label>
+                                <div class="form-text">Leave off if items are free-issue (no employee cost).</div>
+                            </div>
+                            <div id="priceField" class="d-none" style="max-width:240px;">
+                                <label asp-for="Price" class="form-label fw-semibold"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input asp-for="Price" type="number" step="0.01" min="0"
+                                           class="form-control" placeholder="0.00" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Variant Options -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2 text-primary"></i>Variant Options</h6>
+                            <p class="small text-muted mb-3">Enable these for apparel and other products that come in multiple options.</p>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasGenderOption"
+                                               id="HasGenderOption" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasGenderOption">Gender Selector</label>
+                                    </div>
+                                    <div class="form-text">Shows Men's / Women's / Unisex choice.</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasSizes"
+                                               id="HasSizes" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasSizes">Size Selector</label>
+                                    </div>
+                                    <div class="form-text">Shows size buttons (e.g. S, M, L).</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasColorOptions"
+                                               id="HasColorOptions" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasColorOptions">Color Selector</label>
+                                    </div>
+                                    <div class="form-text">Shows color swatches.</div>
+                                </div>
+                            </div>
+                            <div id="sizeField" class="mt-3 d-none">
+                                <label asp-for="AvailableSizes" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableSizes" class="form-control" placeholder="XS,S,M,L,XL,XXL,3XL" />
+                                <div class="form-text">Comma-separated list of sizes.</div>
+                            </div>
+                            <div id="colorField" class="mt-3 d-none">
+                                <label asp-for="AvailableColors" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableColors" class="form-control" placeholder="Black,White,Navy,Gray,Red" />
+                                <div class="form-text">Comma-separated list of color names.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Options Builder -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-2"><i class="bi bi-list-check me-2 text-primary"></i>Custom Options</h6>
+                            <p class="small text-muted mb-3">
+                                Add any extra selectable options shoppers must (or may) choose — works for any product type.
+                                Examples: <em>Imprint Color</em>, <em>Material</em>, <em>Logo Placement</em>, <em>Pack Size</em>.
+                            </p>
+                            <input type="hidden" asp-for="CustomOptionsJson" id="CustomOptionsJson" />
+                            <div id="customOptionsList" class="d-flex flex-column gap-2"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addCustomOptionRow()">
+                                <i class="bi bi-plus-lg me-1"></i>Add Option
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Main Product Image</label>
+                        <input type="file" class="form-control" name="imageFile"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" />
+                        <div class="form-text">The primary image shown on the catalog card. JPG, PNG, WEBP or GIF.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            Additional Gallery Images
+                            <span class="text-muted fw-normal small">(optional)</span>
+                        </label>
+                        <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple
+                               onchange="buildGalleryTagRows(this)" />
+                        <div class="form-text">
+                            After selecting files, optionally tag each image with a variant value (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>) so it only shows when that variant is selected.
+                            Leave blank to show the image for all variants.
+                        </div>
+                        <div id="galleryTagRows" class="mt-2 d-flex flex-column gap-2"></div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-floppy me-1"></i>Create Product
+                        </button>
+                        <a asp-action="OpsProducts" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function toggleVariantFields() {
+    var hasSizes  = document.getElementById('HasSizes').checked;
+    var hasColors = document.getElementById('HasColorOptions').checked;
+    document.getElementById('sizeField').classList.toggle('d-none', !hasSizes);
+    document.getElementById('colorField').classList.toggle('d-none', !hasColors);
+}
+toggleVariantFields();
+
+function togglePriceField() {
+    var on = document.getElementById('HasPrice').checked;
+    document.getElementById('priceField').classList.toggle('d-none', !on);
+}
+togglePriceField();
+
+function addCustomOptionRow(label, values, required) {
+    var list = document.getElementById('customOptionsList');
+    var row = document.createElement('div');
+    row.className = 'custom-option-row border rounded p-2 bg-white';
+    row.innerHTML =
+        '<div class="row g-2 align-items-center">' +
+        '  <div class="col-md-3"><input type="text" class="form-control form-control-sm opt-label" ' +
+        '         placeholder="Label (e.g. Imprint Color)" maxlength="60" /></div>' +
+        '  <div class="col-md-6"><input type="text" class="form-control form-control-sm opt-values" ' +
+        '         placeholder="Comma-separated values (Red, Blue, Black)" maxlength="500" /></div>' +
+        '  <div class="col-md-2"><div class="form-check"><input type="checkbox" class="form-check-input opt-required" /> ' +
+        '         <label class="form-check-label small">Required</label></div></div>' +
+        '  <div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger" ' +
+        '         onclick="this.closest(\'.custom-option-row\').remove(); serializeCustomOptions();">' +
+        '         <i class="bi bi-trash"></i></button></div>' +
+        '</div>';
+    list.appendChild(row);
+    if (label)    row.querySelector('.opt-label').value    = label;
+    if (values)   row.querySelector('.opt-values').value   = values;
+    if (required) row.querySelector('.opt-required').checked = true;
+    row.querySelectorAll('input').forEach(function(i) {
+        i.addEventListener('input',  serializeCustomOptions);
+        i.addEventListener('change', serializeCustomOptions);
+    });
+    serializeCustomOptions();
+}
+
+function serializeCustomOptions() {
+    var rows = document.querySelectorAll('#customOptionsList .custom-option-row');
+    var arr = [];
+    rows.forEach(function(r) {
+        var label  = (r.querySelector('.opt-label').value  || '').trim();
+        var values = (r.querySelector('.opt-values').value || '').trim();
+        var req    = r.querySelector('.opt-required').checked;
+        if (label && values) arr.push({ label: label, values: values, required: req });
+    });
+    document.getElementById('CustomOptionsJson').value = arr.length ? JSON.stringify(arr) : '';
+}
+
+(function () {
+    var existing = document.getElementById('CustomOptionsJson');
+    if (!existing || !existing.value) return;
+    try {
+        var arr = JSON.parse(existing.value);
+        if (Array.isArray(arr)) arr.forEach(function(o) {
+            addCustomOptionRow(o.label || '', o.values || '', !!o.required);
+        });
+    } catch (e) { }
+})();
+
+function buildGalleryTagRows(input) {
+    var container = document.getElementById('galleryTagRows');
+    container.innerHTML = '';
+    Array.from(input.files).forEach(function (file) {
+        var row = document.createElement('div');
+        row.className = 'input-group input-group-sm';
+        row.innerHTML =
+            '<span class="input-group-text text-truncate" style="max-width:200px;" title="' + escAttr(file.name) + '">' +
+                escHtml(file.name) +
+            '</span>' +
+            '<input type="text" class="form-control" name="galleryTags" ' +
+                   'placeholder="Variant tag (e.g. Red, Navy) — leave blank for all" maxlength="100" />';
+        container.appendChild(row);
+    });
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+</script>
+}

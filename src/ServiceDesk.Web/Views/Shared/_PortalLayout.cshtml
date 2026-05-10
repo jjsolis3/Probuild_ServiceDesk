@@ -7,6 +7,8 @@
     var announcement       = ViewBag.PortalAnnouncement     as string ?? string.Empty;
     var announcementType   = ViewBag.PortalAnnouncementType as string ?? "info";
     bool showKb            = ViewBag.PortalShowKnowledgeBase is bool b ? b : true;
+    bool showStore         = ViewBag.PortalShowStore         is bool s ? s : false;
+    bool showOpsHub        = ViewBag.PortalShowOpsHub        is bool o ? o : false;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -33,7 +35,6 @@
             {
                 <img src="~/images/logo-sm.png" alt="@companyName" style="height:32px;object-fit:contain;" />
             }
-            @companyName
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#portalNav">
             <span class="navbar-toggler-icon"></span>
@@ -58,6 +59,24 @@
                         <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "KB" ? "active fw-semibold" : "")"
                            asp-controller="Portal" asp-action="KnowledgeBase">
                             <i class="bi bi-book-half me-1"></i>Knowledge Base
+                        </a>
+                    </li>
+                }
+                @if (showStore)
+                {
+                    <li class="nav-item">
+                        <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "Store" ? "active fw-semibold" : "")"
+                           asp-controller="Store" asp-action="Index">
+                            <i class="bi bi-shop me-1"></i>Store
+                        </a>
+                    </li>
+                }
+                @if (showOpsHub)
+                {
+                    <li class="nav-item">
+                        <a class="nav-link @(ViewData["ActivePage"]?.ToString() == "OpsHub" ? "active fw-semibold" : "")"
+                           asp-controller="Store" asp-action="OperationsHub">
+                            <i class="bi bi-boxes me-1"></i>Operations Hub
                         </a>
                     </li>
                 }
@@ -118,7 +137,7 @@
 
 <footer class="border-top bg-white py-3 mt-5">
     <div class="container text-center text-muted small">
-        @companyName IT Support &copy; @DateTime.Now.Year
+        @companyName IT Support 
         @if (!string.IsNullOrEmpty(companyPhone))
         {
             <span class="mx-2">&mdash;</span>
@@ -130,7 +149,8 @@
             <a href="@companyWebsite" target="_blank" rel="noopener" class="text-muted">@companyWebsite</a>
         }
         <span class="mx-2">&mdash;</span>
-        <span class="opacity-50">Powered by ServiceSphere</span>
+        <span class="opacity-50">Powered by ServiceSphere</span> 
+        &copy; @DateTime.Now.Year
     </div>
 </footer>
 

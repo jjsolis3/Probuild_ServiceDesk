@@ -1,0 +1,186 @@
+@model List<ServiceDesk.Web.Models.GoogleImportRow>
+@{
+    ViewData["Title"] = "Import from Google Workspace";
+    var newRows         = Model.Where(r => !r.AlreadyExists).ToList();
+    var skippedExisting = Model.Where(r =>  r.AlreadyExists).ToList();
+    var defaultPassword = ViewBag.DefaultPassword as string ?? "Welcome!23";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Employees</a></li>
+        <li class="breadcrumb-item active">Import from Google</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="mb-0"><i class="bi bi-google text-primary me-2"></i>Import from Google Workspace</h1>
+        <p class="text-muted mb-0 small">Select the Google Workspace users you want to add as Employees. A portal login will be auto-created for each one.</p>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i> Back to Employees
+    </a>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        Google Workspace returned no users. Confirm your domain and service account credentials in
+        <a asp-controller="Settings" asp-action="GoogleWorkspace">Settings → Google Workspace</a>.
+    </div>
+}
+else
+{
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-primary">@Model.Count</div>
+            <div class="text-muted small">Users in Google Workspace</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-success">@newRows.Count</div>
+            <div class="text-muted small">Available to import</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-2 fw-bold text-warning">@skippedExisting.Count</div>
+            <div class="text-muted small">Already an employee</div>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">
+    <i class="bi bi-key-fill me-1"></i>
+    Portal logins for newly imported users get the default password
+    <code>@defaultPassword</code>. Users (or admins) can change it later from the password page.
+</div>
+
+<form asp-action="ImportFromGoogleConfirm" method="post" data-loading-btn="btnConfirm">
+    @Html.AntiForgeryToken()
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body p-0">
+            <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+                <div>
+                    <button type="button" id="btnSelectAll"   class="btn btn-sm btn-outline-primary me-1">Select All</button>
+                    <button type="button" id="btnSelectNone"  class="btn btn-sm btn-outline-secondary me-1">Select None</button>
+                    <button type="button" id="btnSelectActive" class="btn btn-sm btn-outline-success">Active Only</button>
+                </div>
+                <button type="submit" id="btnConfirm" class="btn btn-success btn-sm">
+                    <i class="bi bi-check-lg me-1"></i> Import Selected (<span id="countSelected">0</span>)
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle small">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;" class="text-center">
+                                <input type="checkbox" id="chkHeader" class="form-check-input" />
+                            </th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            <th>Department</th>
+                            <th>Job Title</th>
+                            <th>Phone</th>
+                            <th>Org Unit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in Model.OrderBy(r => r.AlreadyExists).ThenBy(r => r.Email))
+                        {
+                            <tr class="@(u.AlreadyExists ? "table-secondary text-muted" : (u.Suspended ? "table-warning" : ""))">
+                                <td class="text-center">
+                                    @if (!u.AlreadyExists)
+                                    {
+                                        <input type="checkbox"
+                                               class="form-check-input row-check"
+                                               name="selectedEmails"
+                                               value="@u.Email"
+                                               data-active="@(u.Suspended ? "false" : "true")" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-check2-circle text-success" title="Already imported"></i>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="fw-semibold">@u.Email</span>
+                                    @if (u.LoginAlreadyExists && !u.AlreadyExists)
+                                    {
+                                        <span class="badge bg-info text-dark ms-1" title="Portal login already exists with this email — only the Employee record will be created and linked.">Login exists</span>
+                                    }
+                                </td>
+                                <td>@u.FullName</td>
+                                <td>@(u.Department ?? "—")</td>
+                                <td>@(u.JobTitle ?? "—")</td>
+                                <td>@(u.Phone ?? "—")</td>
+                                <td><small class="text-muted">@(u.OrgUnit ?? "—")</small></td>
+                                <td>
+                                    @if (u.AlreadyExists)
+                                    {
+                                        <span class="badge bg-secondary">Skip — exists</span>
+                                    }
+                                    else if (u.Suspended)
+                                    {
+                                        <span class="badge bg-warning text-dark">Suspended</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Active</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</form>
+
+} @* end else *@
+
+@section Scripts {
+    <script>
+        (function () {
+            const rows       = document.querySelectorAll('.row-check');
+            const headerChk  = document.getElementById('chkHeader');
+            const countLabel = document.getElementById('countSelected');
+
+            function refreshCount() {
+                const n = document.querySelectorAll('.row-check:checked').length;
+                countLabel.textContent = n;
+            }
+
+            rows.forEach(r => r.addEventListener('change', refreshCount));
+
+            headerChk?.addEventListener('change', () => {
+                rows.forEach(r => r.checked = headerChk.checked);
+                refreshCount();
+            });
+
+            document.getElementById('btnSelectAll')?.addEventListener('click', () => {
+                rows.forEach(r => r.checked = true);
+                refreshCount();
+            });
+            document.getElementById('btnSelectNone')?.addEventListener('click', () => {
+                rows.forEach(r => r.checked = false);
+                refreshCount();
+            });
+            document.getElementById('btnSelectActive')?.addEventListener('click', () => {
+                rows.forEach(r => r.checked = (r.dataset.active === 'true'));
+                refreshCount();
+            });
+
+            refreshCount();
+        })();
+    </script>
+}

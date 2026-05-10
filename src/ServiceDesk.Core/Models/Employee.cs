@@ -70,6 +70,13 @@ public class Employee
     [Display(Name = "Team / Floor Section")]
     public string? FloorSection { get; set; }
 
+    [Display(Name = "Is Contractor")]
+    public bool IsContractor { get; set; } = false;
+
+    [Display(Name = "Hourly Rate")]
+    [DataType(DataType.Currency)]
+    public decimal? HourlyRate { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();

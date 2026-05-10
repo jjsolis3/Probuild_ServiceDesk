@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Caching.Memory;
@@ -25,7 +26,8 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
                 var keys = new[] {
                     "CompanyName", "CompanyLogoUrl", "CompanyPhone", "CompanyWebsite", "CompanyAddress",
                     "PortalWelcomeMessage", "PortalSupportTitle",
-                    "PortalAnnouncement", "PortalAnnouncementType", "PortalShowKnowledgeBase"
+                    "PortalAnnouncement", "PortalAnnouncementType", "PortalShowKnowledgeBase",
+                    "Timezone"
                 };
                 return await context.AppSettings
                     .Where(s => keys.Contains(s.Key))
@@ -44,6 +46,33 @@ public class BrandingFilter(ServiceDeskDbContext context, IMemoryCache cache) : 
             controller.ViewBag.PortalAnnouncementType = branding!.GetValueOrDefault("PortalAnnouncementType", "info");
             controller.ViewBag.PortalShowKnowledgeBase = !branding!.GetValueOrDefault("PortalShowKnowledgeBase", "true")
                                                                     .Equals("false", StringComparison.OrdinalIgnoreCase);
+
+            controller.ViewBag.OrgTz = branding!.GetValueOrDefault("Timezone", "UTC");
+
+            // Inject store and ops-hub access flags for the portal nav (per-user, not cached)
+            controller.ViewBag.PortalShowStore  = false;
+            controller.ViewBag.PortalShowOpsHub = false;
+            var userIdClaim = ctx.HttpContext.User.FindFirst("UserId")?.Value
+                           ?? ctx.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out var userId) && userId > 0)
+            {
+                try
+                {
+                    controller.ViewBag.PortalShowStore = await context.StoreAccessList
+                        .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
+                }
+                catch { /* StoreAccessList table may not exist yet */ }
+
+                try
+                {
+                    var isAdminOrAgent = ctx.HttpContext.User.IsInRole("Admin")
+                                     || ctx.HttpContext.User.IsInRole("IT Agent");
+                    controller.ViewBag.PortalShowOpsHub = isAdminOrAgent ||
+                        await context.StoreOperationsAccess
+                            .AnyAsync(a => a.PortalUserId == userId && a.IsActive);
+                }
+                catch { /* StoreOperationsAccess table may not exist yet */ }
+            }
         }
 
         await next();

@@ -16,16 +16,11 @@ public class PortalController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailNotification;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<PortalController> _logger;
 
-    public PortalController(ServiceDeskDbContext context, EmailNotificationService emailNotification,
-        IServiceScopeFactory scopeFactory, ILogger<PortalController> logger)
+    public PortalController(ServiceDeskDbContext context, EmailNotificationService emailNotification)
     {
-        _context           = context;
+        _context = context;
         _emailNotification = emailNotification;
-        _scopeFactory      = scopeFactory;
-        _logger            = logger;
     }
 
     // GET: /Portal
@@ -154,27 +149,18 @@ public class PortalController : Controller
             });
             await _context.SaveChangesAsync();
 
-            // Try to send confirmation email (fire-and-forget; use scope factory — HTTP scope may be disposed)
+            // Try to send confirmation email (fire-and-forget, don't block)
             if (employee != null)
             {
-                var capturedTicketId  = ticket.Id;
-                var capturedEmail     = employee.Email;
-                var capturedFullName  = employee.FullName;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                        var t = await db.Tickets.FindAsync(capturedTicketId);
-                        if (t != null)
-                            await email.SendTicketCreatedConfirmation(t, capturedEmail, capturedFullName);
+                        var fullTicket = await _context.Tickets.FindAsync(ticket.Id);
+                        if (fullTicket != null)
+                            await _emailNotification.SendTicketCreatedConfirmation(fullTicket, employee.Email, employee.FullName);
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Notification] Portal ticket-created confirmation failed for Ticket #{Id}.", capturedTicketId);
-                    }
+                    catch { /* ignore email errors */ }
                 });
             }
 
@@ -263,25 +249,10 @@ public class PortalController : Controller
         // Notify assigned agent (if any)
         if (ticket.AssignedTo != null)
         {
-            var capturedNoteTicketId  = ticket.Id;
-            var capturedNoteId        = note.Id;
-            var capturedAssigneeEmail = ticket.AssignedTo.Email;
             _ = Task.Run(async () =>
             {
-                try
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedNoteTicketId);
-                    var n = await db.TicketNotes.FindAsync(capturedNoteId);
-                    if (t != null && n != null)
-                        await email.NotifyNoteAdded(t, n, capturedAssigneeEmail);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Portal note-added notification failed for Ticket #{Id}.", capturedNoteTicketId);
-                }
+                try { await _emailNotification.NotifyNoteAdded(ticket, note, ticket.AssignedTo.Email); }
+                catch { }
             });
         }
 

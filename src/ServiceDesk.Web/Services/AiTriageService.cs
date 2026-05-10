@@ -184,16 +184,31 @@ public class AiTriageService
                 }
             }
 
+            // Suggest the most common sub-category used for the predicted category
+            int? suggestedSubCategoryId = null;
+            if (result.SuggestedCategory.HasValue && result.CategoryConfidence >= threshold)
+            {
+                suggestedSubCategoryId = await context.Tickets
+                    .Where(t => (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+                             && t.Category == result.SuggestedCategory.Value
+                             && t.SubCategoryId != null)
+                    .GroupBy(t => t.SubCategoryId)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => g.Key)
+                    .FirstOrDefaultAsync();
+            }
+
             context.AiRecommendations.Add(new AiRecommendation
             {
-                TicketId            = ticketId,
-                SuggestedCategory   = result.CategoryConfidence >= threshold ? result.SuggestedCategory : null,
-                SuggestedPriority   = result.PriorityConfidence >= threshold ? (int?)result.SuggestedPriority   : null,
-                SuggestedAssigneeId = suggestedAssigneeId,
-                CategoryConfidence  = result.CategoryConfidence,
-                PriorityConfidence  = result.PriorityConfidence,
-                Status              = "Pending",
-                CreatedDate         = DateTime.UtcNow
+                TicketId                = ticketId,
+                SuggestedCategory       = result.CategoryConfidence >= threshold ? result.SuggestedCategory : null,
+                SuggestedPriority       = result.PriorityConfidence >= threshold ? (int?)result.SuggestedPriority : null,
+                SuggestedAssigneeId     = suggestedAssigneeId,
+                SuggestedSubCategoryId  = suggestedSubCategoryId,
+                CategoryConfidence      = result.CategoryConfidence,
+                PriorityConfidence      = result.PriorityConfidence,
+                Status                  = "Pending",
+                CreatedDate             = DateTime.UtcNow
             });
 
             await context.SaveChangesAsync();

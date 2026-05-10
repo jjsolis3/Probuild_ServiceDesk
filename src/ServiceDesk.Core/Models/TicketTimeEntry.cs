@@ -34,4 +34,8 @@ public class TicketTimeEntry
     public bool IsBillable { get; set; } = false;
 
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+
+    // Claimed by a payroll receipt once submitted — prevents double-billing
+    public int? PayrollReceiptId { get; set; }
+    public PayrollReceipt? PayrollReceipt { get; set; }
 }

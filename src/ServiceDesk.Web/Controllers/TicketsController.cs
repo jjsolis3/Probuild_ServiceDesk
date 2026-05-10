@@ -24,6 +24,7 @@ public class TicketsController : Controller
     private readonly OllamaService _ollama;
     private readonly TicketSimilarityService _similarity;
     private readonly SlaRiskService _slaRisk;
+    private readonly WorkflowEngineService _workflowEngine;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketsController> _logger;
 
@@ -35,6 +36,7 @@ public class TicketsController : Controller
         OllamaService ollama,
         TicketSimilarityService similarity,
         SlaRiskService slaRisk,
+        WorkflowEngineService workflowEngine,
         IServiceScopeFactory scopeFactory,
         ILogger<TicketsController> logger)
     {
@@ -45,6 +47,7 @@ public class TicketsController : Controller
         _ollama             = ollama;
         _similarity         = similarity;
         _slaRisk            = slaRisk;
+        _workflowEngine     = workflowEngine;
         _scopeFactory       = scopeFactory;
         _logger             = logger;
     }
@@ -371,6 +374,19 @@ public class TicketsController : Controller
                 t => t.Id,
                 t => _slaRisk.GetRisk(t.Category, (int)t.Priority, t.CreatedDate));
 
+        // ── Dashboard KPI counts (always unfiltered, fast scalar queries) ──────
+        ViewBag.KpiOpen       = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.Open);
+        ViewBag.KpiInProgress = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.InProgress);
+        ViewBag.KpiUnassigned = await _context.Tickets.CountAsync(t => t.AssignedToId == null
+                                    && t.Status != TicketStatus.Resolved
+                                    && t.Status != TicketStatus.Closed
+                                    && t.Status != TicketStatus.Cancelled);
+        var today = DateTime.UtcNow.Date;
+        ViewBag.KpiResolvedToday = await _context.Tickets.CountAsync(t =>
+                                    t.Status == TicketStatus.Resolved
+                                    && t.ResolvedDate.HasValue
+                                    && t.ResolvedDate.Value >= today);
+
         // Persist the current URL so that returning to /Tickets after editing a ticket
         // restores this exact view instead of falling back to the default saved view.
         // The cookie is a session cookie (no Expires) so it clears on browser close or sign-out.
@@ -435,7 +451,7 @@ public class TicketsController : Controller
     // ──────────────────────────── Time Tracking ────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
-        string? description, bool isBillable)
+        string? description, bool isBillable, string? returnAction = null)
     {
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
@@ -443,7 +459,15 @@ public class TicketsController : Controller
         if (hours <= 0)
         {
             TempData["Error"] = "Hours must be greater than zero.";
-            return RedirectToAction(nameof(Details), new { id });
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
         }
 
         var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
@@ -472,7 +496,8 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Logged {hours:0.##} hours.";
-        return RedirectToAction(nameof(Details), new { id });
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -487,6 +512,46 @@ public class TicketsController : Controller
 
         TempData["Success"] = "Time entry removed.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
+        string? description, bool isBillable, string? returnAction = null)
+    {
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
+        if (entry == null) return NotFound();
+
+        if (entry.PayrollReceiptId != null)
+        {
+            TempData["Error"] = "This entry is claimed on a payroll receipt and cannot be edited.";
+            var t0 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t0, new { id });
+        }
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
+        }
+
+        entry.WorkDate    = workDate.Date;
+        entry.Hours       = hours;
+        entry.Description = description;
+        entry.IsBillable  = isBillable;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpGet]
@@ -533,6 +598,9 @@ public class TicketsController : Controller
             _context.Add(ticket);
             await _context.SaveChangesAsync();
 
+            // Run automation workflow rules in the background (fire-and-forget)
+            _ = _workflowEngine.EvaluateOnNewTicketAsync(ticket.Id);
+
             // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
             _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
 
@@ -569,26 +637,17 @@ public class TicketsController : Controller
                 }
             });
 
-            // Notify assigned agent (fire-and-forget; use scope factory — HTTP scope may be disposed before this runs)
+            // Notify assigned agent (fire-and-forget)
             if (ticket.AssignedToId != null)
-            {
-                var capturedNewTicketId = ticket.Id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedNewTicketId);
-                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == ticket.Id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedNewTicketId);
-                    }
+                    catch { /* email errors must not break ticket creation */ }
                 });
-            }
 
             return RedirectToAction(nameof(Index));
         }
@@ -619,6 +678,7 @@ public class TicketsController : Controller
         // Sequential _context queries — DbContext is not thread-safe
         var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
+            .Include(r => r.SuggestedSubCategory)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
@@ -694,26 +754,18 @@ public class TicketsController : Controller
 
             // Notify new assignee if assignment changed
             if (ticket.AssignedToId != null && ticket.AssignedToId != prevAssigneeId)
-            {
-                var capturedEditId = id;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                        var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedEditId);
-                        if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                        var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                        if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedEditId);
-                    }
+                    catch { }
                 });
-            }
 
-            return RedirectToAction(nameof(Index));
+            TempData["Success"] = "Ticket updated successfully.";
+            return RedirectToAction(nameof(Edit), new { id });
         }
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -805,45 +857,28 @@ public class TicketsController : Controller
         }
 
         if (notifyAssignment)
-        {
-            var capturedQUAssignId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var scope = _scopeFactory.CreateScope();
-                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    var t = await db.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == capturedQUAssignId);
-                    if (t?.AssignedTo != null) await email.NotifyTicketAssigned(t);
+                    var t = await _context.Tickets.Include(x => x.AssignedTo).FirstOrDefaultAsync(x => x.Id == id);
+                    if (t?.AssignedTo != null) await _emailService.NotifyTicketAssigned(t);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Assignment notification failed for Ticket #{Id}.", capturedQUAssignId);
-                }
+                catch { }
             });
-        }
 
         if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
-        {
-            var capturedQUStatusId = id;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var scope = _scopeFactory.CreateScope();
-                    var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                    var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                    var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedQUStatusId);
+                    var t = await _context.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == id);
                     if (t?.SubmittedBy?.Email != null)
-                        await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, $"Status changed to: {t.Status}");
+                        await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email,
+                            $"Status changed to: {t.Status}");
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Notification] Status-change notification failed for Ticket #{Id}.", capturedQUStatusId);
-                }
+                catch { }
             });
-        }
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
     }
@@ -923,16 +958,6 @@ public class TicketsController : Controller
         });
     }
 
-    private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-        ".txt", ".csv", ".log", ".msg",
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg",
-        ".zip", ".7z", ".tar", ".gz",
-        ".mp4", ".mov", ".avi", ".mkv",
-        ".json", ".xml", ".html", ".htm",
-    };
-
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
@@ -942,14 +967,11 @@ public class TicketsController : Controller
         if (file == null || file.Length == 0) return BadRequest(new { error = "No file provided." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { error = "File size exceeds 10 MB limit." });
 
-        var ext = Path.GetExtension(file.FileName);
-        if (!AllowedUploadExtensions.Contains(ext))
-            return BadRequest(new { error = $"File type '{ext}' is not allowed. Please upload a document, image, or archive." });
-
         var uploadDir = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads", "tickets", id.ToString());
         Directory.CreateDirectory(uploadDir);
 
+        var ext = Path.GetExtension(file.FileName);
         var storedName = $"{Guid.NewGuid():N}{ext}";
         var fullPath = Path.Combine(uploadDir, storedName);
 
@@ -1275,30 +1297,27 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire-and-forget notification
-        var capturedEscalateId = id;
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                var t = await db.Tickets
+                var t = await _context.Tickets
                     .Include(x => x.SubmittedBy)
                     .Include(x => x.AssignedTo)
-                    .FirstOrDefaultAsync(x => x.Id == capturedEscalateId);
+                    .FirstOrDefaultAsync(x => x.Id == id);
                 if (t == null) return;
 
                 var msg = $"Ticket has been escalated to {t.Priority} priority. Reason: {t.EscalationReason ?? "Not specified"}";
+
+                // Notify assignee
                 if (t.AssignedTo?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
+                    await _emailService.NotifyTicketUpdated(t, t.AssignedTo.Email, msg);
+
+                // Notify requester
                 if (t.SubmittedBy?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Notification] Escalation notification failed for Ticket #{Id}.", capturedEscalateId);
-            }
+            catch { }
         });
 
         return Json(new { success = true, priority = ticket.Priority.ToString() });
@@ -1371,23 +1390,16 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         // Fire status-change notification (resolution notes are internal — not emailed)
-        var capturedResolveId  = id;
-        var capturedResolveMsg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-                var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
-                var t = await db.Tickets.Include(x => x.SubmittedBy).FirstOrDefaultAsync(x => x.Id == capturedResolveId);
-                if (t?.SubmittedBy?.Email != null)
-                    await email.NotifyTicketUpdated(t, t.SubmittedBy.Email, capturedResolveMsg);
+                var t = ticket; // capture for closure
+                var msg = $"Status changed to {newStatus}: {resolutionType.Trim()}";
+                if (t.SubmittedBy?.Email != null)
+                    await _emailService.NotifyTicketUpdated(t, t.SubmittedBy.Email, msg);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Notification] Resolution notification failed for Ticket #{Id}.", capturedResolveId);
-            }
+            catch { /* swallow — notification is non-critical */ }
         });
 
         // Suggest KB article creation when resolution notes are present
@@ -1418,6 +1430,8 @@ public class TicketsController : Controller
             ticket.Priority = (ServiceDesk.Core.Enums.TicketPriority)rec.SuggestedPriority.Value;
         if (rec.SuggestedAssigneeId.HasValue)
             ticket.AssignedToId = rec.SuggestedAssigneeId.Value;
+        if (rec.SuggestedSubCategoryId.HasValue)
+            ticket.SubCategoryId = rec.SuggestedSubCategoryId.Value;
 
         ticket.UpdatedDate = DateTime.UtcNow;
 
@@ -1610,6 +1624,26 @@ public class TicketsController : Controller
         return Json(new { success = true, summary });
     }
 
+    /// <summary>
+    /// Calls Ollama to generate recommended IT resolution steps for the ticket.
+    /// Returns { success, solution } JSON.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestSolution(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        var (solution, error) = await _ollama.SuggestSolutionWithErrorAsync(
+            ticket.Title, ticket.Description ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(solution))
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+
+        return Json(new { success = true, solution });
+    }
+
     public async Task<IActionResult> Delete(int? id)
     {
         if (id == null) return NotFound();
@@ -1660,10 +1694,6 @@ public class TicketsController : Controller
             ModelState.AddModelError("", "Only .csv, .tsv, or .txt files are supported.");
             return View();
         }
-
-        // Clean up any previous abandoned temp file from this session before creating a new one
-        if (TempData.Peek("ImportTempPath") is string prevPath && System.IO.File.Exists(prevPath))
-            System.IO.File.Delete(prevPath);
 
         // Save uploaded file to a server temp path — avoids TempData cookie overflow
         var tempPath = Path.Combine(Path.GetTempPath(), $"ss_ticket_{Guid.NewGuid():N}.dat");

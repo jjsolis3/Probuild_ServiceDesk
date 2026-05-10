@@ -1,0 +1,620 @@
+@model IEnumerable<ServiceDesk.Core.Models.PayrollReceipt>
+@{
+    var contractors        = ViewBag.Contractors as IEnumerable<ServiceDesk.Core.Models.Employee> ?? Enumerable.Empty<ServiceDesk.Core.Models.Employee>();
+    var filterStatus       = ViewBag.FilterStatus as string;
+    var filterContractorId = (int?)ViewBag.FilterContractorId;
+
+    var countSubmitted  = (int)(ViewBag.CountSubmitted  ?? 0);
+    var countApproved   = (int)(ViewBag.CountApproved   ?? 0);
+    var countPaidMonth  = (int)(ViewBag.CountPaidMonth  ?? 0);
+    var amtSubmitted    = (decimal)(ViewBag.AmountSubmitted   ?? 0m);
+    var amtApproved     = (decimal)(ViewBag.AmountApproved    ?? 0m);
+    var amtPaidMonth    = (decimal)(ViewBag.AmountPaidMonth   ?? 0m);
+    var amtPaidAllTime  = (decimal)(ViewBag.AmountPaidAllTime ?? 0m);
+
+    bool isFiltered = !string.IsNullOrEmpty(filterStatus) || filterContractorId.HasValue;
+}
+
+@section Styles {
+<style>
+    :root {
+        --ap-navy:   #1a3a5c;
+        --ap-blue:   #0d6efd;
+        --ap-green:  #198754;
+        --ap-amber:  #fd7e14;
+        --ap-red:    #dc3545;
+        --ap-muted:  #6c757d;
+        --ap-border: #dee2e6;
+        --ap-bg:     #f8f9fb;
+    }
+
+    /* Page header */
+    .ap-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
+        gap: 16px;
+    }
+    .ap-title { font-size: 1.45rem; font-weight: 700; color: var(--ap-navy); margin: 0; }
+    .ap-sub   { font-size: .85rem; color: var(--ap-muted); margin: 2px 0 0; }
+
+    /* KPI grid */
+    .ap-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .ap-kpi {
+        background: #fff;
+        border: 1px solid var(--ap-border);
+        border-radius: 8px;
+        padding: 18px 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+        position: relative;
+        overflow: hidden;
+        transition: transform .15s, box-shadow .15s;
+    }
+    .ap-kpi:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.09); }
+    .ap-kpi-bar {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 4px;
+        border-radius: 8px 8px 0 0;
+    }
+    .ap-kpi-label {
+        font-size: .7rem;
+        font-weight: 700;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+        color: var(--ap-muted);
+        margin-bottom: 6px;
+        margin-top: 4px;
+    }
+    .ap-kpi-value { font-size: 1.8rem; font-weight: 700; line-height: 1; color: var(--ap-navy); }
+    .ap-kpi-amount { font-size: .9rem; font-weight: 600; margin-top: 4px; }
+    .ap-kpi-badge {
+        position: absolute;
+        top: 14px; right: 14px;
+        width: 36px; height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    }
+
+    /* Card shell */
+    .ap-card {
+        background: #fff;
+        border: 1px solid var(--ap-border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0,0,0,.06);
+        margin-bottom: 20px;
+    }
+    .ap-card-accent {
+        height: 5px;
+        background: linear-gradient(90deg, var(--ap-navy) 0%, var(--ap-blue) 100%);
+    }
+    .ap-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 20px;
+        border-bottom: 1px solid var(--ap-border);
+        background: var(--ap-bg);
+    }
+    .ap-card-header-title {
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--ap-navy);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+    .ap-card-body { padding: 18px 20px; }
+
+    /* Filter bar */
+    .ap-filter-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto auto;
+        gap: 12px;
+        align-items: end;
+    }
+    .ap-filter-label {
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--ap-navy);
+        margin-bottom: 5px;
+    }
+    .ap-filter-select {
+        border: 1px solid var(--ap-border);
+        border-radius: 6px;
+        padding: 7px 10px;
+        font-size: .875rem;
+        width: 100%;
+        background: #fff;
+        color: #212529;
+        outline: none;
+    }
+    .ap-filter-select:focus { border-color: var(--ap-blue); box-shadow: 0 0 0 3px rgba(13,110,253,.1); }
+    .ap-btn-filter {
+        background: var(--ap-navy);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-size: .85rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background .15s;
+    }
+    .ap-btn-filter:hover { background: #0f2440; }
+    .ap-btn-clear {
+        background: #fff;
+        color: var(--ap-muted);
+        border: 1px solid var(--ap-border);
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-size: .85rem;
+        font-weight: 600;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        transition: all .15s;
+    }
+    .ap-btn-clear:hover { border-color: var(--ap-navy); color: var(--ap-navy); }
+
+    /* Active filter chips */
+    .filter-active-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 20px;
+        background: #eef4ff;
+        border-bottom: 1px solid #b6cfff;
+        font-size: .8rem;
+    }
+    .filter-chip {
+        background: var(--ap-navy);
+        color: #fff;
+        border-radius: 50px;
+        padding: 2px 10px;
+        font-size: .72rem;
+        font-weight: 600;
+        letter-spacing: .03em;
+    }
+
+    /* Table */
+    .ap-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    .ap-table thead tr { background: var(--ap-navy); color: #fff; }
+    .ap-table thead th {
+        padding: 10px 14px;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .ap-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+    .ap-table tbody tr:nth-child(even) { background: #f8f9fb; }
+    .ap-table tbody tr:hover { background: #eef4ff; }
+    .ap-table tbody td { padding: 11px 14px; color: #212529; vertical-align: middle; }
+
+    /* Status pills */
+    .sp {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 50px;
+        font-size: .71rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        white-space: nowrap;
+    }
+    .sp-draft     { background: #e9ecef; color: #495057; }
+    .sp-submitted { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+    .sp-approved  { background: #cfe2ff; color: #084298; border: 1px solid #9ec5fe; }
+    .sp-paid      { background: #d1e7dd; color: #0a5c36; border: 1px solid #a3cfbb; }
+
+    /* Action buttons */
+    .ap-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: .78rem;
+        font-weight: 600;
+        border: 1px solid transparent;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all .15s;
+        white-space: nowrap;
+    }
+    .ap-btn-approve { background: #d1e7dd; color: #0a5c36; border-color: #a3cfbb; }
+    .ap-btn-approve:hover { background: var(--ap-green); color: #fff; border-color: var(--ap-green); }
+    .ap-btn-paid    { background: #cfe2ff; color: #084298; border-color: #9ec5fe; }
+    .ap-btn-paid:hover { background: var(--ap-blue); color: #fff; border-color: var(--ap-blue); }
+    .ap-btn-view    { background: #f8f9fa; color: #495057; border-color: var(--ap-border); }
+    .ap-btn-view:hover { background: #eef4ff; color: var(--ap-blue); border-color: var(--ap-blue); }
+    .ap-btn-reject  { background: #f8d7da; color: #842029; border-color: #f5c2c7; }
+    .ap-btn-reject:hover { background: var(--ap-red); color: #fff; border-color: var(--ap-red); }
+
+    /* Contractor avatar */
+    .contractor-avatar {
+        width: 30px; height: 30px;
+        border-radius: 50%;
+        background: var(--ap-navy);
+        color: #fff;
+        font-size: .75rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    /* Empty state */
+    .ap-empty { text-align: center; padding: 52px 24px; }
+    .ap-empty-icon  { font-size: 3.2rem; color: #dee2e6; margin-bottom: 12px; }
+    .ap-empty-title { font-size: 1.05rem; font-weight: 600; color: #495057; margin-bottom: 6px; }
+    .ap-empty-sub   { font-size: .88rem; color: var(--ap-muted); }
+
+    @@media (max-width: 767px) {
+        .ap-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+        .ap-filter-grid { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+}
+
+@* ── Page header ─────────────────────────────────────────────────────── *@
+<div class="ap-header">
+    <div>
+        <h1 class="ap-title"><i class="bi bi-briefcase-fill me-2" style="color:var(--ap-blue);"></i>Contractor Payroll</h1>
+        <p class="ap-sub">Review, approve and mark payment for submitted contractor invoices</p>
+    </div>
+</div>
+
+@* ── KPI tiles ───────────────────────────────────────────────────────── *@
+<div class="ap-kpi-grid">
+    <div class="ap-kpi">
+        <div class="ap-kpi-bar" style="background:#fd7e14;"></div>
+        <div class="ap-kpi-badge" style="background:#fff3e0;color:#fd7e14;"><i class="bi bi-hourglass-split"></i></div>
+        <div class="ap-kpi-label">Awaiting Approval</div>
+        <div class="ap-kpi-value">@countSubmitted</div>
+        <div class="ap-kpi-amount" style="color:#fd7e14;">$@amtSubmitted.ToString("N2")</div>
+    </div>
+    <div class="ap-kpi">
+        <div class="ap-kpi-bar" style="background:var(--ap-blue);"></div>
+        <div class="ap-kpi-badge" style="background:#e8f0fe;color:var(--ap-blue);"><i class="bi bi-check-circle"></i></div>
+        <div class="ap-kpi-label">Approved / Pending Payment</div>
+        <div class="ap-kpi-value">@countApproved</div>
+        <div class="ap-kpi-amount" style="color:var(--ap-blue);">$@amtApproved.ToString("N2")</div>
+    </div>
+    <div class="ap-kpi">
+        <div class="ap-kpi-bar" style="background:var(--ap-green);"></div>
+        <div class="ap-kpi-badge" style="background:#d1e7dd;color:var(--ap-green);"><i class="bi bi-patch-check-fill"></i></div>
+        <div class="ap-kpi-label">Paid This Month</div>
+        <div class="ap-kpi-value">@countPaidMonth</div>
+        <div class="ap-kpi-amount" style="color:var(--ap-green);">$@amtPaidMonth.ToString("N2")</div>
+    </div>
+    <div class="ap-kpi">
+        <div class="ap-kpi-bar" style="background:var(--ap-navy);"></div>
+        <div class="ap-kpi-badge" style="background:#e8edf3;color:var(--ap-navy);"><i class="bi bi-bank"></i></div>
+        <div class="ap-kpi-label">Total Paid All Time</div>
+        <div class="ap-kpi-value" style="font-size:1.4rem;">$@amtPaidAllTime.ToString("N2")</div>
+        <div class="ap-kpi-amount" style="color:var(--ap-muted);">cumulative</div>
+    </div>
+</div>
+
+@* ── Filter card ─────────────────────────────────────────────────────── *@
+<div class="ap-card">
+    <div class="ap-card-accent"></div>
+    <div class="ap-card-body">
+        <form method="get">
+            <div class="ap-filter-grid">
+                <div>
+                    <div class="ap-filter-label">Contractor</div>
+                    <select name="contractorId" class="ap-filter-select">
+                        <option value="">All Contractors</option>
+                        @foreach (var c in contractors)
+                        {
+                            if (filterContractorId == c.Id) {
+                                <option value = "@c.Id" selected="selected">@c.FullName</option>
+                            }
+                            else
+                            {
+                                <option value = "@c.Id">@c.FullName</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div>
+                    <div class="ap-filter-label">Status</div>
+                    <select name="status" class="ap-filter-select">
+                        <option value="">All Statuses</option>
+                        @foreach (var s in new[] { "Draft", "Submitted", "Approved", "Paid" })
+                        {
+                            if ( filterStatus == s ) {
+                                <option value="@s" selected="selected">@s</option>
+                            }
+                            else
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <button type="submit" class="ap-btn-filter">
+                    <i class="bi bi-funnel-fill"></i>Apply Filter
+                </button>
+                <a asp-action="Index" class="ap-btn-clear">
+                    <i class="bi bi-x-circle"></i>Clear
+                </a>
+            </div>
+        </form>
+    </div>
+    @if (isFiltered)
+    {
+        <div class="filter-active-bar">
+            <i class="bi bi-funnel-fill" style="color:var(--ap-blue);"></i>
+            <span style="color:var(--ap-muted);font-weight:600;">Active filters:</span>
+            @if (!string.IsNullOrEmpty(filterStatus))
+            { <span class="filter-chip">Status: @filterStatus</span> }
+            @if (filterContractorId.HasValue)
+            {
+                var name = contractors.FirstOrDefault(c => c.Id == filterContractorId)?.FullName ?? $"#{filterContractorId}";
+                <span class="filter-chip">Contractor: @name</span>
+            }
+            <span style="color:var(--ap-muted);margin-left:4px;">· @Model.Count() result@(Model.Count() == 1 ? "" : "s")</span>
+        </div>
+    }
+</div>
+
+@* ── Receipts table ──────────────────────────────────────────────────── *@
+<div class="ap-card">
+    <div class="ap-card-accent"></div>
+    <div class="ap-card-header">
+        <span class="ap-card-header-title">
+            <i class="bi bi-collection" style="color:var(--ap-blue);"></i>
+            Payroll Receipts
+        </span>
+        @if (Model.Any())
+        {
+            <span style="font-size:.78rem;color:var(--ap-muted);">
+                @Model.Count() @(Model.Count() == 1 ? "receipt" : "receipts")
+            </span>
+        }
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="ap-empty">
+            <div class="ap-empty-icon"><i class="bi bi-file-earmark-x"></i></div>
+            <div class="ap-empty-title">No receipts found</div>
+            <div class="ap-empty-sub">
+                @(isFiltered ? "No receipts match the current filter. Try clearing the filters." : "No contractor receipts have been submitted yet.")
+            </div>
+            @if (isFiltered)
+            {
+                <a asp-action="Index" class="ap-btn-clear mt-3 mx-auto" style="width:fit-content;">
+                    <i class="bi bi-x-circle"></i>Clear Filters
+                </a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="ap-table" id="adminPayrollTable">
+                <thead>
+                    <tr>
+                        <th style="width:36px;">
+                            <input type="checkbox" id="chkAll" title="Select all"
+                                   style="accent-color:var(--ap-blue);cursor:pointer;"
+                                   onchange="toggleAllRows(this.checked)" />
+                        </th>
+                        <th>#</th>
+                        <th>Contractor</th>
+                        <th>Period</th>
+                        <th class="text-center">Total Hrs</th>
+                        <th class="text-center">Billable Hrs</th>
+                        <th class="text-end">Amount</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Approved</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var receipt in Model)
+                    {
+                        var pillClass = receipt.Status switch {
+                            "Draft"     => "sp-draft",
+                            "Submitted" => "sp-submitted",
+                            "Approved"  => "sp-approved",
+                            "Paid"      => "sp-paid",
+                            _           => "sp-draft"
+                        };
+                        var fn = receipt.Contractor?.FirstName ?? "?";
+                        var ln = receipt.Contractor?.LastName  ?? "?";
+                        var initials = $"{fn[0]}{ln[0]}";
+                        <tr data-status="@receipt.Status">
+                            <td>
+                                <input type="checkbox" class="row-chk" value="@receipt.Id"
+                                       style="accent-color:var(--ap-blue);cursor:pointer;"
+                                       onchange="updateBulkBar()" />
+                            </td>
+                            <td>
+                                <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
+                                   class="fw-bold text-decoration-none" style="color:var(--ap-blue);">#@receipt.Id</a>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="contractor-avatar">@initials</div>
+                                    <div>
+                                        <div class="fw-semibold" style="font-size:.875rem;">@receipt.Contractor?.FullName</div>
+                                        <div class="text-muted" style="font-size:.75rem;">@receipt.Contractor?.JobTitle</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-nowrap small">
+                                @receipt.PeriodStart.ToString("MMM d") – @receipt.PeriodEnd.ToString("MMM d, yyyy")
+                            </td>
+                            <td class="text-center">@receipt.TotalHours.ToString("0.##")</td>
+                            <td class="text-center fw-semibold" style="color:var(--ap-navy);">@receipt.TotalBillableHours.ToString("0.##")</td>
+                            <td class="text-end fw-bold" style="color:var(--ap-navy);">$@receipt.TotalAmount.ToString("N2")</td>
+                            <td><span class="sp @pillClass">@receipt.Status</span></td>
+                            <td class="small text-muted text-nowrap">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td class="small text-muted text-nowrap">@(receipt.ApprovedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    @if (receipt.Status == "Submitted" && User.IsInRole("Admin"))
+                                    {
+                                        <form asp-action="Approve" asp-route-id="@receipt.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="ap-btn ap-btn-approve">
+                                                <i class="bi bi-check-lg"></i>Approve
+                                            </button>
+                                        </form>
+                                        <button type="button" class="ap-btn ap-btn-reject"
+                                                onclick="openRejectModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
+                                            <i class="bi bi-x-lg"></i>Reject
+                                        </button>
+                                    }
+                                    @if (receipt.Status == "Approved" && User.IsInRole("Admin"))
+                                    {
+                                        <form asp-action="MarkPaid" asp-route-id="@receipt.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="ap-btn ap-btn-paid">
+                                                <i class="bi bi-currency-dollar"></i>Mark Paid
+                                            </button>
+                                        </form>
+                                    }
+                                    <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
+                                       class="ap-btn ap-btn-view">
+                                        <i class="bi bi-eye"></i>View
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* ── Bulk Action Floating Bar ─────────────────────────────────────────────── *@
+<div id="bulkBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+     background:var(--ap-navy);color:#fff;border-radius:10px;padding:12px 24px;
+     box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:1050;display:none;
+     align-items:center;gap:12px;font-size:.875rem;font-weight:600;white-space:nowrap;">
+    <span id="bulkCount"></span>
+    <form asp-action="BulkApprove" method="post" id="bulkApproveForm" class="d-inline">
+        @Html.AntiForgeryToken()
+        <span id="bulkApproveIds"></span>
+        <button type="submit" style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+            <i class="bi bi-check-lg me-1"></i>Approve Selected
+        </button>
+    </form>
+    <form asp-action="BulkMarkPaid" method="post" id="bulkPaidForm" class="d-inline">
+        @Html.AntiForgeryToken()
+        <span id="bulkPaidIds"></span>
+        <button type="submit" style="background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+            <i class="bi bi-currency-dollar me-1"></i>Mark Paid Selected
+        </button>
+    </form>
+    <button type="button" onclick="clearSelection()"
+            style="background:transparent;color:#adb5bd;border:none;font-size:1rem;cursor:pointer;line-height:1;">
+        <i class="bi bi-x-lg"></i>
+    </button>
+</div>
+
+@* ── Reject Modal ─────────────────────────────────────────────────────────── *@
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-red);color:#fff;">
+                <h5 class="modal-title" id="rejectModalLabel">
+                    <i class="bi bi-x-circle me-2"></i>Return Receipt for Revision
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectForm" asp-action="Reject" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="rejectReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        This will return the receipt from <strong id="rejectContractorName"></strong> to
+                        <span class="badge" style="background:#e9ecef;color:#495057;">Draft</span> status
+                        so the contractor can revise and resubmit.
+                    </p>
+                    <div>
+                        <label class="form-label fw-semibold">Reason for return <span class="text-muted fw-normal">(optional but recommended)</span></label>
+                        <textarea name="rejectionNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Please correct the date range or add missing descriptions..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Return for Revision
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function openRejectModal(id, name) {
+    document.getElementById('rejectReceiptId').value = id;
+    document.getElementById('rejectContractorName').textContent = name;
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+function toggleAllRows(checked) {
+    document.querySelectorAll('.row-chk').forEach(cb => cb.checked = checked);
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const checked = [...document.querySelectorAll('.row-chk:checked')];
+    const bar = document.getElementById('bulkBar');
+    if (checked.length === 0) { bar.style.display = 'none'; return; }
+
+    bar.style.display = 'flex';
+    document.getElementById('bulkCount').textContent = checked.length + ' selected';
+
+    // Build hidden inputs for each form
+    ['bulkApproveIds','bulkPaidIds'].forEach(spanId => {
+        const span = document.getElementById(spanId);
+        span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
+    });
+
+    document.getElementById('chkAll').indeterminate =
+        checked.length > 0 && checked.length < document.querySelectorAll('.row-chk').length;
+    document.getElementById('chkAll').checked = checked.length === document.querySelectorAll('.row-chk').length;
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-chk').forEach(cb => cb.checked = false);
+    document.getElementById('chkAll').checked = false;
+    updateBulkBar();
+}
+</script>
+}

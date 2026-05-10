@@ -81,6 +81,16 @@
                             </div>
                         </div>
                         <ul class="navbar-nav header-right">
+                            <!-- Command Palette Trigger -->
+                            <li class="nav-item d-none d-md-flex align-items-center me-2">
+                                <button type="button" id="cmdPaletteBtn" onclick="openCmdPalette()"
+                                        class="btn btn-sm d-flex align-items-center gap-2"
+                                        style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);border-radius:8px;padding:5px 12px;">
+                                    <i class="bi bi-search" style="font-size:13px;"></i>
+                                    <span style="font-size:12px;">Search…</span>
+                                    <kbd style="font-size:10px;background:rgba(255,255,255,0.15);border:none;border-radius:4px;padding:1px 5px;color:rgba(255,255,255,0.75);">⌘K</kbd>
+                                </button>
+                            </li>
                             <!-- Dark/Light Mode Toggle -->
                             <li class="nav-item dropdown notification_dropdown">
                                 <a class="nav-link bell dlab-theme-mode p-0" href="javascript:void(0);" title="Toggle Theme">
@@ -161,6 +171,15 @@
                             <span class="nav-text">Assets</span>
                         </a>
                     </li>
+                    @if (!User.IsInRole("Viewer"))
+                    {
+                        <li class="@NavClass("Employees")">
+                            <a asp-controller="Employees" asp-action="Index" aria-expanded="false">
+                                <i class="fas fa-users"></i>
+                                <span class="nav-text">Employees</span>
+                            </a>
+                        </li>
+                    }
                     <li class="@NavClass("SoftwareLicenses")">
                         <a asp-controller="SoftwareLicenses" asp-action="Index" aria-expanded="false">
                             <i class="fas fa-box"></i>
@@ -173,15 +192,6 @@
                             <span class="nav-text">Consumables</span>
                         </a>
                     </li>
-                    @if (!User.IsInRole("Viewer"))
-                    {
-                    <li class="@NavClass("Employees")">
-                        <a asp-controller="Employees" asp-action="Index" aria-expanded="false">
-                            <i class="fas fa-users"></i>
-                            <span class="nav-text">Employees</span>
-                        </a>
-                    </li>
-                    }
                     <li class="@NavClass("Subscriptions")">
                         <a asp-controller="Subscriptions" asp-action="Index" aria-expanded="false">
                             <i class="fas fa-credit-card"></i>
@@ -203,6 +213,17 @@
                         </a>
                     </li>
 
+                    <!-- MY PAYROLL — visible only when the logged-in user's employee is flagged as a contractor -->
+                    @if (User.HasClaim("IsContractor", "true"))
+                    {
+                        <li class="@NavClass("Contractor") @(currentController == "Contractor" ? "mm-active" : "")">
+                            <a asp-controller="Contractor" asp-action="Payroll" aria-expanded="false">
+                                <i class="fas fa-file-invoice-dollar"></i>
+                                <span class="nav-text">My Payroll</span>
+                            </a>
+                        </li>
+                    }
+
                     <!-- ANALYTICS -->
                     <li class="menu-title"><span>Analytics</span></li>
                     <li class="@NavClass("Reports") @(currentController == "Reports" ? "mm-active" : "")">
@@ -214,17 +235,27 @@
                             <li class="@NavClass("Reports","Tickets")"><a asp-controller="Reports" asp-action="Tickets">Ticket Reports</a></li>
                             <li class="@NavClass("Reports","Assets")"><a asp-controller="Reports" asp-action="Assets">Asset Reports</a></li>
                             <li class="@NavClass("Reports","Users")"><a asp-controller="Reports" asp-action="Users">User Reports</a></li>
+                            <li class="@NavClass("Reports","StoreOrders")"><a asp-controller="Reports" asp-action="StoreOrders">Store Orders</a></li>
                         </ul>
                     </li>
 
                     <!-- ADMINISTRATION -->
-                    @if (User.IsInRole("Admin"))
+                    @if (User.IsInRole("Admin") || User.IsInRole("IT Agent"))
                     {
                         <li class="menu-title"><span>Administration</span></li>
-                        <li class="@NavClass("Settings")">
-                            <a asp-controller="Settings" asp-action="Index">
-                                <i class="fas fa-sliders-h"></i>
-                                <span class="nav-text">Settings</span>
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <li class="@NavClass("Settings")">
+                                <a asp-controller="Settings" asp-action="Index">
+                                    <i class="fas fa-sliders-h"></i>
+                                    <span class="nav-text">Settings</span>
+                                </a>
+                            </li>
+                        }
+                        <li class="@NavClass("AdminPayroll")">
+                            <a asp-controller="AdminPayroll" asp-action="Index" aria-expanded="false">
+                                <i class="fas fa-money-check-alt"></i>
+                                <span class="nav-text">Contractor Payroll</span>
                             </a>
                         </li>
                     }
@@ -496,5 +527,127 @@
 
     @await RenderSectionAsync("Scripts", required: false)
     @await Html.PartialAsync("_ExportPreviewModal")
+
+    <!-- ─── Command Palette ─────────────────────────────────────────────── -->
+    <div id="cmdPaletteOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);" onclick="closeCmdPalette()">
+    </div>
+    <div id="cmdPaletteBox" style="display:none;position:fixed;top:120px;left:50%;transform:translateX(-50%);width:min(640px,96vw);z-index:10000;border-radius:14px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.35);">
+        <div style="background:#fff;border-radius:14px;">
+            <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #eee;gap:10px;">
+                <i class="bi bi-search" style="color:#888;font-size:16px;flex-shrink:0;"></i>
+                <input id="cmdInput" type="text" placeholder="Search tickets, assets, employees, KB…"
+                       style="border:none;outline:none;width:100%;font-size:15px;background:transparent;"
+                       autocomplete="off" spellcheck="false" />
+                <kbd style="font-size:11px;color:#aaa;background:#f3f3f3;border:1px solid #ddd;border-radius:4px;padding:2px 6px;flex-shrink:0;">Esc</kbd>
+            </div>
+            <div id="cmdResults" style="max-height:420px;overflow-y:auto;padding:8px 0;">
+                <div id="cmdEmpty" style="text-align:center;color:#aaa;font-size:13px;padding:28px 0;">
+                    Type to search across the entire service desk…
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var _open = false, _debounce = null, _selected = -1, _items = [];
+
+        window.openCmdPalette = function() {
+            document.getElementById('cmdPaletteOverlay').style.display = 'block';
+            document.getElementById('cmdPaletteBox').style.display = 'block';
+            document.getElementById('cmdInput').value = '';
+            document.getElementById('cmdResults').innerHTML = document.getElementById('cmdEmpty').outerHTML;
+            document.getElementById('cmdInput').focus();
+            _open = true; _selected = -1; _items = [];
+        };
+
+        window.closeCmdPalette = function() {
+            document.getElementById('cmdPaletteOverlay').style.display = 'none';
+            document.getElementById('cmdPaletteBox').style.display = 'none';
+            _open = false;
+        };
+
+        document.addEventListener('keydown', function(e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                _open ? closeCmdPalette() : openCmdPalette();
+            }
+            if (!_open) return;
+            if (e.key === 'Escape') { closeCmdPalette(); return; }
+            if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1); }
+            if (e.key === 'ArrowUp')   { e.preventDefault(); moveSelection(-1); }
+            if (e.key === 'Enter') { e.preventDefault(); selectCurrent(); }
+        });
+
+        document.getElementById('cmdInput').addEventListener('input', function() {
+            clearTimeout(_debounce);
+            var q = this.value.trim();
+            if (q.length < 2) {
+                document.getElementById('cmdResults').innerHTML = document.getElementById('cmdEmpty').outerHTML;
+                _items = []; _selected = -1;
+                return;
+            }
+            _debounce = setTimeout(function() { doSearch(q); }, 280);
+        });
+
+        function doSearch(q) {
+            fetch('/Home/GlobalSearch?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(data) { renderResults(data.groups); });
+        }
+
+        function renderResults(groups) {
+            _items = [];
+            if (!groups || groups.length === 0) {
+                document.getElementById('cmdResults').innerHTML =
+                    '<div style="text-align:center;color:#aaa;font-size:13px;padding:28px 0;">No results found.</div>';
+                return;
+            }
+            var html = '';
+            groups.forEach(function(g) {
+                html += '<div style="padding:6px 16px 2px;font-size:11px;font-weight:700;color:#aaa;letter-spacing:.06em;text-transform:uppercase;">'
+                      + '<i class="bi ' + g.icon + ' me-1"></i>' + g.group + '</div>';
+                g.items.forEach(function(item) {
+                    var idx = _items.length;
+                    _items.push(item.url);
+                    html += '<div class="cmd-item" data-idx="' + idx + '" data-url="' + item.url + '" '
+                          + 'style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;cursor:pointer;border-radius:0;gap:12px;" '
+                          + 'onmouseenter="hoverItem(' + idx + ')" onclick="goTo(\'' + item.url + '\')">'
+                          + '<div style="min-width:0;">'
+                          + '<div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(item.label) + '</div>'
+                          + '<div style="font-size:12px;color:#888;">' + escHtml(item.sub || '') + '</div>'
+                          + '</div>'
+                          + '<i class="bi bi-arrow-return-left" style="color:#ccc;font-size:12px;flex-shrink:0;"></i>'
+                          + '</div>';
+                });
+            });
+            document.getElementById('cmdResults').innerHTML = html;
+            _selected = -1;
+        }
+
+        window.hoverItem = function(idx) { setSelected(idx); };
+
+        function moveSelection(dir) {
+            setSelected(Math.max(0, Math.min(_items.length - 1, _selected + dir)));
+        }
+
+        function setSelected(idx) {
+            document.querySelectorAll('.cmd-item').forEach(function(el, i) {
+                el.style.background = i === idx ? '#f0f4ff' : '';
+            });
+            _selected = idx;
+        }
+
+        function selectCurrent() {
+            if (_selected >= 0 && _selected < _items.length) goTo(_items[_selected]);
+        }
+
+        window.goTo = function(url) { closeCmdPalette(); window.location.href = url; };
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+    })();
+    </script>
 </body>
 </html>
