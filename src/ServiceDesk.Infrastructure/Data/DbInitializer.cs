@@ -1638,10 +1638,10 @@ public static class DbInitializer
         }
     }
 
-    private static void SeedEmployeeTaskTemplates(ServiceDeskDbContext context)
+    public static void SeedEmployeeTaskTemplates(ServiceDeskDbContext context, bool force = false)
     {
-        // Only seed once — skip if any templates already exist so admin edits are preserved
-        if (context.EmployeeTaskTemplates.Any()) return;
+        // Skip if any templates already exist (so admin edits are preserved), unless force=true
+        if (!force && context.EmployeeTaskTemplates.Any()) return;
 
         var templates = new List<EmployeeTaskTemplate>();
         int sort = 0;
