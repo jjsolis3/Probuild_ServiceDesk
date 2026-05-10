@@ -248,10 +248,13 @@
     </div>
 </div>
 
+@* Store serialized data outside the JS block so the TS analyzer doesn't flag RZ/TS warnings *@
+<script id="wfAgentsJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(agents.Select(a => new { id = a.Id, name = a.FirstName + " " + a.LastName })))</script>
+
 @section Scripts {
 <script>
 (function() {
-    var agents = @Html.Raw(JsonSerializer.Serialize(agents.Select(a => new { id = a.Id, name = a.FirstName + " " + a.LastName })));
+    var agents = JSON.parse(document.getElementById('wfAgentsJson').textContent);
 
     function cloneTemplate(id) { return document.getElementById(id).firstElementChild.cloneNode(true); }
 

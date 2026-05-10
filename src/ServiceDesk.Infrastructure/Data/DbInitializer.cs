@@ -1589,7 +1589,7 @@ public static class DbInitializer
                         Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
                         Name            NVARCHAR(200)   NOT NULL,
                         Description     NVARCHAR(500)   NULL,
-                        Trigger         INT             NOT NULL DEFAULT 0,
+                        [Trigger]       INT             NOT NULL DEFAULT 0,
                         ConditionsJson  NVARCHAR(MAX)   NOT NULL DEFAULT '[]',
                         ActionsJson     NVARCHAR(MAX)   NOT NULL DEFAULT '[]',
                         IsActive        BIT             NOT NULL DEFAULT 1,
@@ -1601,7 +1601,7 @@ public static class DbInitializer
                     );
 
                     CREATE INDEX IX_WorkflowRules_Active_Trigger_Sort
-                        ON dbo.WorkflowRules (IsActive, Trigger, SortOrder);
+                        ON dbo.WorkflowRules (IsActive, [Trigger], SortOrder);
                 END");
 
         }

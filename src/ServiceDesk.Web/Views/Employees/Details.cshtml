@@ -1344,7 +1344,7 @@
 
 <!-- ═══ TICKET VIEWER MODAL ══════════════════════════════════════════════ -->
 <div class="modal fade" id="ticketViewerModal" tabindex="-1" aria-labelledby="ticketViewerTitle" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="ticketViewerTitle">
@@ -1352,25 +1352,19 @@
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-0">
-                <div id="ticketViewerEmpty" class="text-center text-muted py-5 d-none">
-                    <i class="bi bi-ticket fs-1 opacity-25 d-block mb-3"></i>
-                    <p class="mb-0">No tickets match this filter.</p>
-                </div>
-                <div class="table-responsive" id="ticketViewerTableWrap">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>Title</th>
-                                <th>Status</th>
-                                <th>Priority</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ticketViewerBody"></tbody>
-                    </table>
-                </div>
+            <div class="modal-body p-2">
+                <table id="ticketViewerTable" class="table table-sm table-hover w-100">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:65px">#</th>
+                            <th>Title</th>
+                            <th style="width:110px">Status</th>
+                            <th style="width:100px">Priority</th>
+                            <th style="width:110px">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
             <div class="modal-footer py-2">
                 <small class="text-muted me-auto" id="ticketViewerCount"></small>
@@ -2094,40 +2088,81 @@ var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
 ).Replace("</", "<\\/"));
 
 (function () {
-    var statusLabels = {0:'Open',1:'In Progress',2:'On Hold',3:'Resolved',4:'Closed',5:'Cancelled'};
+    var statusLabels  = {0:'Open',1:'In Progress',2:'On Hold',3:'Resolved',4:'Closed',5:'Cancelled'};
     var statusClasses = {0:'open',1:'inprogress',2:'onhold',3:'resolved',4:'closed',5:'cancelled'};
 
     function escHtml(s) {
-        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    var _dt = null;
 
     function showTicketModal(label, tickets) {
         document.getElementById('ticketViewerLabel').textContent = label;
-        var tbody  = document.getElementById('ticketViewerBody');
-        var empty  = document.getElementById('ticketViewerEmpty');
-        var wrap   = document.getElementById('ticketViewerTableWrap');
-        var count  = document.getElementById('ticketViewerCount');
+        document.getElementById('ticketViewerCount').textContent =
+            tickets.length + ' ticket' + (tickets.length !== 1 ? 's' : '');
 
-        tbody.innerHTML = '';
-
-        if (tickets.length === 0) {
-            empty.classList.remove('d-none');
-            wrap.classList.add('d-none');
-            count.textContent = '0 tickets';
+        if (_dt) {
+            // DataTable already initialised — just swap the data
+            _dt.clear().rows.add(tickets).draw();
         } else {
-            empty.classList.add('d-none');
-            wrap.classList.remove('d-none');
-            count.textContent = tickets.length + ' ticket' + (tickets.length !== 1 ? 's' : '');
-
-            tickets.slice().sort(function(a,b){ return b.id - a.id; }).forEach(function(t) {
-                var tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td class="text-muted small">#' + t.id + '</td>' +
-                    '<td><a href="/Tickets/Details/' + t.id + '">' + escHtml(t.title) + '</a></td>' +
-                    '<td><span class="badge badge-' + (statusClasses[t.statusInt] || 'secondary') + '">' + (statusLabels[t.statusInt] || t.status) + '</span></td>' +
-                    '<td><span class="badge badge-' + t.priority.toLowerCase() + '">' + t.priority + '</span></td>' +
-                    '<td class="text-muted small">' + t.createdDate + '</td>';
-                tbody.appendChild(tr);
+            _dt = $('#ticketViewerTable').DataTable({
+                data: tickets,
+                pageLength: 15,
+                lengthMenu: [10, 15, 25, 50, 100],
+                order: [[0, 'desc']],
+                dom: '<"d-flex align-items-center justify-content-between mb-2"lf>rtip',
+                language: {
+                    search:            '',
+                    searchPlaceholder: 'Search tickets…',
+                    lengthMenu:        'Show _MENU_ per page',
+                    info:              'Showing _START_–_END_ of _TOTAL_',
+                    infoEmpty:         'No tickets to show',
+                    emptyTable:        'No tickets match this filter.',
+                    paginate: { previous: '‹', next: '›' }
+                },
+                columns: [
+                    {
+                        data: 'id',
+                        title: '#',
+                        render: function(d) {
+                            return '<span class="text-muted small">#' + d + '</span>';
+                        }
+                    },
+                    {
+                        data: 'title',
+                        title: 'Title',
+                        render: function(d, type, row) {
+                            if (type === 'display')
+                                return '<a href="/Tickets/Details/' + row.id + '">' + escHtml(d) + '</a>';
+                            return d;
+                        }
+                    },
+                    {
+                        data: 'statusInt',
+                        title: 'Status',
+                        render: function(d, type, row) {
+                            if (type === 'display')
+                                return '<span class="badge badge-' + (statusClasses[d] || 'secondary') + '">'
+                                     + (statusLabels[d] || row.status) + '</span>';
+                            return statusLabels[d] || row.status;
+                        }
+                    },
+                    {
+                        data: 'priority',
+                        title: 'Priority',
+                        render: function(d, type) {
+                            if (type === 'display')
+                                return '<span class="badge badge-' + d.toLowerCase() + '">' + d + '</span>';
+                            return d;
+                        }
+                    },
+                    {
+                        data: 'createdDate',
+                        title: 'Date',
+                        className: 'text-muted small'
+                    }
+                ]
             });
         }
 
