@@ -998,7 +998,8 @@
             .OrderBy(g => g.MinSort)
             .ToList();
 
-        foreach (var grp in groups)
+        <div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
+        @foreach (var grp in groups)
         {
             int pending  = grp.Tasks.Count(t => t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
             int done     = grp.Tasks.Count(t => t.Status == EmployeeTaskStatus.Completed);
@@ -1006,9 +1007,10 @@
             bool allDone = pending == 0;
             string cid   = prefix + "_" + new string(grp.Name.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
 
-            <div class="card mb-3 @(allDone ? "border-success border-opacity-25" : "border-0 shadow-sm")">
+            <div class="col">
+            <div class="card h-100 @(allDone ? "border-success border-opacity-25" : "border-0 shadow-sm")">
                 <div class="card-header d-flex justify-content-between align-items-center py-2 px-3"
-                     style="cursor:pointer; background:@(allDone ? "#f0faf4" : "#f8f9fb"); user-select:none;"
+                     style="cursor:pointer; background:@(allDone ? "#f0faf4" : "#f8f9fb"); color:#212529; user-select:none;"
                      data-bs-toggle="collapse" data-bs-target="#@cid"
                      aria-expanded="@(!allDone ? "true" : "false")">
                     <div class="d-flex align-items-center gap-2">
@@ -1016,8 +1018,8 @@
                         { <i class="bi bi-check-circle-fill text-success"></i> }
                         else
                         { <i class="bi bi-folder2-open" style="color:@accent;"></i> }
-                        <span class="fw-semibold" style="font-size:.9rem;">@grp.Name</span>
-                        <span class="text-muted" style="font-size:.75rem;">· @grp.Tasks.Count @(grp.Tasks.Count == 1 ? "task" : "tasks")</span>
+                        <span class="fw-semibold" style="font-size:.9rem; color:#212529;">@grp.Name</span>
+                        <span style="font-size:.75rem; color:#6c757d;">· @grp.Tasks.Count @(grp.Tasks.Count == 1 ? "task" : "tasks")</span>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         @if (allDone)
@@ -1030,7 +1032,7 @@
                             if (done > 0)    { <span class="badge text-bg-success">@done done</span> }
                             if (skipped > 0) { <span class="badge text-bg-secondary">@skipped skipped</span> }
                         }
-                        <i class="bi @(!allDone ? "bi-chevron-up" : "bi-chevron-down") text-muted" style="font-size:.72rem;"></i>
+                        <i class="bi @(!allDone ? "bi-chevron-up" : "bi-chevron-down")" style="font-size:.72rem; color:#6c757d;"></i>
                     </div>
                 </div>
                 <div class="collapse @(!allDone ? "show" : "")" id="@cid">
@@ -1087,7 +1089,9 @@
                     </ul>
                 </div>
             </div>
+            </div>
         }
+        </div>
     }
 }
 
