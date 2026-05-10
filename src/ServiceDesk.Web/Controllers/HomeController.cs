@@ -300,7 +300,7 @@ public class HomeController : Controller
             .ToListAsync();
 
         var kb = await _context.KbArticles
-            .Where(k => k.IsPublished && (k.Title.Contains(q) || k.Body.Contains(q)))
+            .Where(k => k.IsPublished && (k.Title.Contains(q) || k.Problem.Contains(q) || k.Solution.Contains(q)))
             .Take(maxPerGroup)
             .Select(k => new { k.Id, Label = k.Title, Sub = "Knowledge Base", Url = $"/Kb/Details/{k.Id}" })
             .ToListAsync();

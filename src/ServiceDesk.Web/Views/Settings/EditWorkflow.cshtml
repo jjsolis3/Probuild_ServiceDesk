@@ -103,20 +103,20 @@
                                 <div class="condition-row d-flex gap-2 align-items-center mb-2">
                                     <select name="conditionField[]" class="form-select form-select-sm" style="min-width:160px">
                                         <option value="">-- Field --</option>
-                                        <option value="category"            @(c.Field == "category"            ? "selected" : "")>Category</option>
-                                        <option value="priority"            @(c.Field == "priority"            ? "selected" : "")>Priority</option>
-                                        <option value="keyword_title"       @(c.Field == "keyword_title"       ? "selected" : "")>Title contains</option>
-                                        <option value="keyword_description" @(c.Field == "keyword_description" ? "selected" : "")>Description contains</option>
-                                        <option value="assignee_empty"      @(c.Field == "assignee_empty"      ? "selected" : "")>Assignee</option>
-                                        <option value="branch"              @(c.Field == "branch"              ? "selected" : "")>Branch</option>
+                                        <option value="category"            selected="@(c.Field == "category"            ? "selected" : null)">Category</option>
+                                        <option value="priority"            selected="@(c.Field == "priority"            ? "selected" : null)">Priority</option>
+                                        <option value="keyword_title"       selected="@(c.Field == "keyword_title"       ? "selected" : null)">Title contains</option>
+                                        <option value="keyword_description" selected="@(c.Field == "keyword_description" ? "selected" : null)">Description contains</option>
+                                        <option value="assignee_empty"      selected="@(c.Field == "assignee_empty"      ? "selected" : null)">Assignee</option>
+                                        <option value="branch"              selected="@(c.Field == "branch"              ? "selected" : null)">Branch</option>
                                     </select>
                                     <select name="conditionOp[]" class="form-select form-select-sm" style="min-width:130px">
-                                        <option value="equals"       @(c.Operator == "equals"       ? "selected" : "")>equals</option>
-                                        <option value="not_equals"   @(c.Operator == "not_equals"   ? "selected" : "")>not equals</option>
-                                        <option value="contains"     @(c.Operator == "contains"     ? "selected" : "")>contains</option>
-                                        <option value="not_contains" @(c.Operator == "not_contains" ? "selected" : "")>not contains</option>
-                                        <option value="is_empty"     @(c.Operator == "is_empty"     ? "selected" : "")>is empty</option>
-                                        <option value="not_empty"    @(c.Operator == "not_empty"    ? "selected" : "")>is set</option>
+                                        <option value="equals"       selected="@(c.Operator == "equals"       ? "selected" : null)">equals</option>
+                                        <option value="not_equals"   selected="@(c.Operator == "not_equals"   ? "selected" : null)">not equals</option>
+                                        <option value="contains"     selected="@(c.Operator == "contains"     ? "selected" : null)">contains</option>
+                                        <option value="not_contains" selected="@(c.Operator == "not_contains" ? "selected" : null)">not contains</option>
+                                        <option value="is_empty"     selected="@(c.Operator == "is_empty"     ? "selected" : null)">is empty</option>
+                                        <option value="not_empty"    selected="@(c.Operator == "not_empty"    ? "selected" : null)">is set</option>
                                     </select>
                                     <div class="flex-grow-1">
                                         <input name="conditionValue[]" class="form-control form-control-sm" value="@c.Value" placeholder="Value" />
@@ -146,10 +146,10 @@
                                 <div class="action-row d-flex gap-2 align-items-start mb-2">
                                     <select name="actionType[]" class="form-select form-select-sm action-type-sel" style="min-width:160px">
                                         <option value="">-- Action --</option>
-                                        <option value="assign_agent"  @(a.Type == "assign_agent"  ? "selected" : "")>Assign Agent</option>
-                                        <option value="set_priority"  @(a.Type == "set_priority"  ? "selected" : "")>Set Priority</option>
-                                        <option value="add_note"      @(a.Type == "add_note"      ? "selected" : "")>Add Note</option>
-                                        <option value="ai_route"      @(a.Type == "ai_route"      ? "selected" : "")>AI Route (Ollama)</option>
+                                        <option value="assign_agent"  selected="@(a.Type == "assign_agent"  ? "selected" : null)">Assign Agent</option>
+                                        <option value="set_priority"  selected="@(a.Type == "set_priority"  ? "selected" : null)">Set Priority</option>
+                                        <option value="add_note"      selected="@(a.Type == "add_note"      ? "selected" : null)">Add Note</option>
+                                        <option value="ai_route"      selected="@(a.Type == "ai_route"      ? "selected" : null)">AI Route (Ollama)</option>
                                     </select>
                                     <div class="flex-grow-1 action-value-wrap">
                                         @if (a.Type == "assign_agent")
@@ -158,7 +158,7 @@
                                                 <option value="">-- Agent --</option>
                                                 @foreach (var ag in agents)
                                                 {
-                                                    <option value="@ag.Id" @(a.Value == ag.Id.ToString() ? "selected" : "")>@ag.FirstName @ag.LastName</option>
+                                                    <option value="@ag.Id" selected="@(a.Value == ag.Id.ToString() ? "selected" : null)">@ag.FirstName @ag.LastName</option>
                                                 }
                                             </select>
                                             <input name="actionLabel[]" type="hidden" value="@a.Label" />
@@ -168,7 +168,7 @@
                                             <select name="actionValue[]" class="form-select form-select-sm">
                                                 @foreach (var p in new[] { "Low", "Medium", "High", "Critical" })
                                                 {
-                                                    <option value="@p" @(a.Value == p ? "selected" : "")>@p</option>
+                                                    <option value="@p" selected="@(a.Value == p ? "selected" : null)">@p</option>
                                                 }
                                             </select>
                                             <input name="actionLabel[]" type="hidden" value="" />
