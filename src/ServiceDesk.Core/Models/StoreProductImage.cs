@@ -15,6 +15,9 @@ public class StoreProductImage
     [StringLength(200)]
     public string? Alt { get; set; }
 
+    [StringLength(100)]
+    public string? VariantTag { get; set; }
+
     [Display(Name = "Sort Order")]
     public int SortOrder { get; set; } = 100;
 

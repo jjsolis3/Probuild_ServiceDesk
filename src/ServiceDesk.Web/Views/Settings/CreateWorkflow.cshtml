@@ -1,0 +1,277 @@
+@model ServiceDesk.Core.Models.WorkflowRule
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Create Automation Rule";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    var agents     = ViewBag.Agents     as List<ServiceDesk.Core.Models.Employee>     ?? [];
+    var branches   = ViewBag.Branches   as List<ServiceDesk.Core.Models.Branch>       ?? [];
+    var categories = ViewBag.Categories as List<ServiceDesk.Core.Models.TicketCategoryEntry> ?? [];
+
+    // Parse existing conditions/actions for pre-population
+    var existingConditions = new List<ServiceDesk.Core.Models.WorkflowCondition>();
+    var existingActions    = new List<ServiceDesk.Core.Models.WorkflowAction>();
+    try {
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        existingConditions = JsonSerializer.Deserialize<List<ServiceDesk.Core.Models.WorkflowCondition>>(Model.ConditionsJson ?? "[]", opts) ?? [];
+        existingActions    = JsonSerializer.Deserialize<List<ServiceDesk.Core.Models.WorkflowAction>>(Model.ActionsJson ?? "[]", opts) ?? [];
+    } catch { }
+}
+
+<div class="container-fluid">
+    <div class="d-flex align-items-center mb-4">
+        <a asp-action="Workflows" class="btn btn-outline-secondary btn-sm me-3">
+            <i class="bi bi-arrow-left me-1"></i>Back
+        </a>
+        <h4 class="mb-0"><i class="bi bi-diagram-3 me-2 text-primary"></i>@ViewData["Title"]</h4>
+    </div>
+
+    <form asp-action="CreateWorkflow" method="post" id="workflowForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="RunCount" />
+        <input type="hidden" asp-for="LastRunAt" />
+        <input type="hidden" asp-for="CreatedDate" />
+
+        <div class="row g-4">
+
+            <!-- Left: Rule meta -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent border-0 pt-3 pb-0">
+                        <h6 class="mb-0"><i class="bi bi-info-circle me-1"></i>Rule Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label asp-for="Name" class="form-label fw-semibold">Rule Name <span class="text-danger">*</span></label>
+                            <input asp-for="Name" class="form-control" placeholder="e.g. Critical Priority Alert" />
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="Description" class="form-label fw-semibold">Description</label>
+                            <textarea asp-for="Description" class="form-control" rows="2" placeholder="What does this rule do?"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="Trigger" class="form-label fw-semibold">Trigger</label>
+                            <select asp-for="Trigger" class="form-select">
+                                <option value="0">New Ticket Created</option>
+                                <option value="1">Ticket Updated</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="SortOrder" class="form-label fw-semibold">Sort Order</label>
+                            <input asp-for="SortOrder" type="number" class="form-control" />
+                            <div class="form-text">Lower = evaluated first. Rules with the same order run by name.</div>
+                        </div>
+                        <div class="d-flex gap-4">
+                            <div class="form-check form-switch">
+                                <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                                <label asp-for="IsActive" class="form-check-label">Active</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input asp-for="StopOnMatch" class="form-check-input" type="checkbox" />
+                                <label asp-for="StopOnMatch" class="form-check-label">Stop on match</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Conditions + Actions -->
+            <div class="col-lg-8">
+
+                <!-- CONDITIONS -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-transparent border-0 pt-3 pb-0 d-flex align-items-center">
+                        <h6 class="mb-0 me-auto"><i class="bi bi-funnel me-1"></i>Conditions <span class="text-muted small fw-normal">(ALL must match — leave empty to match every ticket)</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="addCondition">
+                            <i class="bi bi-plus-lg me-1"></i>Add Condition
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="conditionRows">
+                            @if (!existingConditions.Any())
+                            {
+                                <div id="noConditions" class="text-center text-muted small py-3">
+                                    No conditions — this rule will match every ticket.
+                                </div>
+                            }
+                            @foreach (var c in existingConditions)
+                            {
+                                <partial name="_WorkflowConditionRow" model="c" />
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ACTIONS -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent border-0 pt-3 pb-0 d-flex align-items-center">
+                        <h6 class="mb-0 me-auto"><i class="bi bi-lightning me-1"></i>Actions <span class="text-muted small fw-normal">(executed in order when conditions match)</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="addAction">
+                            <i class="bi bi-plus-lg me-1"></i>Add Action
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="actionRows">
+                            @if (!existingActions.Any())
+                            {
+                                <div id="noActions" class="text-center text-muted small py-3">
+                                    No actions added yet.
+                                </div>
+                            }
+                            @foreach (var a in existingActions)
+                            {
+                                <partial name="_WorkflowActionRow" model="a" />
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a asp-action="Workflows" class="btn btn-outline-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Rule</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Hidden template rows for JS cloning -->
+<div id="conditionTemplate" class="d-none">
+    <div class="condition-row d-flex gap-2 align-items-center mb-2">
+        <select name="conditionField[]" class="form-select form-select-sm condition-field" style="min-width:160px">
+            <option value="">-- Field --</option>
+            <option value="category">Category</option>
+            <option value="priority">Priority</option>
+            <option value="keyword_title">Title contains</option>
+            <option value="keyword_description">Description contains</option>
+            <option value="assignee_empty">Assignee</option>
+            <option value="branch">Branch</option>
+        </select>
+        <select name="conditionOp[]" class="form-select form-select-sm condition-op" style="min-width:130px">
+            <option value="equals">equals</option>
+            <option value="not_equals">not equals</option>
+            <option value="contains">contains</option>
+            <option value="not_contains">not contains</option>
+            <option value="is_empty">is empty</option>
+            <option value="not_empty">is set</option>
+        </select>
+        <div class="flex-grow-1 condition-value-wrap">
+            <input name="conditionValue[]" class="form-control form-control-sm" placeholder="Value" />
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x-lg"></i></button>
+    </div>
+</div>
+
+<div id="actionTemplate" class="d-none">
+    <div class="action-row d-flex gap-2 align-items-start mb-2">
+        <select name="actionType[]" class="form-select form-select-sm action-type" style="min-width:160px" onchange="updateActionValue(this)">
+            <option value="">-- Action --</option>
+            <option value="assign_agent">Assign Agent</option>
+            <option value="set_priority">Set Priority</option>
+            <option value="add_note">Add Note</option>
+            <option value="ai_route">AI Route (Ollama)</option>
+        </select>
+        <div class="flex-grow-1 action-value-wrap">
+            <input name="actionValue[]" class="form-control form-control-sm" placeholder="Value" />
+            <input name="actionLabel[]" type="hidden" value="" />
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x-lg"></i></button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function() {
+    var agents     = @Html.Raw(JsonSerializer.Serialize(agents.Select(a => new { id = a.Id, name = a.FirstName + " " + a.LastName })));
+    var branches   = @Html.Raw(JsonSerializer.Serialize(branches.Select(b => new { id = b.Id, name = b.Name })));
+    var categories = @Html.Raw(JsonSerializer.Serialize(categories.Select(c => new { id = c.Id, name = c.Name })));
+
+    function cloneTemplate(id) {
+        return document.getElementById(id).firstElementChild.cloneNode(true);
+    }
+
+    function removeEmpty(containerId, emptyId) {
+        var rows = document.querySelectorAll('#' + containerId + ' > div:not(.d-none)');
+        var empty = document.getElementById(emptyId);
+        if (empty) empty.style.display = rows.length === 0 ? '' : 'none';
+    }
+
+    document.getElementById('addCondition').addEventListener('click', function() {
+        var row = cloneTemplate('conditionTemplate');
+        document.getElementById('noConditions')?.remove();
+        document.getElementById('conditionRows').appendChild(row);
+        row.querySelector('.remove-row').addEventListener('click', function() {
+            row.remove();
+            removeEmpty('conditionRows', 'noConditions');
+        });
+        row.querySelector('.condition-field').addEventListener('change', function() {
+            updateConditionOps(this.closest('.condition-row'));
+        });
+    });
+
+    document.getElementById('addAction').addEventListener('click', function() {
+        var row = cloneTemplate('actionTemplate');
+        document.getElementById('noActions')?.remove();
+        document.getElementById('actionRows').appendChild(row);
+        row.querySelector('.remove-row').addEventListener('click', function() {
+            row.remove();
+            removeEmpty('actionRows', 'noActions');
+        });
+        row.querySelector('.action-type').addEventListener('change', function() {
+            updateActionValue(this);
+        });
+    });
+
+    // Wire up existing remove buttons
+    document.querySelectorAll('.remove-row').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btn.closest('.condition-row, .action-row').remove();
+        });
+    });
+
+    window.updateActionValue = function(select) {
+        var row   = select.closest('.action-row');
+        var wrap  = row.querySelector('.action-value-wrap');
+        var type  = select.value;
+
+        var html = '';
+        if (type === 'assign_agent') {
+            html  = '<select name="actionValue[]" class="form-select form-select-sm">';
+            html += '<option value="">-- Select Agent --</option>';
+            agents.forEach(function(a) {
+                html += '<option value="' + a.id + '">' + a.name + '</option>';
+            });
+            html += '</select><input name="actionLabel[]" type="hidden" value="" />';
+        } else if (type === 'set_priority') {
+            html  = '<select name="actionValue[]" class="form-select form-select-sm">';
+            html += '<option value="Low">Low</option><option value="Medium">Medium</option>';
+            html += '<option value="High">High</option><option value="Critical">Critical</option>';
+            html += '</select><input name="actionLabel[]" type="hidden" value="" />';
+        } else if (type === 'add_note') {
+            html  = '<textarea name="actionValue[]" class="form-control form-control-sm" rows="2" placeholder="Note text to add to ticket..."></textarea>';
+            html += '<input name="actionLabel[]" type="hidden" value="" />';
+        } else if (type === 'ai_route') {
+            html  = '<div class="form-control-sm text-muted small py-1">Ollama will analyze the ticket and set priority automatically.</div>';
+            html += '<input name="actionValue[]" type="hidden" value="ollama" />';
+            html += '<input name="actionLabel[]" type="hidden" value="" />';
+        } else {
+            html  = '<input name="actionValue[]" class="form-control form-control-sm" placeholder="Value" />';
+            html += '<input name="actionLabel[]" type="hidden" value="" />';
+        }
+        wrap.innerHTML = html;
+
+        // After populating agent select, sync label on change
+        if (type === 'assign_agent') {
+            var agentSel = wrap.querySelector('select');
+            var labelInput = wrap.querySelector('input[name="actionLabel[]"]');
+            agentSel?.addEventListener('change', function() {
+                var opt = agentSel.options[agentSel.selectedIndex];
+                if (labelInput) labelInput.value = opt.text;
+            });
+        }
+    };
+})();
+</script>
+}

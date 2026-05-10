@@ -57,6 +57,9 @@ public class ServiceDeskDbContext : DbContext
     // Routing & assignment
     public DbSet<AssignmentRule> AssignmentRules => Set<AssignmentRule>();
 
+    // Automation workflow rules
+    public DbSet<WorkflowRule> WorkflowRules => Set<WorkflowRule>();
+
     // Saved ticket view presets (per-user filter shortcuts)
     public DbSet<SavedTicketView> SavedTicketViews => Set<SavedTicketView>();
 
@@ -83,6 +86,12 @@ public class ServiceDeskDbContext : DbContext
 
     // Ticket time tracking
     public DbSet<TicketTimeEntry> TicketTimeEntries => Set<TicketTimeEntry>();
+
+    // Contractor payroll receipts
+    public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
+
+    // Notification / email activity log
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
     // Software license seat assignments
     public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
@@ -342,6 +351,11 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(e => e.BranchId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Decimal precision for contractor hourly rate
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.HourlyRate)
+            .HasPrecision(10, 2);
+
         // Ticket -> Branch relationship (location snapshot)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.Branch)
@@ -510,6 +524,13 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(r => r.SuggestedAssigneeId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // AiRecommendation -> SuggestedSubCategory (set null)
+        modelBuilder.Entity<AiRecommendation>()
+            .HasOne(r => r.SuggestedSubCategory)
+            .WithMany()
+            .HasForeignKey(r => r.SuggestedSubCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // CsatSurvey -> Ticket (cascade)
         modelBuilder.Entity<CsatSurvey>()
             .HasOne(s => s.Ticket)
@@ -549,6 +570,48 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<TicketTimeEntry>()
             .HasIndex(e => new { e.TicketId, e.WorkDate });
+
+        // TicketTimeEntry -> PayrollReceipt (set null — releasing an entry doesn't delete the receipt)
+        modelBuilder.Entity<TicketTimeEntry>()
+            .HasOne(e => e.PayrollReceipt)
+            .WithMany(r => r.TimeEntries)
+            .HasForeignKey(e => e.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // PayrollReceipt -> Contractor (Employee, restrict — SQL Server forbids
+        // multiple cascade paths to the same table, and ApprovedById already uses SET NULL.
+        // Contractors with payroll history shouldn't be hard-deleted anyway).
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasOne(r => r.Contractor)
+            .WithMany()
+            .HasForeignKey(r => r.ContractorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // PayrollReceipt -> ApprovedBy (Employee, set null — restrict would block cascade from Employee)
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasOne(r => r.ApprovedBy)
+            .WithMany()
+            .HasForeignKey(r => r.ApprovedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalBillableHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.HourlyRateSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalAmount)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .HasIndex(r => new { r.ContractorId, r.Status });
 
         // LicenseSeat -> SoftwareLicense (cascade)
         modelBuilder.Entity<LicenseSeat>()
@@ -592,6 +655,14 @@ public class ServiceDeskDbContext : DbContext
             .HasForeignKey(o => o.PortalUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // StoreOrder -> Branch (nullable; SET NULL on branch delete so historical
+        // orders survive, with the snapshot column preserving the name).
+        modelBuilder.Entity<StoreOrder>()
+            .HasOne(o => o.Branch)
+            .WithMany()
+            .HasForeignKey(o => o.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // StoreOrderItem -> StoreOrder
         modelBuilder.Entity<StoreOrderItem>()
             .HasOne(i => i.StoreOrder)
@@ -605,6 +676,14 @@ public class ServiceDeskDbContext : DbContext
             .WithMany(p => p.OrderItems)
             .HasForeignKey(i => i.StoreProductId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StoreOrderItem>()
+            .Property(i => i.UnitPriceSnapshot)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<StoreProduct>()
+            .Property(p => p.Price)
+            .HasPrecision(18, 2);
 
         // StoreAccessList -> PortalUser
         modelBuilder.Entity<StoreAccessList>()
@@ -651,5 +730,9 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<StoreOrder>()
             .HasIndex(o => new { o.PortalUserId, o.Year, o.Quarter });
+
+        // WorkflowRule — no FK relationships; conditions/actions stored as JSON text
+        modelBuilder.Entity<WorkflowRule>()
+            .HasIndex(r => new { r.IsActive, r.Trigger, r.SortOrder });
     }
 }

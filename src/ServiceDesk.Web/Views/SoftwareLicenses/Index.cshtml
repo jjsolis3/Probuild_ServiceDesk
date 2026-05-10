@@ -2,172 +2,247 @@
 @model IEnumerable<ServiceDesk.Core.Models.SoftwareLicense>
 @{
     ViewData["Title"] = "Software Licenses";
+    var totalLicenses = (int)(ViewBag.TotalLicenses ?? 0);
+    var seatsInUse    = (int)(ViewBag.SeatsInUse    ?? 0);
+    var totalSeats    = (int)(ViewBag.TotalSeats    ?? 0);
+    var expiringCount = (int)(ViewBag.ExpiringCount ?? 0);
+    var expiredCount  = (int)(ViewBag.ExpiredCount  ?? 0);
+    var totalCost     = (decimal)(ViewBag.TotalAnnualCost ?? 0m);
 }
 
+@section Styles {
+<style>
+    :root {
+        --lic-navy:   #1a3a5c;
+        --lic-blue:   #0d6efd;
+        --lic-green:  #198754;
+        --lic-amber:  #f59e0b;
+        --lic-red:    #ef4444;
+        --lic-muted:  #6c757d;
+        --lic-border: #dee2e6;
+    }
+    .lic-kpi-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px; }
+    .lic-kpi { background:#fff; border:1px solid var(--lic-border); border-radius:8px; padding:16px 18px;
+               box-shadow:0 2px 8px rgba(0,0,0,.05); position:relative; overflow:hidden;
+               transition:transform .15s,box-shadow .15s; }
+    .lic-kpi:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.09); }
+    .lic-kpi-bar { position:absolute;top:0;left:0;right:0;height:4px;border-radius:8px 8px 0 0; }
+    .lic-kpi-label { font-size:.66rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+                     color:var(--lic-muted);margin:4px 0 6px; }
+    .lic-kpi-value { font-size:1.7rem;font-weight:700;line-height:1;color:var(--lic-navy); }
+
+    .lic-card { background:#fff;border:1px solid var(--lic-border);border-radius:8px;
+                box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden;margin-bottom:18px; }
+    .lic-card-accent { height:5px;background:linear-gradient(90deg,var(--lic-navy),var(--lic-blue)); }
+    .lic-card-body { padding:14px 18px; }
+
+    .lic-table { width:100%;border-collapse:collapse;font-size:.875rem; }
+    .lic-table thead tr { background:var(--lic-navy) !important; }
+    .lic-table thead th,
+    table.lic-table.dataTable thead th,
+    table.lic-table.dataTable thead td { padding:10px 14px;font-size:.7rem;font-weight:700;
+                          letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
+                          color:#fff !important;background:var(--lic-navy) !important;
+                          border-bottom:none !important; }
+    .lic-table tbody tr { border-bottom:1px solid #f0f0f0; }
+    .lic-table tbody tr:nth-child(even) { background:#f8f9fb; }
+    .lic-table tbody tr:hover { background:#eef4ff; }
+    .lic-table tbody tr.row-expired { background:#fde8ea; }
+    .lic-table tbody tr.row-expired:hover { background:#f8d7da; }
+    .lic-table tbody tr.row-expiring { background:#fff8e1; }
+    .lic-table tbody tr.row-expiring:hover { background:#fff3cd; }
+    .lic-table tbody td { padding:10px 14px;color:#212529;vertical-align:middle; }
+
+    .lp { display:inline-block;padding:2px 10px;border-radius:50px;font-size:.7rem;
+          font-weight:700;letter-spacing:.04em;white-space:nowrap; }
+    .lp-active   { background:#d1e7dd;color:#0a5c36;border:1px solid #a3cfbb; }
+    .lp-inactive { background:#e9ecef;color:#495057; }
+    .lp-expired  { background:#f8d7da;color:#842029;border:1px solid #f1aeb5; }
+    .lp-expiring { background:#fff3cd;color:#856404;border:1px solid #ffc107; }
+    .lp-type     { background:#cfe2ff;color:#084298;border:1px solid #9ec5fe; }
+
+    @@media(max-width:1199px) { .lic-kpi-grid { grid-template-columns:repeat(3,1fr); } }
+    @@media(max-width:767px)  { .lic-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+    @@media(max-width:479px)  { .lic-kpi-grid { grid-template-columns:1fr; } }
+</style>
+}
+
+@* ── Header ──────────────────────────────────────────────────────────────── *@
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1><i class="bi bi-box-seam"></i> Software Licenses</h1>
-    <a asp-action="Create" class="btn btn-primary btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>New License
-    </a>
+    <div>
+        <h1 class="mb-0" style="font-size:1.4rem;font-weight:700;color:var(--lic-navy);">
+            <i class="bi bi-box-seam me-2" style="color:var(--lic-blue);"></i>Software Licenses
+        </h1>
+        <p class="text-muted mb-0" style="font-size:.85rem;">@Model.Count() license@(Model.Count() == 1 ? "" : "s") shown</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Create" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>New License
+        </a>
+    </div>
 </div>
 
 @if (TempData["Success"] != null)
 {
-    <div class="alert alert-success alert-dismissible fade show py-2">
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
         <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 }
 
-<!-- KPI cards -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-2">
-        <div class="card text-center shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold text-primary">@ViewBag.TotalLicenses</div>
-                <div class="small text-muted">Licenses</div>
-            </div>
-        </div>
+@* ── KPI tiles ────────────────────────────────────────────────────────────── *@
+<div class="lic-kpi-grid">
+    <div class="lic-kpi">
+        <div class="lic-kpi-bar" style="background:var(--lic-navy);"></div>
+        <div class="lic-kpi-label">Licenses</div>
+        <div class="lic-kpi-value">@totalLicenses</div>
+        <div style="font-size:.78rem;color:var(--lic-muted);margin-top:3px;">all records</div>
     </div>
-    <div class="col-6 col-md-2">
-        <div class="card text-center shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold">@ViewBag.SeatsInUse / @ViewBag.TotalSeats</div>
-                <div class="small text-muted">Seats Used</div>
-            </div>
-        </div>
+    <div class="lic-kpi">
+        <div class="lic-kpi-bar" style="background:var(--lic-blue);"></div>
+        <div class="lic-kpi-label">Seats Used</div>
+        <div class="lic-kpi-value" style="color:var(--lic-blue);">@seatsInUse<span style="font-size:1rem;color:var(--lic-muted);"> / @totalSeats</span></div>
+        <div style="font-size:.78rem;color:var(--lic-muted);margin-top:3px;">across all licenses</div>
     </div>
-    <div class="col-6 col-md-2">
-        <div class="card text-center shadow-sm @(((int)ViewBag.ExpiringCount) > 0 ? "border-warning" : "")">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold @(((int)ViewBag.ExpiringCount) > 0 ? "text-warning" : "")">@ViewBag.ExpiringCount</div>
-                <div class="small text-muted">Expiring ≤30d</div>
-            </div>
-        </div>
+    <div class="lic-kpi">
+        <div class="lic-kpi-bar" style="background:var(--lic-amber);"></div>
+        <div class="lic-kpi-label">Expiring ≤30d</div>
+        <div class="lic-kpi-value" style="color:@(expiringCount > 0 ? "var(--lic-amber)" : "var(--lic-navy)");">@expiringCount</div>
+        <div style="font-size:.78rem;color:var(--lic-amber);margin-top:3px;">renew soon</div>
     </div>
-    <div class="col-6 col-md-2">
-        <div class="card text-center shadow-sm @(((int)ViewBag.ExpiredCount) > 0 ? "border-danger" : "")">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold @(((int)ViewBag.ExpiredCount) > 0 ? "text-danger" : "")">@ViewBag.ExpiredCount</div>
-                <div class="small text-muted">Expired</div>
-            </div>
-        </div>
+    <div class="lic-kpi">
+        <div class="lic-kpi-bar" style="background:var(--lic-red);"></div>
+        <div class="lic-kpi-label">Expired</div>
+        <div class="lic-kpi-value" style="color:@(expiredCount > 0 ? "var(--lic-red)" : "var(--lic-navy)");">@expiredCount</div>
+        <div style="font-size:.78rem;color:var(--lic-red);margin-top:3px;">action needed</div>
     </div>
-    <div class="col-12 col-md-4">
-        <div class="card text-center shadow-sm">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold text-success">@(((decimal)ViewBag.TotalAnnualCost).ToString("C0"))</div>
-                <div class="small text-muted">Total License Cost</div>
+    <div class="lic-kpi">
+        <div class="lic-kpi-bar" style="background:var(--lic-green);"></div>
+        <div class="lic-kpi-label">Total Cost</div>
+        <div class="lic-kpi-value" style="color:var(--lic-green);font-size:1.4rem;">@totalCost.ToString("C0")</div>
+        <div style="font-size:.78rem;color:var(--lic-muted);margin-top:3px;">aggregate</div>
+    </div>
+</div>
+
+@* ── Filters ─────────────────────────────────────────────────────────────── *@
+<div class="lic-card">
+    <div class="lic-card-accent"></div>
+    <div class="lic-card-body">
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+            <div class="input-group input-group-sm" style="max-width:280px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="licQ" class="form-control" placeholder="Search product, publisher..." value="@ViewBag.Query">
+                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
             </div>
+            <a asp-action="Index" asp-route-expiring="true" class="btn btn-sm @(ViewBag.Expiring == true ? "btn-warning" : "btn-outline-warning")">
+                <i class="bi bi-clock-history me-1"></i>Expiring Soon
+            </a>
+            <a asp-action="Index" asp-route-expired="true" class="btn btn-sm @(ViewBag.Expired == true ? "btn-danger" : "btn-outline-danger")">
+                <i class="bi bi-x-circle me-1"></i>Expired
+            </a>
+            <a asp-action="Index" asp-route-activeOnly="true" class="btn btn-sm @(ViewBag.ActiveOnly == true ? "btn-primary" : "btn-outline-primary")">
+                Active Only
+            </a>
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary ms-auto">
+                <i class="bi bi-x-circle me-1"></i>Clear
+            </a>
         </div>
     </div>
 </div>
 
-<!-- Filters -->
-<div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
-    <div class="input-group input-group-sm" style="max-width:260px;">
-        <span class="input-group-text"><i class="bi bi-search"></i></span>
-        <input type="text" id="licQ" class="form-control" placeholder="Search..." value="@ViewBag.Query">
-        <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
-    </div>
-    <a asp-action="Index" asp-route-expiring="true" class="btn btn-sm @(ViewBag.Expiring == true ? "btn-warning" : "btn-outline-warning")">
-        <i class="bi bi-clock-history me-1"></i>Expiring Soon
-    </a>
-    <a asp-action="Index" asp-route-expired="true" class="btn btn-sm @(ViewBag.Expired == true ? "btn-danger" : "btn-outline-danger")">
-        <i class="bi bi-x-circle me-1"></i>Expired
-    </a>
-    <a asp-action="Index" asp-route-activeOnly="true" class="btn btn-sm @(ViewBag.ActiveOnly == true ? "btn-primary" : "btn-outline-primary")">
-        Active Only
-    </a>
-    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-x me-1"></i>Clear
-    </a>
-</div>
-
-<div class="table-responsive">
-    <table class="table table-striped table-hover ss-datatable">
-        <thead class="table-dark">
-            <tr>
-                <th>Product</th>
-                <th>Publisher</th>
-                <th>Type</th>
-                <th>Seats</th>
-                <th>Available</th>
-                <th>Cost/Seat</th>
-                <th>Expiry</th>
-                <th>Status</th>
-                <th class="no-sort">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var lic in Model)
-            {
-                var rowClass = lic.IsExpired ? "table-danger" : lic.IsExpiringSoon ? "table-warning" : "";
-                <tr class="@rowClass">
-                    <td>
-                        <a asp-action="Details" asp-route-id="@lic.Id" class="fw-semibold">@lic.ProductName</a>
-                        @if (!string.IsNullOrEmpty(lic.PurchaseOrderNumber))
-                        { <span class="text-muted small ms-1">PO#@lic.PurchaseOrderNumber</span> }
-                    </td>
-                    <td>@(lic.Publisher ?? "—")</td>
-                    <td><span class="badge bg-info text-dark">@lic.LicenseType</span></td>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="progress flex-grow-1" style="height:6px;min-width:60px;">
-                                @{ var pct = lic.TotalSeats > 0 ? (lic.SeatsInUse * 100 / lic.TotalSeats) : 0; }
-                                <div class="progress-bar @(pct >= 90 ? "bg-danger" : pct >= 70 ? "bg-warning" : "bg-success")"
-                                     style="width:@pct%"></div>
-                            </div>
-                            <span class="small">@lic.SeatsInUse/@lic.TotalSeats</span>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge @(lic.AvailableSeats == 0 ? "bg-danger" : lic.AvailableSeats <= 2 ? "bg-warning text-dark" : "bg-success")">
-                            @lic.AvailableSeats
-                        </span>
-                    </td>
-                    <td>@(lic.CostPerSeat?.ToString("C") ?? "—")</td>
-                    <td class="text-nowrap">
-                        @if (lic.ExpiryDate.HasValue)
-                        {
-                            <span class="@(lic.IsExpired ? "text-danger fw-semibold" : lic.IsExpiringSoon ? "text-warning fw-semibold" : "")">
-                                @lic.ExpiryDate.Value.ToString("MMM d, yyyy")
-                                @if (lic.IsExpired) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
-                                else if (lic.IsExpiringSoon) { <i class="bi bi-clock-history ms-1"></i> }
-                            </span>
-                        }
-                        else { <span class="text-muted">—</span> }
-                    </td>
-                    <td>
-                        @if (lic.IsActive)
-                        { <span class="badge bg-success">Active</span> }
-                        else
-                        { <span class="badge bg-secondary">Inactive</span> }
-                    </td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@lic.Id" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <form asp-action="Delete" asp-route-id="@lic.Id" method="post" class="d-inline"
-                              onsubmit="return confirm('Delete this license?')">
-                            @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
+@* ── Table ───────────────────────────────────────────────────────────────── *@
 @if (!Model.Any())
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-box-seam display-1 opacity-25"></i>
-        <p class="mt-3">No software licenses found.</p>
-        <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add License</a>
+    <div class="lic-card">
+        <div class="lic-card-body text-center text-muted py-5">
+            <i class="bi bi-box-seam fs-1 opacity-25 d-block mb-3"></i>
+            <p class="mb-3">No software licenses found.</p>
+            <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add License</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="lic-card">
+        <div class="table-responsive">
+            <table class="lic-table ss-datatable" data-export-title="Software Licenses">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Publisher</th>
+                        <th>Type</th>
+                        <th>Seats</th>
+                        <th class="text-end">Available</th>
+                        <th class="text-end">Cost/Seat</th>
+                        <th>Expiry</th>
+                        <th>Status</th>
+                        <th class="no-sort">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lic in Model)
+                    {
+                        var rowClass = lic.IsExpired ? "row-expired" : lic.IsExpiringSoon ? "row-expiring" : "";
+                        var pct = lic.TotalSeats > 0 ? (lic.SeatsInUse * 100 / lic.TotalSeats) : 0;
+                        var seatBar = pct >= 90 ? "bg-danger" : pct >= 70 ? "bg-warning" : "bg-success";
+                        var availPill = lic.AvailableSeats == 0 ? "lp-expired" : lic.AvailableSeats <= 2 ? "lp-expiring" : "lp-active";
+                        <tr class="@rowClass">
+                            <td>
+                                <a asp-action="Details" asp-route-id="@lic.Id" class="fw-semibold text-decoration-none" style="color:var(--lic-navy);">@lic.ProductName</a>
+                                @if (!string.IsNullOrEmpty(lic.PurchaseOrderNumber))
+                                { <div class="text-muted small">PO #@lic.PurchaseOrderNumber</div> }
+                            </td>
+                            <td class="text-muted">@(lic.Publisher ?? "—")</td>
+                            <td><span class="lp lp-type">@lic.LicenseType</span></td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="progress flex-grow-1" style="height:6px;min-width:60px;">
+                                        <div class="progress-bar @seatBar" style="width:@pct%"></div>
+                                    </div>
+                                    <span class="small">@lic.SeatsInUse/@lic.TotalSeats</span>
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                <span class="lp @availPill">@lic.AvailableSeats</span>
+                            </td>
+                            <td class="text-end">@(lic.CostPerSeat?.ToString("C") ?? "—")</td>
+                            <td class="text-nowrap">
+                                @if (lic.ExpiryDate.HasValue)
+                                {
+                                    <span class="@(lic.IsExpired ? "text-danger fw-semibold" : lic.IsExpiringSoon ? "text-warning fw-semibold" : "")">
+                                        @lic.ExpiryDate.Value.ToString("MMM d, yyyy")
+                                        @if (lic.IsExpired) { <i class="bi bi-exclamation-triangle-fill ms-1"></i> }
+                                        else if (lic.IsExpiringSoon) { <i class="bi bi-clock-history ms-1"></i> }
+                                    </span>
+                                }
+                                else { <span class="text-muted">—</span> }
+                            </td>
+                            <td>
+                                @if (lic.IsActive)
+                                { <span class="lp lp-active">Active</span> }
+                                else
+                                { <span class="lp lp-inactive">Inactive</span> }
+                            </td>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@lic.Id" class="btn btn-sm btn-outline-primary" title="Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a asp-action="Edit" asp-route-id="@lic.Id" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form asp-action="Delete" asp-route-id="@lic.Id" method="post" class="d-inline"
+                                      onsubmit="return confirm('Delete this license?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 

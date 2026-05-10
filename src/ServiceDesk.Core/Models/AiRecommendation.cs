@@ -24,6 +24,9 @@ public class AiRecommendation
     /// <summary>Suggested assignee employee ID (based on assignment rules + category). Null = no suggestion.</summary>
     public int? SuggestedAssigneeId { get; set; }
 
+    /// <summary>Most common sub-category ID for the predicted category from historical data. Null = no suggestion.</summary>
+    public int? SuggestedSubCategoryId { get; set; }
+
     // ── Confidence scores (0.0–1.0) ─────────────────────────────────────────
     public float CategoryConfidence { get; set; }
     public float PriorityConfidence { get; set; }
@@ -52,4 +55,5 @@ public class AiRecommendation
     // ── Navigation ────────────────────────────────────────────────────────────
     public Ticket? Ticket { get; set; }
     public Employee? SuggestedAssignee { get; set; }
+    public TicketSubCategory? SuggestedSubCategory { get; set; }
 }

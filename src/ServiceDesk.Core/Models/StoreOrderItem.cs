@@ -35,6 +35,17 @@ public class StoreOrderItem
     [Display(Name = "Color")]
     public string? SelectedColor { get; set; }
 
+    // Snapshot of custom-option selections at order time (JSON object).
+    // e.g. { "Imprint Color": "Red", "Logo Placement": "Chest" }
+    [StringLength(2000)]
+    [Display(Name = "Custom Selections")]
+    public string? CustomSelectionsJson { get; set; }
+
+    // Optional unit price snapshot at the time the order was placed.
+    [Range(0, 99999.99)]
+    [Display(Name = "Unit Price")]
+    public decimal? UnitPriceSnapshot { get; set; }
+
     // Navigation
     public StoreOrder StoreOrder { get; set; } = null!;
     public StoreProduct StoreProduct { get; set; } = null!;

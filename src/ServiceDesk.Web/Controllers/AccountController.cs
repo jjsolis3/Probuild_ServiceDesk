@@ -74,6 +74,9 @@ public class AccountController : Controller
             new(ClaimTypes.Role,           claimRole),
             new("EmployeeId",              user.EmployeeId?.ToString() ?? string.Empty),
             new("UserId",                  user.Id.ToString()),
+            // Employee.IsContractor flag — used to show/hide payroll features without
+            // requiring a separate account or role.
+            new("IsContractor",            (user.Employee?.IsContractor == true).ToString().ToLower()),
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

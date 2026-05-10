@@ -190,6 +190,28 @@
         </div>
     </div>
 
+    <!-- Email Activity Log -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color:rgba(13,110,253,.1);">
+                        <i class="bi bi-envelope-check display-6" style="color:#0d6efd;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Email Activity Log</h5>
+                        <p class="card-text text-muted small">Audit every outbound notification — who received it, when, and whether it was delivered</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="EmailActivity" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right-circle me-1"></i> View Log
+                </a>
+            </div>
+        </div>
+    </div>
+
     <!-- Google Workspace -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
@@ -447,8 +469,30 @@
 </div>
 
 <!-- AI & AUTOMATION -->
-<div class="settings-section-label visually-hidden">AI Triage Machine Learning Dashboard Automation</div>
+<div class="settings-section-label visually-hidden">AI Triage Machine Learning Dashboard Automation Workflow</div>
 <div class="row g-4 mb-4 settings-row">
+
+    <!-- Automation Workflows -->
+    <div class="col-lg-3 col-md-6">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="rounded-3 p-3 me-3" style="background-color: rgba(111, 66, 193, 0.12);">
+                        <i class="bi bi-diagram-3 display-6" style="color:#6f42c1;"></i>
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-1">Automation Workflows</h5>
+                        <p class="card-text text-muted small">No-code rules that auto-assign, reprioritize, or AI-route new tickets when they arrive</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 pt-0">
+                <a asp-action="Workflows" class="btn btn-sm" style="background:#6f42c1;color:#fff;">
+                    <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- AI Triage -->
     <div class="col-lg-3 col-md-6">

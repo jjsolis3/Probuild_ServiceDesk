@@ -24,6 +24,7 @@ public class TicketsController : Controller
     private readonly OllamaService _ollama;
     private readonly TicketSimilarityService _similarity;
     private readonly SlaRiskService _slaRisk;
+    private readonly WorkflowEngineService _workflowEngine;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketsController> _logger;
 
@@ -35,6 +36,7 @@ public class TicketsController : Controller
         OllamaService ollama,
         TicketSimilarityService similarity,
         SlaRiskService slaRisk,
+        WorkflowEngineService workflowEngine,
         IServiceScopeFactory scopeFactory,
         ILogger<TicketsController> logger)
     {
@@ -45,6 +47,7 @@ public class TicketsController : Controller
         _ollama             = ollama;
         _similarity         = similarity;
         _slaRisk            = slaRisk;
+        _workflowEngine     = workflowEngine;
         _scopeFactory       = scopeFactory;
         _logger             = logger;
     }
@@ -371,6 +374,19 @@ public class TicketsController : Controller
                 t => t.Id,
                 t => _slaRisk.GetRisk(t.Category, (int)t.Priority, t.CreatedDate));
 
+        // ── Dashboard KPI counts (always unfiltered, fast scalar queries) ──────
+        ViewBag.KpiOpen       = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.Open);
+        ViewBag.KpiInProgress = await _context.Tickets.CountAsync(t => t.Status == TicketStatus.InProgress);
+        ViewBag.KpiUnassigned = await _context.Tickets.CountAsync(t => t.AssignedToId == null
+                                    && t.Status != TicketStatus.Resolved
+                                    && t.Status != TicketStatus.Closed
+                                    && t.Status != TicketStatus.Cancelled);
+        var today = DateTime.UtcNow.Date;
+        ViewBag.KpiResolvedToday = await _context.Tickets.CountAsync(t =>
+                                    t.Status == TicketStatus.Resolved
+                                    && t.ResolvedDate.HasValue
+                                    && t.ResolvedDate.Value >= today);
+
         // Persist the current URL so that returning to /Tickets after editing a ticket
         // restores this exact view instead of falling back to the default saved view.
         // The cookie is a session cookie (no Expires) so it clears on browser close or sign-out.
@@ -435,7 +451,7 @@ public class TicketsController : Controller
     // ──────────────────────────── Time Tracking ────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
-        string? description, bool isBillable)
+        string? description, bool isBillable, string? returnAction = null)
     {
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
@@ -443,7 +459,15 @@ public class TicketsController : Controller
         if (hours <= 0)
         {
             TempData["Error"] = "Hours must be greater than zero.";
-            return RedirectToAction(nameof(Details), new { id });
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
         }
 
         var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
@@ -472,7 +496,8 @@ public class TicketsController : Controller
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Logged {hours:0.##} hours.";
-        return RedirectToAction(nameof(Details), new { id });
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -487,6 +512,46 @@ public class TicketsController : Controller
 
         TempData["Success"] = "Time entry removed.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
+        string? description, bool isBillable, string? returnAction = null)
+    {
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
+        if (entry == null) return NotFound();
+
+        if (entry.PayrollReceiptId != null)
+        {
+            TempData["Error"] = "This entry is claimed on a payroll receipt and cannot be edited.";
+            var t0 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t0, new { id });
+        }
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            var t1 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t1, new { id });
+        }
+
+        if (workDate.Date > DateTime.UtcNow.Date)
+        {
+            TempData["Error"] = "Work date cannot be in the future.";
+            var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(t2, new { id });
+        }
+
+        entry.WorkDate    = workDate.Date;
+        entry.Hours       = hours;
+        entry.Description = description;
+        entry.IsBillable  = isBillable;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
+        var target = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+        return RedirectToAction(target, new { id });
     }
 
     [HttpGet]
@@ -532,6 +597,9 @@ public class TicketsController : Controller
 
             _context.Add(ticket);
             await _context.SaveChangesAsync();
+
+            // Run automation workflow rules in the background (fire-and-forget)
+            _ = _workflowEngine.EvaluateOnNewTicketAsync(ticket.Id);
 
             // Run AI triage in the background (fire-and-forget — safe: AiTriageService owns its scope)
             _ = _aiTriage.TriageAndSaveAsync(ticket.Id, ticket.Title, ticket.Description, ticket.BranchId);
@@ -610,6 +678,7 @@ public class TicketsController : Controller
         // Sequential _context queries — DbContext is not thread-safe
         var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
+            .Include(r => r.SuggestedSubCategory)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();
@@ -695,7 +764,8 @@ public class TicketsController : Controller
                     catch { }
                 });
 
-            return RedirectToAction(nameof(Index));
+            TempData["Success"] = "Ticket updated successfully.";
+            return RedirectToAction(nameof(Edit), new { id });
         }
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -1360,6 +1430,8 @@ public class TicketsController : Controller
             ticket.Priority = (ServiceDesk.Core.Enums.TicketPriority)rec.SuggestedPriority.Value;
         if (rec.SuggestedAssigneeId.HasValue)
             ticket.AssignedToId = rec.SuggestedAssigneeId.Value;
+        if (rec.SuggestedSubCategoryId.HasValue)
+            ticket.SubCategoryId = rec.SuggestedSubCategoryId.Value;
 
         ticket.UpdatedDate = DateTime.UtcNow;
 
@@ -1550,6 +1622,26 @@ public class TicketsController : Controller
             return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
 
         return Json(new { success = true, summary });
+    }
+
+    /// <summary>
+    /// Calls Ollama to generate recommended IT resolution steps for the ticket.
+    /// Returns { success, solution } JSON.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestSolution(int id)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        var (solution, error) = await _ollama.SuggestSolutionWithErrorAsync(
+            ticket.Title, ticket.Description ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(solution))
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+
+        return Json(new { success = true, solution });
     }
 
     public async Task<IActionResult> Delete(int? id)

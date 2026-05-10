@@ -32,7 +32,7 @@
                     <dd class="col-sm-8 fw-semibold">@Model.OrderNumber</dd>
 
                     <dt class="col-sm-4">Date</dt>
-                    <dd class="col-sm-8">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
+                    <dd class="col-sm-8">@Model.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMMM d, yyyy 'at' h:mm tt")</dd>
 
                     <dt class="col-sm-4">Quarter</dt>
                     <dd class="col-sm-8">Q@(Model.Quarter) @Model.Year</dd>
@@ -76,6 +76,16 @@
                                         if (!string.IsNullOrEmpty(item.SelectedGender)) parts.Add(item.SelectedGender);
                                         if (!string.IsNullOrEmpty(item.SelectedSize))   parts.Add(item.SelectedSize);
                                         if (!string.IsNullOrEmpty(item.SelectedColor))  parts.Add(item.SelectedColor);
+                                        if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
+                                        {
+                                            try
+                                            {
+                                                using var _d = System.Text.Json.JsonDocument.Parse(item.CustomSelectionsJson);
+                                                foreach (var _p in _d.RootElement.EnumerateObject())
+                                                    parts.Add($"{_p.Name}: {_p.Value.GetString()}");
+                                            }
+                                            catch { }
+                                        }
                                     }
                                     @if (parts.Count > 0)
                                     {

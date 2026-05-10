@@ -627,6 +627,11 @@ body {
     min-height: 100% !important;
 }
 
+#main-wrapper {
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+}
+
 /* =====================================================================
    Employee Details — tab pane content bounds
    Prevents tall tab content (e.g. signature rendered preview, long
@@ -650,4 +655,159 @@ body {
    bottom gap so the last card never sits flush against the footer. */
 .tab-content > .tab-pane {
     padding-bottom: 1.5rem;
+}
+
+/* =====================================================================
+   ServiceSphere Global Theme Overlay (navy palette)
+   ---------------------------------------------------------------------
+   Lightweight, broad-stroke styling that brings non-redesigned pages
+   (Assets, Consumables, Reports, KB, Portal, Store, EmployeeTasks,
+   SoftwareLicenses, Subscriptions) up to the same visual standard as
+   the redesigned Payroll/Employees/Settings pages.
+
+   Strategy: scope by *generic* Bootstrap selectors only, so per-page
+   custom classes (.ap-*, .emp-*, .pay-*, .ea-*, .invoice-*, etc.) keep
+   their own styling and override these defaults.
+
+   Pages that have already been individually themed contain their own
+   higher-specificity rules that win against this overlay.
+   ===================================================================== */
+
+:root {
+    --ss-navy: #1a3a5c;
+    --ss-navy-dark: #0f2845;
+    --ss-blue: #2563eb;
+    --ss-amber: #f59e0b;
+    --ss-green: #10b981;
+    --ss-red: #ef4444;
+    --ss-gray-50: #f9fafb;
+    --ss-gray-100: #f3f4f6;
+    --ss-gray-200: #e5e7eb;
+    --ss-gray-700: #374151;
+}
+
+/* --- Page H1: tighter, navy ----------------------------------------- */
+.content-body > h1,
+.content-body main h1,
+main > h1 {
+    color: var(--ss-navy-dark);
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+/* --- Cards: lift, soften ------------------------------------------- */
+.content-body .card,
+main .card {
+    border: 1px solid var(--ss-gray-200);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+
+/* Default card-header gets the navy gradient unless:
+   (a) it has any Bootstrap bg-* utility class (bg-transparent, bg-white, etc.)
+   (b) a per-page custom class like .ap-card-header / .emp-card-header overrides it.
+   The :not([class*="bg-"]) guard avoids breaking pages that intentionally use
+   transparent or white headers (e.g. Reports/Executive KPI cards). */
+.content-body .card > .card-header:not([class*="bg-"]),
+main .card > .card-header:not([class*="bg-"]) {
+    background: linear-gradient(135deg, var(--ss-navy) 0%, var(--ss-navy-dark) 100%);
+    color: #fff;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 600;
+}
+.content-body .card > .card-header:not([class*="bg-"]) .text-muted,
+.content-body .card > .card-header:not([class*="bg-"]) .text-secondary,
+main .card > .card-header:not([class*="bg-"]) .text-muted,
+main .card > .card-header:not([class*="bg-"]) .text-secondary {
+    color: rgba(255,255,255,.85) !important;
+}
+.content-body .card > .card-header:not([class*="bg-"]) .badge.bg-secondary,
+main .card > .card-header:not([class*="bg-"]) .badge.bg-secondary {
+    background: rgba(255,255,255,.18) !important;
+    color: #fff;
+}
+.content-body .card > .card-header:not([class*="bg-"]) a,
+main .card > .card-header:not([class*="bg-"]) a { color: #fff; }
+.content-body .card > .card-header:not([class*="bg-"]) .btn-outline-secondary,
+.content-body .card > .card-header:not([class*="bg-"]) .btn-outline-light,
+main .card > .card-header:not([class*="bg-"]) .btn-outline-secondary,
+main .card > .card-header:not([class*="bg-"]) .btn-outline-light {
+    color: #fff;
+    border-color: rgba(255,255,255,.4);
+}
+.content-body .card > .card-header:not([class*="bg-"]) .btn-outline-secondary:hover,
+main .card > .card-header:not([class*="bg-"]) .btn-outline-secondary:hover {
+    background: rgba(255,255,255,.15);
+    color: #fff;
+}
+
+/* --- Tables: navy thead (only on .table-dark; leave .table-light alone) --- */
+.content-body .table > thead.table-dark,
+main .table > thead.table-dark {
+    background: linear-gradient(135deg, var(--ss-navy) 0%, var(--ss-navy-dark) 100%);
+}
+.content-body .table > thead.table-dark th,
+main .table > thead.table-dark th {
+    background-color: transparent !important;
+    color: #fff !important;
+    font-weight: 600;
+    font-size: .82rem;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    border-color: rgba(255,255,255,.15);
+}
+.content-body .table-hover tbody tr:hover,
+main .table-hover tbody tr:hover {
+    background-color: #f0f6ff !important;
+}
+
+/* --- Breadcrumbs: tight, navy --------------------------------------- */
+.content-body .breadcrumb,
+main .breadcrumb {
+    background: transparent;
+    padding: 0;
+    margin-bottom: .75rem;
+    font-size: .85rem;
+}
+.content-body .breadcrumb a,
+main .breadcrumb a {
+    color: var(--ss-navy);
+    text-decoration: none;
+}
+.content-body .breadcrumb a:hover,
+main .breadcrumb a:hover { text-decoration: underline; }
+
+/* --- Pagination ----------------------------------------------------- */
+.content-body .pagination .page-link,
+main .pagination .page-link {
+    color: var(--ss-navy);
+}
+.content-body .pagination .page-item.active .page-link,
+main .pagination .page-item.active .page-link {
+    background-color: var(--ss-navy);
+    border-color: var(--ss-navy);
+}
+
+/* --- Generic primary buttons keep brand recognition ----------------- */
+.content-body .btn-primary,
+main .btn-primary {
+    background: var(--ss-navy);
+    border-color: var(--ss-navy);
+}
+.content-body .btn-primary:hover,
+main .btn-primary:hover {
+    background: var(--ss-navy-dark);
+    border-color: var(--ss-navy-dark);
+}
+
+/* --- Filter / form bars: subtle card ------------------------------- */
+.content-body .filter-bar,
+main .filter-bar {
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    margin-bottom: 14px;
 }

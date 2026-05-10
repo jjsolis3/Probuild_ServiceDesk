@@ -1,0 +1,343 @@
+@model IEnumerable<ServiceDesk.Core.Models.NotificationLog>
+@{
+    var filterType      = ViewBag.FilterType as string;
+    var filterRecipient = ViewBag.FilterRecipient as string;
+    var filterSuccess   = (bool?)ViewBag.FilterSuccess;
+    var pageNum            = (int)ViewBag.Page;
+    var totalPages      = (int)ViewBag.TotalPages;
+    var totalCount      = (int)ViewBag.TotalCount;
+    var pageSize        = (int)ViewBag.PageSize;
+    var types           = ViewBag.NotificationTypes as string[] ?? Array.Empty<string>();
+    bool isFiltered     = !string.IsNullOrEmpty(filterType) || !string.IsNullOrEmpty(filterRecipient) || filterSuccess.HasValue;
+}
+
+@section Styles {
+<style>
+    :root {
+        --ea-navy:  #1a3a5c;
+        --ea-blue:  #0d6efd;
+        --ea-green: #198754;
+        --ea-red:   #dc3545;
+        --ea-amber: #fd7e14;
+        --ea-muted: #6c757d;
+        --ea-border:#dee2e6;
+        --ea-bg:    #f8f9fb;
+    }
+
+    .ea-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; }
+    .ea-title  { font-size:1.4rem; font-weight:700; color:var(--ea-navy); margin:0; }
+    .ea-sub    { font-size:.85rem; color:var(--ea-muted); margin:2px 0 0; }
+
+    .ea-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+    .ea-kpi { background:#fff; border:1px solid var(--ea-border); border-radius:8px; padding:16px 20px;
+              box-shadow:0 2px 8px rgba(0,0,0,.05); position:relative; overflow:hidden; }
+    .ea-kpi-bar { position:absolute; top:0; left:0; right:0; height:4px; border-radius:8px 8px 0 0; }
+    .ea-kpi-label { font-size:.68rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+                    color:var(--ea-muted); margin-bottom:5px; margin-top:3px; }
+    .ea-kpi-value { font-size:1.7rem; font-weight:700; color:var(--ea-navy); line-height:1; }
+
+    .ea-card { background:#fff; border:1px solid var(--ea-border); border-radius:8px;
+               box-shadow:0 2px 10px rgba(0,0,0,.06); margin-bottom:20px; overflow:hidden; }
+    .ea-card-accent { height:5px; background:linear-gradient(90deg,var(--ea-navy),var(--ea-blue)); }
+    .ea-card-header { display:flex; align-items:center; justify-content:space-between;
+                      padding:12px 20px; border-bottom:1px solid var(--ea-border); background:var(--ea-bg); }
+    .ea-card-title  { font-size:.77rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+                      color:var(--ea-navy); display:flex; align-items:center; gap:7px; }
+    .ea-card-body   { padding:18px 20px; }
+
+    .ea-filter-grid { display:grid; grid-template-columns:1fr 1fr 1fr auto auto; gap:12px; align-items:end; }
+    .ea-filter-label { font-size:.7rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+                       color:var(--ea-navy); margin-bottom:5px; }
+    .ea-filter-select, .ea-filter-input {
+        border:1px solid var(--ea-border); border-radius:6px; padding:7px 10px;
+        font-size:.875rem; width:100%; background:#fff; color:#212529;
+    }
+    .ea-filter-select:focus, .ea-filter-input:focus { border-color:var(--ea-blue); outline:none;
+        box-shadow:0 0 0 3px rgba(13,110,253,.1); }
+    .ea-btn { display:inline-flex; align-items:center; gap:5px; padding:8px 18px; border-radius:6px;
+              font-size:.85rem; font-weight:600; border:none; cursor:pointer; text-decoration:none;
+              white-space:nowrap; transition:all .15s; }
+    .ea-btn-primary { background:var(--ea-navy); color:#fff; }
+    .ea-btn-primary:hover { background:#0f2440; color:#fff; }
+    .ea-btn-clear { background:#fff; color:var(--ea-muted); border:1px solid var(--ea-border); }
+    .ea-btn-clear:hover { border-color:var(--ea-navy); color:var(--ea-navy); }
+
+    .ea-table { width:100%; border-collapse:collapse; font-size:.875rem; }
+    .ea-table thead tr { background:var(--ea-navy); color:#fff; }
+    .ea-table thead th { padding:10px 14px; font-size:.7rem; font-weight:700;
+                         letter-spacing:.07em; text-transform:uppercase; white-space:nowrap; }
+    .ea-table tbody tr { border-bottom:1px solid #f0f0f0; }
+    .ea-table tbody tr:nth-child(even) { background:#f8f9fb; }
+    .ea-table tbody tr:hover { background:#eef4ff; }
+    .ea-table tbody td { padding:10px 14px; color:#212529; vertical-align:middle; }
+
+    .status-pill { display:inline-block; padding:2px 10px; border-radius:50px;
+                   font-size:.7rem; font-weight:700; letter-spacing:.04em; white-space:nowrap; }
+    .pill-ok  { background:#d1e7dd; color:#0a5c36; border:1px solid #a3cfbb; }
+    .pill-err { background:#f8d7da; color:#842029; border:1px solid #f5c2c7; }
+
+    .type-pill { display:inline-block; padding:2px 9px; border-radius:50px;
+                 font-size:.68rem; font-weight:700; letter-spacing:.04em; }
+    .tp-created  { background:#fff3cd; color:#856404; border:1px solid #ffc107; }
+    .tp-assigned { background:#cfe2ff; color:#084298; border:1px solid #9ec5fe; }
+    .tp-updated  { background:#e2e3e5; color:#41464b; border:1px solid #ced4da; }
+    .tp-note     { background:#d1ecf1; color:#0c5460; border:1px solid #bee5eb; }
+    .tp-password { background:#f8d7da; color:#842029; border:1px solid #f5c2c7; }
+    .tp-payroll  { background:#d0f4de; color:#155724; border:1px solid #a3cfbb; }
+    .tp-other    { background:#e9ecef; color:#495057; }
+
+    .ea-empty { text-align:center; padding:50px 24px; }
+    .ea-empty-icon  { font-size:3rem; color:#dee2e6; margin-bottom:12px; }
+    .ea-empty-title { font-size:1rem; font-weight:600; color:#495057; margin-bottom:6px; }
+    .ea-empty-sub   { font-size:.875rem; color:var(--ea-muted); }
+
+    .ea-pager { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+                padding:12px 20px; border-top:1px solid var(--ea-border); font-size:.85rem; }
+    .ea-pager a { padding:4px 12px; border:1px solid var(--ea-border); border-radius:6px;
+                  color:var(--ea-navy); text-decoration:none; transition:all .15s; }
+    .ea-pager a:hover { background:var(--ea-navy); color:#fff; border-color:var(--ea-navy); }
+    .ea-pager .current { padding:4px 12px; border:1px solid var(--ea-navy);
+                         border-radius:6px; background:var(--ea-navy); color:#fff; font-weight:700; }
+
+    @@media(max-width:767px) {
+        .ea-kpi-grid { grid-template-columns:repeat(2,1fr); }
+        .ea-filter-grid { grid-template-columns:1fr 1fr; }
+    }
+</style>
+}
+
+@* ── Page header ─────────────────────────────────────────────────────────── *@
+<div class="ea-header">
+    <div>
+        <h1 class="ea-title"><i class="bi bi-envelope-check-fill me-2" style="color:var(--ea-blue);"></i>Email Activity Log</h1>
+        <p class="ea-sub">Every outbound notification email — who received it, when, and whether it was delivered</p>
+    </div>
+</div>
+
+@* ── KPI tiles ──────────────────────────────────────────────────────────── *@
+@{
+    var all         = Model.ToList();
+    var sentToday   = all.Count(n => n.SentDate.Date == DateTime.UtcNow.Date);
+    var failed      = all.Count(n => !n.Success);
+    var succeeded   = all.Count(n => n.Success);
+}
+<div class="ea-kpi-grid">
+    <div class="ea-kpi">
+        <div class="ea-kpi-bar" style="background:var(--ea-navy);"></div>
+        <div class="ea-kpi-label">Showing</div>
+        <div class="ea-kpi-value">@totalCount</div>
+        <div style="font-size:.8rem;color:var(--ea-muted);margin-top:3px;">matching entries</div>
+    </div>
+    <div class="ea-kpi">
+        <div class="ea-kpi-bar" style="background:var(--ea-blue);"></div>
+        <div class="ea-kpi-label">Sent Today</div>
+        <div class="ea-kpi-value" style="color:var(--ea-blue);">@sentToday</div>
+        <div style="font-size:.8rem;color:var(--ea-muted);margin-top:3px;">on current page</div>
+    </div>
+    <div class="ea-kpi">
+        <div class="ea-kpi-bar" style="background:var(--ea-green);"></div>
+        <div class="ea-kpi-label">Delivered</div>
+        <div class="ea-kpi-value" style="color:var(--ea-green);">@succeeded</div>
+        <div style="font-size:.8rem;color:var(--ea-muted);margin-top:3px;">on current page</div>
+    </div>
+    <div class="ea-kpi">
+        <div class="ea-kpi-bar" style="background:var(--ea-red);"></div>
+        <div class="ea-kpi-label">Failed</div>
+        <div class="ea-kpi-value" style="color:@(failed > 0 ? "var(--ea-red)" : "var(--ea-muted)");">@failed</div>
+        <div style="font-size:.8rem;color:var(--ea-muted);margin-top:3px;">on current page</div>
+    </div>
+</div>
+
+@* ── Filter card ─────────────────────────────────────────────────────────── *@
+<div class="ea-card">
+    <div class="ea-card-accent"></div>
+    <div class="ea-card-body">
+        <form method="get">
+            <div class="ea-filter-grid">
+                <div>
+                    <div class="ea-filter-label">Type</div>
+                    <select name="type" class="ea-filter-select">
+                        <option value="">All Types</option>
+                        @foreach (var t in types)
+                        {
+                            if (filterType == t) {
+                                <option value="@t" selected="selected" )>@t</option>
+                            }
+                            else {
+                                <option value="@t">@t</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div>
+                    <div class="ea-filter-label">Recipient Email</div>
+                    <input type="text" name="recipient" class="ea-filter-input"
+                           placeholder="Search email…" value="@filterRecipient" />
+                </div>
+                <div>
+                    <div class="ea-filter-label">Result</div>
+                    <select name="success" class="ea-filter-select">
+                        <option value="">All Results</option>
+                        if (filterSuccess = true ) {
+                            <option value="true"  selected="selected" )>Delivered</option>
+                        }
+                        elif (filterSuccess == false) {
+                            <option value="false" selected="selected" )>Failed</option>
+                        }
+                    </select>
+                </div>
+                <button type="submit" class="ea-btn ea-btn-primary">
+                    <i class="bi bi-funnel-fill"></i>Filter
+                </button>
+                <a asp-action="EmailActivity" class="ea-btn ea-btn-clear">
+                    <i class="bi bi-x-circle"></i>Clear
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@* ── Log table ───────────────────────────────────────────────────────────── *@
+<div class="ea-card">
+    <div class="ea-card-accent"></div>
+    <div class="ea-card-header">
+        <span class="ea-card-title">
+            <i class="bi bi-list-ul" style="color:var(--ea-blue);"></i>
+            Notification Log
+        </span>
+        <span style="font-size:.78rem;color:var(--ea-muted);">
+            @totalCount @(totalCount == 1 ? "entry" : "entries")
+            @if (totalPages > 1)
+            { <text> &middot; page @pageNum of @totalPages</text> }
+        </span>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="ea-empty">
+            <div class="ea-empty-icon"><i class="bi bi-inbox"></i></div>
+            <div class="ea-empty-title">No log entries found</div>
+            <div class="ea-empty-sub">
+                @(isFiltered
+                    ? "No entries match the current filter. Try clearing the filters."
+                    : "No notifications have been sent yet, or the NotificationLogs table is not yet created. The log will populate once the app restarts and sends its first notification.")
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="ea-table">
+                <thead>
+                    <tr>
+                        <th>Date / Time</th>
+                        <th>Type</th>
+                        <th>Ticket</th>
+                        <th>Recipient</th>
+                        <th>Subject</th>
+                        <th class="text-center">Result</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model)
+                    {
+                        var typeClass = entry.NotificationType switch {
+                            "TicketCreated"  => "tp-created",
+                            "TicketAssigned" => "tp-assigned",
+                            "TicketUpdated"  => "tp-updated",
+                            "NoteAdded"      => "tp-note",
+                            "PasswordReset"  => "tp-password",
+                            var t when t.StartsWith("Payroll") => "tp-payroll",
+                            _                => "tp-other"
+                        };
+                        <tr>
+                            <td class="text-nowrap small text-muted">
+                                @entry.SentDate.ToString("MMM d, yyyy")<br/>
+                                <span style="font-size:.72rem;">@entry.SentDate.ToString("h:mm:ss tt") UTC</span>
+                            </td>
+                            <td><span class="type-pill @typeClass">@entry.NotificationType</span></td>
+                            <td>
+                                @if (entry.TicketId.HasValue)
+                                {
+                                    <a asp-controller="Tickets" asp-action="Details" asp-route-id="@entry.TicketId"
+                                       class="fw-semibold text-decoration-none" style="color:var(--ea-blue);">
+                                        #@entry.TicketId
+                                    </a>
+                                    if (entry.Ticket != null)
+                                    {
+                                        <div class="text-muted" style="font-size:.72rem;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                                             title="@entry.Ticket.Title">@entry.Ticket.Title</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                <div style="font-size:.875rem;">@entry.RecipientEmail</div>
+                                @if (!string.IsNullOrEmpty(entry.RecipientName))
+                                {
+                                    <div class="text-muted" style="font-size:.72rem;">@entry.RecipientName</div>
+                                }
+                            </td>
+                            <td class="small" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                                title="@entry.Subject">@(entry.Subject ?? "—")</td>
+                            <td class="text-center">
+                                @if (entry.Success)
+                                {
+                                    <span class="status-pill pill-ok"><i class="bi bi-check-lg me-1"></i>Sent</span>
+                                }
+                                else
+                                {
+                                    <span class="status-pill pill-err"><i class="bi bi-x-lg me-1"></i>Failed</span>
+                                }
+                            </td>
+                            <td class="small text-muted" style="max-width:200px;">
+                                @if (!string.IsNullOrEmpty(entry.ErrorMessage))
+                                {
+                                    <span title="@entry.ErrorMessage"
+                                          style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:200px;color:var(--ea-red);">
+                                        @entry.ErrorMessage
+                                    </span>
+                                }
+                                else
+                                {
+                                    <text>—</text>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Pagination *@
+        @if (totalPages > 1)
+        {
+            <div class="ea-pager">
+                <span style="color:var(--ea-muted);">
+                    @(((pageNum - 1) * pageSize) + 1)–@(Math.Min(pageNum * pageSize, totalCount)) of @totalCount
+                </span>
+                @if (pageNum > 1)
+                {
+                    <a asp-action="EmailActivity"
+                       asp-route-page="@(pageNum - 1)" asp-route-type="@filterType"
+                       asp-route-recipient="@filterRecipient" asp-route-success="@filterSuccess">
+                        <i class="bi bi-chevron-left"></i> Prev
+                    </a>
+                }
+                <span class="current">@pageNum</span>
+                @if (pageNum < totalPages)
+                {
+                    <a asp-action="EmailActivity"
+                       asp-route-page="@(pageNum + 1)" asp-route-type="@filterType"
+                       asp-route-recipient="@filterRecipient" asp-route-success="@filterSuccess">
+                        Next <i class="bi bi-chevron-right"></i>
+                    </a>
+                }
+            </div>
+        }
+    }
+</div>

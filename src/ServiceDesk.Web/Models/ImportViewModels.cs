@@ -27,6 +27,27 @@ public class ImportEmployeeRow
     public string? SkipReason      { get; set; }
 }
 
+/// <summary>One Google Workspace user surfaced in the import preview, with our
+/// decision about whether they can be imported into the local Employees table.</summary>
+public class GoogleImportRow
+{
+    public string Email      { get; set; } = "";
+    public string FirstName  { get; set; } = "";
+    public string LastName   { get; set; } = "";
+    public string FullName   { get; set; } = "";
+    public string? JobTitle  { get; set; }
+    public string? Department{ get; set; }
+    public string? Phone     { get; set; }
+    public string? OrgUnit   { get; set; }
+    public bool Suspended    { get; set; }
+
+    /// <summary>True when the email already maps to an existing Employee — row is skipped.</summary>
+    public bool AlreadyExists      { get; set; }
+    /// <summary>True when a portal login with this email already exists — we'll only
+    /// create the Employee record and link it.</summary>
+    public bool LoginAlreadyExists { get; set; }
+}
+
 /// <summary>Represents a single parsed row from a SolarWinds TSV/CSV export during ticket import.</summary>
 public class ImportTicketRow
 {

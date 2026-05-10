@@ -77,6 +77,25 @@ public class EmployeeTasksController : Controller
         return RedirectToAction(nameof(Templates));
     }
 
+    [Authorize(Roles = "Admin")]
+    [HttpPost, ValidateAntiForgeryToken]
+    public IActionResult SeedDefaultTemplates()
+    {
+        try
+        {
+            DbInitializer.SeedEmployeeTaskTemplates(_context);
+            var count = _context.EmployeeTaskTemplates.Count();
+            TempData["Success"] = count > 0
+                ? $"Default templates loaded — {count} templates are now available."
+                : "Templates already exist; no new templates were added.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = $"Failed to load default templates: {ex.Message}";
+        }
+        return RedirectToAction(nameof(Templates));
+    }
+
     // ── Per-employee checklist actions ─────────────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> ApplyTemplate(int employeeId, EmployeeTaskType taskType)
@@ -92,7 +111,8 @@ public class EmployeeTasksController : Controller
         if (!templates.Any())
         {
             TempData["Error"] = $"No active {taskType} templates configured. Add templates in Settings → Employee Checklists.";
-            return RedirectToAction("Details", "Employees", new { id = employeeId, tab = "checklist" });
+            var errTab = taskType == EmployeeTaskType.Onboarding ? "onboarding" : "offboarding";
+            return RedirectToAction("Details", "Employees", new { id = employeeId, tab = errTab });
         }
 
         var today = DateTime.UtcNow.Date;
@@ -125,7 +145,8 @@ public class EmployeeTasksController : Controller
         TempData["Success"] = created > 0
             ? $"Applied {taskType} checklist — {created} task(s) added."
             : $"{taskType} checklist already applied.";
-        return RedirectToAction("Details", "Employees", new { id = employeeId, tab = "checklist" });
+        var tab = taskType == EmployeeTaskType.Onboarding ? "onboarding" : "offboarding";
+        return RedirectToAction("Details", "Employees", new { id = employeeId, tab });
     }
 
     [HttpPost, ValidateAntiForgeryToken]

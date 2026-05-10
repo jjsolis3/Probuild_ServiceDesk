@@ -42,10 +42,19 @@
                     <dd class="col-sm-7 fw-semibold">@Model.OrderNumber</dd>
 
                     <dt class="col-sm-5">Date Placed</dt>
-                    <dd class="col-sm-7">@Model.OrderDate.ToString("MMMM d, yyyy 'at' h:mm tt") UTC</dd>
+                    <dd class="col-sm-7">@Model.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMMM d, yyyy 'at' h:mm tt")</dd>
 
                     <dt class="col-sm-5">Quarter</dt>
                     <dd class="col-sm-7">Q@(Model.Quarter) @Model.Year</dd>
+
+                    @{
+                        var branchDisplay = Model.Branch?.Name ?? Model.BranchNameSnapshot;
+                    }
+                    @if (!string.IsNullOrEmpty(branchDisplay))
+                    {
+                        <dt class="col-sm-5">Branch / Location</dt>
+                        <dd class="col-sm-7"><i class="bi bi-geo-alt me-1 text-muted"></i>@branchDisplay</dd>
+                    }
 
                     <dt class="col-sm-5">Status</dt>
                     <dd class="col-sm-7">
@@ -72,6 +81,9 @@
                 </h5>
             </div>
             <div class="table-responsive">
+                @{
+                    var hasPriced = Model.Items.Any(i => i.UnitPriceSnapshot.HasValue);
+                }
                 <table class="table align-middle mb-0">
                     <thead class="table-light">
                         <tr>
@@ -79,6 +91,11 @@
                             <th>Product</th>
                             <th>Variants</th>
                             <th class="text-end">Qty</th>
+                            @if (hasPriced)
+                            {
+                                <th class="text-end">Price</th>
+                                <th class="text-end">Subtotal</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
@@ -88,6 +105,16 @@
                             if (!string.IsNullOrEmpty(item.SelectedGender)) vparts.Add(item.SelectedGender);
                             if (!string.IsNullOrEmpty(item.SelectedSize))   vparts.Add(item.SelectedSize);
                             if (!string.IsNullOrEmpty(item.SelectedColor))  vparts.Add(item.SelectedColor);
+                            if (!string.IsNullOrWhiteSpace(item.CustomSelectionsJson))
+                            {
+                                try
+                                {
+                                    using var _d = System.Text.Json.JsonDocument.Parse(item.CustomSelectionsJson);
+                                    foreach (var _p in _d.RootElement.EnumerateObject())
+                                        vparts.Add($"{_p.Name}: {_p.Value.GetString()}");
+                                }
+                                catch { }
+                            }
 
                             <tr>
                                 <td>
@@ -122,11 +149,23 @@
                                     }
                                 </td>
                                 <td class="text-end fw-bold">@item.Quantity</td>
+                                @if (hasPriced)
+                                {
+                                    <td class="text-end">@(item.UnitPriceSnapshot?.ToString("C") ?? "—")</td>
+                                    <td class="text-end fw-semibold">@((item.UnitPriceSnapshot * item.Quantity)?.ToString("C") ?? "—")</td>
+                                }
                             </tr>
                         }
                         <tr class="table-light">
                             <td colspan="3" class="text-end fw-semibold">Total Qty</td>
                             <td class="text-end fw-bold">@Model.Items.Sum(i => i.Quantity)</td>
+                            @if (hasPriced)
+                            {
+                                <td></td>
+                                <td class="text-end fw-bold text-success">
+                                    @Model.Items.Sum(i => (i.UnitPriceSnapshot ?? 0) * i.Quantity).ToString("C")
+                                </td>
+                            }
                         </tr>
                     </tbody>
                 </table>

@@ -5,151 +5,330 @@
     var selBranchIds   = (int[])(ViewBag.SelectedBranchIds      ?? Array.Empty<int>());
     var curActive      = ViewBag.CurrentActive as bool?;
     var curHasLogin    = ViewBag.CurrentHasLogin as bool?;
+    var kpiTotal       = (int)(ViewBag.KpiTotal       ?? 0);
+    var kpiActive      = (int)(ViewBag.KpiActive      ?? 0);
+    var kpiContractors = (int)(ViewBag.KpiContractors ?? 0);
 
     string FilterLabel(string singular, string plural, int count) =>
         count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
+@section Styles {
+<style>
+    :root {
+        --emp-navy:  #1a3a5c;
+        --emp-blue:  #0d6efd;
+        --emp-green: #198754;
+        --emp-muted: #6c757d;
+        --emp-border:#dee2e6;
+        --emp-bg:    #f8f9fb;
+    }
+    .emp-kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+    .emp-kpi { background:#fff; border:1px solid var(--emp-border); border-radius:8px; padding:16px 20px;
+               box-shadow:0 2px 8px rgba(0,0,0,.05); position:relative; overflow:hidden;
+               transition:transform .15s,box-shadow .15s; }
+    .emp-kpi:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.09); }
+    .emp-kpi-bar { position:absolute;top:0;left:0;right:0;height:4px;border-radius:8px 8px 0 0; }
+    .emp-kpi-label { font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+                     color:var(--emp-muted);margin:4px 0 6px; }
+    .emp-kpi-value { font-size:1.8rem;font-weight:700;line-height:1;color:var(--emp-navy); }
+
+    .emp-card { background:#fff;border:1px solid var(--emp-border);border-radius:8px;
+                box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden;margin-bottom:18px; }
+    .emp-card-accent { height:5px;background:linear-gradient(90deg,var(--emp-navy),var(--emp-blue)); }
+
+    .emp-table { width:100%;border-collapse:collapse;font-size:.875rem; }
+    .emp-table thead tr { background:var(--emp-navy) !important; }
+    .emp-table thead th,
+    table.emp-table.dataTable thead th,
+    table.emp-table.dataTable thead td { padding:10px 14px;font-size:.7rem;font-weight:700;
+                          letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
+                          color:#fff !important;background:var(--emp-navy) !important;
+                          border-bottom:none !important; }
+    .emp-table tbody tr { border-bottom:1px solid #f0f0f0; }
+    .emp-table tbody tr:nth-child(even) { background:#f8f9fb; }
+    .emp-table tbody tr:hover { background:#eef4ff; }
+    .emp-table tbody td { padding:10px 14px;color:#212529;vertical-align:middle; }
+
+    .emp-avatar { width:34px;height:34px;border-radius:50%;background:var(--emp-navy);color:#fff;
+                  font-size:.78rem;font-weight:700;display:inline-flex;align-items:center;
+                  justify-content:center;flex-shrink:0; }
+    .emp-avatar.inactive { background:#adb5bd; }
+
+    .ep { display:inline-block;padding:2px 10px;border-radius:50px;font-size:.7rem;
+          font-weight:700;letter-spacing:.04em;white-space:nowrap; }
+    .ep-active   { background:#d1e7dd;color:#0a5c36;border:1px solid #a3cfbb; }
+    .ep-inactive { background:#e9ecef;color:#495057; }
+    .ep-contract { background:#fff3cd;color:#856404;border:1px solid #ffc107; }
+
+    @@media(max-width:767px) { .emp-kpi-grid { grid-template-columns:1fr 1fr; } }
+</style>
+}
+
+@* ── Header ──────────────────────────────────────────────────────────────── *@
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1><i class="bi bi-people"></i> Employees</h1>
+    <div>
+        <h1 class="mb-0" style="font-size:1.4rem;font-weight:700;color:var(--emp-navy);">
+            <i class="bi bi-people-fill me-2" style="color:var(--emp-blue);"></i>Employees
+        </h1>
+        <p class="text-muted mb-0" style="font-size:.85rem;">@Model.Count() employee@(Model.Count() == 1 ? "" : "s") shown</p>
+    </div>
     <div class="d-flex gap-2">
         <button onclick="ssExport.show('ss-export-target','Employee Directory')" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-file-earmark-pdf me-1"></i>Export / Print
+            <i class="bi bi-file-earmark-pdf me-1"></i>Export
         </button>
         @if (User.IsInRole("Admin"))
         {
-            <a asp-action="ImportCsv" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-upload me-1"></i> Import Employees
+            <a asp-action="ImportFromGoogle" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-google me-1"></i> Import
             </a>
         }
-        <a asp-action="Create" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i> New Employee
+        <a asp-action="Create" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>New Employee
         </a>
     </div>
 </div>
 
-<!-- Filters -->
-<div class="filter-bar">
-    <div class="d-flex flex-wrap gap-2 align-items-end">
+@* ── KPI tiles ────────────────────────────────────────────────────────────── *@
+<div class="emp-kpi-grid">
+    <div class="emp-kpi">
+        <div class="emp-kpi-bar" style="background:var(--emp-navy);"></div>
+        <div class="emp-kpi-label">Total Employees</div>
+        <div class="emp-kpi-value">@kpiTotal</div>
+        <div style="font-size:.78rem;color:var(--emp-muted);margin-top:3px;">all records</div>
+    </div>
+    <div class="emp-kpi">
+        <div class="emp-kpi-bar" style="background:var(--emp-green);"></div>
+        <div class="emp-kpi-label">Active</div>
+        <div class="emp-kpi-value" style="color:var(--emp-green);">@kpiActive</div>
+        <div style="font-size:.78rem;color:var(--emp-green);margin-top:3px;">currently employed</div>
+    </div>
+    <div class="emp-kpi">
+        <div class="emp-kpi-bar" style="background:#fd7e14;"></div>
+        <div class="emp-kpi-label">Contractors</div>
+        <div class="emp-kpi-value" style="color:#856404;">@kpiContractors</div>
+        <div style="font-size:.78rem;color:#856404;margin-top:3px;">active + flagged</div>
+    </div>
+</div>
 
-        <!-- Department -->
-        <div>
-            <div class="form-label small mb-1">Department</div>
-            <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selDepartments.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Department", "Departments", selDepartments.Length)
-                </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:190px; max-height:260px; overflow-y:auto;">
-                    @if (ViewBag.Departments != null)
-                    {
-                        foreach (var dept in (List<string>)ViewBag.Departments)
+@* ── Filter bar ───────────────────────────────────────────────────────────── *@
+<div class="emp-card" style="border-radius:8px;overflow:visible;">
+    <div class="emp-card-accent"></div>
+    <div class="filter-bar" style="border-radius:0;box-shadow:none;border:none;">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+
+            <div>
+                <div class="form-label small mb-1">Department</div>
+                <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selDepartments.Length > 0 ? "active" : "")"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        @FilterLabel("Department", "Departments", selDepartments.Length)
+                    </button>
+                    <div class="dropdown-menu p-2 shadow" style="min-width:190px;max-height:260px;overflow-y:auto;">
+                        @if (ViewBag.Departments != null)
                         {
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="departments"
-                                       value="@dept" id="fd_@dept" @(selDepartments.Contains(dept) ? "checked" : "")>
-                                <label class="form-check-label small" for="fd_@dept">@dept</label>
-                            </div>
+                            foreach (var dept in (List<string>)ViewBag.Departments)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="departments"
+                                           value="@dept" id="fd_@dept" @(selDepartments.Contains(dept) ? "checked" : "")>
+                                    <label class="form-check-label small" for="fd_@dept">@dept</label>
+                                </div>
+                            }
                         }
-                    }
-                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                        <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Status -->
-        <div>
-            <div class="form-label small mb-1">Status</div>
-            <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curActive != null ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curActive == null ? "All" : curActive == true ? "Active" : "Inactive")
-                </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="active" value="true"
-                               id="fst_active" @(curActive == true ? "checked" : "")
-                               onchange="if(this.checked) document.getElementById('fst_inactive').checked=false;">
-                        <label class="form-check-label small" for="fst_active">Active</label>
+            <div>
+                <div class="form-label small mb-1">Status</div>
+                <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curActive != null ? "active" : "")"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        @(curActive == null ? "All" : curActive == true ? "Active" : "Inactive")
+                    </button>
+                    <div class="dropdown-menu p-2 shadow" style="min-width:150px;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="active" value="true"
+                                   id="fst_active" @(curActive == true ? "checked" : "")
+                                   onchange="if(this.checked) document.getElementById('fst_inactive').checked=false;">
+                            <label class="form-check-label small" for="fst_active">Active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="active" value="false"
+                                   id="fst_inactive" @(curActive == false ? "checked" : "")
+                                   onchange="if(this.checked) document.getElementById('fst_active').checked=false;">
+                            <label class="form-check-label small" for="fst_inactive">Inactive</label>
+                        </div>
+                        <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="active" value="false"
-                               id="fst_inactive" @(curActive == false ? "checked" : "")
-                               onchange="if(this.checked) document.getElementById('fst_active').checked=false;">
-                        <label class="form-check-label small" for="fst_inactive">Inactive</label>
-                    </div>
-                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
-        </div>
 
-        <!-- Branch -->
-        <div>
-            <div class="form-label small mb-1">Branch</div>
-            <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selBranchIds.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Branch", "Branches", selBranchIds.Length)
-                </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:190px; max-height:260px; overflow-y:auto;">
-                    @if (ViewBag.Branches != null)
-                    {
-                        foreach (var b in (IEnumerable<dynamic>)ViewBag.Branches)
+            <div>
+                <div class="form-label small mb-1">Branch</div>
+                <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selBranchIds.Length > 0 ? "active" : "")"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        @FilterLabel("Branch", "Branches", selBranchIds.Length)
+                    </button>
+                    <div class="dropdown-menu p-2 shadow" style="min-width:190px;max-height:260px;overflow-y:auto;">
+                        @if (ViewBag.Branches != null)
                         {
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="branchIds"
-                                       value="@b.Id" id="fb_@b.Id"
-                                       @(selBranchIds.Contains((int)b.Id) ? "checked" : "")>
-                                <label class="form-check-label small" for="fb_@b.Id">@b.Name</label>
-                            </div>
+                            foreach (var b in (IEnumerable<dynamic>)ViewBag.Branches)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="branchIds"
+                                           value="@b.Id" id="fb_@b.Id"
+                                           @(selBranchIds.Contains((int)b.Id) ? "checked" : "")>
+                                    <label class="form-check-label small" for="fb_@b.Id">@b.Name</label>
+                                </div>
+                            }
                         }
-                    }
-                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                        <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Login Account -->
-        <div>
-            <div class="form-label small mb-1">Login Account</div>
-            <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curHasLogin != null ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @(curHasLogin == null ? "All" : curHasLogin == true ? "Has Login" : "No Login")
-                </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="hasLogin" value="true"
-                               id="fl_yes" @(curHasLogin == true ? "checked" : "")
-                               onchange="if(this.checked) document.getElementById('fl_no').checked=false;">
-                        <label class="form-check-label small" for="fl_yes">Has Login</label>
+            <div>
+                <div class="form-label small mb-1">Login Account</div>
+                <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(curHasLogin != null ? "active" : "")"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        @(curHasLogin == null ? "All" : curHasLogin == true ? "Has Login" : "No Login")
+                    </button>
+                    <div class="dropdown-menu p-2 shadow" style="min-width:160px;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="hasLogin" value="true"
+                                   id="fl_yes" @(curHasLogin == true ? "checked" : "")
+                                   onchange="if(this.checked) document.getElementById('fl_no').checked=false;">
+                            <label class="form-check-label small" for="fl_yes">Has Login</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="hasLogin" value="false"
+                                   id="fl_no" @(curHasLogin == false ? "checked" : "")
+                                   onchange="if(this.checked) document.getElementById('fl_yes').checked=false;">
+                            <label class="form-check-label small" for="fl_no">No Login</label>
+                        </div>
+                        <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="hasLogin" value="false"
-                               id="fl_no" @(curHasLogin == false ? "checked" : "")
-                               onchange="if(this.checked) document.getElementById('fl_yes').checked=false;">
-                        <label class="form-check-label small" for="fl_no">No Login</label>
-                    </div>
-                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
                 </div>
             </div>
-        </div>
 
-        <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-x-circle me-1"></i>Clear Filters
-            </a>
-        </div>
+            <div class="align-self-end">
+                <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i>Clear
+                </a>
+            </div>
 
-        <div class="align-self-end ms-auto">
-            <div class="input-group input-group-sm">
-                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" id="employeeKeywordSearch" class="form-control" placeholder="Search employees..."
-                       value="@((string?)ViewBag.CurrentQuery ?? "")">
-                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+            <div class="align-self-end ms-auto">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" id="employeeKeywordSearch" class="form-control" placeholder="Search employees..."
+                           value="@((string?)ViewBag.CurrentQuery ?? "")">
+                    <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
+                </div>
             </div>
         </div>
     </div>
+</div>
+
+@* ── Employee Table ───────────────────────────────────────────────────────── *@
+<div class="emp-card" id="ss-export-target">
+    <div class="emp-card-accent"></div>
+    @if (!Model.Any())
+    {
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-people display-1"></i>
+            <p class="mt-3 mb-3">No employees found matching the current filters.</p>
+            <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i>Add Employee</a>
+            <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Clear Filters</a>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="emp-table ss-datatable" data-export-title="Employee Directory">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Department / Title</th>
+                        <th>Branch</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th>Hire Date</th>
+                        <th class="no-sort no-export" style="width:90px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var emp in Model)
+                    {
+                        var fn = emp.FirstName ?? "?";
+                        var ln = emp.LastName  ?? "?";
+                        var initials = $"{fn[0]}{ln[0]}";
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="emp-avatar @(!emp.IsActive ? "inactive" : "")">@initials</div>
+                                    <div>
+                                        <a asp-action="Details" asp-route-id="@emp.Id"
+                                           class="fw-semibold text-decoration-none" style="color:var(--emp-navy);">
+                                            @emp.FullName
+                                        </a>
+                                        @if (emp.IsContractor)
+                                        {
+                                            <span class="ep ep-contract ms-1">Contractor</span>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="font-size:.875rem;">@(emp.JobTitle ?? "—")</div>
+                                @if (!string.IsNullOrEmpty(emp.Department))
+                                {
+                                    <div class="text-muted" style="font-size:.75rem;">@emp.Department</div>
+                                }
+                            </td>
+                            <td class="small">@(emp.Branch?.Name ?? "—")</td>
+                            <td class="small">
+                                @if (!string.IsNullOrEmpty(emp.Email))
+                                {
+                                    <a href="mailto:@emp.Email" class="text-decoration-none text-muted">@emp.Email</a>
+                                }
+                                else { <text>—</text> }
+                            </td>
+                            <td class="small text-muted">@(emp.Phone ?? emp.Branch?.Phone ?? "—")</td>
+                            <td>
+                                @if (emp.IsActive)
+                                {
+                                    <span class="ep ep-active">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="ep ep-inactive">Inactive</span>
+                                }
+                            </td>
+                            <td class="small text-muted text-nowrap">@emp.HireDate.ToString("MMM d, yyyy")</td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <a asp-action="Edit" asp-route-id="@emp.Id"
+                                       class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a asp-action="Delete" asp-route-id="@emp.Id"
+                                       class="btn btn-sm btn-outline-danger py-0 px-2" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 </div>
 
 @section Scripts {
@@ -157,92 +336,6 @@
 document.getElementById('employeeKeywordSearch').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
 });
-
-document.addEventListener('click', function (e) {
-    const opt = e.target.closest('.single-filter-option');
-    if (!opt) return;
-    e.preventDefault();
-    const input = document.getElementById(opt.dataset.inputId);
-    const btn = document.getElementById(opt.dataset.buttonId);
-    if (!input || !btn) return;
-    input.value = opt.dataset.value ?? '';
-    btn.textContent = opt.dataset.label ?? '';
-    btn.classList.toggle('active', input.value !== '');
-    opt.closest('.dropdown-menu')?.querySelectorAll('.single-filter-option').forEach(x => x.classList.remove('active'));
-    opt.classList.add('active');
-});
-</script>
-}
-
-<div id="ss-export-target">
-<div class="table-responsive">
-    <table class="table table-striped table-hover ss-datatable" data-export-title="Employees Report">
-        <thead class="table-dark">
-            <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Branch / Location</th>
-                <th>Company Phone</th>
-                <th>Ext.</th>
-                <th>Direct Phone</th>
-                <th>Department</th>
-                <th>Job Title</th>
-                <th>Status</th>
-                <th>Hire Date</th>
-                <th class="no-sort no-export">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var employee in Model)
-            {
-                <tr>
-                    <td>
-                        <a asp-action="Details" asp-route-id="@employee.Id">@employee.FullName</a>
-                    </td>
-                    <td>@employee.Email</td>
-                    <td>@(employee.Branch?.Name ?? "—")</td>
-                    <td>@(employee.Branch?.Phone ?? "—")</td>
-                    <td>@(employee.Extension ?? "—")</td>
-                    <td>@(employee.Phone ?? "—")</td>
-                    <td>@employee.Department</td>
-                    <td>@employee.JobTitle</td>
-                    <td>
-                        @if (employee.IsActive)
-                        {
-                            <span class="badge bg-success">Active</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary">Inactive</span>
-                        }
-                    </td>
-                    <td>@employee.HireDate.ToString("MMM dd, yyyy")</td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@employee.Id" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <a asp-action="Delete" asp-route-id="@employee.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
-@if (!Model.Any())
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-people display-1"></i>
-        <p class="mt-3 mb-3">No employees found matching the current filters.</p>
-        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> Add Employee</a>
-        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
-    </div>
-}
-</div><!-- /ss-export-target -->
-
-<script>
 function applyFilters() {
     const params = new URLSearchParams();
     document.querySelectorAll('input[name="departments"]:checked').forEach(cb => params.append('departments', cb.value));
@@ -256,3 +349,4 @@ function applyFilters() {
     window.location.href = '@Url.Action("Index", "Employees")?' + params.toString();
 }
 </script>
+}

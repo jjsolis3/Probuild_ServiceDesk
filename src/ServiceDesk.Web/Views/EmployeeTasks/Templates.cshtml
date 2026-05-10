@@ -20,9 +20,21 @@
             Reusable checklist items that can be applied to any employee's onboarding or offboarding workflow.
         </div>
     </div>
-    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTemplateModal">
-        <i class="bi bi-plus-lg"></i> New Template
-    </button>
+    <div class="d-flex gap-2">
+        @if (!onboarding.Any() && !offboarding.Any())
+        {
+            <form asp-action="SeedDefaultTemplates" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-secondary btn-sm"
+                        onclick="return confirm('Load all 138 default onboarding and offboarding templates?');">
+                    <i class="bi bi-download me-1"></i> Load Default Templates
+                </button>
+            </form>
+        }
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTemplateModal">
+            <i class="bi bi-plus-lg"></i> New Template
+        </button>
+    </div>
 </div>
 
 @if (TempData["Success"] != null)
