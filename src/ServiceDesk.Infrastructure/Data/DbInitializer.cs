@@ -1627,7 +1627,675 @@ public static class DbInitializer
             // Run the Database/ServiceSphere_CreateTables.sql script on SQL Server first.
             Console.WriteLine($"[DbInitializer] Seed warning: {ex.Message}");
         }
+
+        try
+        {
+            SeedEmployeeTaskTemplates(context);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbInitializer] Task template seed warning: {ex.Message}");
+        }
     }
+
+    private static void SeedEmployeeTaskTemplates(ServiceDeskDbContext context)
+    {
+        // Only seed once — skip if any templates already exist so admin edits are preserved
+        if (context.EmployeeTaskTemplates.Any()) return;
+
+        var templates = new List<EmployeeTaskTemplate>();
+        int sort = 0;
+
+        // ─── ONBOARDING ────────────────────────────────────────────────────────
+
+        // Section: Google Account
+        templates.AddRange(new[]
+        {
+            T("Generate new user password",
+              "Use Welcome Letter Template to generate password. Print as PDF and store in New Hire Welcome Letters folder in Drive.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: Create new user account",
+              "Create new user in Google Admin Console. Set primary email to firstname@[domain]. Follow company email naming convention.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: Set user password",
+              "Apply Seamless Password following company rules or use Password Tool. Ensure complexity requirements are met.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: Add default profile picture",
+              "Upload generic company profile picture in Admin Console until official photo is taken.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: User Details — phone & address",
+              "Add mobile phone, work phone, and work address in User Details section of Admin Console.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: User Details — alternate email addresses",
+              "Add alternate email addresses: First Initial/Last Name, First Name/Last Name, and First Name.Last Name.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: User Details — employee information",
+              "Add Job Title, Manager's Email, Cost Center (ex. PHX), and Building Id (ex. Phoenix) in employee information section.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: User Details — security information",
+              "Add recovery email (jim@sf.com format) and recovery phone number (ex. 4803585561) in Security Information.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Admin: Add user to Groups",
+              "Add to All@ group, location-appropriate groups, and Concur email group. Add other groups appropriate for user type and location.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Sign into new user in new Chrome profile",
+              "Open Google Chrome, create a new profile, and sign in as the new user to verify account access.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Set up browser tabs in order",
+              "Set up the following pinned tabs: Gmail, Calendar, Google Drive, SF Insight (Location Specific), SF Website.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Sign in to new user email — accept Terms & Conditions",
+              "Sign in to the new user email account and accept Google Terms and Conditions on first login.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Gmail Settings: General Tab configuration",
+              "Set Undo Send to 10 seconds, Default Reply Behavior to Reply, Default text style to Verdana, Desktop notifications to New Mail On, Stars to All Stars. Copy signature from existing user at same location/position.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Gmail Settings: Labels Tab",
+              "Select Show for: Important, All Mail, Spam, Trash.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Gmail Settings: Accounts — import secondary address",
+              "Go to Settings > Accounts to Import > Add Another Email Address. Enter user@sf.com and select Make Default.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Gmail Settings: Advanced Tab — Enable Templates",
+              "Go to Settings > Advanced Tab and enable Email Templates feature.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Gmail Settings: Add @sf.com signature",
+              "In General Settings Tab, add the newuser@sf.com email signature to complete dual-signature setup.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Send welcome Chats to IT team",
+              "Send Chats to IT team members (Jim, Jose, Kolby, Chris) to introduce new employee.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Send location-wide Chat announcement (during training)",
+              "During employee training, send Chat messages to all employees at that location, owners, and any other relevant employees.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Calendar: Add new user to Location and Company Calendars",
+              "Open Google Calendar and add new user to the Location Calendar (ex. SeamlessPHX) and SeamlessLLC shared calendars.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("New User Terminal: Set up Google Drive Stream",
+              "On new user's computer, download and sign in to Google Drive Stream. Share from Drive: Tutorials, Location, Logos folders and add to My Drive. Share the SEAMLESS FLOORING folder related to their position.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("New User Terminal: Add calendar email notifications",
+              "On new user's computer, go to Calendar. Click each calendar notification email and accept/add each shared calendar.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Google Calendar: Change main view to Month",
+              "Change the default calendar view from Day to Month for better scheduling visibility.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Set up Chrome Bookmarks",
+              "Bookmark: Gmail, Calendar, Drive, SF Insight, SF Website, SAP Concur login, Paychex login, SF Help Desk.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Chrome Startup: Set to Use Current Pages",
+              "Go to Chrome Settings > On Startup > select 'Open a specific set of pages' then click 'Use Current Pages'.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Update Master Employee Spreadsheet",
+              "Add new employee's information to the company Master Employee Spreadsheet.",
+              "Google Account", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Hardware
+        templates.AddRange(new[]
+        {
+            T("Determine: New Computer or Transfer?",
+              "Confirm whether new user is receiving a brand new computer or a transferred computer from another employee.",
+              "Hardware", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Determine: New Phone or Transfer?",
+              "Confirm whether new user is receiving a brand new phone or a transferred phone from another employee.",
+              "Hardware", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("If Transfer — document transferee information",
+              "If transferring a computer or phone, document the transferee using abbreviated location and full name (ex. PHX John Smith).",
+              "Hardware", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Equipment Setup
+        templates.AddRange(new[]
+        {
+            T("Equipment Setup: Laptop and Charger",
+              "Set up and verify laptop and charger are working. Record serial number.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Cell Phone and Charger",
+              "Set up and verify cell phone and charger are working. Record serial number.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Cell Phone Protective Case",
+              "Provide and attach cell phone protective case to new employee's phone.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Tablet, Cover and Charger",
+              "Set up and verify tablet, protective cover, and charger are working. Record serial number.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Disto",
+              "Set up and verify Disto measuring device is working and assigned to new employee.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Mouse/Keyboard",
+              "Provide and set up wireless mouse and keyboard or standard mouse and keyboard.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Equipment Setup: Monitor(s)",
+              "Set up and configure monitor(s) for the new employee's workstation.",
+              "Equipment Setup", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Computer Setup
+        templates.AddRange(new[]
+        {
+            T("Transferred Computer: Upload backup files & clean drive",
+              "Verify backup files have been uploaded to G-Drive. Run Recovery (Clean Drive and Keep Files) or remove previous user from laptop accounts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Transferred Computer: Update TeamViewer name",
+              "Verify TeamViewer unattended access name has been changed to the name of the new user.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Computer: Windows Setup",
+              "Go through Windows Setup. Do not send information back to vendor. Select location finder. Sign in to local WiFi. Save files to computer (not OneDrive). Switch out of Windows 11 S mode.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Computer: Create local user account",
+              "Create new local user. Select 'Without a Microsoft Account'. Set username and password same as Welcome Letter. Make administrator. Delete previous user account.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Computer: Remove MS OneDrive and McAfee",
+              "Uninstall Microsoft OneDrive and McAfee from the computer.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Computer: Remove factory shortcuts from Desktop & Taskbar",
+              "Remove unnecessary factory shortcuts not associated with company from Desktop and Taskbar (MS Edge, App Store, News, Cortana, etc.). Adjust unnecessary Taskbar tools to Hidden.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Computer: Set up all printers",
+              "Install all needed printers. Refer to Printer Drivers in Google Drive for appropriate drivers.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Adobe Reader",
+              "Install Adobe Reader. IMPORTANT: Uncheck McAfee Offers during installation.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Microsoft Office 365",
+              "Sign in to activate Microsoft Office 365. Add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Remote Desktop Service",
+              "Install and configure Remote Desktop Service. In Program Settings, go to Local Resources Tab and save user info. Allow Open to Desktop. Add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Google Chrome",
+              "Install Google Chrome. Add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Google Drive for Desktop",
+              "Install Google Drive for Desktop. Add G-Drive shortcuts to Desktop as appropriate for the new user's position.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Snipping Tool",
+              "Install Snipping Tool and add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Sticky Notes",
+              "Install Sticky Notes and add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: Calculator",
+              "Install Calculator and add Desktop and Taskbar shortcuts.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Personalize computer with company backgrounds",
+              "Set company SF Backgrounds for Desktop background, Lock Screen, and Color theme.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Power Options: Set High Performance",
+              "Set Power Options to High Performance. Configure Plugged In settings to Never sleep and Never turn off display.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Install: TeamViewer — unattended access",
+              "Install TeamViewer and set up unattended access with company password. File location: Seamless IT > Software.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Yardi Matrix: Create user account",
+              "Create new Yardi Matrix user account. Provide new user with password and login link.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("(Optional) Printer/Scan Folder Setup",
+              "If required by position, configure printer scan-to-folder setup for the new user.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Update Windows and Drivers",
+              "Run Windows Update fully and update all hardware drivers to latest versions.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Add new computer to Asset Inventory List",
+              "Add the new computer with serial number, asset tag, and assigned user to the Asset Inventory tracking list.",
+              "Computer Setup", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Cell Phone Setup
+        templates.AddRange(new[]
+        {
+            T("Cell Phone: Sign in to Gmail",
+              "Sign in new user to Gmail app on company cell phone.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Gmail — Mobile Signature",
+              "Go to Gmail App > Settings > Mobile Signature. Copy signature from existing user at same location and comparable position. Paste and edit for new user.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Lock Screen & Wallpaper",
+              "Go to Google Drive, download Cell Phone Pic3. Set image as both Lock Screen and Wallpaper.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Install company apps via Play Store",
+              "Download and sign in to: SF Insight, Seamless Flooring app, Google Chat, Google Calendar (verify calendars show), Google Contacts (add seamlessflooring.org contacts for location and position), Instagram.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Configure Main Screen icons",
+              "Move icons to bottom location in one row. Order: Call/Phone, Gmail, Chat, Contacts, Messages.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Configure Second Screen icon positions",
+              "Top row: Play Store, Camera, Gallery, Visual Voicemail, Clock. 2nd row: G-Maps, Chrome, None, Instagram, Calculator. 5th row: SF Insight, SF Mobile, None, G-Calendar, G-Drive.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Add location contacts to Google Contacts",
+              "Go to Google Contacts (Blue Contact Icon). Search seamlessflooring.org users and Add To Contacts for each user at that Location including Owners, Upper Management, IT, Corporate Office (HR, AP, AR), and other appropriate contacts.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Cell Phone: Reset previous user settings to default",
+              "Remove previous user's voicemail settings and restore any other changed settings to factory default.",
+              "Cell Phone Setup", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Server & System Access
+        templates.AddRange(new[]
+        {
+            T("Server access: Create user account",
+              "Create user account on server using First Initial/Last Name format. Set password, configure Member Of groups, and set Sessions limits.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("CompUFloor: Create user account",
+              "Create CompUFloor user using First Initial/Last Name format. Set password, assign Warehouse/s access, and configure Permissions.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Insight: Create user account",
+              "Create Insight user using First Initial/Last Name matching CompUFloor username. Configure location access and Permissions.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Spectrum/WordPress: Add new employee to website",
+              "Add new employee to company website via WordPress/Spectrum. Use generic profile pic until official SF-attire photo is taken. Use local sports team logo for Fun Pic until real photo received. Leave Questionnaire blank for now.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Send website questionnaire & request photo",
+              "Send new employee the Website Questionnaire Form to fill in. Request fun photo from employee. Ask local Branch Manager to take official photo in SF attire.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("(If Sales) Add to CUF Salesman Master",
+              "IF NEW SALES PERSON: Go to CUF > Maintenance > Salesman Master > F3 (check) > New > Enter Salesman Number and Name (first and last). Check Flat Percent > SAVE.",
+              "Server & System Access", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Help Desk
+        templates.AddRange(new[]
+        {
+            T("Help Desk: Create account and activate",
+              "Add new user to Help Desk system (ServiceSphere) and activate their account with appropriate role and permissions.",
+              "Help Desk", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Help Desk: Send welcome email to new user",
+              "Send 'Welcome to Our New SF Help Desk' email from ITSupport email address using the itsupport Template Layout.",
+              "Help Desk", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Final Notifications & Wrap-Up
+        templates.AddRange(new[]
+        {
+            T("Send credentials email to new user and manager",
+              "Send User Important: Credentials Email to new employee. Include Manager and Trainer on the email.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Send company announcement email",
+              "Send new employee location-specific announcement email to all@[domain]. Use location-specific template.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Add to G-Drive Employee Directory",
+              "Add new employee to the G-Drive SF Employee Directory (Seamless Flooring Sales location). Update the Last Update Date. Share with new employee and notify them.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Schedule Fun Questions email for hire date",
+              "Schedule the Fun Questions introduction email to be sent on the employee's official hire date.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Arrange company photo in SF attire",
+              "Schedule photo of new employee in orange shirt for company website and business cards.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Replace website profile pic with actual photo",
+              "Once official SF-attire photo is received, replace the generic/sports team placeholder on the company website.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Create email signature design in Canva",
+              "Create email signature design in Canva (use no-photo template until official photo is taken).",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Create email profile photo",
+              "Create and set the new user's email profile photo.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Add hardware to Location IT Inventory Tracker",
+              "Record Laptop Name, Monitor information, and Mouse in the Location IT Inventory Tracker.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Configure Insight, CUF location access",
+              "Grant Insight and CUF location-appropriate access. If Sales position, create customer portal login.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Grant access to Training Videos",
+              "Provide access to Training Videos per Manager's request.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Update Verizon account",
+              "Update Verizon business account with new employee's device and line information.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Set up Favorite Contacts",
+              "Go to Google Contacts in browser and save key contacts as Favorites. If iPhone: open Mail app > Google > enable Contacts sync.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("(If Requested) Create Business Cards",
+              "Initiate business card order if requested by manager or new employee.",
+              "Final Steps", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // Section: Tablet & Phone (generic for any device)
+        templates.AddRange(new[]
+        {
+            T("Tablet: Full device setup",
+              "Complete tablet setup — sign in with company account, install required apps, configure settings per company standards for employee's position.",
+              "Tablet & Phone", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Phone: Set up voicemail",
+              "Configure voicemail on company phone with professional greeting following company standards.",
+              "Tablet & Phone", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Phone: Install Google Drive",
+              "Download and sign in to Google Drive app on company phone.",
+              "Tablet & Phone", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Phone: Install Google Chat",
+              "Download and sign in to Google Chat app on company phone.",
+              "Tablet & Phone", EmployeeTaskType.Onboarding, sort += 10),
+
+            T("Phone: Set up Google Contacts — location favorites",
+              "Download Google Contacts and save location-specific contacts as favorites.",
+              "Tablet & Phone", EmployeeTaskType.Onboarding, sort += 10),
+        });
+
+        // ─── OFFBOARDING ───────────────────────────────────────────────────────
+
+        sort = 0;
+
+        // Section: Pre-Departure Preparation
+        templates.AddRange(new[]
+        {
+            T("Notify IT of departure date",
+              "Confirm official last working day with HR. Schedule all offboarding tasks relative to that date. Alert IT team at least 1 week before if possible.",
+              "Pre-Departure", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Conduct exit interview",
+              "Schedule and complete exit interview with HR. Document feedback for process improvement.",
+              "Pre-Departure", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Document knowledge transfer",
+              "Ensure departing employee documents open projects, key contacts, ongoing work, and any institutional knowledge. Transfer to manager or successor.",
+              "Pre-Departure", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Identify data and files to transfer",
+              "Identify all business-critical files, email threads, documents, and Drive folders to be transferred to manager or team.",
+              "Pre-Departure", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: Google Account Offboarding
+        templates.AddRange(new[]
+        {
+            T("Google Workspace: Transfer Drive files to manager",
+              "Transfer Google Drive files to manager or designated successor. Ensure all business-critical documents are accessible.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Set up email auto-reply",
+              "Configure Out of Office auto-reply on the departing employee's Gmail indicating their last day and who to contact going forward.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Forward email to manager",
+              "Set up email forwarding to manager or designated contact. Determine duration (typically 30–90 days).",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Remove from all Groups",
+              "Remove departing employee from all Google Groups (All@, location groups, Concur group, and any other assigned groups).",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Remove from shared Calendars",
+              "Remove employee from all shared Location Calendars and company-wide calendars.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Remove from Chat Spaces",
+              "Remove employee from all Google Chat Spaces they are a member of.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Archive/export mailbox data",
+              "Export a copy of the employee's mailbox data if required for compliance or business continuity. Store in designated archive location.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Suspend user account",
+              "Suspend (not delete) the user account in Google Admin Console on last day of employment. Do not delete immediately — retain for minimum 30 days.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Google Workspace: Delete user account (30-day hold)",
+              "After 30-day data retention period, permanently delete user account from Google Admin Console.",
+              "Google Account", EmployeeTaskType.Offboarding, sort += 10, DueInDays: 30),
+        });
+
+        // Section: Hardware Return
+        templates.AddRange(new[]
+        {
+            T("Collect: Laptop and Charger",
+              "Retrieve company laptop and charger from departing employee. Verify using Asset Inventory list.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Collect: Cell Phone and Charger",
+              "Retrieve company cell phone and charger from departing employee.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Collect: Cell Phone Protective Case",
+              "Retrieve cell phone protective case from departing employee.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Collect: Tablet, Cover and Charger",
+              "Retrieve company tablet, protective cover, and charger from departing employee.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Collect: Disto and any other equipment",
+              "Retrieve Disto, mouse, keyboard, monitor cables, and any other company-issued equipment.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Collect: Keys, badges, access cards",
+              "Retrieve all physical keys, building access badges, and access cards from departing employee.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Employee signs Physical Asset Return Form",
+              "Have departing employee sign the Physical Asset Return Form from G-Drive (Seamless Flooring Office location). Document any missing items.",
+              "Hardware Return", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: Computer Offboarding
+        templates.AddRange(new[]
+        {
+            T("Computer: Upload all files to G-Drive",
+              "Ensure all local files are backed up to Google Drive before wiping the machine.",
+              "Computer Offboarding", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Computer: Remove employee user account",
+              "Remove or disable the departing employee's local Windows user account from the computer.",
+              "Computer Offboarding", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Computer: Remove from TeamViewer",
+              "Remove or rename the computer in TeamViewer. Revoke the employee's individual TeamViewer access if applicable.",
+              "Computer Offboarding", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Computer: Factory reset or reassign prep",
+              "If reassigning to new employee: run Recovery (Clean Drive and Keep Files). If retiring: factory reset and document disposal.",
+              "Computer Offboarding", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Update Asset Inventory — computer status",
+              "Update the Asset Inventory list to mark computer as Available, In Repair, or Reassigned. Document wipe/reset performed.",
+              "Computer Offboarding", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: System Access Removal
+        templates.AddRange(new[]
+        {
+            T("Server: Disable or remove user account",
+              "Disable the departing employee's server account (First Initial/Last Name). Remove from Member Of groups and terminate active sessions.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("CompUFloor: Disable user account",
+              "Disable or remove CompUFloor user account. Document warehouses and permissions that were assigned.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Insight/Spectrum: Disable user account",
+              "Disable Insight user account. Remove location access and permissions.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Yardi Matrix: Disable user account",
+              "Disable the departing employee's Yardi Matrix account and revoke login access.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Remote Desktop: Revoke access",
+              "Remove employee's Remote Desktop access permissions from all configured servers or workstations.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Microsoft Office 365: Deactivate license",
+              "Sign out all active Office 365 sessions. Reassign the license to another user or release it.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("(If Sales) Remove from CUF Salesman Master",
+              "IF SALES PERSON: Go to CUF > Maintenance > Salesman Master and deactivate or remove the salesman record. Close any open customer portal login.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("SAP Concur: Deactivate account",
+              "Deactivate departing employee's SAP Concur expense account. Ensure all outstanding expenses are submitted and approved.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Paychex: Process termination",
+              "Process termination in Paychex payroll system. Ensure final paycheck and any accrued PTO is processed per company policy.",
+              "System Access", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: Help Desk Offboarding
+        templates.AddRange(new[]
+        {
+            T("Help Desk: Archive or deactivate account",
+              "Archive or deactivate the employee's ServiceSphere Help Desk account. Reassign any open tickets to another agent.",
+              "Help Desk", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Help Desk: Reassign open tickets",
+              "Review all open tickets assigned to the departing employee. Reassign to appropriate agents or the manager.",
+              "Help Desk", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: Software Licenses
+        templates.AddRange(new[]
+        {
+            T("Review and reassign software licenses",
+              "Review all software licenses assigned to the departing employee. Reassign to other users or release unused licenses.",
+              "Licenses & Subscriptions", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Revoke VPN and remote access",
+              "Revoke all VPN credentials and remote access permissions for the departing employee.",
+              "Licenses & Subscriptions", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        // Section: Communications & Final Steps
+        templates.AddRange(new[]
+        {
+            T("Update Verizon account — remove or transfer line",
+              "Update company Verizon account. Transfer phone line to another employee or cancel per company policy.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Remove from company website",
+              "Remove departing employee's profile from the company website (Spectrum/WordPress staff directory).",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Remove from email distribution lists",
+              "Remove employee from all location and department-specific email distribution lists.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Notify clients/contacts of departure (if customer-facing)",
+              "If the employee had direct client relationships, notify key clients of the transition and introduce their new point of contact.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Update G-Drive Employee Directory",
+              "Remove or mark as inactive in the G-Drive SF Employee Directory. Update Last Update Date.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Cancel or redirect business cards (if applicable)",
+              "Cancel any pending business card orders. If cards were recently printed, retrieve and shred.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+
+            T("Final: Confirm all access has been revoked",
+              "Perform a final audit to confirm all system accounts, physical access, and software licenses have been deactivated or reassigned.",
+              "Final Steps", EmployeeTaskType.Offboarding, sort += 10),
+        });
+
+        context.EmployeeTaskTemplates.AddRange(templates);
+        context.SaveChanges();
+        Console.WriteLine($"[DbInitializer] Seeded {templates.Count} employee task templates.");
+    }
+
+    private static EmployeeTaskTemplate T(
+        string title,
+        string description,
+        string category,
+        EmployeeTaskType taskType,
+        int sortOrder,
+        int? DueInDays = null)
+        => new()
+        {
+            Title                = title,
+            Description          = description,
+            Category             = category,
+            TaskType             = taskType,
+            SortOrder            = sortOrder,
+            DueInDays            = DueInDays,
+            IsActive             = true,
+            CreatedDate          = DateTime.UtcNow,
+            UpdatedDate          = DateTime.UtcNow,
+        };
 
     private static void SeedRolesAndAdminUser(ServiceDeskDbContext context)
     {
