@@ -2,9 +2,41 @@
 @{
     ViewData["Title"] = "Account Settings";
 
-    var booleanKeys = new[] { "AutoAssign", "EmailNotifications", "PortalEnabled" };
+    var booleanKeys  = new[] { "AutoAssign", "EmailNotifications", "PortalEnabled" };
     var dropdownKeys = new[] { "DefaultAssigneeId" };
-    var employees = ViewBag.Employees as IEnumerable<Employee>;
+    var timezoneKeys = new[] { "Timezone" };
+    var employees    = ViewBag.Employees as IEnumerable<Employee>;
+
+    var commonTimezones = new (string Id, string Label)[]
+    {
+        ("UTC",                  "UTC — Coordinated Universal Time"),
+        ("America/New_York",     "Eastern Time — New York (UTC-5/4)"),
+        ("America/Chicago",      "Central Time — Chicago (UTC-6/5)"),
+        ("America/Denver",       "Mountain Time — Denver (UTC-7/6)"),
+        ("America/Phoenix",      "Mountain Time — Arizona, no DST (UTC-7)"),
+        ("America/Los_Angeles",  "Pacific Time — Los Angeles (UTC-8/7)"),
+        ("America/Anchorage",    "Alaska Time (UTC-9/8)"),
+        ("Pacific/Honolulu",     "Hawaii Time (UTC-10)"),
+        ("America/Puerto_Rico",  "Atlantic Time — Puerto Rico (UTC-4)"),
+        ("America/Sao_Paulo",    "Brazil — São Paulo (UTC-3)"),
+        ("Europe/London",        "London — GMT/BST"),
+        ("Europe/Paris",         "Paris / Brussels — CET/CEST"),
+        ("Europe/Berlin",        "Berlin / Vienna — CET/CEST"),
+        ("Europe/Madrid",        "Madrid — CET/CEST"),
+        ("Europe/Rome",          "Rome — CET/CEST"),
+        ("Europe/Moscow",        "Moscow — MSK (UTC+3)"),
+        ("Africa/Johannesburg",  "Johannesburg — SAST (UTC+2)"),
+        ("Asia/Dubai",           "Dubai — GST (UTC+4)"),
+        ("Asia/Kolkata",         "India Standard Time (UTC+5:30)"),
+        ("Asia/Bangkok",         "Bangkok / Jakarta (UTC+7)"),
+        ("Asia/Shanghai",        "Beijing / Shanghai (UTC+8)"),
+        ("Asia/Singapore",       "Singapore (UTC+8)"),
+        ("Asia/Tokyo",           "Tokyo — JST (UTC+9)"),
+        ("Australia/Perth",      "Perth — AWST (UTC+8)"),
+        ("Australia/Adelaide",   "Adelaide — ACST/ACDT"),
+        ("Australia/Sydney",     "Sydney — AEST/AEDT"),
+        ("Pacific/Auckland",     "Auckland — NZST/NZDT"),
+    };
 }
 
 <nav aria-label="breadcrumb">
@@ -71,6 +103,24 @@
                                             @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "Enabled" : "Disabled")
                                         </label>
                                     </div>
+                                }
+                                else if (timezoneKeys.Contains(setting.Key))
+                                {
+                                    <!-- Dropdown for Timezone — IANA IDs, avoids free-text typos -->
+                                    var currentTz = (setting.Value ?? "UTC").Replace(' ', '_');
+                                    <select name="@setting.Key" class="form-select" id="setting_@setting.Key" data-no-picker="true">
+                                        @foreach (var (tzId, tzLabel) in commonTimezones)
+                                        {
+                                            if (tzId.Equals(currentTz, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <option value="@tzId" selected>@tzLabel</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@tzId">@tzLabel</option>
+                                            }
+                                        }
+                                    </select>
                                 }
                                 else if (dropdownKeys.Contains(setting.Key) && employees != null)
                                 {

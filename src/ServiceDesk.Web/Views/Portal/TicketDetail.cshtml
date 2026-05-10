@@ -63,7 +63,7 @@
                         </div>
                         <h4 class="fw-bold mb-1">@ticket.Title</h4>
                         <div class="text-muted small">
-                            Submitted @ticket.CreatedDate.ToString("MMMM dd, yyyy 'at' h:mm tt")
+                            Submitted @ticket.CreatedDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMMM dd, yyyy 'at' h:mm tt")
                             @if (ticket.AssignedTo != null)
                             {
                                 <span>&nbsp;·&nbsp;Assigned to IT Team</span>
@@ -139,7 +139,7 @@
                                     {
                                         <span class="badge bg-success bg-opacity-10 text-success">You</span>
                                     }
-                                    <span class="text-muted small">@note.CreatedDate.ToString("MMM dd 'at' h:mm tt")</span>
+                                    <span class="text-muted small">@note.CreatedDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM dd 'at' h:mm tt")</span>
                                 </div>
                                 <div class="rounded p-3 d-inline-block text-start"
                                      style="background:@(isAgent ? "#f0f4ff" : "#f0fdf4");max-width:90%;">

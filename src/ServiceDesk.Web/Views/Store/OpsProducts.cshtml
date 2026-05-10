@@ -1,0 +1,134 @@
+@using ServiceDesk.Core.Models
+@model List<StoreProduct>
+@{
+    ViewData["Title"]      = "Store Products";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="OperationsHub">Operations Hub</a></li>
+        <li class="breadcrumb-item active">Products</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-box-seam text-primary me-2"></i>Store Products</h2>
+        <p class="text-muted small mt-1 mb-0">@Model.Count(p => p.IsActive) active product(s) in the catalog.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="OpsStoreSettings" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-gear me-1"></i>Store Settings
+        </a>
+        <a asp-action="OpsProductCreate" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle me-1"></i>Add Product
+        </a>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (!Model.Any())
+{
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="bi bi-box display-3 d-block mb-3 opacity-25"></i>
+            <p class="mb-2">No products yet.</p>
+            <a asp-action="OpsProductCreate" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-circle me-1"></i>Add your first product
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:60px;"></th>
+                        <th>Name</th>
+                        <th>Category</th>
+                        <th>Unit</th>
+                        <th>Sort</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Model)
+                    {
+                        <tr class="@(!p.IsActive ? "table-secondary opacity-75" : "")">
+                            <td>
+                                @if (!string.IsNullOrEmpty(p.ImagePath))
+                                {
+                                    <img src="@p.ImagePath" alt="@p.Name"
+                                         style="width:44px;height:44px;object-fit:cover;border-radius:6px;" />
+                                }
+                                else
+                                {
+                                    <div class="rounded d-flex align-items-center justify-content-center bg-light"
+                                         style="width:44px;height:44px;">
+                                        <i class="bi bi-box text-muted"></i>
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <div class="fw-semibold">@p.Name</div>
+                                @if (!string.IsNullOrEmpty(p.Description))
+                                {
+                                    <div class="text-muted small" style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                        @p.Description
+                                    </div>
+                                }
+                            </td>
+                            <td><span class="badge bg-light text-dark border">@(p.Category ?? "—")</span></td>
+                            <td class="text-muted small">@(p.UnitOfMeasure ?? "—")</td>
+                            <td class="text-muted small">@p.SortOrder</td>
+                            <td>
+                                @if (p.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a asp-action="OpsProductEdit" asp-route-id="@p.Id"
+                                   class="btn btn-sm btn-outline-primary me-1">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form asp-action="OpsProductDelete" asp-route-id="@p.Id"
+                                      method="post" class="d-inline"
+                                      onsubmit="return confirm('Remove product @Html.Raw(p.Name.Replace("'","\\'")??"")? If it has orders it will be deactivated instead of deleted.');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

@@ -18,6 +18,11 @@ public class EmployeesController : Controller
     private readonly IDataProtector _protector;
     private readonly GoogleWorkspaceService _googleWorkspace;
 
+    /// <summary>Initial password applied when a portal user is auto-provisioned for a new
+    /// employee. Surfaced to the admin in the success toast so they can share it with the user;
+    /// admins/users can change it from the password page after first login.</summary>
+    private const string DefaultPortalPassword = "Welcome!23";
+
     public EmployeesController(ServiceDeskDbContext context,
         IDataProtectionProvider dpProvider,
         GoogleWorkspaceService googleWorkspace)
@@ -62,6 +67,11 @@ public class EmployeesController : Controller
             .Select(e => e.Department!).Distinct().OrderBy(d => d).ToListAsync();
         ViewBag.Branches            = await _context.Branches
             .OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync();
+
+        // KPI tile counts (always unfiltered)
+        ViewBag.KpiTotal       = await _context.Employees.CountAsync();
+        ViewBag.KpiActive      = await _context.Employees.CountAsync(e => e.IsActive);
+        ViewBag.KpiContractors = await _context.Employees.CountAsync(e => e.IsContractor && e.IsActive);
 
         var employees = await query
             .Include(e => e.Branch)
@@ -275,10 +285,49 @@ public class EmployeesController : Controller
         {
             _context.Add(employee);
             await _context.SaveChangesAsync();
+
+            // Auto-provision a portal login so admins don't have to do it as a separate step.
+            // Skipped silently if a portal user with this email already exists.
+            var loginCreated = await TryAutoProvisionPortalUserAsync(employee);
+
+            TempData["Success"] = loginCreated
+                ? $"Employee created. Portal login also created with default password '{DefaultPortalPassword}'."
+                : "Employee created.";
+
             return RedirectToAction(nameof(Index));
         }
         ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
+    }
+
+    /// <summary>Create an "End User" portal login for an employee using the default password.
+    /// Returns true if a new login was created, false if one already existed for that email.</summary>
+    private async Task<bool> TryAutoProvisionPortalUserAsync(Employee employee)
+    {
+        if (string.IsNullOrWhiteSpace(employee.Email)) return false;
+
+        var emailLower = employee.Email.ToLower();
+        var alreadyExists = await _context.PortalUsers.AnyAsync(u => u.Email.ToLower() == emailLower);
+        if (alreadyExists) return false;
+
+        var endUserRoleId = await _context.Roles
+            .Where(r => r.Name == "End User")
+            .Select(r => (int?)r.Id)
+            .FirstOrDefaultAsync();
+
+        _context.PortalUsers.Add(new PortalUser
+        {
+            FirstName    = employee.FirstName,
+            LastName     = employee.LastName,
+            Email        = employee.Email,
+            PasswordHash = PasswordService.HashPassword(DefaultPortalPassword),
+            IsActive     = employee.IsActive,
+            RoleId       = endUserRoleId,
+            EmployeeId   = employee.Id,
+            CreatedDate  = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     public async Task<IActionResult> Edit(int? id)
@@ -317,6 +366,13 @@ public class EmployeesController : Controller
             existing.ManagerEmail = employee.ManagerEmail;
             existing.EmployeeType = employee.EmployeeType;
             existing.FloorSection = employee.FloorSection;
+
+            // Contractor settings — Admin-only inputs on the form
+            if (User.IsInRole("Admin"))
+            {
+                existing.IsContractor = employee.IsContractor;
+                existing.HourlyRate   = employee.HourlyRate;
+            }
 
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
@@ -425,7 +481,7 @@ public class EmployeesController : Controller
         var toImport = rows.Where(r => r.CanImport).ToList();
 
         int empCount = 0, userCount = 0;
-        const string defaultPassword = "Welcome@1";
+        var defaultPassword = DefaultPortalPassword;
 
         foreach (var row in toImport)
         {
@@ -467,6 +523,149 @@ public class EmployeesController : Controller
         TempData["Success"] = $"Import complete: {empCount} employee(s) added" +
             (userCount > 0 ? $", {userCount} login account(s) created (password: {defaultPassword})" : "") +
             (skipped > 0 ? $", {skipped} skipped." : ".");
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    // ── Google Workspace Import ───────────────────────────────────────────────
+
+    /// <summary>Pull the Google Workspace user directory and present a checkbox table
+    /// so the admin can pick which users to import as Employees.</summary>
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ImportFromGoogle()
+    {
+        var (success, users, error) = await _googleWorkspace.ListDomainUsersAsync();
+        if (!success)
+        {
+            TempData["Error"] = $"Could not load Google Workspace users: {error}";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Lower-cased lookups so the existence check is case-insensitive
+        var existingEmployeeEmails = await _context.Employees
+            .Select(e => e.Email.ToLower())
+            .ToHashSetAsync();
+        var existingPortalEmails = await _context.PortalUsers
+            .Select(u => u.Email.ToLower())
+            .ToHashSetAsync();
+
+        var rows = users
+            .OrderBy(u => u.Email)
+            .Select(u =>
+            {
+                var emailLower = u.Email.ToLower();
+                return new GoogleImportRow
+                {
+                    Email             = u.Email,
+                    FirstName         = u.FirstName,
+                    LastName          = u.LastName,
+                    FullName          = u.FullName,
+                    JobTitle          = u.JobTitle,
+                    Department        = u.Department,
+                    Phone             = u.Phone,
+                    OrgUnit           = u.OrgUnit,
+                    Suspended         = u.Suspended,
+                    AlreadyExists      = existingEmployeeEmails.Contains(emailLower),
+                    LoginAlreadyExists = existingPortalEmails.Contains(emailLower),
+                };
+            })
+            .ToList();
+
+        ViewBag.DefaultPassword = DefaultPortalPassword;
+        return View(rows);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportFromGoogleConfirm(string[] selectedEmails)
+    {
+        if (selectedEmails == null || selectedEmails.Length == 0)
+        {
+            TempData["Warning"] = "No users were selected to import.";
+            return RedirectToAction(nameof(ImportFromGoogle));
+        }
+
+        // Pull a fresh directory snapshot so we have authoritative field values for the
+        // selected emails (don't trust hidden form values).
+        var (success, users, error) = await _googleWorkspace.ListDomainUsersAsync();
+        if (!success)
+        {
+            TempData["Error"] = $"Could not refresh Google Workspace users: {error}";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var selectedSet = new HashSet<string>(selectedEmails.Select(e => e.ToLower()), StringComparer.OrdinalIgnoreCase);
+
+        var existingEmployeeEmails = await _context.Employees
+            .Select(e => e.Email.ToLower())
+            .ToHashSetAsync();
+
+        var endUserRoleId = await _context.Roles
+            .Where(r => r.Name == "End User")
+            .Select(r => (int?)r.Id)
+            .FirstOrDefaultAsync();
+
+        int empCount  = 0;
+        int userCount = 0;
+        int skipped   = 0;
+
+        foreach (var u in users)
+        {
+            if (!selectedSet.Contains(u.Email.ToLower())) continue;
+            if (existingEmployeeEmails.Contains(u.Email.ToLower()))
+            {
+                skipped++;
+                continue;
+            }
+
+            // Sensible fallbacks — Google profiles can be sparse
+            var firstName = string.IsNullOrWhiteSpace(u.FirstName)
+                ? (string.IsNullOrWhiteSpace(u.FullName) ? u.Email.Split('@')[0] : u.FullName.Split(' ')[0])
+                : u.FirstName;
+            var lastName = string.IsNullOrWhiteSpace(u.LastName)
+                ? (u.FullName?.Contains(' ') == true ? u.FullName[(u.FullName.IndexOf(' ') + 1)..] : "")
+                : u.LastName;
+
+            var emp = new Employee
+            {
+                FirstName  = firstName,
+                LastName   = lastName,
+                Email      = u.Email,
+                Phone      = u.Phone,
+                Department = string.IsNullOrWhiteSpace(u.Department) ? "General" : u.Department,
+                JobTitle   = u.JobTitle,
+                IsActive   = !u.Suspended,
+                HireDate   = DateTime.UtcNow,
+            };
+            _context.Employees.Add(emp);
+            await _context.SaveChangesAsync(); // get emp.Id before creating login
+            empCount++;
+
+            // Auto-provision portal login (skips silently if email already taken)
+            var emailLower    = emp.Email.ToLower();
+            var loginExists   = await _context.PortalUsers.AnyAsync(p => p.Email.ToLower() == emailLower);
+            if (!loginExists)
+            {
+                _context.PortalUsers.Add(new PortalUser
+                {
+                    FirstName    = emp.FirstName,
+                    LastName     = emp.LastName,
+                    Email        = emp.Email,
+                    PasswordHash = PasswordService.HashPassword(DefaultPortalPassword),
+                    IsActive     = emp.IsActive,
+                    RoleId       = endUserRoleId,
+                    EmployeeId   = emp.Id,
+                    CreatedDate  = DateTime.UtcNow,
+                });
+                await _context.SaveChangesAsync();
+                userCount++;
+            }
+        }
+
+        TempData["Success"] = $"Imported {empCount} employee(s) from Google Workspace" +
+            (userCount > 0 ? $", {userCount} portal login(s) created (password: {DefaultPortalPassword})" : "") +
+            (skipped > 0 ? $", {skipped} skipped (already existed)." : ".");
 
         return RedirectToAction(nameof(Index));
     }
@@ -678,7 +877,7 @@ public class EmployeesController : Controller
                 } : (object)new { error = vacErr },
 
                 groups = grpOk
-                    ? grps.Select(g => new { g.Email, g.Name, g.MemberCount }).ToList()
+                    ? grps.Select(g => new { email = g.Email, name = g.Name, memberCount = g.MemberCount }).ToList()
                     : (object)new { error = grpErr }
             });
         }
@@ -758,7 +957,7 @@ public class EmployeesController : Controller
         var (ok, groups, err) = await _googleWorkspace.GetDomainGroupsAsync();
         if (!ok) return Json(new { success = false, error = err });
         return Json(new { success = true,
-            groups = groups.Select(g => new { g.Email, g.Name, g.MemberCount }) });
+            groups = groups.Select(g => new { email = g.Email, name = g.Name, memberCount = g.MemberCount }) });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -777,6 +976,93 @@ public class EmployeesController : Controller
         if (employee == null) return NotFound();
         var (ok, err) = await _googleWorkspace.RemoveFromGroupAsync(groupEmail, employee.Email);
         return Json(new { success = ok, message = ok ? $"Removed from {groupEmail}." : err });
+    }
+
+    // ── Email Aliases ─────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetAliases(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, error = "Employee has no email address." });
+        var (ok, aliases, err) = await _googleWorkspace.GetUserAliasesAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true, aliases });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddAlias(int id, string alias)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(alias))
+            return Json(new { success = false, message = "Alias cannot be empty." });
+        var (ok, err) = await _googleWorkspace.AddAliasAsync(employee.Email, alias.Trim().ToLower());
+        return Json(new { success = ok, message = ok ? $"Alias {alias} added." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveAlias(int id, string alias)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveAliasAsync(employee.Email, alias);
+        return Json(new { success = ok, message = ok ? $"Alias {alias} removed." : err });
+    }
+
+    // ── Org Unit Browser ──────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetOrgUnits()
+    {
+        var (ok, units, err) = await _googleWorkspace.GetOrgUnitsAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            units = units.Select(u => new { u.Name, u.OrgUnitPath, u.ParentOrgUnitPath }) });
+    }
+
+    // ── Chat Spaces ───────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public async Task<IActionResult> GetUserSpaces(int id)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(employee.Email))
+            return Json(new { success = false, error = "Employee has no email address." });
+        var (ok, spaces, err) = await _googleWorkspace.GetUserSpacesAsync(employee.Email);
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            spaces = spaces.Select(s => new { s.Name, s.DisplayName, s.SpaceType, s.MemberCount }) });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDomainSpaces()
+    {
+        var (ok, spaces, err) = await _googleWorkspace.ListDomainSpacesAsync();
+        if (!ok) return Json(new { success = false, error = err });
+        return Json(new { success = true,
+            spaces = spaces.Select(s => new { s.Name, s.DisplayName, s.SpaceType, s.MemberCount }) });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddToSpace(int id, string spaceName)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.AddToSpaceAsync(spaceName, employee.Email);
+        return Json(new { success = ok, message = ok ? "Added to space." : err });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveFromSpace(int id, string spaceName)
+    {
+        var employee = await _context.Employees.FindAsync(id);
+        if (employee == null) return NotFound();
+        var (ok, err) = await _googleWorkspace.RemoveFromSpaceAsync(spaceName, employee.Email);
+        return Json(new { success = ok, message = ok ? "Removed from space." : err });
     }
 
     // ── Onboarding ────────────────────────────────────────────────────────────
@@ -808,6 +1094,7 @@ public class EmployeesController : Controller
     public async Task<IActionResult> RunOffboarding(int id,
         bool suspend         = true,
         bool removeGroups    = true,
+        bool removeSpaces    = false,
         bool setOoo          = true,
         string? oooSubject   = null,
         string? oooBody      = null,
@@ -854,7 +1141,16 @@ public class EmployeesController : Controller
                 message = grpOk ? $"Removed from {removed} group(s)." : "Groups API unavailable." });
         }
 
-        // 4. OOO Responder
+        // 4. Remove from all Chat Spaces
+        if (removeSpaces)
+        {
+            var (ok, count, spErr) = await _googleWorkspace.RemoveFromAllSpacesAsync(email);
+            steps.Add(new { step = "Remove from Chat Spaces", ok,
+                message = ok ? $"Removed from {count} space(s)." : (spErr ?? "Spaces step failed.") });
+            if (!ok) anyFail = true;
+        }
+
+        // 5. OOO Responder
         if (setOoo)
         {
             var vac = new GoogleWorkspaceService.VacationResponder(

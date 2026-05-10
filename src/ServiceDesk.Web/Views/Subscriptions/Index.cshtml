@@ -2,168 +2,261 @@
 @{
     ViewData["Title"] = "Subscriptions";
     var selStatuses = (SubscriptionStatus[])(ViewBag.SelectedStatuses ?? Array.Empty<SubscriptionStatus>());
+    var kpiTotal       = (int)(ViewBag.KpiTotal       ?? 0);
+    var kpiActive      = (int)(ViewBag.KpiActive      ?? 0);
+    var kpiExpiring    = (int)(ViewBag.KpiExpiring    ?? 0);
+    var kpiExpired     = (int)(ViewBag.KpiExpired     ?? 0);
+    var kpiMonthlyCost = (decimal)(ViewBag.KpiMonthlyCost ?? 0m);
 
     string FilterLabel(string singular, string plural, int count) =>
         count == 0 ? $"All {plural}" : count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }
 
+@section Styles {
+<style>
+    :root {
+        --sub-navy:   #1a3a5c;
+        --sub-blue:   #0d6efd;
+        --sub-green:  #198754;
+        --sub-amber:  #f59e0b;
+        --sub-red:    #ef4444;
+        --sub-muted:  #6c757d;
+        --sub-border: #dee2e6;
+    }
+    .sub-kpi-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px; }
+    .sub-kpi { background:#fff; border:1px solid var(--sub-border); border-radius:8px; padding:16px 18px;
+               box-shadow:0 2px 8px rgba(0,0,0,.05); position:relative; overflow:hidden;
+               transition:transform .15s,box-shadow .15s; }
+    .sub-kpi:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.09); }
+    .sub-kpi-bar { position:absolute;top:0;left:0;right:0;height:4px;border-radius:8px 8px 0 0; }
+    .sub-kpi-label { font-size:.66rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+                     color:var(--sub-muted);margin:4px 0 6px; }
+    .sub-kpi-value { font-size:1.7rem;font-weight:700;line-height:1;color:var(--sub-navy); }
+
+    .sub-card { background:#fff;border:1px solid var(--sub-border);border-radius:8px;
+                box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden;margin-bottom:18px; }
+    .sub-card-accent { height:5px;background:linear-gradient(90deg,var(--sub-navy),var(--sub-blue)); }
+    .sub-card-body { padding:14px 18px; }
+
+    .sub-table { width:100%;border-collapse:collapse;font-size:.875rem; }
+    .sub-table thead tr { background:var(--sub-navy) !important; }
+    .sub-table thead th,
+    table.sub-table.dataTable thead th,
+    table.sub-table.dataTable thead td { padding:10px 14px;font-size:.7rem;font-weight:700;
+                          letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;
+                          color:#fff !important;background:var(--sub-navy) !important;
+                          border-bottom:none !important; }
+    .sub-table tbody tr { border-bottom:1px solid #f0f0f0; }
+    .sub-table tbody tr:nth-child(even) { background:#f8f9fb; }
+    .sub-table tbody tr:hover { background:#eef4ff; }
+    .sub-table tbody td { padding:10px 14px;color:#212529;vertical-align:middle; }
+
+    .sp { display:inline-block;padding:2px 10px;border-radius:50px;font-size:.7rem;
+          font-weight:700;letter-spacing:.04em;white-space:nowrap; }
+    .sp-active     { background:#d1e7dd;color:#0a5c36;border:1px solid #a3cfbb; }
+    .sp-expiring   { background:#fff3cd;color:#856404;border:1px solid #ffc107; }
+    .sp-pending    { background:#cfe2ff;color:#084298;border:1px solid #9ec5fe; }
+    .sp-expired    { background:#f8d7da;color:#842029;border:1px solid #f1aeb5; }
+    .sp-cancelled  { background:#e9ecef;color:#495057; }
+
+    @@media(max-width:1199px) { .sub-kpi-grid { grid-template-columns:repeat(3,1fr); } }
+    @@media(max-width:767px)  { .sub-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+    @@media(max-width:479px)  { .sub-kpi-grid { grid-template-columns:1fr; } }
+</style>
+}
+
+@* ── Header ──────────────────────────────────────────────────────────────── *@
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1><i class="bi bi-credit-card"></i> Subscriptions</h1>
-    <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-lg"></i> New Subscription
-    </a>
+    <div>
+        <h1 class="mb-0" style="font-size:1.4rem;font-weight:700;color:var(--sub-navy);">
+            <i class="bi bi-credit-card me-2" style="color:var(--sub-blue);"></i>Subscriptions
+        </h1>
+        <p class="text-muted mb-0" style="font-size:.85rem;">@Model.Count() subscription@(Model.Count() == 1 ? "" : "s") shown</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Create" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>New Subscription
+        </a>
+    </div>
 </div>
 
-<!-- Filters -->
-<div class="filter-bar">
-    <div class="d-flex flex-wrap gap-2 align-items-end">
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
 
-        <!-- Status -->
-        <div>
-            <div class="form-label small mb-1">Status</div>
-            <div class="dropdown">
-                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
-                        data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                    @FilterLabel("Status", "Statuses", selStatuses.Length)
-                </button>
-                <div class="dropdown-menu p-2 shadow" style="min-width:180px;">
-                    @foreach (var s in Enum.GetValues<SubscriptionStatus>())
-                    {
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="statuses"
-                                   value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
-                            <label class="form-check-label small" for="fs_@s">@s</label>
-                        </div>
-                    }
-                    <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+@* ── KPI tiles ────────────────────────────────────────────────────────────── *@
+<div class="sub-kpi-grid">
+    <div class="sub-kpi">
+        <div class="sub-kpi-bar" style="background:var(--sub-navy);"></div>
+        <div class="sub-kpi-label">Total</div>
+        <div class="sub-kpi-value">@kpiTotal</div>
+        <div style="font-size:.78rem;color:var(--sub-muted);margin-top:3px;">all subscriptions</div>
+    </div>
+    <div class="sub-kpi">
+        <div class="sub-kpi-bar" style="background:var(--sub-green);"></div>
+        <div class="sub-kpi-label">Active</div>
+        <div class="sub-kpi-value" style="color:var(--sub-green);">@kpiActive</div>
+        <div style="font-size:.78rem;color:var(--sub-green);margin-top:3px;">currently in use</div>
+    </div>
+    <div class="sub-kpi">
+        <div class="sub-kpi-bar" style="background:var(--sub-amber);"></div>
+        <div class="sub-kpi-label">Expiring</div>
+        <div class="sub-kpi-value" style="color:@(kpiExpiring > 0 ? "var(--sub-amber)" : "var(--sub-navy)");">@kpiExpiring</div>
+        <div style="font-size:.78rem;color:var(--sub-amber);margin-top:3px;">renew soon</div>
+    </div>
+    <div class="sub-kpi">
+        <div class="sub-kpi-bar" style="background:var(--sub-red);"></div>
+        <div class="sub-kpi-label">Expired</div>
+        <div class="sub-kpi-value" style="color:@(kpiExpired > 0 ? "var(--sub-red)" : "var(--sub-navy)");">@kpiExpired</div>
+        <div style="font-size:.78rem;color:var(--sub-red);margin-top:3px;">action needed</div>
+    </div>
+    <div class="sub-kpi">
+        <div class="sub-kpi-bar" style="background:var(--sub-blue);"></div>
+        <div class="sub-kpi-label">Monthly Cost</div>
+        <div class="sub-kpi-value" style="color:var(--sub-blue);font-size:1.4rem;">@kpiMonthlyCost.ToString("C0")</div>
+        <div style="font-size:.78rem;color:var(--sub-muted);margin-top:3px;">active only</div>
+    </div>
+</div>
+
+@* ── Filters ─────────────────────────────────────────────────────────────── *@
+<div class="sub-card">
+    <div class="sub-card-accent"></div>
+    <div class="sub-card-body">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+            <div>
+                <div class="form-label small mb-1">Status</div>
+                <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle @(selStatuses.Length > 0 ? "active" : "")"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        @FilterLabel("Status", "Statuses", selStatuses.Length)
+                    </button>
+                    <div class="dropdown-menu p-2 shadow" style="min-width:180px;">
+                        @foreach (var s in Enum.GetValues<SubscriptionStatus>())
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="statuses"
+                                       value="@s" id="fs_@s" @(selStatuses.Contains(s) ? "checked" : "")>
+                                <label class="form-check-label small" for="fs_@s">@s</label>
+                            </div>
+                        }
+                        <hr class="my-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <div class="align-self-end">
+                <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i>Clear Filters
+                </a>
+            </div>
+            <div class="align-self-end ms-auto">
+                <div class="input-group input-group-sm" style="max-width:280px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" id="subscriptionKeywordSearch" class="form-control" placeholder="Search subscriptions..."
+                           value="@((string?)ViewBag.CurrentQuery ?? "")"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
+                    <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
                 </div>
             </div>
         </div>
-
-        <div class="align-self-end">
-            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-x-circle me-1"></i>Clear Filters
-            </a>
-        </div>
-
-        <div class="align-self-end ms-auto">
-            <div class="input-group input-group-sm">
-                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" id="subscriptionKeywordSearch" class="form-control" placeholder="Search subscriptions..."
-                       value="@((string?)ViewBag.CurrentQuery ?? "")"
-                       onkeydown="if(event.key==='Enter'){event.preventDefault();applyFilters();}">
-                <button type="button" class="btn btn-outline-primary" onclick="applyFilters()">Search</button>
-            </div>
-        </div>
     </div>
 </div>
 
-@section Scripts {
-<script>
-document.addEventListener('click', function (e) {
-    const opt = e.target.closest('.single-filter-option');
-    if (!opt) return;
-    e.preventDefault();
-    const input = document.getElementById(opt.dataset.inputId);
-    const btn = document.getElementById(opt.dataset.buttonId);
-    if (!input || !btn) return;
-    input.value = opt.dataset.value ?? '';
-    btn.textContent = opt.dataset.label ?? '';
-    btn.classList.toggle('active', input.value !== '');
-    opt.closest('.dropdown-menu')?.querySelectorAll('.single-filter-option').forEach(x => x.classList.remove('active'));
-    opt.classList.add('active');
-});
-</script>
-}
-
-<div class="table-responsive">
-    <table class="table table-striped table-hover ss-datatable" data-export-title="Subscriptions Report">
-        <thead class="table-dark">
-            <tr>
-                <th>Name</th>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>License Count</th>
-                <th>Licenses Used</th>
-                <th>Monthly Cost</th>
-                <th>Renewal Date</th>
-                <th class="no-sort no-export">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var sub in Model)
-            {
-                var badgeClass = sub.Status switch
-                {
-                    SubscriptionStatus.Active => "bg-success",
-                    SubscriptionStatus.Expiring => "bg-warning text-dark",
-                    SubscriptionStatus.Expired => "bg-danger",
-                    SubscriptionStatus.Cancelled => "bg-secondary",
-                    SubscriptionStatus.PendingRenewal => "bg-info text-dark",
-                    _ => "bg-secondary"
-                };
-
-                var usagePercent = (sub.LicenseCount.HasValue && sub.LicenseCount.Value > 0)
-                    ? (int)Math.Round((double)(sub.LicensesUsed ?? 0) / sub.LicenseCount.Value * 100)
-                    : 0;
-
-                var progressClass = usagePercent switch
-                {
-                    >= 90 => "bg-danger",
-                    >= 75 => "bg-warning",
-                    _ => "bg-success"
-                };
-
-                <tr>
-                    <td>
-                        <a asp-action="Details" asp-route-id="@sub.Id">@sub.Name</a>
-                    </td>
-                    <td>@sub.Provider</td>
-                    <td><span class="badge @badgeClass">@sub.Status</span></td>
-                    <td>@(sub.LicenseCount?.ToString() ?? "N/A")</td>
-                    <td>
-                        @if (sub.LicenseCount.HasValue && sub.LicenseCount.Value > 0)
-                        {
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="progress flex-grow-1" style="height: 20px; min-width: 80px;">
-                                    <div class="progress-bar @progressClass" role="progressbar"
-                                         style="width: @(usagePercent)%"
-                                         aria-valuenow="@usagePercent" aria-valuemin="0" aria-valuemax="100">
-                                        @(sub.LicensesUsed ?? 0) / @sub.LicenseCount
-                                    </div>
-                                </div>
-                                <small class="text-muted">@(usagePercent)%</small>
-                            </div>
-                        }
-                        else
-                        {
-                            <span class="text-muted">N/A</span>
-                        }
-                    </td>
-                    <td>@sub.MonthlyCost.ToString("C")</td>
-                    <td>@(sub.RenewalDate?.ToString("MMM dd, yyyy") ?? "N/A")</td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@sub.Id" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <a asp-action="Delete" asp-route-id="@sub.Id" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
+@* ── Table ───────────────────────────────────────────────────────────────── *@
 @if (!Model.Any())
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-credit-card display-1"></i>
-        <p class="mt-3">No subscriptions found matching the current filters.</p>
+    <div class="sub-card">
+        <div class="sub-card-body text-center text-muted py-5">
+            <i class="bi bi-credit-card fs-1 opacity-25 d-block mb-3"></i>
+            <p class="mb-3">No subscriptions found matching the current filters.</p>
+            <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Subscription</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="sub-card">
+        <div class="table-responsive">
+            <table class="sub-table ss-datatable" data-export-title="Subscriptions Report">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Licenses Used</th>
+                        <th class="text-end">Monthly Cost</th>
+                        <th>Renewal Date</th>
+                        <th class="no-sort no-export">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sub in Model)
+                    {
+                        var pillClass = sub.Status switch
+                        {
+                            SubscriptionStatus.Active         => "sp-active",
+                            SubscriptionStatus.Expiring       => "sp-expiring",
+                            SubscriptionStatus.Expired        => "sp-expired",
+                            SubscriptionStatus.Cancelled      => "sp-cancelled",
+                            SubscriptionStatus.PendingRenewal => "sp-pending",
+                            _                                 => "sp-cancelled"
+                        };
+
+                        var usagePercent = (sub.LicenseCount.HasValue && sub.LicenseCount.Value > 0)
+                            ? (int)Math.Round((double)(sub.LicensesUsed ?? 0) / sub.LicenseCount.Value * 100)
+                            : 0;
+                        var progressClass = usagePercent >= 90 ? "bg-danger" : usagePercent >= 75 ? "bg-warning" : "bg-success";
+
+                        <tr>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@sub.Id" class="fw-semibold text-decoration-none" style="color:var(--sub-navy);">@sub.Name</a>
+                            </td>
+                            <td class="text-muted">@sub.Provider</td>
+                            <td><span class="sp @pillClass">@sub.Status</span></td>
+                            <td>
+                                @if (sub.LicenseCount.HasValue && sub.LicenseCount.Value > 0)
+                                {
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress flex-grow-1" style="height: 16px; min-width: 80px;">
+                                            <div class="progress-bar @progressClass" role="progressbar"
+                                                 style="width: @(usagePercent)%"
+                                                 aria-valuenow="@usagePercent" aria-valuemin="0" aria-valuemax="100">
+                                                @(sub.LicensesUsed ?? 0) / @sub.LicenseCount
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">@(usagePercent)%</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end">@sub.MonthlyCost.ToString("C")</td>
+                            <td>@(sub.RenewalDate?.ToString("MMM dd, yyyy") ?? "—")</td>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@sub.Id" class="btn btn-sm btn-outline-primary" title="Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a asp-action="Edit" asp-route-id="@sub.Id" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a asp-action="Delete" asp-route-id="@sub.Id" class="btn btn-sm btn-outline-danger" title="Delete">
+                                    <i class="bi bi-trash"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 
+@section Scripts {
 <script>
 function applyFilters() {
     const params = new URLSearchParams();
@@ -173,3 +266,4 @@ function applyFilters() {
     window.location.href = '@Url.Action("Index", "Subscriptions")?' + params.toString();
 }
 </script>
+}

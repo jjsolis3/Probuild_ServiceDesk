@@ -1,0 +1,161 @@
+@using ServiceDesk.Core.Models
+@model List<AppSetting>
+@{
+    ViewData["Title"]      = "Store Settings";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+
+    string Val(string key, string def = "") =>
+        Model.FirstOrDefault(s => s.Key == key)?.Value ?? def;
+
+    bool storeEnabled = Val("StoreEnabled").Equals("true", StringComparison.OrdinalIgnoreCase);
+    var openDate  = Val("StoreOpenDate");
+    var closeDate = Val("StoreCloseDate");
+    var welcome   = Val("StoreWelcomeMessage");
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="OperationsHub">Operations Hub</a></li>
+        <li class="breadcrumb-item active">Store Settings</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-shop text-primary me-2"></i>Quarterly Store Settings</h2>
+        <p class="text-muted small mt-1 mb-0">
+            Control when the store is open and manage the product catalog.
+        </p>
+    </div>
+    <a asp-action="OpsProducts" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-box-seam me-1"></i>Manage Products
+    </a>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form method="post" asp-action="OpsStoreSettings" asp-controller="Store" asp-antiforgery="true" class="pb-4">
+    <div class="row g-4 align-items-start">
+        <div class="col-lg-7">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-toggle-on me-2"></i>Store Window</h5>
+                </div>
+                <div class="card-body">
+
+                    <div class="mb-3 d-flex align-items-center gap-3">
+                        <input type="hidden" name="StoreEnabled" value="false" />
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="StoreEnabled" name="StoreEnabled" value="true"
+                                   @(storeEnabled ? "checked" : "") />
+                            <label class="form-check-label fw-semibold" for="StoreEnabled">Store Enabled</label>
+                        </div>
+                        <span class="badge @(storeEnabled ? "bg-success" : "bg-secondary")">
+                            @(storeEnabled ? "Open" : "Closed")
+                        </span>
+                    </div>
+                    <p class="text-muted small">
+                        When disabled, the store link is hidden from all users regardless of the date window.
+                        Use this to immediately close the store at any time.
+                    </p>
+
+                    <hr />
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="StoreOpenDate">
+                                <i class="bi bi-calendar-check me-1"></i>Open Date &amp; Time (UTC)
+                            </label>
+                            <input type="datetime-local" class="form-control" id="StoreOpenDate"
+                                   name="StoreOpenDate" value="@openDate" />
+                            <div class="form-text">Store becomes accessible from this moment.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="StoreCloseDate">
+                                <i class="bi bi-calendar-x me-1"></i>Close Date &amp; Time (UTC)
+                            </label>
+                            <input type="datetime-local" class="form-control" id="StoreCloseDate"
+                                   name="StoreCloseDate" value="@closeDate" />
+                            <div class="form-text">Store closes and ordering is locked after this moment.</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label fw-semibold" for="StoreWelcomeMessage">Welcome Message</label>
+                        <textarea class="form-control" id="StoreWelcomeMessage" name="StoreWelcomeMessage"
+                                  rows="2" maxlength="500">@welcome</textarea>
+                        <div class="form-text">Shown to users at the top of the store catalog.</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-floppy me-1"></i>Save Store Settings
+                </button>
+                <a asp-action="OperationsHub" class="btn btn-outline-secondary ms-2">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Hub
+                </a>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1 text-primary"></i>How It Works</h6>
+                    <ul class="small text-muted mb-0 ps-3">
+                        <li class="mb-2">Set the open and close dates for the current quarter's ordering window.</li>
+                        <li class="mb-2">Only users who have been granted store access can see the Store link in the portal.</li>
+                        <li class="mb-2">Access-list users can view their order history at any time, but can only place new orders while the store is open.</li>
+                        <li class="mb-2">Manage the product catalog via <a asp-action="OpsProducts">Products</a>.</li>
+                        <li>Export all orders using the <strong>Export CSV</strong> button on the Operations Hub.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card mt-3 shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="fw-bold mb-2 small">
+                        <i class="bi bi-clock-history me-1 text-primary"></i>Current Status
+                    </h6>
+                    @if (storeEnabled)
+                    {
+                        var now = DateTime.UtcNow;
+                        if (!string.IsNullOrEmpty(openDate) && DateTime.TryParse(openDate, out var od) && now < od)
+                        {
+                            <p class="small text-warning mb-0"><i class="bi bi-hourglass-split me-1"></i>Opens <strong>@od.ToString("MMM d, yyyy 'at' h:mm tt") UTC</strong></p>
+                        }
+                        else if (!string.IsNullOrEmpty(closeDate) && DateTime.TryParse(closeDate, out var cd) && now > cd)
+                        {
+                            <p class="small text-danger mb-0"><i class="bi bi-lock me-1"></i>Window closed <strong>@cd.ToString("MMM d, yyyy")</strong></p>
+                        }
+                        else
+                        {
+                            <p class="small text-success mb-0"><i class="bi bi-check-circle-fill me-1"></i>Store is <strong>open</strong> and accepting orders.</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-0"><i class="bi bi-toggle-off me-1"></i>Store is <strong>disabled</strong> — not visible to any user.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</form>

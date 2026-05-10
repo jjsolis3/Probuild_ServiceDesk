@@ -11,6 +11,10 @@ using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -2116,5 +2120,651 @@ public class SettingsController : Controller
 
         TempData["Success"] = $"CSAT surveys {(csatEnabled ? "enabled" : "disabled")}.";
         return RedirectToAction(nameof(Csat));
+    }
+
+    // ==================== QUARTERLY STORE ====================
+
+    // GET: Settings/StoreSettings
+    public async Task<IActionResult> StoreSettings()
+    {
+        var settings = await _context.AppSettings
+            .Where(s => s.Category == "Store")
+            .ToListAsync();
+        return View(settings);
+    }
+
+    // POST: Settings/StoreSettings
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreSettings(IFormCollection form)
+    {
+        var keys = new[] { "StoreEnabled", "StoreOpenDate", "StoreCloseDate", "StoreWelcomeMessage" };
+        var settings = await _context.AppSettings
+            .Where(s => keys.Contains(s.Key))
+            .ToListAsync();
+
+        foreach (var setting in settings)
+        {
+            if (!form.ContainsKey(setting.Key)) continue;
+
+            // Checkbox + hidden pattern submits both values (e.g. "false,true" when checked).
+            // Take the last value — that's the actual checkbox state.
+            setting.Value = form[setting.Key].LastOrDefault() ?? string.Empty;
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Store settings saved.";
+        return RedirectToAction(nameof(StoreSettings));
+    }
+
+    // GET: Settings/StoreProducts
+    public async Task<IActionResult> StoreProducts()
+    {
+        var products = await _context.StoreProducts
+            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
+            .ToListAsync();
+        return View(products);
+    }
+
+    // GET: Settings/StoreProductCreate
+    public async Task<IActionResult> StoreProductCreate()
+    {
+        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        return View(new ServiceDesk.Core.Models.StoreProduct());
+    }
+
+    // POST: Settings/StoreProductCreate
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductCreate(
+        ServiceDesk.Core.Models.StoreProduct product,
+        IFormFile? imageFile,
+        List<IFormFile>? galleryFiles,
+        List<string>? galleryTags)
+    {
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            return View(product);
+        }
+
+        // Normalize new fields
+        if (!product.HasPrice) product.Price = null;
+        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
+            ? null
+            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        product.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
+
+        product.ImagePath = await SaveStoreImageAsync(imageFile, null);
+        product.CreatedDate = DateTime.UtcNow;
+        _context.StoreProducts.Add(product);
+        await _context.SaveChangesAsync();
+
+        if (galleryFiles != null && galleryFiles.Count > 0)
+        {
+            var sort = 100;
+            for (var i = 0; i < galleryFiles.Count; i++)
+            {
+                var path = await SaveStoreImageAsync(galleryFiles[i], null);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var tag = galleryTags != null && i < galleryTags.Count
+                        ? galleryTags[i]?.Trim() : null;
+                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
+                    {
+                        StoreProductId = product.Id,
+                        ImagePath      = path,
+                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
+                        SortOrder      = sort,
+                        CreatedDate    = DateTime.UtcNow
+                    });
+                    sort += 10;
+                }
+            }
+            await _context.SaveChangesAsync();
+        }
+
+        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
+    // GET: Settings/StoreProductEdit/{id}
+    public async Task<IActionResult> StoreProductEdit(int id)
+    {
+        var product = await _context.StoreProducts
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        if (product == null) return NotFound();
+        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        return View(product);
+    }
+
+    // POST: Settings/StoreProductEdit/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductEdit(int id,
+        ServiceDesk.Core.Models.StoreProduct product,
+        IFormFile? imageFile,
+        List<IFormFile>? galleryFiles,
+        List<string>? galleryTags,
+        Dictionary<int, string>? imageTags,
+        Dictionary<int, string>? imageAlts,
+        Dictionary<int, int>? imageOrders,
+        bool clearImage = false)
+    {
+        if (id != product.Id) return BadRequest();
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            return View(product);
+        }
+
+        var existing = await _context.StoreProducts
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        if (existing == null) return NotFound();
+
+        existing.Name             = product.Name;
+        existing.Description      = product.Description;
+        existing.Category         = product.Category;
+        existing.UnitOfMeasure    = product.UnitOfMeasure;
+        existing.IsActive         = product.IsActive;
+        existing.SortOrder        = product.SortOrder;
+        existing.HasSizes         = product.HasSizes;
+        existing.HasGenderOption  = product.HasGenderOption;
+        existing.HasColorOptions  = product.HasColorOptions;
+        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes) ? null : product.AvailableSizes.Trim();
+        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors) ? null : product.AvailableColors.Trim();
+
+        // New flexibility fields
+        existing.HasPrice          = product.HasPrice;
+        existing.Price             = product.HasPrice ? product.Price : null;
+        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
+        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
+            ? null
+            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        existing.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
+
+        if (clearImage)
+        {
+            DeleteStoreImage(existing.ImagePath);
+            existing.ImagePath = null;
+        }
+        else
+        {
+            existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
+        }
+
+        // Update tag / alt text / sort order on existing gallery images
+        foreach (var img in existing.Images)
+        {
+            if (imageTags != null && imageTags.TryGetValue(img.Id, out var tag))
+                img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+
+            if (imageAlts != null && imageAlts.TryGetValue(img.Id, out var alt))
+                img.Alt = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
+
+            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var order))
+                img.SortOrder = Math.Clamp(order, 0, 9999);
+        }
+
+        if (galleryFiles != null && galleryFiles.Count > 0)
+        {
+            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
+            for (var i = 0; i < galleryFiles.Count; i++)
+            {
+                var path = await SaveStoreImageAsync(galleryFiles[i], null);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var tag = galleryTags != null && i < galleryTags.Count
+                        ? galleryTags[i]?.Trim() : null;
+                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
+                    {
+                        StoreProductId = existing.Id,
+                        ImagePath      = path,
+                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
+                        SortOrder      = sort,
+                        CreatedDate    = DateTime.UtcNow
+                    });
+                    sort += 10;
+                }
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id = existing.Id });
+    }
+
+    // POST: Settings/StoreProductImageDelete
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductImageDelete(int imageId)
+    {
+        var img = await _context.StoreProductImages.FindAsync(imageId);
+        if (img == null) return NotFound();
+
+        DeleteStoreImage(img.ImagePath);
+        var productId = img.StoreProductId;
+        _context.StoreProductImages.Remove(img);
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Image removed.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id = productId });
+    }
+
+    // POST: Settings/StoreProductDelete/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductDelete(int id)
+    {
+        var product = await _context.StoreProducts.FindAsync(id);
+        if (product == null) return NotFound();
+
+        // Only deactivate if the product has been ordered; hard-delete if it has not
+        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
+        if (hasOrders)
+        {
+            product.IsActive = false;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
+        }
+        else
+        {
+            DeleteStoreImage(product.ImagePath);
+            _context.StoreProducts.Remove(product);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
+        }
+
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
+    // GET: Settings/StoreAccess
+    public async Task<IActionResult> StoreAccess()
+    {
+        var accessList = await _context.StoreAccessList
+            .Include(a => a.PortalUser)
+            .Include(a => a.GrantedBy)
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.PortalUser.LastName)
+            .ToListAsync();
+
+        var allUsers = await _context.PortalUsers
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.LastName)
+            .ToListAsync();
+
+        ViewBag.AllUsers    = allUsers;
+        ViewBag.AccessList  = accessList;
+        return View();
+    }
+
+    // POST: Settings/StoreAccessGrant
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreAccessGrant(int portalUserId)
+    {
+        var adminIdClaim = User.FindFirst("UserId")?.Value;
+        int.TryParse(adminIdClaim, out var adminId);
+
+        var already = await _context.StoreAccessList
+            .FirstOrDefaultAsync(a => a.PortalUserId == portalUserId && a.IsActive);
+
+        if (already != null)
+        {
+            TempData["Error"] = "That user already has store access.";
+            return RedirectToAction(nameof(StoreAccess));
+        }
+
+        _context.StoreAccessList.Add(new ServiceDesk.Core.Models.StoreAccessList
+        {
+            PortalUserId          = portalUserId,
+            GrantedByPortalUserId = adminId > 0 ? adminId : null,
+            GrantedDate           = DateTime.UtcNow,
+            IsActive              = true
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Store access granted.";
+        return RedirectToAction(nameof(StoreAccess));
+    }
+
+    // POST: Settings/StoreAccessRevoke/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreAccessRevoke(int id)
+    {
+        var entry = await _context.StoreAccessList.FindAsync(id);
+        if (entry == null) return NotFound();
+
+        entry.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Store access revoked.";
+        return RedirectToAction(nameof(StoreAccess));
+    }
+
+    // GET: Settings/StoreOperationsAccess
+    public async Task<IActionResult> StoreOperationsAccess()
+    {
+        var accessList = await _context.StoreOperationsAccess
+            .Include(a => a.PortalUser)
+            .Include(a => a.GrantedBy)
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.PortalUser.LastName)
+            .ToListAsync();
+
+        var accessedIds = accessList.Select(a => a.PortalUserId).ToHashSet();
+
+        var allUsers = await _context.PortalUsers
+            .Where(u => u.IsActive && !accessedIds.Contains(u.Id))
+            .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
+            .ToListAsync();
+
+        ViewBag.AccessList = accessList;
+        ViewBag.AllUsers   = allUsers;
+        return View();
+    }
+
+    // POST: Settings/StoreOperationsAccessGrant
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreOperationsAccessGrant(int portalUserId)
+    {
+        var adminIdClaim = User.FindFirst("UserId")?.Value;
+        int.TryParse(adminIdClaim, out var adminId);
+
+        var already = await _context.StoreOperationsAccess
+            .FirstOrDefaultAsync(a => a.PortalUserId == portalUserId && a.IsActive);
+
+        if (already != null)
+        {
+            TempData["Error"] = "That user already has Operations Hub access.";
+            return RedirectToAction(nameof(StoreOperationsAccess));
+        }
+
+        _context.StoreOperationsAccess.Add(new ServiceDesk.Core.Models.StoreOperationsAccess
+        {
+            PortalUserId          = portalUserId,
+            GrantedByPortalUserId = adminId > 0 ? adminId : null,
+            GrantedDate           = DateTime.UtcNow,
+            IsActive              = true
+        });
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Operations Hub access granted.";
+        return RedirectToAction(nameof(StoreOperationsAccess));
+    }
+
+    // POST: Settings/StoreOperationsAccessRevoke/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreOperationsAccessRevoke(int id)
+    {
+        var entry = await _context.StoreOperationsAccess.FindAsync(id);
+        if (entry == null) return NotFound();
+
+        entry.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = "Operations Hub access revoked.";
+        return RedirectToAction(nameof(StoreOperationsAccess));
+    }
+
+    // ── Store image helpers ───────────────────────────────────────────────────
+
+    private const int StoreImageMaxPx = 800;
+
+    private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)
+    {
+        if (file == null || file.Length == 0) return existing;
+
+        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowed.Contains(ext)) return existing;
+
+        var dir = Path.Combine(_env.WebRootPath, "images", "store");
+        Directory.CreateDirectory(dir);
+
+        // Always save as .jpg for resized output (except .png → keep as .png to preserve transparency)
+        var saveExt = ext == ".png" ? ".png" : ".jpg";
+        var fileName = $"{Guid.NewGuid()}{saveExt}";
+        var path = Path.Combine(dir, fileName);
+
+        try
+        {
+            using var img = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
+            if (img.Width > StoreImageMaxPx || img.Height > StoreImageMaxPx)
+            {
+                img.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+                {
+                    Size = new SixLabors.ImageSharp.Size(StoreImageMaxPx, StoreImageMaxPx),
+                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max
+                }));
+            }
+
+            if (saveExt == ".png")
+                await img.SaveAsPngAsync(path);
+            else
+                await img.SaveAsJpegAsync(path, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
+        }
+        catch
+        {
+            // Fallback: save original if ImageSharp fails
+            using var stream = new FileStream(path, FileMode.Create);
+            await file.CopyToAsync(stream);
+        }
+
+        if (!string.IsNullOrEmpty(existing))
+            DeleteStoreImage(existing);
+
+        return $"/images/store/{fileName}";
+    }
+
+    private void DeleteStoreImage(string? relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath)) return;
+        var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
+        if (System.IO.File.Exists(full))
+            System.IO.File.Delete(full);
+    }
+
+    private async Task<List<string>> GetExistingCategoriesAsync()
+    {
+        return await _context.StoreProducts
+            .Where(p => p.Category != null && p.Category != "")
+            .Select(p => p.Category!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync();
+    }
+
+    // Validates the JSON payload from the Custom Options builder. Returns null
+    // for empty or malformed input so the DB stays clean.
+    private static string? NormalizeCustomOptionsJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+            var keep = new List<object>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var label = el.TryGetProperty("label", out var l) ? l.GetString() : null;
+                var values = el.TryGetProperty("values", out var v) ? v.GetString() : null;
+                var required = el.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
+                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(values)) continue;
+                keep.Add(new { label = label!.Trim(), values = values!.Trim(), required });
+            }
+            return keep.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(keep);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // ── Automation Workflow Rules ─────────────────────────────────────────────
+
+    // GET: Settings/Workflows
+    public async Task<IActionResult> Workflows()
+    {
+        var rules = await _context.WorkflowRules
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
+        ViewData["Title"] = "Automation Workflows";
+        return View(rules);
+    }
+
+    // POST: Settings/ToggleWorkflow
+    [HttpPost]
+    public async Task<IActionResult> ToggleWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        rule.IsActive = !rule.IsActive;
+        await _context.SaveChangesAsync();
+        return Ok(new { active = rule.IsActive });
+    }
+
+    // POST: Settings/DeleteWorkflow
+    [HttpPost]
+    public async Task<IActionResult> DeleteWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        _context.WorkflowRules.Remove(rule);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Workflow rule '{rule.Name}' deleted.";
+        return RedirectToAction(nameof(Workflows));
+    }
+
+    // GET: Settings/CreateWorkflow
+    public async Task<IActionResult> CreateWorkflow()
+    {
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Create Automation Rule";
+        return View(new WorkflowRule { SortOrder = 100, IsActive = true });
+    }
+
+    // POST: Settings/CreateWorkflow
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateWorkflow(WorkflowRule rule,
+        string[] conditionField, string[] conditionOp, string[] conditionValue,
+        string[] actionType, string[] actionValue, string[] actionLabel)
+    {
+        rule.ConditionsJson = BuildConditionsJson(conditionField, conditionOp, conditionValue);
+        rule.ActionsJson    = BuildActionsJson(actionType, actionValue, actionLabel);
+        rule.CreatedDate    = DateTime.UtcNow;
+        ModelState.Remove("ConditionsJson");
+        ModelState.Remove("ActionsJson");
+
+        if (ModelState.IsValid)
+        {
+            _context.WorkflowRules.Add(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Workflow rule '{rule.Name}' created.";
+            return RedirectToAction(nameof(Workflows));
+        }
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Create Automation Rule";
+        return View(rule);
+    }
+
+    // GET: Settings/EditWorkflow/5
+    public async Task<IActionResult> EditWorkflow(int id)
+    {
+        var rule = await _context.WorkflowRules.FindAsync(id);
+        if (rule == null) return NotFound();
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Edit Automation Rule";
+        return View(rule);
+    }
+
+    // POST: Settings/EditWorkflow/5
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditWorkflow(int id, WorkflowRule rule,
+        string[] conditionField, string[] conditionOp, string[] conditionValue,
+        string[] actionType, string[] actionValue, string[] actionLabel)
+    {
+        if (id != rule.Id) return BadRequest();
+
+        rule.ConditionsJson = BuildConditionsJson(conditionField, conditionOp, conditionValue);
+        rule.ActionsJson    = BuildActionsJson(actionType, actionValue, actionLabel);
+        ModelState.Remove("ConditionsJson");
+        ModelState.Remove("ActionsJson");
+
+        if (ModelState.IsValid)
+        {
+            _context.Update(rule);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Workflow rule '{rule.Name}' updated.";
+            return RedirectToAction(nameof(Workflows));
+        }
+        await LoadWorkflowViewBag();
+        ViewData["Title"] = "Edit Automation Rule";
+        return View(rule);
+    }
+
+    private static string BuildConditionsJson(string[] fields, string[] ops, string[] values)
+    {
+        var conditions = new List<object>();
+        for (int i = 0; i < fields.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(fields[i]))
+                conditions.Add(new { Field = fields[i], Operator = ops.ElementAtOrDefault(i) ?? "equals", Value = values.ElementAtOrDefault(i) ?? "" });
+        }
+        return System.Text.Json.JsonSerializer.Serialize(conditions);
+    }
+
+    private static string BuildActionsJson(string[] types, string[] values, string[] labels)
+    {
+        var actions = new List<object>();
+        for (int i = 0; i < types.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(types[i]))
+                actions.Add(new { Type = types[i], Value = values.ElementAtOrDefault(i) ?? "", Label = labels.ElementAtOrDefault(i) ?? "" });
+        }
+        return System.Text.Json.JsonSerializer.Serialize(actions);
+    }
+
+    private async Task LoadWorkflowViewBag()
+    {
+        var agents     = await _context.Employees.Where(e => e.IsActive).OrderBy(e => e.FirstName).ToListAsync();
+        var branches   = await _context.Branches.OrderBy(b => b.Name).ToListAsync();
+        var categories = await _context.TicketCategories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.Agents     = agents;
+        ViewBag.Branches   = branches;
+        ViewBag.Categories = categories;
+    }
+
+    // ── Email Activity Log ────────────────────────────────────────────────────
+
+    // GET: Settings/EmailActivity
+    public async Task<IActionResult> EmailActivity(string? type, string? recipient, bool? success, int page = 1)
+    {
+        const int pageSize = 50;
+
+        var query = _context.NotificationLogs.AsQueryable();
+
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(n => n.NotificationType == type);
+        if (!string.IsNullOrEmpty(recipient))
+            query = query.Where(n => n.RecipientEmail.Contains(recipient));
+        if (success.HasValue)
+            query = query.Where(n => n.Success == success.Value);
+
+        var total   = await query.CountAsync();
+        var entries = await query
+            .OrderByDescending(n => n.SentDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(n => n.Ticket)
+            .ToListAsync();
+
+        ViewBag.FilterType      = type;
+        ViewBag.FilterRecipient = recipient;
+        ViewBag.FilterSuccess   = success;
+        ViewBag.Page            = page;
+        ViewBag.PageSize        = pageSize;
+        ViewBag.TotalCount      = total;
+        ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
+        ViewBag.NotificationTypes = new[] { "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded", "PasswordReset" };
+        ViewData["Title"]       = "Email Activity Log";
+        return View(entries);
     }
 }

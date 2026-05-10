@@ -76,6 +76,9 @@ builder.Services.AddSingleton<TicketSimilarityService>();
 // Register SLA breach-risk calculator (singleton — caches resolution baselines)
 builder.Services.AddSingleton<SlaRiskService>();
 
+// Register automation workflow engine (singleton — stateless, uses IServiceScopeFactory for DB)
+builder.Services.AddSingleton<WorkflowEngineService>();
+
 // Register scheduled offboarding service (checks hourly, auto-offboards employees whose date has arrived)
 builder.Services.AddHostedService<ScheduledOffboardingService>();
 

@@ -145,6 +145,20 @@ public class GmailApiService : BackgroundService
         var inReplyTo = GetHeader(headers, "In-Reply-To");
         var references = GetHeader(headers, "References");
 
+        // ---- GUARDRAIL 0: Age gate — skip emails older than 72 hours ----
+        // Prevents a reset historyId or a flooded inbox from creating tickets from
+        // weeks-old messages. internalDate is ms since Unix epoch; 0 means unknown.
+        if (fullMessage.InternalDate > 0)
+        {
+            var emailAge = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(fullMessage.InternalDate);
+            if (emailAge.TotalHours > 72)
+            {
+                _logger.LogInformation("Skipping old email ({Age:0}h): {Subject}", emailAge.TotalHours, subject);
+                UpdateHistoryId(config, fullMessage.HistoryId);
+                return;
+            }
+        }
+
         // Parse sender email and name
         var (fromEmail, fromName) = ParseEmailAddress(from);
 
@@ -586,11 +600,15 @@ public class GmailApiService : BackgroundService
 
     /// <summary>
     /// Fetches unread messages from the inbox (initial sync or fallback).
+    /// Scoped to the last 48 hours so a stale historyId never causes a flood of old messages.
     /// </summary>
     private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, CancellationToken ct)
     {
         var messages = new List<GmailMessage>();
-        var url = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox&maxResults=50";
+        // "after:" uses Unix epoch seconds — limit to 48 h so a reset historyId never
+        // re-processes weeks of old inbox messages and fires notifications for them all.
+        var after = DateTimeOffset.UtcNow.AddHours(-48).ToUnixTimeSeconds();
+        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=50";
         var response = await httpClient.GetAsync(url, ct);
 
         if (!response.IsSuccessStatusCode) return messages;
@@ -665,7 +683,7 @@ public class GmailApiService : BackgroundService
 
         msgBuilder.AppendLine($"From: ServiceSphere IT Support <{config.EmailAddress}>");
         msgBuilder.AppendLine($"To: {toEmail}");
-        msgBuilder.AppendLine($"Subject: {subject}");
+        msgBuilder.AppendLine($"Subject: {EncodeMailHeaderValue(subject)}");
         msgBuilder.AppendLine($"Message-ID: {ourMessageId}");
 
         // Threading headers
@@ -799,6 +817,19 @@ public class GmailApiService : BackgroundService
     #endregion
 
     #region Parsing Helpers
+
+    /// <summary>
+    /// Encodes a mail header value using RFC 2047 base64 encoding when it contains
+    /// non-ASCII characters (e.g. em dashes, accented letters, emoji).
+    /// Pure-ASCII values are returned unchanged.
+    /// </summary>
+    private static string EncodeMailHeaderValue(string value)
+    {
+        if (value.All(c => c < 128))
+            return value;
+        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+        return $"=?utf-8?B?{encoded}?=";
+    }
 
     private static string GetHeader(List<GmailHeader> headers, string name)
     {
@@ -956,6 +987,8 @@ public class GmailApiService : BackgroundService
         public string Id { get; set; } = "";
         public string? ThreadId { get; set; }
         public string? HistoryId { get; set; }
+        // Unix epoch in milliseconds — returned by the Gmail API as "internalDate"
+        public long InternalDate { get; set; }
         public GmailMessagePart? Payload { get; set; }
     }
 

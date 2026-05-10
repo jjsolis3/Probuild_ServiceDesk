@@ -1,0 +1,401 @@
+@using ServiceDesk.Core.Models
+@model StoreProduct
+@{
+    ViewData["Title"]      = "Edit Product";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+    var existingCategories = ViewBag.ExistingCategories as List<string> ?? new List<string>();
+    var galleryImages = Model.Images?.OrderBy(i => i.SortOrder).ThenBy(i => i.Id).ToList() ?? new List<StoreProductImage>();
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="OperationsHub">Operations Hub</a></li>
+        <li class="breadcrumb-item"><a asp-action="OpsProducts">Products</a></li>
+        <li class="breadcrumb-item active">@Model.Name</li>
+    </ol>
+</nav>
+
+<h2 class="fw-bold mb-4"><i class="bi bi-pencil text-primary me-2"></i>Edit Product</h2>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="post" asp-action="OpsProductEdit" asp-route-id="@Model.Id"
+                      asp-controller="Store" asp-antiforgery="true" enctype="multipart/form-data">
+                    <input type="hidden" asp-for="Id" />
+                    @Html.ValidationSummary(true, "", new { @class = "text-danger small" })
+
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label fw-semibold"></label>
+                        <input asp-for="Name" class="form-control" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Category" class="form-label fw-semibold"></label>
+                            <input asp-for="Category" class="form-control" list="categoryList" autocomplete="off" />
+                            <datalist id="categoryList">
+                                @foreach (var c in existingCategories)
+                                {
+                                    <option value="@c"></option>
+                                }
+                            </datalist>
+                            <div class="form-text">Pick from existing or type a new one.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="UnitOfMeasure" class="form-label fw-semibold"></label>
+                            <input asp-for="UnitOfMeasure" class="form-control" />
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Tags" class="form-label fw-semibold"></label>
+                            <input asp-for="Tags" class="form-control" placeholder="featured, new, clearance" />
+                            <div class="form-text">Comma-separated. Shown as small badges on the catalog card.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="MaxQtyPerOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="MaxQtyPerOrder" type="number" class="form-control" min="1"
+                                   placeholder="No limit" />
+                            <div class="form-text">Optional cap on quantity per order line.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label fw-semibold"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="SortOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="SortOrder" type="number" class="form-control" min="0" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Active</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" asp-for="IsActive" />
+                                <label class="form-check-label" asp-for="IsActive">Visible in catalog</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pricing -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-currency-dollar me-2 text-primary"></i>Pricing</h6>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" asp-for="HasPrice"
+                                       id="HasPrice" onchange="togglePriceField()" />
+                                <label class="form-check-label fw-semibold" asp-for="HasPrice">Charge a price for this product</label>
+                                <div class="form-text">Leave off if items are free-issue (no employee cost).</div>
+                            </div>
+                            <div id="priceField" class="@(Model.HasPrice ? "" : "d-none")" style="max-width:240px;">
+                                <label asp-for="Price" class="form-label fw-semibold"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input asp-for="Price" type="number" step="0.01" min="0"
+                                           class="form-control" placeholder="0.00" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Variant Options -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2 text-primary"></i>Variant Options</h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasGenderOption"
+                                               id="HasGenderOption" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasGenderOption">Gender Selector</label>
+                                    </div>
+                                    <div class="form-text">Men's / Women's / Unisex.</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasSizes"
+                                               id="HasSizes" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasSizes">Size Selector</label>
+                                    </div>
+                                    <div class="form-text">Size buttons.</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" asp-for="HasColorOptions"
+                                               id="HasColorOptions" onchange="toggleVariantFields()" />
+                                        <label class="form-check-label fw-semibold" asp-for="HasColorOptions">Color Selector</label>
+                                    </div>
+                                    <div class="form-text">Color swatches.</div>
+                                </div>
+                            </div>
+                            <div id="sizeField" class="mt-3 @(Model.HasSizes ? "" : "d-none")">
+                                <label asp-for="AvailableSizes" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableSizes" class="form-control" placeholder="XS,S,M,L,XL,XXL,3XL" />
+                                <div class="form-text">Comma-separated list of sizes.</div>
+                            </div>
+                            <div id="colorField" class="mt-3 @(Model.HasColorOptions ? "" : "d-none")">
+                                <label asp-for="AvailableColors" class="form-label fw-semibold"></label>
+                                <input asp-for="AvailableColors" class="form-control" placeholder="Black,White,Navy,Gray,Red" />
+                                <div class="form-text">Comma-separated list of color names.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Options Builder -->
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-2"><i class="bi bi-list-check me-2 text-primary"></i>Custom Options</h6>
+                            <p class="small text-muted mb-3">
+                                Add any extra selectable options shoppers must (or may) choose — works for any product type.
+                                Examples: <em>Imprint Color</em>, <em>Material</em>, <em>Logo Placement</em>, <em>Pack Size</em>.
+                            </p>
+                            <input type="hidden" asp-for="CustomOptionsJson" id="CustomOptionsJson" />
+                            <div id="customOptionsList" class="d-flex flex-column gap-2"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addCustomOptionRow()">
+                                <i class="bi bi-plus-lg me-1"></i>Add Option
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Product Image -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Main Product Image</label>
+                        @if (!string.IsNullOrEmpty(Model.ImagePath))
+                        {
+                            <div class="mb-2 d-flex align-items-center gap-3">
+                                <img src="@Model.ImagePath" alt="Current image"
+                                     style="height:80px;width:80px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" />
+                                <div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="clearImage" name="clearImage" value="true" />
+                                        <label class="form-check-label text-danger small" for="clearImage">Remove main image</label>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        <input type="file" class="form-control" name="imageFile"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" />
+                        <div class="form-text">Upload a new image to replace the main one.</div>
+                    </div>
+
+                    <!-- Gallery Images -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Gallery Images</label>
+
+                        @if (galleryImages.Any())
+                        {
+                            <div class="form-text mb-2">
+                                Set a <strong>Variant Tag</strong> on each image (e.g. <em>Red</em>, <em>Navy</em>, <em>Men's</em>)
+                                so it only appears in the store when that variant is selected.
+                                Leave blank to show for all variants.
+                            </div>
+                            <div id="galleryMetaList" class="d-flex flex-column gap-2 mb-3">
+                                @foreach (var img in galleryImages)
+                                {
+                                    <div class="d-flex align-items-start gap-3 p-2 border rounded gallery-meta-row"
+                                         style="background:#f9f9f9;"
+                                         data-img-id="@img.Id"
+                                         data-img-tag="@(img.VariantTag ?? "")"
+                                         data-img-alt="@(img.Alt ?? "")"
+                                         data-img-sort="@img.SortOrder">
+                                        <img src="@img.ImagePath" alt="Gallery image"
+                                             style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
+                                        <div class="flex-grow-1">
+                                            <div class="row g-2">
+                                                <div class="col-md-5">
+                                                    <input type="text" class="form-control form-control-sm img-tag-input"
+                                                           placeholder="Variant tag (e.g. Red)"
+                                                           maxlength="100"
+                                                           value="@(img.VariantTag ?? "")"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <input type="text" class="form-control form-control-sm img-alt-input"
+                                                           placeholder="Alt text / caption"
+                                                           maxlength="200"
+                                                           value="@(img.Alt ?? "")"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Alt text</small>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <input type="number" class="form-control form-control-sm img-sort-input"
+                                                           min="0" max="9999"
+                                                           value="@img.SortOrder"
+                                                           oninput="serializeGalleryMeta()" />
+                                                    <small class="text-muted" style="font-size:.7rem;">Sort</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-sm flex-shrink-0"
+                                                title="Delete image"
+                                                onclick="deleteGalleryImage(@img.Id, @Model.Id, this)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <!-- Hidden field carries all gallery metadata as JSON -->
+                        <input type="hidden" name="galleryMetaJson" id="galleryMetaJson" value="" />
+
+                        <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
+                               accept=".jpg,.jpeg,.png,.webp,.gif" multiple
+                               onchange="buildGalleryTagRows(this)" />
+                        <div class="form-text">
+                            Select additional images to add. After selecting, optionally tag each with a variant value.
+                        </div>
+                        <div id="galleryTagRows" class="mt-2 d-flex flex-column gap-2"></div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-floppy me-1"></i>Save Changes
+                        </button>
+                        <a asp-action="OpsProducts" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function toggleVariantFields() {
+    var hasSizes  = document.getElementById('HasSizes').checked;
+    var hasColors = document.getElementById('HasColorOptions').checked;
+    document.getElementById('sizeField').classList.toggle('d-none', !hasSizes);
+    document.getElementById('colorField').classList.toggle('d-none', !hasColors);
+}
+
+function togglePriceField() {
+    var on = document.getElementById('HasPrice').checked;
+    document.getElementById('priceField').classList.toggle('d-none', !on);
+}
+
+function addCustomOptionRow(label, values, required) {
+    var list = document.getElementById('customOptionsList');
+    var row = document.createElement('div');
+    row.className = 'custom-option-row border rounded p-2 bg-white';
+    row.innerHTML =
+        '<div class="row g-2 align-items-center">' +
+        '  <div class="col-md-3"><input type="text" class="form-control form-control-sm opt-label" ' +
+        '         placeholder="Label (e.g. Imprint Color)" maxlength="60" /></div>' +
+        '  <div class="col-md-6"><input type="text" class="form-control form-control-sm opt-values" ' +
+        '         placeholder="Comma-separated values (Red, Blue, Black)" maxlength="500" /></div>' +
+        '  <div class="col-md-2"><div class="form-check"><input type="checkbox" class="form-check-input opt-required" /> ' +
+        '         <label class="form-check-label small">Required</label></div></div>' +
+        '  <div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger" ' +
+        '         onclick="this.closest(\'.custom-option-row\').remove(); serializeCustomOptions();">' +
+        '         <i class="bi bi-trash"></i></button></div>' +
+        '</div>';
+    list.appendChild(row);
+    if (label)    row.querySelector('.opt-label').value    = label;
+    if (values)   row.querySelector('.opt-values').value   = values;
+    if (required) row.querySelector('.opt-required').checked = true;
+    row.querySelectorAll('input').forEach(function(i) {
+        i.addEventListener('input',  serializeCustomOptions);
+        i.addEventListener('change', serializeCustomOptions);
+    });
+    serializeCustomOptions();
+}
+
+function serializeCustomOptions() {
+    var rows = document.querySelectorAll('#customOptionsList .custom-option-row');
+    var arr = [];
+    rows.forEach(function(r) {
+        var label  = (r.querySelector('.opt-label').value  || '').trim();
+        var values = (r.querySelector('.opt-values').value || '').trim();
+        var req    = r.querySelector('.opt-required').checked;
+        if (label && values) arr.push({ label: label, values: values, required: req });
+    });
+    document.getElementById('CustomOptionsJson').value = arr.length ? JSON.stringify(arr) : '';
+}
+
+(function () {
+    var existing = document.getElementById('CustomOptionsJson');
+    if (!existing || !existing.value) return;
+    try {
+        var arr = JSON.parse(existing.value);
+        if (Array.isArray(arr)) arr.forEach(function(o) {
+            addCustomOptionRow(o.label || '', o.values || '', !!o.required);
+        });
+    } catch (e) { }
+})();
+
+// Gallery metadata — serialise all existing gallery rows to JSON on every change.
+function serializeGalleryMeta() {
+    var rows = document.querySelectorAll('#galleryMetaList .gallery-meta-row');
+    var arr = [];
+    rows.forEach(function(r) {
+        arr.push({
+            Id:   parseInt(r.dataset.imgId, 10),
+            Tag:  r.querySelector('.img-tag-input').value  || '',
+            Alt:  r.querySelector('.img-alt-input').value  || '',
+            Sort: parseInt(r.querySelector('.img-sort-input').value, 10) || 0
+        });
+    });
+    document.getElementById('galleryMetaJson').value = arr.length ? JSON.stringify(arr) : '';
+}
+
+// Initialise metadata JSON from current state.
+(function() { serializeGalleryMeta(); })();
+
+// Delete a gallery image via fetch so we stay on the same page.
+function deleteGalleryImage(imageId, productId, btn) {
+    if (!confirm('Delete this gallery image?')) return;
+    btn.disabled = true;
+
+    var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    var fd = new FormData();
+    fd.append('imageId', imageId);
+    fd.append('__RequestVerificationToken', token);
+
+    fetch('@Url.Action("OpsProductImageDelete", "Store")', {
+        method: 'POST',
+        body: fd
+    }).then(function(r) {
+        if (r.ok || r.redirected) {
+            // Remove the row from the DOM and re-serialise.
+            btn.closest('.gallery-meta-row').remove();
+            serializeGalleryMeta();
+        } else {
+            btn.disabled = false;
+            alert('Could not delete image. Please try again.');
+        }
+    }).catch(function() {
+        btn.disabled = false;
+        alert('Network error. Please try again.');
+    });
+}
+
+function buildGalleryTagRows(input) {
+    var container = document.getElementById('galleryTagRows');
+    container.innerHTML = '';
+    Array.from(input.files).forEach(function (file) {
+        var row = document.createElement('div');
+        row.className = 'input-group input-group-sm';
+        row.innerHTML =
+            '<span class="input-group-text text-truncate" style="max-width:200px;" title="' + escAttr(file.name) + '">' +
+                escHtml(file.name) +
+            '</span>' +
+            '<input type="text" class="form-control" name="galleryTags" ' +
+                   'placeholder="Variant tag (e.g. Red, Navy) — leave blank for all" maxlength="100" />';
+        container.appendChild(row);
+    });
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+</script>
+}
