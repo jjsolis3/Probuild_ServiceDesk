@@ -508,11 +508,13 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("Sent test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            await LogNotificationAsync($"Test:{templateKey}", recipientEmail, null, subject, null, true);
             return (true, $"Test email sent successfully to {recipientEmail}.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            await LogNotificationAsync($"Test:{templateKey}", recipientEmail, null, subject, null, false, ex.Message);
             return (false, $"Send failed: {ex.Message}");
         }
     }
@@ -890,10 +892,12 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("[Store] Sent status update ({Status}) for order #{OrderNumber} to {Email}", newStatus, order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderStatusUpdate", recipientEmail, recipientName, subject, null, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send status update for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderStatusUpdate", recipientEmail, recipientName, subject, null, false, ex.Message);
         }
     }
 

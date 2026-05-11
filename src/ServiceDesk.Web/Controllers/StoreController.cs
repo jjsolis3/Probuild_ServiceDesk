@@ -18,18 +18,21 @@ public class StoreController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailNotification;
     private readonly PortalNotificationService _portalNotifications;
+    private readonly StoreCartService _cartService;
     private readonly ILogger<StoreController> _logger;
     private readonly IWebHostEnvironment _env;
 
     public StoreController(ServiceDeskDbContext context,
         EmailNotificationService emailNotification,
         PortalNotificationService portalNotifications,
+        StoreCartService cartService,
         ILogger<StoreController> logger,
         IWebHostEnvironment env)
     {
         _context             = context;
         _emailNotification   = emailNotification;
         _portalNotifications = portalNotifications;
+        _cartService         = cartService;
         _logger              = logger;
         _env                 = env;
     }
@@ -116,7 +119,9 @@ public class StoreController : Controller
     }
 
     // POST /Store/PlaceOrder
-    // Accepts a JSON cart payload in the "cartJson" form field, plus optional "notes".
+    // Pulls cart lines from the server cart (StoreCartService). The legacy
+    // "cartJson" form field is still honoured as a fallback when the server
+    // cart is empty so older browser sessions (pre-DB-cart) still work.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(IFormCollection form)
     {
@@ -132,20 +137,37 @@ public class StoreController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        // Parse the cart JSON payload
-        var cartJson = form["cartJson"].ToString();
-        List<CartLineInput> cartItems;
-        try
+        // Source of truth: the user's persisted server cart.
+        var serverCart = await _cartService.GetForUserAsync(user.Id);
+        List<CartLineInput> cartItems = serverCart
+            .Select(c => new CartLineInput
+            {
+                ProductId        = c.StoreProductId,
+                Qty              = c.Quantity,
+                Size             = c.SelectedSize,
+                Gender           = c.SelectedGender,
+                Color            = c.SelectedColor,
+                CustomSelections = DeserializeCustomSelections(c.CustomSelectionsJson)
+            })
+            .ToList();
+
+        // Backward-compat: if the server cart is empty (older browser session
+        // before the DB-cart rollout), fall back to the JSON form payload.
+        if (cartItems.Count == 0)
         {
-            cartItems = System.Text.Json.JsonSerializer.Deserialize<List<CartLineInput>>(
-                string.IsNullOrWhiteSpace(cartJson) ? "[]" : cartJson,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? new List<CartLineInput>();
-        }
-        catch
-        {
-            TempData["Error"] = "Your cart could not be read. Please try again.";
-            return RedirectToAction(nameof(Index));
+            var cartJson = form["cartJson"].ToString();
+            try
+            {
+                cartItems = System.Text.Json.JsonSerializer.Deserialize<List<CartLineInput>>(
+                    string.IsNullOrWhiteSpace(cartJson) ? "[]" : cartJson,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? new List<CartLineInput>();
+            }
+            catch
+            {
+                TempData["Error"] = "Your cart could not be read. Please try again.";
+                return RedirectToAction(nameof(Index));
+            }
         }
 
         cartItems = cartItems.Where(c => c.ProductId > 0 && c.Qty > 0).ToList();
@@ -285,6 +307,10 @@ public class StoreController : Controller
         order.OrderNumber = $"SO-{year}-Q{quarter}-{order.Id:D4}";
         await _context.SaveChangesAsync();
 
+        // Cart submitted successfully — clear it so the user has a clean slate
+        // for any next-quarter order.
+        await _cartService.ClearAsync(user.Id);
+
         // Re-load items with the product navigation so emails can render thumbnails.
         var itemsWithProducts = await _context.StoreOrderItems
             .Include(i => i.StoreProduct)
@@ -365,6 +391,119 @@ public class StoreController : Controller
 
         if (order == null) return NotFound();
         return View(order);
+    }
+
+    // ── Cart API ──────────────────────────────────────────────────────────────
+    // These endpoints back the catalog UI's cart drawer. The cart is persisted
+    // server-side so it survives device switches and refresh.
+
+    private object SerializeCartLine(StoreCartItem c, Dictionary<string, string>? custom = null)
+        => new
+        {
+            lineId    = c.Id,
+            productId = c.StoreProductId,
+            name      = c.StoreProduct?.Name ?? string.Empty,
+            qty       = c.Quantity,
+            size      = c.SelectedSize   ?? string.Empty,
+            gender    = c.SelectedGender ?? string.Empty,
+            color     = c.SelectedColor  ?? string.Empty,
+            customSelections = custom ?? DeserializeCustomSelections(c.CustomSelectionsJson)
+                                       ?? new Dictionary<string, string>(),
+            unitPrice = c.StoreProduct != null && c.StoreProduct.HasPrice
+                            ? c.StoreProduct.Price
+                            : (decimal?)null,
+            maxQty    = c.StoreProduct?.MaxQtyPerOrder ?? 999
+        };
+
+    // GET /Store/Cart — returns the user's current cart as a JSON array.
+    [HttpGet]
+    public async Task<IActionResult> Cart()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        var items = await _cartService.GetForUserAsync(user.Id);
+        return Json(items.Select(i => SerializeCartLine(i)).ToArray());
+    }
+
+    public class CartAddRequest
+    {
+        public int ProductId { get; set; }
+        public int Qty { get; set; } = 1;
+        public string? Size { get; set; }
+        public string? Gender { get; set; }
+        public string? Color { get; set; }
+        public Dictionary<string, string>? CustomSelections { get; set; }
+    }
+
+    // POST /Store/CartAdd — adds a single line; returns the new line as JSON.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartAdd([FromBody] CartAddRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.ProductId <= 0) return BadRequest();
+
+        var line = await _cartService.AddAsync(
+            user.Id, req.ProductId, req.Qty,
+            req.Size, req.Gender, req.Color, req.CustomSelections);
+
+        if (line == null) return NotFound(new { error = "Product not available." });
+        return Json(SerializeCartLine(line, req.CustomSelections));
+    }
+
+    public class CartSetQtyRequest
+    {
+        public int LineId { get; set; }
+        public int Qty { get; set; }
+    }
+
+    // POST /Store/CartSetQty — updates a line's quantity; qty=0 removes it.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartSetQty([FromBody] CartSetQtyRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.LineId <= 0) return BadRequest();
+
+        var ok = await _cartService.SetQuantityAsync(user.Id, req.LineId, req.Qty);
+        return ok ? Ok() : NotFound();
+    }
+
+    public class CartRemoveRequest { public int LineId { get; set; } }
+
+    // POST /Store/CartRemove — removes a line.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartRemove([FromBody] CartRemoveRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.LineId <= 0) return BadRequest();
+
+        var ok = await _cartService.RemoveAsync(user.Id, req.LineId);
+        return ok ? Ok() : NotFound();
+    }
+
+    // POST /Store/CartClear — empties the user's cart entirely.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartClear()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        await _cartService.ClearAsync(user.Id);
+        return Ok();
+    }
+
+    private static Dictionary<string, string>? DeserializeCustomSelections(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // GET /Store/MyOrders — all historical orders for the current user

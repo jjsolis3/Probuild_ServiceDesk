@@ -831,20 +831,38 @@ else
     }
 
     // ── Cart state ────────────────────────────────────────────────────────────
-    var cart     = [];
-    var nextLine = 1;
+    // Cart is persisted server-side. Local `cart` is the most recent snapshot
+    // pulled from /Store/Cart and is rerendered after every mutation.
+    var cart = [];
 
-    // Restore cart from sessionStorage so it survives page navigation within the tab
-    try {
-        var _saved = sessionStorage.getItem('storeCart');
-        if (_saved) {
-            var _r = JSON.parse(_saved);
-            if (Array.isArray(_r) && _r.length) {
-                cart     = _r;
-                nextLine = Math.max.apply(null, _r.map(function (l) { return l.lineId || 0; })) + 1;
-            }
-        }
-    } catch (e) { /* ignore */ }
+    function antiForgeryToken() {
+        // The PlaceOrder form embeds an __RequestVerificationToken via asp-antiforgery="true".
+        var f = document.getElementById('storeForm');
+        if (!f) return '';
+        var t = f.querySelector('input[name="__RequestVerificationToken"]');
+        return t ? t.value : '';
+    }
+
+    function cartFetch(url, opts) {
+        opts = opts || {};
+        opts.credentials = 'same-origin';
+        opts.headers = Object.assign({
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': antiForgeryToken()
+        }, opts.headers || {});
+        return fetch(url, opts);
+    }
+
+    function reloadCart() {
+        return fetch('/Store/Cart', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (data) {
+                cart = Array.isArray(data) ? data : [];
+                renderCart();
+            })
+            .catch(function () { /* keep last-known cart on transient failure */ });
+    }
 
     // Per-modal transient selections
     var modalState = {};
@@ -1031,33 +1049,36 @@ else
             });
         }
 
-        cart.push({
-            lineId:           nextLine++,
+        var payload = {
             productId:        productId,
-            name:             meta.name,
             qty:              qty,
+            size:             state.size   || '',
             gender:           state.gender || '',
             color:            state.color  || '',
-            size:             state.size   || '',
-            customSelections: custom,
-            unitPrice:        meta.hasPrice ? meta.price : null,
-            maxQty:           max
-        });
+            customSelections: custom
+        };
 
-        var addedMsg = document.getElementById('modal-added-' + productId);
-        if (addedMsg) {
-            addedMsg.classList.remove('d-none');
-            setTimeout(function () { addedMsg.classList.add('d-none'); }, 1800);
-        }
-
-        renderCart();
+        cartFetch('/Store/CartAdd', { method: 'POST', body: JSON.stringify(payload) })
+            .then(function (r) {
+                if (!r.ok) throw new Error('add failed');
+                return reloadCart();
+            })
+            .then(function () {
+                var addedMsg = document.getElementById('modal-added-' + productId);
+                if (addedMsg) {
+                    addedMsg.classList.remove('d-none');
+                    setTimeout(function () { addedMsg.classList.add('d-none'); }, 1800);
+                }
+            })
+            .catch(function () { alert('Could not add to cart. Please try again.'); });
     };
 
     // ── Cart qty / remove ─────────────────────────────────────────────────────
 
     window.removeFromCart = function (lineId) {
-        cart = cart.filter(function (l) { return l.lineId !== lineId; });
-        renderCart();
+        cartFetch('/Store/CartRemove', {
+            method: 'POST', body: JSON.stringify({ lineId: lineId })
+        }).then(reloadCart).catch(function () { /* ignore */ });
     };
 
     window.cartChangeQty = function (lineId, delta) {
@@ -1065,12 +1086,9 @@ else
         if (!line) return;
         var max = line.maxQty || 999;
         var newQty = Math.max(0, Math.min(max, line.qty + delta));
-        if (newQty === 0) {
-            cart = cart.filter(function (l) { return l.lineId !== lineId; });
-        } else {
-            line.qty = newQty;
-        }
-        renderCart();
+        cartFetch('/Store/CartSetQty', {
+            method: 'POST', body: JSON.stringify({ lineId: lineId, qty: newQty })
+        }).then(reloadCart).catch(function () { /* ignore */ });
     };
 
     // ── Render cart state ─────────────────────────────────────────────────────
@@ -1083,9 +1101,6 @@ else
         var jsonField = document.getElementById('cartJsonField');
 
         var total = cart.reduce(function (s, l) { return s + l.qty; }, 0);
-
-        // Persist across page navigations
-        try { sessionStorage.setItem('storeCart', JSON.stringify(cart)); } catch (e) { /* ignore */ }
 
         // Badge on floating button
         if (badge) {
@@ -1252,8 +1267,9 @@ else
         }
     });
 
-    // Render restored cart immediately on page load
+    // Initial render with the server-side cart.
     renderCart();
+    reloadCart();
 
 })();
 </script>

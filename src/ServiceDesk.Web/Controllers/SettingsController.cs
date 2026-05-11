@@ -2763,7 +2763,15 @@ public class SettingsController : Controller
         ViewBag.PageSize        = pageSize;
         ViewBag.TotalCount      = total;
         ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
-        ViewBag.NotificationTypes = new[] { "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded", "PasswordReset" };
+        // Curated list of well-known types. The dropdown also accepts free-form
+        // values via the URL ?type= for less-common entries (e.g. Test:* sends).
+        ViewBag.NotificationTypes = new[]
+        {
+            "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded",
+            "PasswordReset",
+            "StoreOrderConfirmation", "StoreOrderOpsAlert", "StoreOrderStatusUpdate",
+            "PayrollSubmitted", "PayrollApproved", "PayrollRejected", "PayrollPaid"
+        };
         ViewData["Title"]       = "Email Activity Log";
         return View(entries);
     }

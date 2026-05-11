@@ -1605,6 +1605,32 @@ public static class DbInitializer
                         ON dbo.PortalNotifications (PortalUserId, IsRead, CreatedDate DESC);
                 END");
 
+            // 57. Persistent shopping cart for the Company Store. One row per
+            //     cart line per user. Cleared on order placement.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreCartItems')
+                BEGIN
+                    CREATE TABLE dbo.StoreCartItems (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId            INT             NOT NULL
+                            CONSTRAINT FK_StoreCartItems_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        StoreProductId          INT             NOT NULL
+                            CONSTRAINT FK_StoreCartItems_Product
+                            REFERENCES dbo.StoreProducts(Id),
+                        Quantity                INT             NOT NULL DEFAULT 1,
+                        SelectedSize            NVARCHAR(50)    NULL,
+                        SelectedGender          NVARCHAR(50)    NULL,
+                        SelectedColor           NVARCHAR(50)    NULL,
+                        CustomSelectionsJson    NVARCHAR(MAX)   NULL,
+                        AddedDate               DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_StoreCartItems_User
+                        ON dbo.StoreCartItems (PortalUserId, AddedDate DESC);
+                END");
+
             // 56. Track when a store order's status last changed (for the order timeline stepper).
             context.Database.ExecuteSqlRaw(@"
                 IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrders')
