@@ -107,6 +107,26 @@ public class StoreController : Controller
                     return $"{totalQty} ordered · Q{latest.Quarter} {latest.Year}";
                 });
 
+        // Favorited product IDs so the catalog can render heart icons + filter.
+        var favoriteIds = await _context.StoreProductFavorites
+            .Where(f => f.PortalUserId == user.Id)
+            .Select(f => f.StoreProductId)
+            .ToListAsync();
+
+        // The most recent non-cancelled, fulfilled-or-confirmed order from a
+        // previous quarter. Drives the "Reorder from last quarter" CTA. We
+        // explicitly skip the current quarter so users don't reorder what
+        // they already submitted this window.
+        var lastOrder = await _context.StoreOrders
+            .Include(o => o.Items)
+            .Where(o => o.PortalUserId == user.Id
+                     && o.Status != "Cancelled"
+                     && !(o.Year == yr && o.Quarter == q))
+            .OrderByDescending(o => o.Year)
+            .ThenByDescending(o => o.Quarter)
+            .ThenByDescending(o => o.OrderDate)
+            .FirstOrDefaultAsync();
+
         ViewBag.WelcomeMessage       = welcome;
         ViewBag.Quarter              = q;
         ViewBag.Year                 = yr;
@@ -114,6 +134,15 @@ public class StoreController : Controller
         ViewBag.ExistingOrderNumber  = existingOrder?.OrderNumber;
         ViewBag.PreviousOrderBadges  = prevOrderBadges;
         ViewBag.StoreCloseDate       = storeCloseDate;
+        ViewBag.FavoriteProductIds   = favoriteIds;
+        ViewBag.LastOrderId          = lastOrder?.Id;
+        ViewBag.LastOrderLabel       = lastOrder != null
+            ? $"Q{lastOrder.Quarter} {lastOrder.Year}"
+            : null;
+        ViewBag.LastOrderItemCount   = lastOrder?.Items.Count ?? 0;
+        ViewBag.PreferredSize        = user.PreferredStoreSize;
+        ViewBag.PreferredGender      = user.PreferredStoreGender;
+        ViewBag.PreferredColor       = user.PreferredStoreColor;
 
         return View(products);
     }
@@ -491,6 +520,96 @@ public class StoreController : Controller
         if (user == null) return Unauthorized();
         await _cartService.ClearAsync(user.Id);
         return Ok();
+    }
+
+    // ── Favorites API ─────────────────────────────────────────────────────────
+
+    public class FavoriteToggleRequest { public int ProductId { get; set; } }
+
+    // POST /Store/FavoriteToggle — toggles a product's favorite state for the
+    // current user. Returns the new state so the UI can update instantly.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FavoriteToggle([FromBody] FavoriteToggleRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.ProductId <= 0) return BadRequest();
+
+        var existing = await _context.StoreProductFavorites
+            .FirstOrDefaultAsync(f => f.PortalUserId == user.Id && f.StoreProductId == req.ProductId);
+
+        bool isFavorite;
+        if (existing != null)
+        {
+            _context.StoreProductFavorites.Remove(existing);
+            isFavorite = false;
+        }
+        else
+        {
+            // Verify the product exists and is active before letting the user
+            // favorite it. Cheaper than enforcing it via a FK constraint check.
+            var exists = await _context.StoreProducts
+                .AnyAsync(p => p.Id == req.ProductId && p.IsActive);
+            if (!exists) return NotFound();
+            _context.StoreProductFavorites.Add(new StoreProductFavorite
+            {
+                PortalUserId   = user.Id,
+                StoreProductId = req.ProductId,
+                AddedDate      = DateTime.UtcNow
+            });
+            isFavorite = true;
+        }
+        await _context.SaveChangesAsync();
+        return Json(new { productId = req.ProductId, isFavorite });
+    }
+
+    // ── Quick reorder ─────────────────────────────────────────────────────────
+
+    // POST /Store/ReorderLastOrder — copies eligible items from the user's most
+    // recent non-cancelled order (prior quarter) into the current cart.
+    // Items whose product is no longer active or whose stored variants are
+    // missing are skipped silently; the response reports how many were added.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReorderLastOrder()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+
+        var (hasAccess, isOpen, _) = await CheckStoreStatusAsync(user.Id);
+        if (!hasAccess || !isOpen)
+            return BadRequest(new { error = "Store is closed." });
+
+        var (q, yr) = GetCurrentQuarter();
+
+        var lastOrder = await _context.StoreOrders
+            .Include(o => o.Items)
+            .Where(o => o.PortalUserId == user.Id
+                     && o.Status != "Cancelled"
+                     && !(o.Year == yr && o.Quarter == q))
+            .OrderByDescending(o => o.Year)
+            .ThenByDescending(o => o.Quarter)
+            .ThenByDescending(o => o.OrderDate)
+            .FirstOrDefaultAsync();
+
+        if (lastOrder == null)
+            return NotFound(new { error = "No previous order to reorder from." });
+
+        int added = 0, skipped = 0;
+        foreach (var item in lastOrder.Items)
+        {
+            var custom = DeserializeCustomSelections(item.CustomSelectionsJson);
+            var line = await _cartService.AddAsync(
+                user.Id,
+                item.StoreProductId,
+                item.Quantity,
+                item.SelectedSize,
+                item.SelectedGender,
+                item.SelectedColor,
+                custom);
+            if (line != null) added++; else skipped++;
+        }
+
+        return Json(new { added, skipped, sourceOrder = lastOrder.OrderNumber });
     }
 
     private static Dictionary<string, string>? DeserializeCustomSelections(string? json)

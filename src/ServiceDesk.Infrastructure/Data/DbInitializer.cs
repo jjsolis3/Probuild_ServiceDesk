@@ -1605,6 +1605,40 @@ public static class DbInitializer
                         ON dbo.PortalNotifications (PortalUserId, IsRead, CreatedDate DESC);
                 END");
 
+            // 58. Per-user store favorites. (user, product) is unique.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreProductFavorites')
+                BEGIN
+                    CREATE TABLE dbo.StoreProductFavorites (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId    INT             NOT NULL
+                            CONSTRAINT FK_StoreProductFavorites_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        StoreProductId  INT             NOT NULL
+                            CONSTRAINT FK_StoreProductFavorites_Product
+                            REFERENCES dbo.StoreProducts(Id)
+                            ON DELETE CASCADE,
+                        AddedDate       DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        CONSTRAINT UQ_StoreProductFavorites_User_Product
+                            UNIQUE (PortalUserId, StoreProductId)
+                    );
+                END");
+
+            // 59. Saved size / gender / color preference on PortalUsers. Used to
+            //     pre-select variants in the catalog modal next visit so users
+            //     don't have to re-pick their size every quarter.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PortalUsers')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreSize')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreSize   NVARCHAR(50) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreGender')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreGender NVARCHAR(50) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreColor')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreColor  NVARCHAR(50) NULL;
+                END");
+
             // 57. Persistent shopping cart for the Company Store. One row per
             //     cart line per user. Cleared on order placement.
             context.Database.ExecuteSqlRaw(@"

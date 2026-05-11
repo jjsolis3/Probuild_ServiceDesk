@@ -71,6 +71,17 @@ public class StoreCartService
             AddedDate            = DateTime.UtcNow
         };
         _context.StoreCartItems.Add(line);
+
+        // Remember the user's last-used variant selections so the catalog can
+        // pre-select them next visit. Only overwrite when a value was supplied.
+        var portalUser = await _context.PortalUsers.FindAsync(portalUserId);
+        if (portalUser != null)
+        {
+            if (!string.IsNullOrWhiteSpace(line.SelectedSize))   portalUser.PreferredStoreSize   = line.SelectedSize;
+            if (!string.IsNullOrWhiteSpace(line.SelectedGender)) portalUser.PreferredStoreGender = line.SelectedGender;
+            if (!string.IsNullOrWhiteSpace(line.SelectedColor))  portalUser.PreferredStoreColor  = line.SelectedColor;
+        }
+
         await _context.SaveChangesAsync();
 
         // Reload with product navigation so the caller can return a complete DTO.

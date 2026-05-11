@@ -21,6 +21,8 @@
 
     var prevOrderBadges = ViewBag.PreviousOrderBadges as Dictionary<int, string>
                        ?? new Dictionary<int, string>();
+    var favoriteIds = (ViewBag.FavoriteProductIds as List<int>) ?? new List<int>();
+    var favoriteSet = new HashSet<int>(favoriteIds);
 
     var productDataJson = System.Text.Json.JsonSerializer.Serialize(
         Model.Select(p => {
@@ -101,6 +103,30 @@
     display: none;
 }
 .product-grid-card.has-in-cart .in-cart-indicator { display: block; }
+/* ── Favorite (heart) button ────────────────────────────── */
+.fav-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255,255,255,.92);
+    box-shadow: 0 1px 4px rgba(0,0,0,.18);
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color .15s, transform .12s, background .15s;
+    padding: 0;
+}
+.fav-btn:hover { color: #e11d48; transform: scale(1.1); }
+.fav-btn.is-fav { color: #e11d48; background: #fff; }
+.product-grid-card.has-in-cart .fav-btn { top: 36px; }
+/* When the in-cart badge is visible, shift the heart so they don't overlap. */
 /* ── Variant controls ───────────────────────────────────── */
 .size-btn {
     border: 2px solid #dee2e6;
@@ -346,6 +372,25 @@
     </div>
 }
 
+@{
+    var lastOrderLabel = ViewBag.LastOrderLabel as string;
+    var lastOrderCount = ViewBag.LastOrderItemCount is int loc ? loc : 0;
+}
+@if (!string.IsNullOrEmpty(lastOrderLabel) && lastOrderCount > 0)
+{
+    <div class="alert alert-light border shadow-sm py-2 mb-3 d-flex flex-wrap align-items-center gap-2" id="reorderBanner">
+        <div class="flex-grow-1">
+            <i class="bi bi-arrow-counterclockwise me-2 text-primary"></i>
+            <strong>Quick reorder:</strong>
+            Add the @lastOrderCount item@(lastOrderCount == 1 ? "" : "s") from your @lastOrderLabel order to your cart.
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" id="reorderLastBtn"
+                onclick="reorderLastOrder()">
+            <i class="bi bi-cart-plus me-1"></i>Add to cart
+        </button>
+    </div>
+}
+
 @if (!Model.Any())
 {
     <div class="card shadow-sm text-center py-5 text-muted">
@@ -404,6 +449,12 @@ else
                     <option value="newest">Newest First</option>
                 </select>
             </div>
+            <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 ms-1">
+                <input class="form-check-input" type="checkbox" role="switch" id="catalogFavOnly" />
+                <label class="form-check-label small text-nowrap" for="catalogFavOnly">
+                    <i class="bi bi-heart-fill text-danger me-1"></i>Favorites only
+                </label>
+            </div>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearCatalogFilter()">
                 <i class="bi bi-x me-1"></i>Clear
             </button>
@@ -429,12 +480,17 @@ else
                             .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
                             .FirstOrDefault()?.ImagePath;
 
+                    @{
+                        var isFav = favoriteSet.Contains(product.Id);
+                    }
                     <div class="col-6 col-md-4 col-lg-3 catalog-col"
                          data-name="@((product.Name + " " + (product.Tags ?? "")).ToLower())"
                          data-category="@(product.Category ?? "General")"
                          data-sort-name="@product.Name.ToLower()"
                          data-created="@product.CreatedDate.Ticks"
                          data-tags="@((product.Tags ?? "").ToLower())"
+                         data-product-id="@product.Id"
+                         data-favorite="@(isFav ? "1" : "0")"
                          >
                         <div class="card product-grid-card h-100 shadow-sm border-0 position-relative"
                              id="grid-card-@product.Id"
@@ -442,6 +498,16 @@ else
                              role="button"
                              tabindex="0"
                              onkeypress="if(event.key==='Enter')openProductModal(@product.Id)">
+
+                            <button type="button"
+                                    class="fav-btn @(isFav ? "is-fav" : "")"
+                                    id="fav-btn-@product.Id"
+                                    data-product-id="@product.Id"
+                                    aria-label="@(isFav ? "Remove from favorites" : "Add to favorites")"
+                                    aria-pressed="@(isFav ? "true" : "false")"
+                                    onclick="event.stopPropagation(); toggleFavorite(@product.Id)">
+                                <i class="bi @(isFav ? "bi-heart-fill" : "bi-heart")"></i>
+                            </button>
 
                             <span class="in-cart-indicator badge bg-success">
                                 <i class="bi bi-check-circle-fill me-1"></i>In cart
@@ -705,6 +771,15 @@ else
 
     <!-- Product metadata for JS -->
     <script id="productDataJson" type="application/json">@Html.Raw(productDataJson)</script>
+
+    @{
+        var prefPayload = System.Text.Json.JsonSerializer.Serialize(new {
+            size   = ViewBag.PreferredSize   as string ?? "",
+            gender = ViewBag.PreferredGender as string ?? "",
+            color  = ViewBag.PreferredColor  as string ?? ""
+        });
+    }
+    <script id="userPrefsJson" type="application/json">@Html.Raw(prefPayload)</script>
 }
 
 @section Scripts {
@@ -718,6 +793,15 @@ else
     var productList = JSON.parse(metaEl.textContent || metaEl.innerHTML);
     var metaMap = {};
     productList.forEach(function (p) { metaMap[p.id] = p; });
+
+    // Saved variant preferences for the current user. Used to auto-select the
+    // user's last size / gender / color when they open a product modal so they
+    // don't have to re-pick every quarter.
+    var userPrefs = { size: '', gender: '', color: '' };
+    try {
+        var prefsEl = document.getElementById('userPrefsJson');
+        if (prefsEl) userPrefs = JSON.parse(prefsEl.textContent || prefsEl.innerHTML) || userPrefs;
+    } catch (e) { /* keep defaults */ }
 
     // ── Gallery rendering ─────────────────────────────────────────────────────
 
@@ -910,6 +994,23 @@ else
 
     // ── Modal ─────────────────────────────────────────────────────────────────
 
+    function applySavedPrefs(productId) {
+        function tryClick(groupId, value) {
+            if (!value) return;
+            var group = document.getElementById(groupId);
+            if (!group) return;
+            // Match case-insensitively so saved "Large" matches button "large".
+            var target = Array.prototype.find.call(group.querySelectorAll('[data-value]'),
+                function (b) {
+                    return (b.dataset.value || '').toLowerCase() === value.toLowerCase();
+                });
+            if (target) target.click();
+        }
+        tryClick('modal-gender-group-' + productId, userPrefs.gender);
+        tryClick('modal-size-group-'   + productId, userPrefs.size);
+        tryClick('modal-color-group-'  + productId, userPrefs.color);
+    }
+
     window.openProductModal = function (productId) {
         var el = document.getElementById('modal-' + productId);
         if (!el) return;
@@ -938,6 +1039,13 @@ else
 
         // Render custom options + set initial Add to Cart button state
         renderCustomOptions(productId);
+
+        // Apply saved variant preferences: if the user has a remembered size /
+        // gender / color and this product offers that exact value, pre-select
+        // the matching button. Done by clicking the button so the existing
+        // event handlers update state and the gallery filter.
+        applySavedPrefs(productId);
+
         updateAddToCartBtn(productId);
 
         bootstrap.Modal.getOrCreateInstance(el).show();
@@ -1205,6 +1313,7 @@ else
         var cat  = document.getElementById('catalogCategory')?.value || '';
         var tag  = (document.getElementById('catalogTag')?.value || '').toLowerCase().trim();
         var sort = document.getElementById('catalogSort')?.value || '';
+        var favOnly = document.getElementById('catalogFavOnly')?.checked === true;
         var cols = document.querySelectorAll('.catalog-col');
         var catVisible = {};
 
@@ -1212,10 +1321,12 @@ else
             var name    = col.dataset.name || '';
             var colCat  = col.dataset.category || '';
             var colTags = col.dataset.tags || '';
+            var isFav   = col.dataset.favorite === '1';
             var matchQ  = !q   || name.indexOf(q) !== -1;
             var matchC  = !cat || colCat === cat;
             var matchT  = !tag || colTags.split(',').map(function (t) { return t.trim(); }).indexOf(tag) !== -1;
-            var visible = matchQ && matchC && matchT;
+            var matchF  = !favOnly || isFav;
+            var visible = matchQ && matchC && matchT && matchF;
             col.style.display = visible ? '' : 'none';
             if (visible) catVisible[colCat] = true;
         });
@@ -1246,10 +1357,12 @@ else
         var c = document.getElementById('catalogCategory');
         var t = document.getElementById('catalogTag');
         var o = document.getElementById('catalogSort');
+        var f = document.getElementById('catalogFavOnly');
         if (s) s.value = '';
         if (c) c.value = '';
         if (t) t.value = '';
         if (o) o.value = '';
+        if (f) f.checked = false;
         applyCatalogFilter();
     };
 
@@ -1257,6 +1370,74 @@ else
     document.getElementById('catalogCategory')?.addEventListener('change', applyCatalogFilter);
     document.getElementById('catalogTag')?.addEventListener('change', applyCatalogFilter);
     document.getElementById('catalogSort')?.addEventListener('change', applyCatalogFilter);
+    document.getElementById('catalogFavOnly')?.addEventListener('change', applyCatalogFilter);
+
+    // ── Favorites ─────────────────────────────────────────────────────────────
+
+    window.toggleFavorite = function (productId) {
+        var btn = document.getElementById('fav-btn-' + productId);
+        cartFetch('/Store/FavoriteToggle', {
+            method: 'POST', body: JSON.stringify({ productId: productId })
+        })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (!data) return;
+            var col = document.querySelector('.catalog-col[data-product-id="' + productId + '"]');
+            if (col) col.dataset.favorite = data.isFavorite ? '1' : '0';
+            if (btn) {
+                btn.classList.toggle('is-fav', !!data.isFavorite);
+                btn.setAttribute('aria-pressed', data.isFavorite ? 'true' : 'false');
+                btn.setAttribute('aria-label',
+                    data.isFavorite ? 'Remove from favorites' : 'Add to favorites');
+                var icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('bi-heart-fill', !!data.isFavorite);
+                    icon.classList.toggle('bi-heart',      !data.isFavorite);
+                }
+            }
+            // If the "Favorites only" filter is on, re-run it so unstarred
+            // items disappear immediately.
+            if (document.getElementById('catalogFavOnly')?.checked) applyCatalogFilter();
+        })
+        .catch(function () { /* keep current state on failure */ });
+    };
+
+    // ── Quick reorder from last quarter ───────────────────────────────────────
+
+    window.reorderLastOrder = function () {
+        var btn = document.getElementById('reorderLastBtn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding…';
+        }
+        cartFetch('/Store/ReorderLastOrder', { method: 'POST' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('reorder failed');
+                return r.json();
+            })
+            .then(function (data) {
+                return reloadCart().then(function () { return data; });
+            })
+            .then(function (data) {
+                var banner = document.getElementById('reorderBanner');
+                if (banner) {
+                    var msg  = 'Added ' + data.added + ' item' + (data.added === 1 ? '' : 's') + ' from ' + data.sourceOrder + '.';
+                    if (data.skipped > 0) msg += ' (' + data.skipped + ' skipped — product no longer available.)';
+                    banner.className = 'alert alert-success border-0 shadow-sm py-2 mb-3';
+                    banner.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>' + esc(msg);
+                }
+                // Open the cart so the user sees the result.
+                var cartEl = document.getElementById('cartOffcanvas');
+                if (cartEl && bootstrap.Offcanvas) bootstrap.Offcanvas.getOrCreateInstance(cartEl).show();
+            })
+            .catch(function () {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-cart-plus me-1"></i>Add to cart';
+                }
+                alert('Could not reorder. Please try again.');
+            });
+    };
 
     // Disable submit while posting
     document.getElementById('storeForm')?.addEventListener('submit', function () {

@@ -39,6 +39,17 @@ public class PortalUser
 
     public DateTime? PasswordResetTokenExpiry { get; set; }
 
+    // Saved store variant preferences — populated when a user adds a product
+    // to the cart so subsequent visits can pre-select the correct size etc.
+    [StringLength(50)]
+    public string? PreferredStoreSize { get; set; }
+
+    [StringLength(50)]
+    public string? PreferredStoreGender { get; set; }
+
+    [StringLength(50)]
+    public string? PreferredStoreColor { get; set; }
+
     // Foreign keys
     [Display(Name = "Linked Employee")]
     public int? EmployeeId { get; set; }

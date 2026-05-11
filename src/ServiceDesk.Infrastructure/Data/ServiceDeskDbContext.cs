@@ -111,6 +111,7 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<StoreOperationsAccess> StoreOperationsAccess => Set<StoreOperationsAccess>();
     public DbSet<StoreProductImage> StoreProductImages => Set<StoreProductImage>();
     public DbSet<StoreCartItem> StoreCartItems => Set<StoreCartItem>();
+    public DbSet<StoreProductFavorite> StoreProductFavorites => Set<StoreProductFavorite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
