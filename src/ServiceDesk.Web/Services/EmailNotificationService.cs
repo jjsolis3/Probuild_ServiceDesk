@@ -520,11 +520,14 @@ public class EmailNotificationService
     /// <summary>
     /// Sends a store order confirmation to the user who placed the order.
     /// </summary>
+    /// <param name="baseUrl">Optional absolute base URL (e.g. "https://portal.example.com")
+    /// used to build absolute image src and a "View Order" link. Empty string disables both.</param>
     public async Task SendStoreOrderConfirmationAsync(
         ServiceDesk.Core.Models.StoreOrder order,
         string recipientEmail,
         string recipientName,
-        List<ServiceDesk.Core.Models.StoreOrderItem> items)
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl = "")
     {
         var config = await GetActiveConfig();
         if (config == null)
@@ -536,23 +539,31 @@ public class EmailNotificationService
         var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("StoreOrderConfirmation");
 
-        var itemRows = string.Join("\n", items.Select(i =>
-            $"<tr>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(i.ProductNameSnapshot)}</td>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;'>" +
-            $"{System.Net.WebUtility.HtmlEncode(i.ProductCategorySnapshot ?? "—")}</td>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:bold;'>{i.Quantity}</td>" +
-            $"</tr>"));
+        var itemsHtml = BuildStoreOrderItemsTable(items, baseUrl, showPricing: true);
+        var totalQty   = items.Sum(i => i.Quantity);
+        var totalCost  = items.Where(i => i.UnitPriceSnapshot.HasValue)
+                              .Sum(i => (i.UnitPriceSnapshot ?? 0m) * i.Quantity);
+        var hasPricing = items.Any(i => i.UnitPriceSnapshot.HasValue);
 
-        var itemsHtml =
-            "<table style='width:100%;border-collapse:collapse;margin:10px 0;'>" +
-            "<thead><tr style='background:#f3f4f6;'>" +
-            "<th style='padding:8px;text-align:left;'>Product</th>" +
-            "<th style='padding:8px;text-align:center;'>Category</th>" +
-            "<th style='padding:8px;text-align:center;'>Qty</th>" +
-            "</tr></thead><tbody>" +
-            itemRows +
-            "</tbody></table>";
+        var viewOrderButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:20px 0;'>
+                    <a href='{baseUrl}/Store/OrderDetail/{order.Id}' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        View My Order
+                    </a>
+                </p>"
+            : string.Empty;
+
+        var branchRow = !string.IsNullOrEmpty(order.BranchNameSnapshot)
+            ? $@"<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Branch</td>
+                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.BranchNameSnapshot)}</td></tr>"
+            : string.Empty;
+
+        var totalsBlock = $@"<div style='background:#f9fafb;border-radius:6px;padding:12px 14px;margin-top:10px;display:flex;justify-content:space-between;'>
+            <span style='font-weight:600;color:#374151;'>Total items: {totalQty}</span>"
+            + (hasPricing
+                ? $@"<span style='font-weight:700;color:#059669;'>Total: {totalCost:C}</span>"
+                : "<span style='color:#9ca3af;font-size:13px;'>No-charge order</span>")
+            + "</div>";
 
         var tokens = new Dictionary<string, string>
         {
@@ -570,19 +581,24 @@ public class EmailNotificationService
 
         var innerContent = tmpl?.BodyTemplate != null
             ? ApplyTokens(tmpl.BodyTemplate, tokens)
-            : $@"<h3>Order Confirmed — {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h3>
+            : $@"<h3 style='margin-top:0;'>Order Confirmed — {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h3>
             <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
-            <p>Your order has been received. The operations team will review and process it shortly.</p>
+            <p>Thanks for your order! The operations team will review and process it shortly. You'll receive another email when your order status changes.</p>
             <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td>
                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td>
-                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy}</td></tr>
-                <tr><td style='padding:8px;font-weight:bold;'>Quarter</td>
-                    <td style='padding:8px;'>Q{order.Quarter} {order.Year}</td></tr>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy 'at' h:mm tt} UTC</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>Q{order.Quarter} {order.Year}</td></tr>
+                {branchRow}
+                <tr><td style='padding:8px;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;'><span style='background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'>Pending Review</span></td></tr>
             </table>
-            <h4 style='margin-top:20px;'>Items Ordered</h4>
+            <h4 style='margin-top:20px;margin-bottom:6px;'>Items Ordered</h4>
             {itemsHtml}
+            {totalsBlock}
+            {viewOrderButton}
             <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
@@ -590,6 +606,7 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("[Store] Sent confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderConfirmation", recipientEmail, recipientName, subject, null, true);
 
             // Mark confirmation sent
             order.ConfirmationEmailSent = true;
@@ -598,7 +615,207 @@ public class EmailNotificationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderConfirmation", recipientEmail, recipientName, subject, null, false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Sends a "new order placed" digest to every active operations user. One
+    /// email per recipient; failures for one recipient don't block the others.
+    /// </summary>
+    public async Task SendStoreOrderOpsNotificationAsync(
+        ServiceDesk.Core.Models.StoreOrder order,
+        string placedByName,
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl = "")
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+        {
+            _logger.LogWarning("[Store] No active Gmail configuration. Cannot send ops notification for #{OrderId}.", order.Id);
+            return;
+        }
+
+        // Recipients: explicit Ops Hub users, plus Admins as a fallback so a new
+        // store always reaches someone.
+        var opsUserIds = await _context.StoreOperationsAccess
+            .Where(a => a.IsActive)
+            .Select(a => a.PortalUserId)
+            .ToListAsync();
+
+        var recipients = await _context.PortalUsers
+            .Include(u => u.Role)
+            .Where(u => u.IsActive && !string.IsNullOrEmpty(u.Email))
+            .Where(u => opsUserIds.Contains(u.Id)
+                     || (u.Role != null && u.Role.Name == "Admin"))
+            .ToListAsync();
+
+        if (recipients.Count == 0)
+        {
+            _logger.LogWarning("[Store] No ops recipients configured; skipping ops notification for order #{OrderNumber}.", order.OrderNumber);
+            return;
+        }
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var itemsHtml  = BuildStoreOrderItemsTable(items, baseUrl, showPricing: true);
+        var totalQty   = items.Sum(i => i.Quantity);
+        var totalCost  = items.Where(i => i.UnitPriceSnapshot.HasValue)
+                              .Sum(i => (i.UnitPriceSnapshot ?? 0m) * i.Quantity);
+        var hasPricing = items.Any(i => i.UnitPriceSnapshot.HasValue);
+
+        var hubButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:18px 0;'>
+                    <a href='{baseUrl}/Store/OperationsHub?year={order.Year}&quarter={order.Quarter}&status=Pending' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        Open in Operations Hub
+                    </a>
+                </p>"
+            : string.Empty;
+
+        var branchRow = !string.IsNullOrEmpty(order.BranchNameSnapshot)
+            ? $@"<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Branch</td>
+                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.BranchNameSnapshot)}</td></tr>"
+            : string.Empty;
+
+        var notesBlock = !string.IsNullOrWhiteSpace(order.Notes)
+            ? $@"<div style='background:#fef9c3;border-left:4px solid #facc15;padding:10px 12px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#92400e;font-size:13px;'>Order notes:</strong>
+                    <div style='margin-top:4px;color:#374151;'>{System.Net.WebUtility.HtmlEncode(order.Notes)}</div>
+                 </div>"
+            : string.Empty;
+
+        var totalsBlock = $@"<div style='background:#f9fafb;border-radius:6px;padding:12px 14px;margin-top:10px;display:flex;justify-content:space-between;'>
+            <span style='font-weight:600;color:#374151;'>Total items: {totalQty}</span>"
+            + (hasPricing
+                ? $@"<span style='font-weight:700;color:#059669;'>Total: {totalCost:C}</span>"
+                : "<span style='color:#9ca3af;font-size:13px;'>No-charge order</span>")
+            + "</div>";
+
+        var subject = $"[New Store Order] {order.OrderNumber} — {placedByName} ({totalQty} item{(totalQty == 1 ? "" : "s")})";
+
+        var innerContent = $@"<h3 style='margin-top:0;'>New Store Order Placed</h3>
+            <p>A new store order is awaiting review in the Operations Hub.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:140px;'>Order #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Placed by</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(placedByName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy 'at' h:mm tt} UTC</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>Q{order.Quarter} {order.Year}</td></tr>
+                {branchRow}
+            </table>
+            {notesBlock}
+            <h4 style='margin-top:20px;margin-bottom:6px;'>Items Requested</h4>
+            {itemsHtml}
+            {totalsBlock}
+            {hubButton}
+            <p style='color:#6b7280;font-size:12px;margin-top:20px;'>You're receiving this because you have access to the Store Operations Hub.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        foreach (var rec in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, rec.Email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("StoreOrderOpsAlert", rec.Email, rec.FullName, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Store] Failed to send ops notification for order #{OrderNumber} to {Email}", order.OrderNumber, rec.Email);
+                await LogNotificationAsync("StoreOrderOpsAlert", rec.Email, rec.FullName, subject, null, false, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the HTML table of order line items used in both the user
+    /// confirmation and the ops notification. Renders product thumbnails when a
+    /// non-empty <paramref name="baseUrl"/> is supplied so the relative
+    /// <c>/uploads/...</c> paths resolve in email clients.
+    /// </summary>
+    private static string BuildStoreOrderItemsTable(
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl,
+        bool showPricing)
+    {
+        var hasPricing = showPricing && items.Any(i => i.UnitPriceSnapshot.HasValue);
+        var rows = new List<string>();
+
+        foreach (var i in items)
+        {
+            var variants = new List<string>();
+            if (!string.IsNullOrEmpty(i.SelectedGender)) variants.Add(i.SelectedGender);
+            if (!string.IsNullOrEmpty(i.SelectedSize))   variants.Add(i.SelectedSize);
+            if (!string.IsNullOrEmpty(i.SelectedColor))  variants.Add(i.SelectedColor);
+            if (!string.IsNullOrWhiteSpace(i.CustomSelectionsJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(i.CustomSelectionsJson);
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                        variants.Add($"{p.Name}: {p.Value.GetString()}");
+                }
+                catch { /* malformed — skip */ }
+            }
+            var variantText = variants.Count > 0
+                ? $"<div style='color:#6b7280;font-size:12px;margin-top:3px;'>{System.Net.WebUtility.HtmlEncode(string.Join(" · ", variants))}</div>"
+                : string.Empty;
+
+            // Thumbnail: only include when a base URL is provided and the product has an image.
+            var imgPath = i.StoreProduct?.ImagePath ?? string.Empty;
+            string thumbCell;
+            if (!string.IsNullOrWhiteSpace(imgPath) && !string.IsNullOrWhiteSpace(baseUrl))
+            {
+                var src = imgPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? imgPath
+                    : baseUrl.TrimEnd('/') + (imgPath.StartsWith("/") ? imgPath : "/" + imgPath);
+                thumbCell = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;width:54px;'>" +
+                            $"<img src='{System.Net.WebUtility.HtmlEncode(src)}' alt='' style='width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;' /></td>";
+            }
+            else
+            {
+                thumbCell = "<td style='padding:8px;border-bottom:1px solid #e5e7eb;width:54px;'></td>";
+            }
+
+            var nameCell = "<td style='padding:8px;border-bottom:1px solid #e5e7eb;'>" +
+                           $"<div style='font-weight:600;color:#111827;'>{System.Net.WebUtility.HtmlEncode(i.ProductNameSnapshot)}</div>" +
+                           (string.IsNullOrEmpty(i.ProductCategorySnapshot)
+                               ? string.Empty
+                               : $"<div style='color:#9ca3af;font-size:11px;text-transform:uppercase;letter-spacing:.04em;'>{System.Net.WebUtility.HtmlEncode(i.ProductCategorySnapshot)}</div>") +
+                           variantText + "</td>";
+
+            var qtyCell = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:bold;'>{i.Quantity}</td>";
+
+            var priceCells = string.Empty;
+            if (hasPricing)
+            {
+                var unit = i.UnitPriceSnapshot?.ToString("C") ?? "—";
+                var sub  = i.UnitPriceSnapshot.HasValue
+                    ? (i.UnitPriceSnapshot.Value * i.Quantity).ToString("C")
+                    : "—";
+                priceCells = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#6b7280;'>{unit}</td>" +
+                             $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;'>{sub}</td>";
+            }
+
+            rows.Add($"<tr>{thumbCell}{nameCell}{qtyCell}{priceCells}</tr>");
+        }
+
+        var priceHeaders = hasPricing
+            ? "<th style='padding:8px;text-align:right;'>Price</th><th style='padding:8px;text-align:right;'>Subtotal</th>"
+            : string.Empty;
+
+        return "<table style='width:100%;border-collapse:collapse;margin:10px 0;border:1px solid #e5e7eb;border-radius:6px;'>" +
+               "<thead><tr style='background:#f3f4f6;'>" +
+               "<th style='padding:8px;text-align:left;width:54px;'></th>" +
+               "<th style='padding:8px;text-align:left;'>Product</th>" +
+               "<th style='padding:8px;text-align:center;'>Qty</th>" +
+               priceHeaders +
+               "</tr></thead><tbody>" +
+               string.Join("\n", rows) +
+               "</tbody></table>";
     }
 
     /// <summary>
@@ -609,7 +826,8 @@ public class EmailNotificationService
         ServiceDesk.Core.Models.StoreOrder order,
         string recipientEmail,
         string recipientName,
-        string newStatus)
+        string newStatus,
+        string baseUrl = "")
     {
         var config = await GetActiveConfig();
         if (config == null)
@@ -643,6 +861,14 @@ public class EmailNotificationService
             ? ApplyTokens(tmpl.SubjectTemplate, tokens)
             : $"Order Update — {order.OrderNumber} is now {newStatus}";
 
+        var viewOrderButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:20px 0;'>
+                    <a href='{baseUrl}/Store/OrderDetail/{order.Id}' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        View Order Details
+                    </a>
+                </p>"
+            : string.Empty;
+
         var innerContent = tmpl?.BodyTemplate != null
             ? ApplyTokens(tmpl.BodyTemplate, tokens)
             : $@"<h3>Order Status Update</h3>
@@ -656,6 +882,7 @@ public class EmailNotificationService
                 <tr><td style='padding:8px;font-weight:bold;'>New Status</td>
                     <td style='padding:8px;'><strong>{System.Net.WebUtility.HtmlEncode(newStatus)}</strong></td></tr>
             </table>
+            {viewOrderButton}
             <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);

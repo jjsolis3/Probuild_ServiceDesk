@@ -295,6 +295,45 @@
 }
 
 @{
+    // "Store closes in X days" banner — shown only when a close date is set,
+    // the window is still open, and we're within 14 days of the close. The
+    // colour intensifies as the window narrows so the urgency is visible at
+    // a glance for users who haven't placed an order yet.
+    var closeDate = ViewBag.StoreCloseDate as DateTime?;
+}
+@if (closeDate.HasValue)
+{
+    var nowUtc = DateTime.UtcNow;
+    var diff   = closeDate.Value - nowUtc;
+    if (diff.TotalDays > 0 && diff.TotalDays <= 14)
+    {
+        var days  = (int)Math.Ceiling(diff.TotalDays);
+        var hours = (int)Math.Ceiling(diff.TotalHours);
+        string label;
+        if (diff.TotalHours <= 24)        label = hours <= 1 ? "less than 1 hour"
+                                                              : $"{hours} hours";
+        else if (days == 1)                label = "1 day";
+        else                               label = $"{days} days";
+
+        string alertClass = diff.TotalDays <= 2 ? "alert-danger"
+                          : diff.TotalDays <= 7 ? "alert-warning"
+                                                : "alert-info";
+        string icon = diff.TotalDays <= 2 ? "bi-alarm-fill" : "bi-clock-history";
+
+        <div class="alert @alertClass border-0 shadow-sm py-2 mb-4 d-flex align-items-center">
+            <i class="bi @icon me-2 fs-5"></i>
+            <div class="flex-grow-1">
+                <strong>Ordering window closes in @label.</strong>
+                <span class="opacity-75 small">
+                    Submit your order before
+                    @(closeDate.Value.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM d, yyyy 'at' h:mm tt")).
+                </span>
+            </div>
+        </div>
+    }
+}
+
+@{
     var existingOrderNum = ViewBag.ExistingOrderNumber as string;
 }
 @if (!string.IsNullOrEmpty(existingOrderNum))

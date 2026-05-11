@@ -52,6 +52,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GmailApiService>()
 // Register notification service (scoped, uses GmailApiService for sending)
 builder.Services.AddScoped<EmailNotificationService>();
 
+// Register in-app portal notification service (scoped, drives the notification bell)
+builder.Services.AddScoped<PortalNotificationService>();
+
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();
 

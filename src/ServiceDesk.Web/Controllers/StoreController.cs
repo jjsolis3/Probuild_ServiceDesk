@@ -17,19 +17,28 @@ public class StoreController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailNotification;
+    private readonly PortalNotificationService _portalNotifications;
     private readonly ILogger<StoreController> _logger;
     private readonly IWebHostEnvironment _env;
 
     public StoreController(ServiceDeskDbContext context,
         EmailNotificationService emailNotification,
+        PortalNotificationService portalNotifications,
         ILogger<StoreController> logger,
         IWebHostEnvironment env)
     {
-        _context           = context;
-        _emailNotification = emailNotification;
-        _logger            = logger;
-        _env               = env;
+        _context             = context;
+        _emailNotification   = emailNotification;
+        _portalNotifications = portalNotifications;
+        _logger              = logger;
+        _env                 = env;
     }
+
+    /// <summary>
+    /// Absolute base URL (scheme + host) for the current request, used in
+    /// email templates so deep links and image src attributes resolve.
+    /// </summary>
+    private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
 
     // GET /Store — catalog (access + time-window enforced)
     public async Task<IActionResult> Index()
@@ -59,6 +68,13 @@ public class StoreController : Controller
 
         var welcome = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "StoreWelcomeMessage"))?.Value ?? string.Empty;
+
+        // Surface the store close date to the view so it can show a countdown banner.
+        var closeDateStr = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "StoreCloseDate"))?.Value ?? string.Empty;
+        DateTime? storeCloseDate = null;
+        if (!string.IsNullOrWhiteSpace(closeDateStr) && DateTime.TryParse(closeDateStr, out var cd))
+            storeCloseDate = cd;
 
         var (q, yr) = GetCurrentQuarter();
 
@@ -94,6 +110,7 @@ public class StoreController : Controller
         ViewBag.CurrentUser          = user;
         ViewBag.ExistingOrderNumber  = existingOrder?.OrderNumber;
         ViewBag.PreviousOrderBadges  = prevOrderBadges;
+        ViewBag.StoreCloseDate       = storeCloseDate;
 
         return View(products);
     }
@@ -268,15 +285,67 @@ public class StoreController : Controller
         order.OrderNumber = $"SO-{year}-Q{quarter}-{order.Id:D4}";
         await _context.SaveChangesAsync();
 
-        // Send confirmation email — non-blocking for the user; exceptions are swallowed here
+        // Re-load items with the product navigation so emails can render thumbnails.
+        var itemsWithProducts = await _context.StoreOrderItems
+            .Include(i => i.StoreProduct)
+            .Where(i => i.StoreOrderId == order.Id)
+            .ToListAsync();
+
+        // Send confirmation email + ops digest — non-blocking for the user.
         try
         {
             await _emailNotification.SendStoreOrderConfirmationAsync(
-                order, user.Email, user.FullName, order.Items.ToList());
+                order, user.Email, user.FullName, itemsWithProducts, BaseUrl);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send confirmation for order #{OrderId}", order.Id);
+        }
+
+        try
+        {
+            await _emailNotification.SendStoreOrderOpsNotificationAsync(
+                order, user.FullName, itemsWithProducts, BaseUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Store] Failed to send ops notification for order #{OrderId}", order.Id);
+        }
+
+        // In-app notification for the user.
+        await _portalNotifications.NotifyAsync(
+            user.Id,
+            type: "StoreOrderPlaced",
+            title: $"Order {order.OrderNumber} placed",
+            message: $"{order.Items.Sum(i => i.Quantity)} item(s) submitted for Q{order.Quarter} {order.Year}.",
+            linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+            icon: "bi-receipt");
+
+        // In-app notification for every ops user (plus Admins as fallback) so the
+        // notification bell mirrors what the ops digest email said.
+        try
+        {
+            var opsIds = await _context.StoreOperationsAccess
+                .Where(a => a.IsActive)
+                .Select(a => a.PortalUserId)
+                .ToListAsync();
+            var adminIds = await _context.PortalUsers
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin")
+                .Select(u => u.Id)
+                .ToListAsync();
+            var recipients = opsIds.Union(adminIds).Where(id => id != user.Id);
+
+            await _portalNotifications.NotifyManyAsync(
+                recipients,
+                type: "StoreOrderOpsAlert",
+                title: $"New store order: {order.OrderNumber}",
+                message: $"{user.FullName} ordered {order.Items.Sum(i => i.Quantity)} item(s).",
+                linkUrl: Url.Action(nameof(OperationsHub), new { year = order.Year, quarter = order.Quarter, status = "Pending" }),
+                icon: "bi-cart-plus");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Store] Failed to broadcast ops in-app notifications for order #{OrderId}", order.Id);
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} placed successfully. A confirmation email has been sent to {user.Email}.";
@@ -437,6 +506,8 @@ public class StoreController : Controller
 
         var oldStatus = order.Status;
         order.Status = newStatus;
+        if (oldStatus != newStatus)
+            order.LastStatusChangedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         if (oldStatus != newStatus)
@@ -444,12 +515,32 @@ public class StoreController : Controller
             try
             {
                 await _emailNotification.SendOrderStatusUpdateAsync(
-                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus, BaseUrl);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OpsHub] Failed to send status update email for order #{OrderId}", order.Id);
             }
+
+            await _portalNotifications.NotifyAsync(
+                order.PortalUserId,
+                type: "StoreOrderStatus",
+                title: $"Order {order.OrderNumber} — {newStatus}",
+                message: newStatus switch
+                {
+                    "Confirmed" => "Your order has been reviewed and confirmed.",
+                    "Fulfilled" => "Your order has been fulfilled.",
+                    "Cancelled" => "Your order was cancelled.",
+                    _           => $"Status updated to {newStatus}."
+                },
+                linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+                icon: newStatus switch
+                {
+                    "Confirmed" => "bi-check-circle",
+                    "Fulfilled" => "bi-box-seam",
+                    "Cancelled" => "bi-x-circle",
+                    _           => "bi-receipt"
+                });
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} marked as {newStatus}. A notification email has been sent to {order.PortalUser.Email}.";
@@ -481,20 +572,42 @@ public class StoreController : Controller
             .ToListAsync();
 
         int updated = 0;
+        var now = DateTime.UtcNow;
         foreach (var order in orders)
         {
             if (order.Status == newStatus) continue;
             order.Status = newStatus;
+            order.LastStatusChangedDate = now;
             updated++;
             try
             {
                 await _emailNotification.SendOrderStatusUpdateAsync(
-                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus, BaseUrl);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OpsHub] Bulk: failed to send status email for order #{OrderId}", order.Id);
             }
+
+            await _portalNotifications.NotifyAsync(
+                order.PortalUserId,
+                type: "StoreOrderStatus",
+                title: $"Order {order.OrderNumber} — {newStatus}",
+                message: newStatus switch
+                {
+                    "Confirmed" => "Your order has been reviewed and confirmed.",
+                    "Fulfilled" => "Your order has been fulfilled.",
+                    "Cancelled" => "Your order was cancelled.",
+                    _           => $"Status updated to {newStatus}."
+                },
+                linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+                icon: newStatus switch
+                {
+                    "Confirmed" => "bi-check-circle",
+                    "Fulfilled" => "bi-box-seam",
+                    "Cancelled" => "bi-x-circle",
+                    _           => "bi-receipt"
+                });
         }
 
         await _context.SaveChangesAsync();

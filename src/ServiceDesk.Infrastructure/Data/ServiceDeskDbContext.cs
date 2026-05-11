@@ -93,6 +93,9 @@ public class ServiceDeskDbContext : DbContext
     // Notification / email activity log
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
+    // In-app portal notifications (notification bell)
+    public DbSet<PortalNotification> PortalNotifications => Set<PortalNotification>();
+
     // Software license seat assignments
     public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
 

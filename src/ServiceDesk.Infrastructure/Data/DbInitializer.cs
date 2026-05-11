@@ -1581,6 +1581,38 @@ public static class DbInitializer
                         CREATE INDEX IX_PayrollReceipts_ContractorId ON dbo.PayrollReceipts (ContractorId);
                 END");
 
+            // 55. In-app portal notifications (notification bell). One row per recipient.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PortalNotifications')
+                BEGIN
+                    CREATE TABLE dbo.PortalNotifications (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId    INT             NOT NULL
+                            CONSTRAINT FK_PortalNotifications_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        [Type]          NVARCHAR(60)    NOT NULL,
+                        Title           NVARCHAR(200)   NOT NULL,
+                        Message         NVARCHAR(1000)  NULL,
+                        LinkUrl         NVARCHAR(500)   NULL,
+                        Icon            NVARCHAR(60)    NULL,
+                        IsRead          BIT             NOT NULL DEFAULT 0,
+                        CreatedDate     DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        ReadDate        DATETIME        NULL
+                    );
+
+                    CREATE INDEX IX_PortalNotifications_User_Unread
+                        ON dbo.PortalNotifications (PortalUserId, IsRead, CreatedDate DESC);
+                END");
+
+            // 56. Track when a store order's status last changed (for the order timeline stepper).
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrders')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrders') AND name = 'LastStatusChangedDate')
+                BEGIN
+                    ALTER TABLE dbo.StoreOrders ADD LastStatusChangedDate DATETIME NULL;
+                END");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')
