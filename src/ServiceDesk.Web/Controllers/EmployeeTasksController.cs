@@ -153,10 +153,11 @@ public class EmployeeTasksController : Controller
     public async Task<IActionResult> AddTask(int employeeId, EmployeeTaskType taskType,
         string title, string? description, string? assignedToEmail, DateTime? dueDate)
     {
+        var tab = TabFor(taskType);
         if (string.IsNullOrWhiteSpace(title))
         {
             TempData["Error"] = "Task title is required.";
-            return RedirectToAction("Details", "Employees", new { id = employeeId, tab = "checklist" });
+            return RedirectToAction("Details", "Employees", new { id = employeeId, tab });
         }
 
         _context.EmployeeTasks.Add(new EmployeeTask
@@ -175,7 +176,7 @@ public class EmployeeTasksController : Controller
         await _context.SaveChangesAsync();
 
         TempData["Success"] = "Task added.";
-        return RedirectToAction("Details", "Employees", new { id = employeeId, tab = "checklist" });
+        return RedirectToAction("Details", "Employees", new { id = employeeId, tab });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -191,14 +192,19 @@ public class EmployeeTasksController : Controller
             task.CompletedDate = DateTime.UtcNow;
             task.CompletedByEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
         }
-        else if (status != EmployeeTaskStatus.Completed)
+        else
         {
             task.CompletedDate = null;
             task.CompletedByEmail = null;
         }
 
         await _context.SaveChangesAsync();
-        return RedirectToAction("Details", "Employees", new { id = task.EmployeeId, tab = "checklist" });
+
+        if (IsAjaxRequest())
+            return Json(await BuildTaskUpdateResponseAsync(task.EmployeeId, task.TaskType, task));
+
+        return RedirectToAction("Details", "Employees",
+            new { id = task.EmployeeId, tab = TabFor(task.TaskType) });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -206,10 +212,79 @@ public class EmployeeTasksController : Controller
     {
         var task = await _context.EmployeeTasks.FindAsync(taskId);
         if (task == null) return NotFound();
-        var empId = task.EmployeeId;
+        var empId    = task.EmployeeId;
+        var taskType = task.TaskType;
+
         _context.EmployeeTasks.Remove(task);
         await _context.SaveChangesAsync();
+
+        if (IsAjaxRequest())
+            return Json(await BuildTaskUpdateResponseAsync(empId, taskType, deletedTaskId: taskId));
+
         TempData["Success"] = "Task deleted.";
-        return RedirectToAction("Details", "Employees", new { id = empId, tab = "checklist" });
+        return RedirectToAction("Details", "Employees",
+            new { id = empId, tab = TabFor(taskType) });
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private static string TabFor(EmployeeTaskType taskType)
+        => taskType == EmployeeTaskType.Onboarding ? "onboarding" : "offboarding";
+
+    private bool IsAjaxRequest()
+        => string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest",
+                         StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Builds the JSON payload returned to the checklist UI after a successful
+    /// task update or delete. Includes the changed task's current state plus
+    /// recomputed counts for the affected category and the overall task type
+    /// so the page can refresh its badges without reloading.
+    /// </summary>
+    private async Task<object> BuildTaskUpdateResponseAsync(
+        int employeeId, EmployeeTaskType taskType,
+        EmployeeTask? updatedTask = null, int? deletedTaskId = null)
+    {
+        var tasksOfType = await _context.EmployeeTasks
+            .Where(t => t.EmployeeId == employeeId && t.TaskType == taskType)
+            .Select(t => new { t.Category, t.Status })
+            .ToListAsync();
+
+        int totalAll = tasksOfType.Count;
+        int doneAll  = tasksOfType.Count(t => t.Status == EmployeeTaskStatus.Completed);
+
+        var categoryCounts = tasksOfType
+            .GroupBy(t => string.IsNullOrWhiteSpace(t.Category) ? "General" : t.Category)
+            .Select(g => new {
+                category = g.Key,
+                pending  = g.Count(t => t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped),
+                done     = g.Count(t => t.Status == EmployeeTaskStatus.Completed),
+                skipped  = g.Count(t => t.Status == EmployeeTaskStatus.Skipped),
+                total    = g.Count()
+            })
+            .OrderBy(g => g.category)
+            .ToList();
+
+        object? taskJson = null;
+        if (updatedTask != null)
+        {
+            taskJson = new {
+                id                = updatedTask.Id,
+                status            = updatedTask.Status.ToString(),
+                category          = string.IsNullOrWhiteSpace(updatedTask.Category) ? "General" : updatedTask.Category,
+                completedDate     = updatedTask.CompletedDate,
+                completedByEmail  = updatedTask.CompletedByEmail
+            };
+        }
+
+        return new
+        {
+            ok            = true,
+            taskType      = taskType.ToString(),
+            task          = taskJson,
+            deletedTaskId,
+            overall       = new { total = totalAll, done = doneAll },
+            categoryCounts
+        };
     }
 }
