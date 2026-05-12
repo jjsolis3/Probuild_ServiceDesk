@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
@@ -18,15 +17,13 @@ public class StoreController : Controller
     private readonly StoreCartService _cartService;
     private readonly StoreProductAdminService _productAdmin;
     private readonly ILogger<StoreController> _logger;
-    private readonly IWebHostEnvironment _env;
 
     public StoreController(ServiceDeskDbContext context,
         EmailNotificationService emailNotification,
         PortalNotificationService portalNotifications,
         StoreCartService cartService,
         StoreProductAdminService productAdmin,
-        ILogger<StoreController> logger,
-        IWebHostEnvironment env)
+        ILogger<StoreController> logger)
     {
         _context             = context;
         _emailNotification   = emailNotification;
@@ -34,7 +31,6 @@ public class StoreController : Controller
         _cartService         = cartService;
         _productAdmin        = productAdmin;
         _logger              = logger;
-        _env                 = env;
     }
 
     /// <summary>
