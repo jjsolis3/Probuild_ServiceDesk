@@ -2349,6 +2349,96 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(StoreProductEdit), new { id = productId });
     }
 
+    // POST: Settings/StoreProductDuplicate/{id}
+    // Clones the product (and copies its image files so the new and old rows
+    // don't share file paths). The new product is created Inactive so admins
+    // can review tweaks before publishing.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductDuplicate(int id)
+    {
+        var src = await _context.StoreProducts
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        if (src == null) return NotFound();
+
+        var copy = new ServiceDesk.Core.Models.StoreProduct
+        {
+            Name              = $"Copy of {src.Name}",
+            Category          = src.Category,
+            UnitOfMeasure     = src.UnitOfMeasure,
+            Description       = src.Description,
+            Tags              = src.Tags,
+            MaxQtyPerOrder    = src.MaxQtyPerOrder,
+            SortOrder         = src.SortOrder,
+            // Always start inactive so the admin reviews before going live.
+            IsActive          = false,
+            HasPrice          = src.HasPrice,
+            Price             = src.Price,
+            HasGenderOption   = src.HasGenderOption,
+            HasSizes          = src.HasSizes,
+            HasColorOptions   = src.HasColorOptions,
+            AvailableSizes    = src.AvailableSizes,
+            AvailableColors   = src.AvailableColors,
+            CustomOptionsJson = src.CustomOptionsJson,
+            ImagePath         = CopyStoreImageFile(src.ImagePath),
+            CreatedDate       = DateTime.UtcNow
+        };
+        _context.StoreProducts.Add(copy);
+        await _context.SaveChangesAsync();
+
+        // Clone gallery images (file content + DB rows) so the duplicate has
+        // its own independent media.
+        foreach (var img in src.Images.OrderBy(i => i.SortOrder).ThenBy(i => i.Id))
+        {
+            var newPath = CopyStoreImageFile(img.ImagePath);
+            if (string.IsNullOrEmpty(newPath)) continue;
+            _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
+            {
+                StoreProductId = copy.Id,
+                ImagePath      = newPath,
+                VariantTag     = img.VariantTag,
+                Alt            = img.Alt,
+                SortOrder      = img.SortOrder,
+                CreatedDate    = DateTime.UtcNow
+            });
+        }
+        if (src.Images.Any()) await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Duplicated as \"{copy.Name}\". Review and activate when ready.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id = copy.Id });
+    }
+
+    // POST: Settings/StoreProductBulkSetActive
+    // Activates or deactivates a set of products in one round-trip.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductBulkSetActive(List<int> ids, bool isActive)
+    {
+        if (ids == null || ids.Count == 0)
+        {
+            TempData["Error"] = "Select at least one product first.";
+            return RedirectToAction(nameof(StoreProducts));
+        }
+
+        var products = await _context.StoreProducts
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync();
+
+        int changed = 0;
+        foreach (var p in products)
+        {
+            if (p.IsActive == isActive) continue;
+            p.IsActive = isActive;
+            changed++;
+        }
+        if (changed > 0) await _context.SaveChangesAsync();
+
+        var verb = isActive ? "activated" : "deactivated";
+        TempData["Success"] = changed == 0
+            ? $"No changes — selected product(s) were already {verb}."
+            : $"{changed} product(s) {verb}.";
+        return RedirectToAction(nameof(StoreProducts));
+    }
+
     // POST: Settings/StoreProductDelete/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductDelete(int id)
@@ -2559,6 +2649,33 @@ public class SettingsController : Controller
         var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
         if (System.IO.File.Exists(full))
             System.IO.File.Delete(full);
+    }
+
+    /// <summary>
+    /// Copies a store image file to a fresh GUID-named file so the new path
+    /// can be assigned to a different product (used by the Duplicate action).
+    /// Returns the new relative path, or null when the source is missing.
+    /// </summary>
+    private string? CopyStoreImageFile(string? sourceRelativePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceRelativePath)) return null;
+        var src = Path.Combine(_env.WebRootPath, sourceRelativePath.TrimStart('/'));
+        if (!System.IO.File.Exists(src)) return null;
+
+        var dir = Path.Combine(_env.WebRootPath, "images", "store");
+        Directory.CreateDirectory(dir);
+        var ext = Path.GetExtension(src);
+        var newFileName = $"{Guid.NewGuid()}{ext}";
+        var dest = Path.Combine(dir, newFileName);
+        try
+        {
+            System.IO.File.Copy(src, dest, overwrite: false);
+        }
+        catch
+        {
+            return null;
+        }
+        return $"/images/store/{newFileName}";
     }
 
     private async Task<List<string>> GetExistingCategoriesAsync()
