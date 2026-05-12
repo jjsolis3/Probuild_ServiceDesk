@@ -171,23 +171,63 @@
                     <!-- Main Product Image -->
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Main Product Image</label>
-                        @if (!string.IsNullOrEmpty(Model.ImagePath))
-                        {
-                            <div class="mb-2 d-flex align-items-center gap-3">
-                                <img src="@Model.ImagePath" alt="Current image"
+                        <div class="mb-2 d-flex align-items-center gap-3">
+                            @if (!string.IsNullOrEmpty(Model.ImagePath))
+                            {
+                                <img id="mainImagePreview" src="@Model.ImagePath" alt="Current image"
                                      style="height:80px;width:80px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" />
+                            }
+                            else
+                            {
+                                <img id="mainImagePreview" alt=""
+                                     style="display:none;height:80px;width:80px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" />
+                            }
+                            @if (!string.IsNullOrEmpty(Model.ImagePath))
+                            {
                                 <div>
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="clearImage" name="clearImage" value="true" />
                                         <label class="form-check-label text-danger small" for="clearImage">Remove main image</label>
                                     </div>
                                 </div>
-                            </div>
-                        }
-                        <input type="file" class="form-control" name="imageFile"
-                               accept=".jpg,.jpeg,.png,.webp,.gif" />
+                            }
+                        </div>
+                        <input type="file" class="form-control" name="imageFile" id="mainImageInput"
+                               accept=".jpg,.jpeg,.png,.webp,.gif"
+                               onchange="previewMainImage(this)" />
                         <div class="form-text">Upload a new image to replace the main one.</div>
                     </div>
+
+                    @{
+                        // Build the suggestion list shown in the Variant Tag datalist
+                        // from the product's configured options. Keeps admins from
+                        // typo'ing tags that would silently break the catalog filter.
+                        var variantSuggestions = new List<string>();
+                        if (Model.HasGenderOption)
+                        {
+                            variantSuggestions.AddRange(new[] { "Men's", "Women's", "Unisex" });
+                        }
+                        if (!string.IsNullOrWhiteSpace(Model.AvailableSizes))
+                        {
+                            variantSuggestions.AddRange(
+                                Model.AvailableSizes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                        }
+                        if (!string.IsNullOrWhiteSpace(Model.AvailableColors))
+                        {
+                            variantSuggestions.AddRange(
+                                Model.AvailableColors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                        }
+                        variantSuggestions = variantSuggestions
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    }
+                    <datalist id="variantTagSuggestions">
+                        @foreach (var s in variantSuggestions)
+                        {
+                            <option value="@s"></option>
+                        }
+                    </datalist>
 
                     <!-- Additional Gallery Images -->
                     <div class="mb-4">
@@ -203,7 +243,9 @@
                                 <div class="d-flex flex-column gap-2">
                                     @foreach (var img in Model.Images.OrderBy(i => i.SortOrder).ThenBy(i => i.Id))
                                     {
-                                        <div class="d-flex align-items-start gap-3 p-2 border rounded" style="background:#f9f9f9;">
+                                        <div class="d-flex align-items-start gap-3 p-2 border rounded gallery-meta-row"
+                                             id="gallery-row-@img.Id"
+                                             style="background:#f9f9f9;">
                                             <img src="@img.ImagePath" alt="Gallery image"
                                                  style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
                                             <div class="flex-grow-1">
@@ -213,6 +255,7 @@
                                                                name="imageTags[@img.Id]"
                                                                value="@img.VariantTag"
                                                                class="form-control form-control-sm"
+                                                               list="variantTagSuggestions"
                                                                placeholder="Variant tag (e.g. Red)"
                                                                maxlength="100" />
                                                         <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
@@ -236,15 +279,12 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <form method="post" asp-action="StoreProductImageDelete"
-                                                  asp-antiforgery="true"
-                                                  onsubmit="return confirm('Delete this gallery image?');"
-                                                  class="flex-shrink-0">
-                                                <input type="hidden" name="imageId" value="@img.Id" />
-                                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete image">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </form>
+                                            <button type="button"
+                                                    class="btn btn-outline-danger btn-sm flex-shrink-0"
+                                                    title="Delete image"
+                                                    onclick="deleteGalleryImage(@img.Id, this)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </div>
                                     }
                                 </div>
@@ -347,6 +387,7 @@ function buildGalleryTagRows(input) {
                 escHtml(file.name) +
             '</span>' +
             '<input type="text" class="form-control" name="galleryTags" ' +
+                   'list="variantTagSuggestions" ' +
                    'placeholder="Variant tag (e.g. Red, Navy) — leave blank for all" ' +
                    'maxlength="100" />';
         container.appendChild(row);
@@ -358,6 +399,53 @@ function escHtml(s) {
 }
 function escAttr(s) {
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
+
+// Live thumbnail preview for the main image file picker.
+function previewMainImage(input) {
+    var preview = document.getElementById('mainImagePreview');
+    if (!preview) return;
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        preview.src = e.target.result;
+        preview.style.display = '';
+        var clear = document.getElementById('clearImage');
+        if (clear) clear.checked = false;
+    };
+    reader.readAsDataURL(file);
+}
+
+// Delete a gallery image via fetch so the click doesn't accidentally submit the
+// surrounding edit form. The previous nested <form> caused that bug — HTML
+// forbids nested forms, so the inner one was dropped and the click submitted
+// the outer product-edit form instead.
+function deleteGalleryImage(imageId, btn) {
+    if (!confirm('Delete this gallery image?')) return;
+    btn.disabled = true;
+
+    var tokenEl = document.querySelector('input[name="__RequestVerificationToken"]');
+    var fd = new FormData();
+    fd.append('imageId', imageId);
+    if (tokenEl) fd.append('__RequestVerificationToken', tokenEl.value);
+
+    fetch('@Url.Action("StoreProductImageDelete", "Settings")', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin'
+    }).then(function (r) {
+        if (r.ok || r.redirected) {
+            var row = document.getElementById('gallery-row-' + imageId);
+            if (row) row.remove();
+        } else {
+            btn.disabled = false;
+            alert('Could not delete image. Please try again.');
+        }
+    }).catch(function () {
+        btn.disabled = false;
+        alert('Network error. Please try again.');
+    });
 }
 </script>
 }
