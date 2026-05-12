@@ -1053,7 +1053,9 @@ public class StoreController : Controller
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        string? galleryMetaJson,
+        Dictionary<int, string>? imageTags,
+        Dictionary<int, string>? imageAlts,
+        Dictionary<int, int>? imageOrders,
         bool clearImage = false)
     {
         var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
@@ -1070,14 +1072,9 @@ public class StoreController : Controller
             return View(product);
         }
 
-        // Translate the Ops-only galleryMetaJson payload into the dict shape the
-        // shared service expects. This adapter is retired in commit 3 when both
-        // flows standardize on the form-array binding.
-        var (tags, alts, orders) = ParseGalleryMetaJson(galleryMetaJson);
-
         var ok = await _productAdmin.UpdateAsync(
             id, product, imageFile, galleryFiles, galleryTags,
-            tags, alts, orders, clearImage);
+            imageTags, imageAlts, imageOrders, clearImage);
         if (!ok) return NotFound();
 
         TempData["Success"] = $"Product \"{product.Name}\" updated.";
@@ -1132,39 +1129,6 @@ public class StoreController : Controller
         return null;
     }
 
-    /// <summary>
-    /// Splits the Ops-only galleryMetaJson hidden-field payload into the three
-    /// dictionaries the shared service consumes. Returns empty dictionaries
-    /// when the payload is missing or malformed.
-    /// </summary>
-    private static (Dictionary<int, string> tags, Dictionary<int, string> alts, Dictionary<int, int> orders)
-        ParseGalleryMetaJson(string? galleryMetaJson)
-    {
-        var tags   = new Dictionary<int, string>();
-        var alts   = new Dictionary<int, string>();
-        var orders = new Dictionary<int, int>();
-        if (string.IsNullOrWhiteSpace(galleryMetaJson)) return (tags, alts, orders);
-
-        try
-        {
-            var metas = System.Text.Json.JsonSerializer.Deserialize<List<GalleryImageMeta>>(galleryMetaJson);
-            if (metas != null)
-            {
-                foreach (var m in metas)
-                {
-                    tags[m.Id]   = m.Tag ?? string.Empty;
-                    alts[m.Id]   = m.Alt ?? string.Empty;
-                    orders[m.Id] = m.Sort;
-                }
-            }
-        }
-        catch { /* malformed JSON — return empty dicts */ }
-        return (tags, alts, orders);
-    }
-
-    // Gallery metadata record for the OpsProductEdit galleryMetaJson payload.
-    // This will be retired in commit 3 when both flows standardize on form arrays.
-    private sealed record GalleryImageMeta(int Id, string? Tag, string? Alt, int Sort);
 
     // Cart line item posted as part of the JSON payload from the catalog page
     private class CartLineInput

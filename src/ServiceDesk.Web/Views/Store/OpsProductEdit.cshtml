@@ -196,40 +196,37 @@
                                 so it only appears in the store when that variant is selected.
                                 Leave blank to show for all variants.
                             </div>
-                            <div id="galleryMetaList" class="d-flex flex-column gap-2 mb-3">
+                            <div class="d-flex flex-column gap-2 mb-3">
                                 @foreach (var img in galleryImages)
                                 {
                                     <div class="d-flex align-items-start gap-3 p-2 border rounded gallery-meta-row"
-                                         style="background:#f9f9f9;"
-                                         data-img-id="@img.Id"
-                                         data-img-tag="@(img.VariantTag ?? "")"
-                                         data-img-alt="@(img.Alt ?? "")"
-                                         data-img-sort="@img.SortOrder">
+                                         id="gallery-row-@img.Id"
+                                         style="background:#f9f9f9;">
                                         <img src="@img.ImagePath" alt="Gallery image"
                                              style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" />
                                         <div class="flex-grow-1">
                                             <div class="row g-2">
                                                 <div class="col-md-5">
-                                                    <input type="text" class="form-control form-control-sm img-tag-input"
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           name="imageTags[@img.Id]"
                                                            placeholder="Variant tag (e.g. Red)"
                                                            maxlength="100"
-                                                           value="@(img.VariantTag ?? "")"
-                                                           oninput="serializeGalleryMeta()" />
+                                                           value="@(img.VariantTag ?? "")" />
                                                     <small class="text-muted" style="font-size:.7rem;">Variant tag</small>
                                                 </div>
                                                 <div class="col-md-5">
-                                                    <input type="text" class="form-control form-control-sm img-alt-input"
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           name="imageAlts[@img.Id]"
                                                            placeholder="Alt text / caption"
                                                            maxlength="200"
-                                                           value="@(img.Alt ?? "")"
-                                                           oninput="serializeGalleryMeta()" />
+                                                           value="@(img.Alt ?? "")" />
                                                     <small class="text-muted" style="font-size:.7rem;">Alt text</small>
                                                 </div>
                                                 <div class="col-md-2">
-                                                    <input type="number" class="form-control form-control-sm img-sort-input"
+                                                    <input type="number" class="form-control form-control-sm"
+                                                           name="imageOrders[@img.Id]"
                                                            min="0" max="9999"
-                                                           value="@img.SortOrder"
-                                                           oninput="serializeGalleryMeta()" />
+                                                           value="@img.SortOrder" />
                                                     <small class="text-muted" style="font-size:.7rem;">Sort</small>
                                                 </div>
                                             </div>
@@ -244,9 +241,6 @@
                                 }
                             </div>
                         }
-
-                        <!-- Hidden field carries all gallery metadata as JSON -->
-                        <input type="hidden" name="galleryMetaJson" id="galleryMetaJson" value="" />
 
                         <input type="file" class="form-control" id="galleryFilesInput" name="galleryFiles"
                                accept=".jpg,.jpeg,.png,.webp,.gif" multiple
@@ -333,25 +327,10 @@ function serializeCustomOptions() {
     } catch (e) { }
 })();
 
-// Gallery metadata — serialise all existing gallery rows to JSON on every change.
-function serializeGalleryMeta() {
-    var rows = document.querySelectorAll('#galleryMetaList .gallery-meta-row');
-    var arr = [];
-    rows.forEach(function(r) {
-        arr.push({
-            Id:   parseInt(r.dataset.imgId, 10),
-            Tag:  r.querySelector('.img-tag-input').value  || '',
-            Alt:  r.querySelector('.img-alt-input').value  || '',
-            Sort: parseInt(r.querySelector('.img-sort-input').value, 10) || 0
-        });
-    });
-    document.getElementById('galleryMetaJson').value = arr.length ? JSON.stringify(arr) : '';
-}
-
-// Initialise metadata JSON from current state.
-(function() { serializeGalleryMeta(); })();
-
 // Delete a gallery image via fetch so we stay on the same page.
+// Tag/alt/sort edits no longer need JSON serialisation — they bind via
+// imageTags[id] / imageAlts[id] / imageOrders[id] form fields, the same
+// way the Settings flow does it.
 function deleteGalleryImage(imageId, productId, btn) {
     if (!confirm('Delete this gallery image?')) return;
     btn.disabled = true;
@@ -366,9 +345,8 @@ function deleteGalleryImage(imageId, productId, btn) {
         body: fd
     }).then(function(r) {
         if (r.ok || r.redirected) {
-            // Remove the row from the DOM and re-serialise.
-            btn.closest('.gallery-meta-row').remove();
-            serializeGalleryMeta();
+            var row = document.getElementById('gallery-row-' + imageId);
+            if (row) row.remove();
         } else {
             btn.disabled = false;
             alert('Could not delete image. Please try again.');
