@@ -480,9 +480,7 @@ else
                             .OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
                             .FirstOrDefault()?.ImagePath;
 
-                    @{
-                        var isFav = favoriteSet.Contains(product.Id);
-                    }
+                    var isFav = favoriteSet.Contains(product.Id);
                     <div class="col-6 col-md-4 col-lg-3 catalog-col"
                          data-name="@((product.Name + " " + (product.Tags ?? "")).ToLower())"
                          data-category="@(product.Category ?? "General")"
@@ -771,15 +769,11 @@ else
 
     <!-- Product metadata for JS -->
     <script id="productDataJson" type="application/json">@Html.Raw(productDataJson)</script>
-
-    @{
-        var prefPayload = System.Text.Json.JsonSerializer.Serialize(new {
-            size   = ViewBag.PreferredSize   as string ?? "",
-            gender = ViewBag.PreferredGender as string ?? "",
-            color  = ViewBag.PreferredColor  as string ?? ""
-        });
-    }
-    <script id="userPrefsJson" type="application/json">@Html.Raw(prefPayload)</script>
+    <script id="userPrefsJson" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+        size   = ViewBag.PreferredSize   as string ?? "",
+        gender = ViewBag.PreferredGender as string ?? "",
+        color  = ViewBag.PreferredColor  as string ?? ""
+    }))</script>
 }
 
 @section Scripts {
