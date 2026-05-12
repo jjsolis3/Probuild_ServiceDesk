@@ -2161,12 +2161,7 @@ public class SettingsController : Controller
 
     // GET: Settings/StoreProducts
     public async Task<IActionResult> StoreProducts()
-    {
-        var products = await _context.StoreProducts
-            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
-            .ToListAsync();
-        return View(products);
-    }
+        => View(await _productAdmin.ListAsync());
 
     // GET: Settings/StoreProductCreate
     public async Task<IActionResult> StoreProductCreate()
@@ -2189,52 +2184,15 @@ public class SettingsController : Controller
             return View(product);
         }
 
-        // Normalize new fields
-        if (!product.HasPrice) product.Price = null;
-        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        product.CustomOptionsJson = StoreProductAdminService.NormalizeCustomOptionsJson(product.CustomOptionsJson);
-
-        product.ImagePath = await _productAdmin.SaveImageAsync(imageFile, null);
-        product.CreatedDate = DateTime.UtcNow;
-        _context.StoreProducts.Add(product);
-        await _context.SaveChangesAsync();
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = 100;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await _productAdmin.SaveImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count
-                        ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
-                    {
-                        StoreProductId = product.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-            await _context.SaveChangesAsync();
-        }
-
-        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        var created = await _productAdmin.CreateAsync(product, imageFile, galleryFiles, galleryTags);
+        TempData["Success"] = $"Product \"{created.Name}\" created.";
         return RedirectToAction(nameof(StoreProducts));
     }
 
     // GET: Settings/StoreProductEdit/{id}
     public async Task<IActionResult> StoreProductEdit(int id)
     {
-        var product = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _productAdmin.GetWithImagesAsync(id);
         if (product == null) return NotFound();
         ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(product);
@@ -2259,160 +2217,38 @@ public class SettingsController : Controller
             return View(product);
         }
 
-        var existing = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
-        if (existing == null) return NotFound();
+        var ok = await _productAdmin.UpdateAsync(
+            id, product, imageFile, galleryFiles, galleryTags,
+            imageTags, imageAlts, imageOrders, clearImage);
+        if (!ok) return NotFound();
 
-        existing.Name             = product.Name;
-        existing.Description      = product.Description;
-        existing.Category         = product.Category;
-        existing.UnitOfMeasure    = product.UnitOfMeasure;
-        existing.IsActive         = product.IsActive;
-        existing.SortOrder        = product.SortOrder;
-        existing.HasSizes         = product.HasSizes;
-        existing.HasGenderOption  = product.HasGenderOption;
-        existing.HasColorOptions  = product.HasColorOptions;
-        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes) ? null : product.AvailableSizes.Trim();
-        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors) ? null : product.AvailableColors.Trim();
-
-        // New flexibility fields
-        existing.HasPrice          = product.HasPrice;
-        existing.Price             = product.HasPrice ? product.Price : null;
-        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
-        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        existing.CustomOptionsJson = StoreProductAdminService.NormalizeCustomOptionsJson(product.CustomOptionsJson);
-
-        if (clearImage)
-        {
-            await _productAdmin.DeleteImageFileAsync(existing.ImagePath);
-            existing.ImagePath = null;
-        }
-        else
-        {
-            existing.ImagePath = await _productAdmin.SaveImageAsync(imageFile, existing.ImagePath);
-        }
-
-        // Update tag / alt text / sort order on existing gallery images
-        foreach (var img in existing.Images)
-        {
-            if (imageTags != null && imageTags.TryGetValue(img.Id, out var tag))
-                img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
-
-            if (imageAlts != null && imageAlts.TryGetValue(img.Id, out var alt))
-                img.Alt = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
-
-            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var order))
-                img.SortOrder = Math.Clamp(order, 0, 9999);
-        }
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await _productAdmin.SaveImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count
-                        ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
-                    {
-                        StoreProductId = existing.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
-        return RedirectToAction(nameof(StoreProductEdit), new { id = existing.Id });
+        TempData["Success"] = $"Product \"{product.Name}\" updated.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id });
     }
 
     // POST: Settings/StoreProductImageDelete
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductImageDelete(int imageId)
     {
-        var img = await _context.StoreProductImages.FindAsync(imageId);
-        if (img == null) return NotFound();
-
-        await _productAdmin.DeleteImageFileAsync(img.ImagePath);
-        var productId = img.StoreProductId;
-        _context.StoreProductImages.Remove(img);
-        await _context.SaveChangesAsync();
+        var productId = await _productAdmin.DeleteImageAsync(imageId);
+        if (productId == null) return NotFound();
 
         TempData["Success"] = "Image removed.";
-        return RedirectToAction(nameof(StoreProductEdit), new { id = productId });
+        return RedirectToAction(nameof(StoreProductEdit), new { id = productId.Value });
     }
 
     // POST: Settings/StoreProductDuplicate/{id}
-    // Clones the product (and copies its image files so the new and old rows
-    // don't share file paths). The new product is created Inactive so admins
-    // can review tweaks before publishing.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductDuplicate(int id)
     {
-        var src = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
-        if (src == null) return NotFound();
-
-        var copy = new ServiceDesk.Core.Models.StoreProduct
-        {
-            Name              = $"Copy of {src.Name}",
-            Category          = src.Category,
-            UnitOfMeasure     = src.UnitOfMeasure,
-            Description       = src.Description,
-            Tags              = src.Tags,
-            MaxQtyPerOrder    = src.MaxQtyPerOrder,
-            SortOrder         = src.SortOrder,
-            // Always start inactive so the admin reviews before going live.
-            IsActive          = false,
-            HasPrice          = src.HasPrice,
-            Price             = src.Price,
-            HasGenderOption   = src.HasGenderOption,
-            HasSizes          = src.HasSizes,
-            HasColorOptions   = src.HasColorOptions,
-            AvailableSizes    = src.AvailableSizes,
-            AvailableColors   = src.AvailableColors,
-            CustomOptionsJson = src.CustomOptionsJson,
-            ImagePath         = _productAdmin.CopyImageFile(src.ImagePath),
-            CreatedDate       = DateTime.UtcNow
-        };
-        _context.StoreProducts.Add(copy);
-        await _context.SaveChangesAsync();
-
-        // Clone gallery images (file content + DB rows) so the duplicate has
-        // its own independent media.
-        foreach (var img in src.Images.OrderBy(i => i.SortOrder).ThenBy(i => i.Id))
-        {
-            var newPath = _productAdmin.CopyImageFile(img.ImagePath);
-            if (string.IsNullOrEmpty(newPath)) continue;
-            _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
-            {
-                StoreProductId = copy.Id,
-                ImagePath      = newPath,
-                VariantTag     = img.VariantTag,
-                Alt            = img.Alt,
-                SortOrder      = img.SortOrder,
-                CreatedDate    = DateTime.UtcNow
-            });
-        }
-        if (src.Images.Any()) await _context.SaveChangesAsync();
+        var copy = await _productAdmin.DuplicateAsync(id);
+        if (copy == null) return NotFound();
 
         TempData["Success"] = $"Duplicated as \"{copy.Name}\". Review and activate when ready.";
         return RedirectToAction(nameof(StoreProductEdit), new { id = copy.Id });
     }
 
     // POST: Settings/StoreProductBulkSetActive
-    // Activates or deactivates a set of products in one round-trip.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductBulkSetActive(List<int> ids, bool isActive)
     {
@@ -2422,19 +2258,7 @@ public class SettingsController : Controller
             return RedirectToAction(nameof(StoreProducts));
         }
 
-        var products = await _context.StoreProducts
-            .Where(p => ids.Contains(p.Id))
-            .ToListAsync();
-
-        int changed = 0;
-        foreach (var p in products)
-        {
-            if (p.IsActive == isActive) continue;
-            p.IsActive = isActive;
-            changed++;
-        }
-        if (changed > 0) await _context.SaveChangesAsync();
-
+        var changed = await _productAdmin.BulkSetActiveAsync(ids, isActive);
         var verb = isActive ? "activated" : "deactivated";
         TempData["Success"] = changed == 0
             ? $"No changes — selected product(s) were already {verb}."
@@ -2446,25 +2270,12 @@ public class SettingsController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductDelete(int id)
     {
-        var product = await _context.StoreProducts.FindAsync(id);
-        if (product == null) return NotFound();
+        var (found, deactivated, name) = await _productAdmin.DeleteOrDeactivateAsync(id);
+        if (!found) return NotFound();
 
-        // Only deactivate if the product has been ordered; hard-delete if it has not
-        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
-        if (hasOrders)
-        {
-            product.IsActive = false;
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
-        }
-        else
-        {
-            await _productAdmin.DeleteImageFileAsync(product.ImagePath);
-            _context.StoreProducts.Remove(product);
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
-        }
-
+        TempData["Success"] = deactivated
+            ? $"Product \"{name}\" deactivated (it has existing orders)."
+            : $"Product \"{name}\" deleted.";
         return RedirectToAction(nameof(StoreProducts));
     }
 

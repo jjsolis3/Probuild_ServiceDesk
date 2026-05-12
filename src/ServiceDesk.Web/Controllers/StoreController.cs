@@ -993,27 +993,18 @@ public class StoreController : Controller
     // GET /Store/OpsProducts
     public async Task<IActionResult> OpsProducts()
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-        {
-            TempData["Error"] = "You are not authorised to manage store products.";
-            return RedirectToAction(nameof(OperationsHub));
-        }
+        var gate = await EnforceOpsAccessAsync(
+            forbiddenMessage: "You are not authorised to manage store products.");
+        if (gate != null) return gate;
 
-        var products = await _context.StoreProducts
-            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
-            .ToListAsync();
-        return View(products);
+        return View(await _productAdmin.ListAsync());
     }
 
     // GET /Store/OpsProductCreate
     public async Task<IActionResult> OpsProductCreate()
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-            return RedirectToAction(nameof(OperationsHub));
+        var gate = await EnforceOpsAccessAsync();
+        if (gate != null) return gate;
 
         ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(new StoreProduct());
@@ -1027,9 +1018,8 @@ public class StoreController : Controller
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
         if (!ModelState.IsValid)
         {
@@ -1037,54 +1027,18 @@ public class StoreController : Controller
             return View(product);
         }
 
-        if (!product.HasPrice) product.Price = null;
-        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        product.CustomOptionsJson = StoreProductAdminService.NormalizeCustomOptionsJson(product.CustomOptionsJson);
-        product.ImagePath  = await _productAdmin.SaveImageAsync(imageFile, null);
-        product.CreatedDate = DateTime.UtcNow;
-        _context.StoreProducts.Add(product);
-        await _context.SaveChangesAsync();
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = 100;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await _productAdmin.SaveImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new StoreProductImage
-                    {
-                        StoreProductId = product.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-            await _context.SaveChangesAsync();
-        }
-
-        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        var created = await _productAdmin.CreateAsync(product, imageFile, galleryFiles, galleryTags);
+        TempData["Success"] = $"Product \"{created.Name}\" created.";
         return RedirectToAction(nameof(OpsProducts));
     }
 
     // GET /Store/OpsProductEdit/{id}
     public async Task<IActionResult> OpsProductEdit(int id)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-            return RedirectToAction(nameof(OperationsHub));
+        var gate = await EnforceOpsAccessAsync();
+        if (gate != null) return gate;
 
-        var product = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _productAdmin.GetWithImagesAsync(id);
         if (product == null) return NotFound();
 
         ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
@@ -1102,9 +1056,8 @@ public class StoreController : Controller
         string? galleryMetaJson,
         bool clearImage = false)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
         if (id != product.Id) return BadRequest();
 
         if (!ModelState.IsValid)
@@ -1117,131 +1070,100 @@ public class StoreController : Controller
             return View(product);
         }
 
-        var existing = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
-        if (existing == null) return NotFound();
+        // Translate the Ops-only galleryMetaJson payload into the dict shape the
+        // shared service expects. This adapter is retired in commit 3 when both
+        // flows standardize on the form-array binding.
+        var (tags, alts, orders) = ParseGalleryMetaJson(galleryMetaJson);
 
-        existing.Name             = product.Name;
-        existing.Description      = product.Description;
-        existing.Category         = product.Category;
-        existing.UnitOfMeasure    = product.UnitOfMeasure;
-        existing.IsActive         = product.IsActive;
-        existing.SortOrder        = product.SortOrder;
-        existing.HasSizes         = product.HasSizes;
-        existing.HasGenderOption  = product.HasGenderOption;
-        existing.HasColorOptions  = product.HasColorOptions;
-        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes)   ? null : product.AvailableSizes.Trim();
-        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors)  ? null : product.AvailableColors.Trim();
-        existing.HasPrice          = product.HasPrice;
-        existing.Price             = product.HasPrice ? product.Price : null;
-        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
-        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        existing.CustomOptionsJson = StoreProductAdminService.NormalizeCustomOptionsJson(product.CustomOptionsJson);
+        var ok = await _productAdmin.UpdateAsync(
+            id, product, imageFile, galleryFiles, galleryTags,
+            tags, alts, orders, clearImage);
+        if (!ok) return NotFound();
 
-        if (clearImage) { await _productAdmin.DeleteImageFileAsync(existing.ImagePath); existing.ImagePath = null; }
-        else existing.ImagePath = await _productAdmin.SaveImageAsync(imageFile, existing.ImagePath);
-
-        // Apply per-image tag / alt / sort updates from serialised JSON.
-        if (!string.IsNullOrWhiteSpace(galleryMetaJson))
-        {
-            try
-            {
-                var metas = System.Text.Json.JsonSerializer.Deserialize<List<GalleryImageMeta>>(galleryMetaJson);
-                if (metas != null)
-                {
-                    foreach (var meta in metas)
-                    {
-                        var img = existing.Images.FirstOrDefault(i => i.Id == meta.Id);
-                        if (img == null) continue;
-                        img.VariantTag = string.IsNullOrWhiteSpace(meta.Tag) ? null : meta.Tag.Trim();
-                        img.Alt        = string.IsNullOrWhiteSpace(meta.Alt) ? null : meta.Alt.Trim();
-                        img.SortOrder  = Math.Clamp(meta.Sort, 0, 9999);
-                    }
-                }
-            }
-            catch { /* malformed JSON — skip */ }
-        }
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await _productAdmin.SaveImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new StoreProductImage
-                    {
-                        StoreProductId = existing.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
-        return RedirectToAction(nameof(OpsProductEdit), new { id = existing.Id });
+        TempData["Success"] = $"Product \"{product.Name}\" updated.";
+        return RedirectToAction(nameof(OpsProductEdit), new { id });
     }
 
     // POST /Store/OpsProductImageDelete
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsProductImageDelete(int imageId)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        var img = await _context.StoreProductImages.FindAsync(imageId);
-        if (img == null) return NotFound();
-
-        await _productAdmin.DeleteImageFileAsync(img.ImagePath);
-        var productId = img.StoreProductId;
-        _context.StoreProductImages.Remove(img);
-        await _context.SaveChangesAsync();
+        var productId = await _productAdmin.DeleteImageAsync(imageId);
+        if (productId == null) return NotFound();
         TempData["Success"] = "Image removed.";
-        return RedirectToAction(nameof(OpsProductEdit), new { id = productId });
+        return RedirectToAction(nameof(OpsProductEdit), new { id = productId.Value });
     }
 
     // POST /Store/OpsProductDelete/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsProductDelete(int id)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        var product = await _context.StoreProducts.FindAsync(id);
-        if (product == null) return NotFound();
+        var (found, deactivated, name) = await _productAdmin.DeleteOrDeactivateAsync(id);
+        if (!found) return NotFound();
 
-        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
-        if (hasOrders)
-        {
-            product.IsActive = false;
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
-        }
-        else
-        {
-            await _productAdmin.DeleteImageFileAsync(product.ImagePath);
-            _context.StoreProducts.Remove(product);
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
-        }
-
+        TempData["Success"] = deactivated
+            ? $"Product \"{name}\" deactivated (it has existing orders)."
+            : $"Product \"{name}\" deleted.";
         return RedirectToAction(nameof(OpsProducts));
     }
 
+    /// <summary>
+    /// Enforces the OpsHub auth gate. Returns null when the current portal user
+    /// passes — otherwise returns the redirect / Forbid result the caller should
+    /// short-circuit with.
+    /// </summary>
+    private async Task<IActionResult?> EnforceOpsAccessAsync(
+        string? forbiddenMessage = null, bool returnForbidOnPost = false)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+        if (!await CanAccessOpsHubAsync(user.Id))
+        {
+            if (returnForbidOnPost) return Forbid();
+            if (forbiddenMessage != null) TempData["Error"] = forbiddenMessage;
+            return RedirectToAction(nameof(OperationsHub));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Splits the Ops-only galleryMetaJson hidden-field payload into the three
+    /// dictionaries the shared service consumes. Returns empty dictionaries
+    /// when the payload is missing or malformed.
+    /// </summary>
+    private static (Dictionary<int, string> tags, Dictionary<int, string> alts, Dictionary<int, int> orders)
+        ParseGalleryMetaJson(string? galleryMetaJson)
+    {
+        var tags   = new Dictionary<int, string>();
+        var alts   = new Dictionary<int, string>();
+        var orders = new Dictionary<int, int>();
+        if (string.IsNullOrWhiteSpace(galleryMetaJson)) return (tags, alts, orders);
+
+        try
+        {
+            var metas = System.Text.Json.JsonSerializer.Deserialize<List<GalleryImageMeta>>(galleryMetaJson);
+            if (metas != null)
+            {
+                foreach (var m in metas)
+                {
+                    tags[m.Id]   = m.Tag ?? string.Empty;
+                    alts[m.Id]   = m.Alt ?? string.Empty;
+                    orders[m.Id] = m.Sort;
+                }
+            }
+        }
+        catch { /* malformed JSON — return empty dicts */ }
+        return (tags, alts, orders);
+    }
+
     // Gallery metadata record for the OpsProductEdit galleryMetaJson payload.
-    // This will be retired in Commit 3 when both flows standardize on form arrays.
+    // This will be retired in commit 3 when both flows standardize on form arrays.
     private sealed record GalleryImageMeta(int Id, string? Tag, string? Alt, int Sort);
 
     // Cart line item posted as part of the JSON payload from the catalog page
