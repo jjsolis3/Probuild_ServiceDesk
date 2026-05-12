@@ -1110,6 +1110,41 @@ public class StoreController : Controller
         return RedirectToAction(nameof(OpsProducts));
     }
 
+    // POST /Store/OpsProductDuplicate/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsProductDuplicate(int id)
+    {
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
+
+        var copy = await _productAdmin.DuplicateAsync(id);
+        if (copy == null) return NotFound();
+
+        TempData["Success"] = $"Duplicated as \"{copy.Name}\". Review and activate when ready.";
+        return RedirectToAction(nameof(OpsProductEdit), new { id = copy.Id });
+    }
+
+    // POST /Store/OpsProductBulkSetActive
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsProductBulkSetActive(List<int> ids, bool isActive)
+    {
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
+
+        if (ids == null || ids.Count == 0)
+        {
+            TempData["Error"] = "Select at least one product first.";
+            return RedirectToAction(nameof(OpsProducts));
+        }
+
+        var changed = await _productAdmin.BulkSetActiveAsync(ids, isActive);
+        var verb = isActive ? "activated" : "deactivated";
+        TempData["Success"] = changed == 0
+            ? $"No changes — selected product(s) were already {verb}."
+            : $"{changed} product(s) {verb}.";
+        return RedirectToAction(nameof(OpsProducts));
+    }
+
     /// <summary>
     /// Enforces the OpsHub auth gate. Returns null when the current portal user
     /// passes — otherwise returns the redirect / Forbid result the caller should
