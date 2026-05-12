@@ -58,6 +58,10 @@ builder.Services.AddScoped<PortalNotificationService>();
 // Persistent store cart service (scoped)
 builder.Services.AddScoped<StoreCartService>();
 
+// Shared store-product admin service consumed by both SettingsController and
+// StoreController (Ops Hub) so the two flows can't drift again.
+builder.Services.AddScoped<StoreProductAdminService>();
+
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();
 
