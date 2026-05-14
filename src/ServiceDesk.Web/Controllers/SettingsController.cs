@@ -841,6 +841,12 @@ public class SettingsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateEmailConfig(EmailConfiguration config)
     {
+        // Trim whitespace from copy/pasted OAuth credentials. A leading or
+        // trailing space (URL-encoded as "+") makes Google return
+        // invalid_client at the authorize step, which is what triggered the
+        // OAuth flow rejection on this org.
+        TrimGmailCredentials(config);
+
         if (ModelState.IsValid)
         {
             _context.EmailConfigurations.Add(config);
@@ -868,6 +874,11 @@ public class SettingsController : Controller
     public async Task<IActionResult> EditEmailConfig(int id, EmailConfiguration config)
     {
         if (id != config.Id) return NotFound();
+
+        // Trim whitespace from copy/pasted OAuth credentials before validation
+        // or persistence. See CreateEmailConfig for why.
+        TrimGmailCredentials(config);
+
         if (ModelState.IsValid)
         {
             var existing = await _context.EmailConfigurations.FindAsync(id);
@@ -913,6 +924,21 @@ public class SettingsController : Controller
             TempData["Success"] = "Email configuration deleted.";
         }
         return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    /// <summary>
+    /// Trims whitespace from the OAuth credentials. A leading/trailing space
+    /// in the Client ID is the most common copy/paste error and produces a
+    /// Google "invalid_client" 401 at the authorize step that's hard to
+    /// diagnose from the URL alone (the space URL-encodes as "+"). Empty
+    /// strings are normalised to null so the EmailConfiguration filters
+    /// (which check for non-null GmailRefreshToken) don't get confused.
+    /// </summary>
+    private static void TrimGmailCredentials(EmailConfiguration config)
+    {
+        config.GmailClientId     = string.IsNullOrWhiteSpace(config.GmailClientId)     ? null : config.GmailClientId.Trim();
+        config.GmailClientSecret = string.IsNullOrWhiteSpace(config.GmailClientSecret) ? null : config.GmailClientSecret.Trim();
+        config.EmailAddress      = config.EmailAddress?.Trim() ?? string.Empty;
     }
 
     // GET: Settings/GmailAuthorize/5
