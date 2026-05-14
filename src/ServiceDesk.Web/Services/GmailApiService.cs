@@ -116,7 +116,7 @@ public class GmailApiService : BackgroundService
         }
         else
         {
-            messages = await GetUnreadMessages(httpClient, stoppingToken);
+            messages = await GetUnreadMessages(httpClient, config, stoppingToken);
         }
 
         _logger.LogInformation("Found {Count} messages to process for {Email}", messages.Count, config.EmailAddress);
@@ -152,15 +152,22 @@ public class GmailApiService : BackgroundService
         var inReplyTo = GetHeader(headers, "In-Reply-To");
         var references = GetHeader(headers, "References");
 
-        // ---- GUARDRAIL 0: Age gate — skip emails older than 72 hours ----
-        // Prevents a reset historyId or a flooded inbox from creating tickets from
-        // weeks-old messages. internalDate is ms since Unix epoch; 0 means unknown.
+        // ---- GUARDRAIL 0: Age gate — avoid runaway backfills without dropping legit backlog ----
+        // If polling was down for several days, we still want those emails turned into tickets.
+        // So we anchor the cutoff to the last successful poll (with a 1h safety overlap), and
+        // only apply a hard cap of 14 days when we have no reliable poll watermark.
         if (fullMessage.InternalDate > 0)
         {
-            var emailAge = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(fullMessage.InternalDate);
-            if (emailAge.TotalHours > 72)
+            var receivedAt = DateTimeOffset.FromUnixTimeMilliseconds(fullMessage.InternalDate);
+            var dynamicCutoff = config.LastPolledDate.HasValue
+                ? config.LastPolledDate.Value.AddHours(-1)
+                : DateTime.UtcNow.AddDays(-14);
+
+            if (receivedAt.UtcDateTime < dynamicCutoff)
             {
-                _logger.LogInformation("Skipping old email ({Age:0}h): {Subject}", emailAge.TotalHours, subject);
+                _logger.LogInformation(
+                    "Skipping stale email received {ReceivedAt:u} (cutoff {Cutoff:u}): {Subject}",
+                    receivedAt.UtcDateTime, dynamicCutoff, subject);
                 UpdateHistoryId(config, fullMessage.HistoryId);
                 return;
             }
@@ -610,7 +617,7 @@ public class GmailApiService : BackgroundService
                 // If historyId is invalid (too old), fall back to unread messages
                 _logger.LogWarning("History sync failed, falling back to unread messages.");
                 config.GmailHistoryId = null;
-                return await GetUnreadMessages(httpClient, ct);
+                return await GetUnreadMessages(httpClient, config, ct);
             }
 
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -645,7 +652,7 @@ public class GmailApiService : BackgroundService
         {
             _logger.LogError(ex, "Error fetching Gmail history.");
             config.GmailHistoryId = null;
-            return await GetUnreadMessages(httpClient, ct);
+            return await GetUnreadMessages(httpClient, config, ct);
         }
 
         return messages;
@@ -655,13 +662,15 @@ public class GmailApiService : BackgroundService
     /// Fetches unread messages from the inbox (initial sync or fallback).
     /// Scoped to the last 48 hours so a stale historyId never causes a flood of old messages.
     /// </summary>
-    private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, CancellationToken ct)
+    private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, EmailConfiguration config, CancellationToken ct)
     {
         var messages = new List<GmailMessage>();
-        // "after:" uses Unix epoch seconds — limit to 48 h so a reset historyId never
-        // re-processes weeks of old inbox messages and fires notifications for them all.
-        var after = DateTimeOffset.UtcNow.AddHours(-48).ToUnixTimeSeconds();
-        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=50";
+        // "after:" uses Unix epoch seconds. Start from the last known poll watermark with
+        // a small overlap for safety; otherwise default to 14 days so multi-day outages can
+        // recover backlog without scanning the full mailbox.
+        var afterTime = config.LastPolledDate?.AddHours(-1) ?? DateTime.UtcNow.AddDays(-14);
+        var after = new DateTimeOffset(afterTime).ToUnixTimeSeconds();
+        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=100";
         var response = await httpClient.GetAsync(url, ct);
 
         if (!response.IsSuccessStatusCode) return messages;
