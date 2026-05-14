@@ -690,13 +690,38 @@ public class GmailApiService : BackgroundService
         var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{messageId}?format=full";
         var response = await httpClient.GetAsync(url, ct);
 
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Gmail message fetch failed: {MessageId} returned {Status}",
+                messageId, (int)response.StatusCode);
+            return null;
+        }
 
         var json = await response.Content.ReadAsStringAsync(ct);
-        return JsonSerializer.Deserialize<GmailFullMessage>(json, new JsonSerializerOptions
+        try
         {
-            PropertyNameCaseInsensitive = true
-        });
+            return JsonSerializer.Deserialize<GmailFullMessage>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                // Gmail returns internalDate / sizeEstimate / historyId etc. as
+                // *string-encoded* numbers (e.g. "1746556800000"). Without this
+                // option the deserializer throws a JsonException for those fields,
+                // which silently skipped every inbound message — the real cause
+                // of the "no new tickets since May 6" outage.
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+            });
+        }
+        catch (JsonException ex)
+        {
+            // Surface deserialization failures loudly. Returning null silently
+            // (the previous behaviour) is how the May 6 outage went undetected
+            // for over a week.
+            _logger.LogError(ex,
+                "Failed to deserialize Gmail message {MessageId}. Body preview: {Preview}",
+                messageId,
+                json.Length > 500 ? json[..500] : json);
+            return null;
+        }
     }
 
     /// <summary>
