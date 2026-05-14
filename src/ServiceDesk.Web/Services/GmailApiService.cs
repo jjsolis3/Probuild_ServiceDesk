@@ -59,8 +59,15 @@ public class GmailApiService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
 
+        // Don't gate on IsAuthorized here — the field gets auto-flipped to false
+        // whenever a token refresh fails for ANY reason (network blip, 5xx,
+        // rate limit), which used to permanently freeze polling until an admin
+        // manually re-authorised. We keep polling so long as we still hold a
+        // refresh token (admin "Revoke" wipes the token, so that path is
+        // honoured). Genuine token revocation by Google is detected by the
+        // invalid_grant response inside EnsureValidAccessToken below.
         var configs = await context.EmailConfigurations
-            .Where(c => c.IsActive && c.IsAuthorized && c.GmailRefreshToken != null)
+            .Where(c => c.IsActive && c.GmailRefreshToken != null)
             .ToListAsync(stoppingToken);
 
         foreach (var config in configs)
@@ -517,9 +524,25 @@ public class GmailApiService : BackgroundService
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogError("Failed to refresh Gmail token: {Error}", errorBody);
-            config.IsAuthorized = false;
-            config.LastError = $"OAuth token refresh failed: {errorBody}";
+            _logger.LogError("Failed to refresh Gmail token for {Email}: {Error}",
+                config.EmailAddress, errorBody);
+            config.LastError = $"{DateTime.UtcNow:g}: OAuth token refresh failed ({(int)response.StatusCode}): {errorBody}";
+
+            // Only auto-disable the integration when Google explicitly tells us
+            // the refresh token itself is no longer usable (invalid_grant). For
+            // every other failure — transient 5xx, rate limiting, network
+            // hiccup — leave IsAuthorized alone so the next poll cycle retries
+            // automatically. The previous behaviour froze the integration on
+            // any failure and required a manual re-auth, which is what caused
+            // the May 6 "no new tickets" outage.
+            if (IsInvalidGrantResponse(errorBody))
+            {
+                config.IsAuthorized = false;
+                _logger.LogError(
+                    "Gmail refresh token for {Email} is invalid (invalid_grant). " +
+                    "Admin must re-authorize the integration.", config.EmailAddress);
+            }
+
             await context.SaveChangesAsync(ct);
             return null;
         }
@@ -537,8 +560,38 @@ public class GmailApiService : BackgroundService
             config.GmailRefreshToken = newRefresh.GetString();
         }
 
+        // Refresh succeeded — clear any stale auth flag from a prior transient
+        // failure so the admin UI reflects the current healthy state.
+        config.IsAuthorized = true;
+        config.LastError    = null;
+
         await context.SaveChangesAsync(ct);
         return config.GmailAccessToken;
+    }
+
+    /// <summary>
+    /// Recognises Google's "this refresh token is permanently dead" error from
+    /// the OAuth response body. Used so we only auto-disable the integration
+    /// for genuine revocation, not transient errors.
+    /// </summary>
+    private static bool IsInvalidGrantResponse(string responseBody)
+    {
+        if (string.IsNullOrEmpty(responseBody)) return false;
+        try
+        {
+            var doc = JsonSerializer.Deserialize<JsonElement>(responseBody);
+            if (doc.ValueKind == JsonValueKind.Object &&
+                doc.TryGetProperty("error", out var errEl) &&
+                errEl.ValueKind == JsonValueKind.String)
+            {
+                return string.Equals(errEl.GetString(), "invalid_grant", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // Fall through to the substring check below.
+        }
+        return responseBody.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>

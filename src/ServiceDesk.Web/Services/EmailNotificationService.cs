@@ -92,8 +92,13 @@ public class EmailNotificationService
     /// </summary>
     private async Task<EmailConfiguration?> GetActiveConfig()
     {
+        // Don't gate on IsAuthorized — that flag can be auto-cleared by a
+        // transient token-refresh failure in GmailApiService, and the next
+        // successful refresh sets it back to true. Outbound sends should keep
+        // trying as long as we still hold a refresh token (admin "Revoke"
+        // wipes the token, which still excludes the row here).
         return await _context.EmailConfigurations
-            .FirstOrDefaultAsync(c => c.IsActive && c.IsAuthorized && c.GmailRefreshToken != null);
+            .FirstOrDefaultAsync(c => c.IsActive && c.GmailRefreshToken != null);
     }
 
     /// <summary>

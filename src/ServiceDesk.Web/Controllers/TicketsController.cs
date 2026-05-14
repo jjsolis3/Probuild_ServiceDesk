@@ -300,7 +300,31 @@ public class TicketsController : Controller
         ViewBag.ActiveViewId   = activeView?.Id;
         ViewBag.ActiveViewName = activeView?.Name;
 
-        // When serving only the table partial, skip dropdown data (saves 3 DB queries)
+        // Category names are needed by both full and partial renders — the
+        // table partial uses CategoriesById to print real names instead of
+        // the "Category N" fallback. Load this BEFORE the partial early-return
+        // so the AJAX-driven filter dropdown gets the right column values.
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+
+        // When serving only the table partial, skip dropdown data for the
+        // filter bar (saves 3 DB queries) — but the category dictionary above
+        // is now already loaded so the table still shows real names.
         if (partial)
             return PartialView("_TicketsTable", tickets);
 
@@ -334,25 +358,6 @@ public class TicketsController : Controller
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
-
-        // Load categories from DB for the filter dropdown
-        try
-        {
-            var cats = await _context.TicketCategories
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
-                .Select(c => new { c.Id, c.Name })
-                .ToListAsync();
-            ViewBag.Categories     = cats;
-            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
-        }
-        catch
-        {
-            var cats = Enum.GetValues<TicketCategory>()
-                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
-            ViewBag.Categories     = cats;
-            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
-        }
 
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
