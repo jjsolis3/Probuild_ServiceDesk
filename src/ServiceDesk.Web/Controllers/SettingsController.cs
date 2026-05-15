@@ -2623,4 +2623,39 @@ public class SettingsController : Controller
         ViewData["Title"]       = "Email Activity Log";
         return View(entries);
     }
+
+    // GET: Settings/InboundEmailLog — audit trail of inbound Gmail messages
+    // the poller saw, with the outcome (TicketCreated / NoteAppended /
+    // Skipped:X / Failed). Counterpart to EmailActivity which only logs
+    // outbound sends.
+    public async Task<IActionResult> InboundEmailLog(string? action, string? recipient, int page = 1)
+    {
+        const int pageSize = 50;
+
+        var query = _context.InboundEmailLogs.AsQueryable();
+
+        if (!string.IsNullOrEmpty(action))
+            query = query.Where(l => l.Action == action);
+        if (!string.IsNullOrEmpty(recipient))
+            query = query.Where(l =>
+                (l.FromAddress != null && l.FromAddress.Contains(recipient))
+                || (l.Subject != null && l.Subject.Contains(recipient)));
+
+        var total   = await query.CountAsync();
+        var entries = await query
+            .OrderByDescending(l => l.ProcessedDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        ViewBag.FilterAction    = action;
+        ViewBag.FilterRecipient = recipient;
+        ViewBag.Page            = page;
+        ViewBag.PageSize        = pageSize;
+        ViewBag.TotalCount      = total;
+        ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
+        ViewBag.Actions         = Enum.GetNames(typeof(ServiceDesk.Core.Models.InboundAction));
+        ViewData["Title"]       = "Inbound Email Log";
+        return View(entries);
+    }
 }
