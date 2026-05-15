@@ -82,6 +82,16 @@ public class EmailConfiguration
     [Display(Name = "Last Polled")]
     public DateTime? LastPolledDate { get; set; }
 
+    /// <summary>
+    /// Timestamp of the last poll cycle that completed without throwing. The
+    /// existing LastPolledDate advances on every cycle, success or failure —
+    /// useful as a heartbeat, but useless for "when did this integration last
+    /// actually work?". The diagnostic card on the Email Integration page
+    /// surfaces this value and time-since-success.
+    /// </summary>
+    [Display(Name = "Last Successful Poll")]
+    public DateTime? LastSuccessfulPollDate { get; set; }
+
     [Display(Name = "Last Error")]
     [StringLength(2000)]
     public string? LastError { get; set; }

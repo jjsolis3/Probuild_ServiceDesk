@@ -1673,6 +1673,49 @@ public static class DbInitializer
                     ALTER TABLE dbo.StoreOrders ADD LastStatusChangedDate DATETIME NULL;
                 END");
 
+            // 60. Inbound email log — one row per Gmail message the poller saw,
+            //     with the outcome (TicketCreated / NoteAppended / Skipped:X /
+            //     Failed). Diagnostic counterpart to NotificationLogs so admins
+            //     can see WHY an incoming message did or didn't become a ticket.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InboundEmailLogs')
+                BEGIN
+                    CREATE TABLE dbo.InboundEmailLogs (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        EmailConfigurationId    INT             NULL,
+                        GmailMessageId          NVARCHAR(100)   NOT NULL,
+                        MessageId               NVARCHAR(500)   NULL,
+                        Subject                 NVARCHAR(500)   NULL,
+                        FromAddress             NVARCHAR(200)   NULL,
+                        ReceivedDate            DATETIME        NULL,
+                        ProcessedDate           DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        Action                  NVARCHAR(50)    NOT NULL DEFAULT 'Unknown',
+                        ActionDetail            NVARCHAR(500)   NULL,
+                        ErrorMessage            NVARCHAR(2000)  NULL
+                    );
+
+                    CREATE INDEX IX_InboundEmailLogs_ProcessedDate
+                        ON dbo.InboundEmailLogs (ProcessedDate DESC);
+                    CREATE INDEX IX_InboundEmailLogs_Action
+                        ON dbo.InboundEmailLogs (Action, ProcessedDate DESC);
+                    CREATE INDEX IX_InboundEmailLogs_GmailMessageId
+                        ON dbo.InboundEmailLogs (GmailMessageId);
+                END");
+
+            // 61. LastSuccessfulPollDate on EmailConfigurations — the existing
+            //     LastPolledDate advances on failures too, which makes it
+            //     useless for the diagnostic card's "Last successful poll"
+            //     readout. This new column is only stamped after a clean cycle.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailConfigurations')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.EmailConfigurations')
+                                     AND name = 'LastSuccessfulPollDate')
+                BEGIN
+                    ALTER TABLE dbo.EmailConfigurations
+                        ADD LastSuccessfulPollDate DATETIME NULL;
+                END");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')

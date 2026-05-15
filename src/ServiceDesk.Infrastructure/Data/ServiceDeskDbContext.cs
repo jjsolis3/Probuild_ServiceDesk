@@ -90,8 +90,11 @@ public class ServiceDeskDbContext : DbContext
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
 
-    // Notification / email activity log
+    // Notification / email activity log (outbound sends)
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
+    // Inbound Gmail messages the poller saw and what it did with them
+    public DbSet<InboundEmailLog> InboundEmailLogs => Set<InboundEmailLog>();
 
     // In-app portal notifications (notification bell)
     public DbSet<PortalNotification> PortalNotifications => Set<PortalNotification>();
