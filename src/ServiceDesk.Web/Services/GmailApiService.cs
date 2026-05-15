@@ -98,6 +98,82 @@ public class GmailApiService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Runs a single poll cycle for one configuration synchronously and
+    /// returns a structured report — used by the "Poll Now" admin button on
+    /// the Email Integration page so ops staff can see exactly what the
+    /// poller did without tailing logs. Uses its own DbContext scope so the
+    /// HTTP request thread isn't sharing state with the BackgroundService.
+    /// </summary>
+    public async Task<PollReport> PollOnceAsync(int emailConfigurationId, CancellationToken ct = default)
+    {
+        var report = new PollReport { EmailConfigurationId = emailConfigurationId };
+        var startedAt = DateTime.UtcNow;
+
+        using var scope   = _serviceProvider.CreateScope();
+        var context       = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+
+        var config = await context.EmailConfigurations.FirstOrDefaultAsync(c => c.Id == emailConfigurationId, ct);
+        if (config == null)
+        {
+            report.Success = false;
+            report.Error   = "Email configuration not found.";
+            return report;
+        }
+        report.EmailAddress = config.EmailAddress;
+
+        try
+        {
+            // Snapshot the inbound-log id watermark so we can attribute new
+            // rows to this exact run (vs anything written by the background
+            // service that may have fired concurrently).
+            var prevLogId = await context.InboundEmailLogs.MaxAsync(l => (int?)l.Id, ct) ?? 0;
+
+            await PollGmailInbox(context, config, ct);
+            config.LastPolledDate         = DateTime.UtcNow;
+            config.LastSuccessfulPollDate = DateTime.UtcNow;
+            config.LastError              = null;
+            await context.SaveChangesAsync(ct);
+
+            // Summarise outcomes from the rows this run produced.
+            var fresh = await context.InboundEmailLogs
+                .Where(l => l.Id > prevLogId && l.EmailConfigurationId == emailConfigurationId)
+                .OrderByDescending(l => l.Id)
+                .ToListAsync(ct);
+
+            report.Outcomes = fresh
+                .GroupBy(l => l.Action)
+                .ToDictionary(g => g.Key, g => g.Count());
+            report.RecentEntries = fresh
+                .Take(20)
+                .Select(l => new PollReportEntry
+                {
+                    Action       = l.Action,
+                    Subject      = l.Subject,
+                    From         = l.FromAddress,
+                    Detail       = l.ActionDetail,
+                    Error        = l.ErrorMessage,
+                    ProcessedAt  = l.ProcessedDate
+                })
+                .ToList();
+            report.MessagesSeen = fresh.Count;
+            report.Success      = true;
+            report.DurationMs   = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Poll-now failed for {Email}", config.EmailAddress);
+            config.LastPolledDate = DateTime.UtcNow;
+            config.LastError      = $"{DateTime.UtcNow:g}: {ex.Message}";
+            try { await context.SaveChangesAsync(ct); } catch { /* swallowed */ }
+            report.Success    = false;
+            report.Error      = ex.Message;
+            report.DurationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+            return report;
+        }
+    }
+
     private async Task PollGmailInbox(ServiceDeskDbContext context, EmailConfiguration config, CancellationToken stoppingToken)
     {
         var accessToken = await EnsureValidAccessToken(context, config, stoppingToken);
@@ -1194,4 +1270,32 @@ public class GmailApiService : BackgroundService
     }
 
     #endregion
+}
+
+/// <summary>Structured result of a single PollOnceAsync run, surfaced to the
+/// Email Integration admin UI's "Poll Now" modal.</summary>
+public class PollReport
+{
+    public int     EmailConfigurationId { get; set; }
+    public string? EmailAddress         { get; set; }
+    public bool    Success              { get; set; }
+    public string? Error                { get; set; }
+    public int     DurationMs           { get; set; }
+    public int     MessagesSeen         { get; set; }
+
+    /// <summary>Action name → count, for the headline summary line.</summary>
+    public Dictionary<string, int> Outcomes { get; set; } = new();
+
+    /// <summary>Up to 20 newest inbound-log rows produced by this run.</summary>
+    public List<PollReportEntry> RecentEntries { get; set; } = new();
+}
+
+public class PollReportEntry
+{
+    public string?  Action      { get; set; }
+    public string?  Subject     { get; set; }
+    public string?  From        { get; set; }
+    public string?  Detail      { get; set; }
+    public string?  Error       { get; set; }
+    public DateTime ProcessedAt { get; set; }
 }

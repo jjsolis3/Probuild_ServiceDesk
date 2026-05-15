@@ -139,23 +139,59 @@ else
                         </div>
                     </div>
                     <div class="card-footer">
-                        <div class="d-flex justify-content-between align-items-start">
+                        @{
+                            // Compute relative-time strings for the two poll markers.
+                            // "Last successful" is what an admin actually cares about
+                            // when triaging a quiet inbox — the existing LastPolledDate
+                            // advances on failures too.
+                            string FormatAge(DateTime utc)
+                            {
+                                var d = DateTime.UtcNow - utc;
+                                if (d.TotalSeconds < 60)   return $"{d.TotalSeconds:0}s ago";
+                                if (d.TotalMinutes < 60)   return $"{d.TotalMinutes:0}m ago";
+                                if (d.TotalHours   < 48)   return $"{d.TotalHours:0}h ago";
+                                return $"{d.TotalDays:0}d ago";
+                            }
+                            var hasSuccess  = config.LastSuccessfulPollDate.HasValue;
+                            var hasAttempt  = config.LastPolledDate.HasValue;
+                            var freshness   = hasSuccess
+                                ? (DateTime.UtcNow - config.LastSuccessfulPollDate!.Value).TotalMinutes
+                                : double.MaxValue;
+                            var freshClass  = freshness <= 10  ? "text-success"
+                                            : freshness <= 60  ? "text-success"
+                                            : freshness <= 360 ? "text-warning"
+                                                               : "text-danger";
+                        }
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                             <div class="small">
-                                <div class="text-muted">
-                                    <i class="bi bi-clock-history"></i> Last Polled:
-                                    @if (config.LastPolledDate.HasValue)
+                                <div class="@freshClass" title="@(hasSuccess ? config.LastSuccessfulPollDate!.Value.ToString("u") : "")">
+                                    <i class="bi bi-check2-circle"></i> Last successful poll:
+                                    @if (hasSuccess)
                                     {
-                                        @config.LastPolledDate.Value.ToString("MMM dd, yyyy HH:mm")
+                                        <strong>@FormatAge(config.LastSuccessfulPollDate!.Value)</strong>
+                                        <span class="text-muted">(@config.LastSuccessfulPollDate.Value.ToString("MMM dd, HH:mm"))</span>
                                     }
                                     else
                                     {
-                                        <span>Never</span>
+                                        <span class="text-muted">never</span>
+                                    }
+                                </div>
+                                <div class="text-muted mt-1" title="@(hasAttempt ? config.LastPolledDate!.Value.ToString("u") : "")">
+                                    <i class="bi bi-arrow-repeat"></i> Last attempt:
+                                    @if (hasAttempt)
+                                    {
+                                        @FormatAge(config.LastPolledDate!.Value)
+                                    }
+                                    else
+                                    {
+                                        <span>never</span>
                                     }
                                 </div>
                                 @if (!string.IsNullOrEmpty(config.LastError))
                                 {
-                                    <div class="text-danger mt-1">
-                                        <i class="bi bi-exclamation-triangle-fill"></i> @config.LastError
+                                    <div class="text-danger mt-2 p-2 border border-danger-subtle rounded bg-danger-subtle">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                        <strong>Last error:</strong> @config.LastError
                                     </div>
                                 }
                             </div>
@@ -169,12 +205,12 @@ else
                                 <a asp-action="EditEmailConfig" asp-route-id="@config.Id" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-pencil"></i> Edit
                                 </a>
-                                <form asp-action="TestEmailConnection" method="post" class="d-inline">
-                                    <input type="hidden" name="id" value="@config.Id" />
-                                    <button type="submit" class="btn btn-sm btn-outline-info">
-                                        <i class="bi bi-plug"></i> Test
-                                    </button>
-                                </form>
+                                <button type="button" class="btn btn-sm btn-outline-info js-poll-now"
+                                        data-config-id="@config.Id"
+                                        data-config-name="@config.Name"
+                                        title="Run a single poll cycle now and show the result">
+                                    <i class="bi bi-cloud-download"></i> Poll Now
+                                </button>
                                 <form asp-action="DeleteEmailConfig" asp-route-id="@config.Id" method="post" class="d-inline"
                                       data-confirm-title="Delete Config" data-confirm-message="Delete this email configuration? This cannot be undone.">
                                     @Html.AntiForgeryToken()
@@ -189,4 +225,156 @@ else
             </div>
         }
     </div>
+}
+
+<!--
+    "Poll Now" diagnostic modal — populated via /Settings/PollGmailNow/{id}.
+    The button on each config card opens this same modal so we don't need
+    one per card.
+-->
+<div class="modal fade" id="pollNowModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-cloud-download me-2"></i>
+                    Poll Now — <span id="pollNowConfigName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pollNowSpinner" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2 text-muted small">Running a single poll cycle…</div>
+                </div>
+                <div id="pollNowResult" class="d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var modalEl  = document.getElementById('pollNowModal');
+    if (!modalEl) return;
+    var modal    = bootstrap.Modal.getOrCreateInstance(modalEl);
+    var nameEl   = document.getElementById('pollNowConfigName');
+    var spinner  = document.getElementById('pollNowSpinner');
+    var resultEl = document.getElementById('pollNowResult');
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function badgeFor(action) {
+        var map = {
+            'TicketCreated':        'bg-success',
+            'NoteAppended':         'bg-info text-dark',
+            'SkippedDuplicate':     'bg-secondary',
+            'SkippedSelf':          'bg-secondary',
+            'SkippedAutoGenerated': 'bg-secondary',
+            'SkippedAutoReply':     'bg-secondary',
+            'SkippedStale':         'bg-warning text-dark',
+            'SkippedNoCreate':      'bg-warning text-dark',
+            'Failed':               'bg-danger'
+        };
+        return '<span class="badge ' + (map[action] || 'bg-light text-dark') + '">' + escapeHtml(action) + '</span>';
+    }
+
+    function renderReport(report) {
+        if (!report.success) {
+            resultEl.innerHTML =
+                '<div class="alert alert-danger mb-2"><strong>Poll failed.</strong> ' +
+                escapeHtml(report.error || '(no error message)') +
+                '</div>' +
+                '<div class="small text-muted">Duration: ' + report.durationMs + 'ms</div>';
+            return;
+        }
+
+        var outcomes = report.outcomes || {};
+        var outcomeKeys = Object.keys(outcomes);
+        var outcomeHtml = outcomeKeys.length === 0
+            ? '<span class="text-muted small">No new messages this cycle.</span>'
+            : outcomeKeys.map(function (k) { return badgeFor(k) + ' &times;' + outcomes[k]; }).join(' ');
+
+        var rowsHtml = '';
+        (report.recentEntries || []).forEach(function (e) {
+            var when = new Date(e.processedAt).toLocaleTimeString();
+            rowsHtml +=
+                '<tr>' +
+                '  <td class="text-nowrap small">' + escapeHtml(when) + '</td>' +
+                '  <td>' + badgeFor(e.action) + '</td>' +
+                '  <td class="small">' +
+                       '<div class="fw-semibold">' + escapeHtml(e.subject || '(no subject)') + '</div>' +
+                       '<div class="text-muted">' + escapeHtml(e.from || '') + '</div>' +
+                       (e.detail ? '<div class="text-muted small">' + escapeHtml(e.detail) + '</div>' : '') +
+                       (e.error  ? '<div class="text-danger small">' + escapeHtml(e.error)  + '</div>' : '') +
+                '  </td>' +
+                '</tr>';
+        });
+
+        resultEl.innerHTML =
+            '<div class="alert alert-success py-2 mb-2"><strong>Poll completed in ' + report.durationMs + 'ms.</strong> ' +
+                report.messagesSeen + ' message' + (report.messagesSeen === 1 ? '' : 's') + ' processed.</div>' +
+            '<div class="mb-3">' + outcomeHtml + '</div>' +
+            (rowsHtml
+                ? '<div class="table-responsive"><table class="table table-sm align-middle">' +
+                  '<thead class="table-light"><tr><th>Time</th><th>Action</th><th>Message</th></tr></thead>' +
+                  '<tbody>' + rowsHtml + '</tbody></table></div>'
+                : '');
+    }
+
+    // Token lookup — Bootstrap delete forms render @Html.AntiForgeryToken();
+    // we share the same token for the fetch call.
+    function antiForgeryToken() {
+        var t = document.querySelector('input[name="__RequestVerificationToken"]');
+        return t ? t.value : '';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-poll-now');
+        if (!btn) return;
+        e.preventDefault();
+
+        var id   = btn.getAttribute('data-config-id');
+        var name = btn.getAttribute('data-config-name');
+        nameEl.textContent = name || '';
+        spinner.classList.remove('d-none');
+        resultEl.classList.add('d-none');
+        resultEl.innerHTML = '';
+        modal.show();
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', antiForgeryToken());
+
+        fetch('/Settings/PollGmailNow/' + id, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (report) {
+            spinner.classList.add('d-none');
+            resultEl.classList.remove('d-none');
+            if (!report) {
+                resultEl.innerHTML = '<div class="alert alert-danger">Request failed — see server log.</div>';
+                return;
+            }
+            renderReport(report);
+        })
+        .catch(function () {
+            spinner.classList.add('d-none');
+            resultEl.classList.remove('d-none');
+            resultEl.innerHTML = '<div class="alert alert-danger">Network error — please try again.</div>';
+        });
+    });
+})();
+</script>
 }

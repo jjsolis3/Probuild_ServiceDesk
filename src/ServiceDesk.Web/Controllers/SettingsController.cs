@@ -1044,6 +1044,18 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(EmailIntegration));
     }
 
+    // POST: Settings/PollGmailNow/{id} — runs a single poll cycle synchronously
+    // and returns a structured JSON report so the admin UI can render it in a
+    // modal. Lets ops staff debug "is the integration working RIGHT NOW?"
+    // without tailing logs.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PollGmailNow(int id, [FromServices] GmailApiService gmail)
+    {
+        var report = await gmail.PollOnceAsync(id);
+        return Json(report);
+    }
+
     // ==================== ASSIGNMENT RULES ====================
 
     // GET: Settings/AssignmentRules
