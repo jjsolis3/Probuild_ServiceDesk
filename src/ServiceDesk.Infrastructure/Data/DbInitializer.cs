@@ -1716,6 +1716,58 @@ public static class DbInitializer
                         ADD LastSuccessfulPollDate DATETIME NULL;
                 END");
 
+            // 62. Hot-path indexes for tables that EF Core's HasIndex
+            //     declarations cover but the raw-SQL DbInitializer path may not.
+            //     Each statement is idempotent so re-running on an already-
+            //     indexed DB is a no-op. Covers:
+            //       - TicketEmails: anti-duplicate + threading lookups on
+            //         every inbound Gmail message
+            //       - StoreOrderItems: the "any order references this product?"
+            //         check used by product deactivate / delete, plus the Ops
+            //         Hub product-totals aggregation
+            //       - TicketNotes: ticket detail page loads all notes for a ticket
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketEmails')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_GmailMessageId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE UNIQUE INDEX IX_TicketEmails_GmailMessageId
+                            ON dbo.TicketEmails (GmailMessageId)
+                            WHERE GmailMessageId IS NOT NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_MessageId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE INDEX IX_TicketEmails_MessageId
+                            ON dbo.TicketEmails (MessageId);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_TicketId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE INDEX IX_TicketEmails_TicketId
+                            ON dbo.TicketEmails (TicketId);
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrderItems')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_StoreOrderItems_StoreProductId'
+                                     AND object_id = OBJECT_ID('dbo.StoreOrderItems'))
+                        CREATE INDEX IX_StoreOrderItems_StoreProductId
+                            ON dbo.StoreOrderItems (StoreProductId);
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketNotes')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketNotes_TicketId'
+                                     AND object_id = OBJECT_ID('dbo.TicketNotes'))
+                        CREATE INDEX IX_TicketNotes_TicketId
+                            ON dbo.TicketNotes (TicketId, CreatedDate DESC);
+                END
+            ");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')

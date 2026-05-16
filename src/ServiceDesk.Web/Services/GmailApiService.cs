@@ -373,27 +373,44 @@ public class GmailApiService : BackgroundService
         }
 
         // ---- THREADING FALLBACK: match clean subject against recent open tickets ----
-        // Catches forwarded emails and replies that bypass the three header-based checks above.
+        // Catches forwarded emails and replies that bypass the three header-based
+        // checks above. Two safety rails so a generic subject like "Re: Update"
+        // doesn't accidentally absorb every customer's emails:
+        //   1. Window narrowed from 14 days to 7 days. Most replies happen
+        //      within 3-4 days; 14 days caught too many false positives.
+        //   2. Match the original ticket's SubmittedById to a known Employee
+        //      for the inbound sender. If the sender isn't a known employee,
+        //      or if the matched ticket was submitted by someone else, skip
+        //      the fallback entirely (let a fresh ticket be created instead).
         if (!existingTicketId.HasValue)
         {
             var cleanedSubject = CleanSubject(subject);
             if (!string.IsNullOrWhiteSpace(cleanedSubject))
             {
-                var cutoff = DateTime.UtcNow.AddDays(-14);
-                var subjectMatch = await context.Tickets
-                    .Where(t => t.Title == cleanedSubject
-                             && t.CreatedDate >= cutoff
-                             && t.Status != TicketStatus.Closed
-                             && t.Status != TicketStatus.Cancelled)
-                    .OrderByDescending(t => t.CreatedDate)
-                    .Select(t => (int?)t.Id)
+                var submitterEmpId = await context.Employees
+                    .Where(e => e.Email == fromEmail)
+                    .Select(e => (int?)e.Id)
                     .FirstOrDefaultAsync(stoppingToken);
-                if (subjectMatch.HasValue)
+
+                if (submitterEmpId.HasValue)
                 {
-                    existingTicketId = subjectMatch.Value;
-                    _logger.LogInformation(
-                        "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
-                        existingTicketId.Value, cleanedSubject);
+                    var cutoff = DateTime.UtcNow.AddDays(-7);
+                    var subjectMatch = await context.Tickets
+                        .Where(t => t.Title == cleanedSubject
+                                 && t.CreatedDate >= cutoff
+                                 && t.SubmittedById == submitterEmpId.Value
+                                 && t.Status != TicketStatus.Closed
+                                 && t.Status != TicketStatus.Cancelled)
+                        .OrderByDescending(t => t.CreatedDate)
+                        .Select(t => (int?)t.Id)
+                        .FirstOrDefaultAsync(stoppingToken);
+                    if (subjectMatch.HasValue)
+                    {
+                        existingTicketId = subjectMatch.Value;
+                        _logger.LogInformation(
+                            "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
+                            existingTicketId.Value, cleanedSubject);
+                    }
                 }
             }
         }
