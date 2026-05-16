@@ -3,7 +3,7 @@
 @model StoreProduct
 @{
     ViewData["Title"] = "Add Product";
-    var ctx = new StoreProductFormContext
+    ViewData["FormContext"] = new StoreProductFormContext
     {
         Product             = Model,
         ExistingCategories  = ViewBag.ExistingCategories as List<string> ?? new List<string>(),
@@ -33,7 +33,7 @@
     <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-body">
-                @await Html.PartialAsync("StoreProducts/_ProductForm", ctx)
+                @await Html.PartialAsync("StoreProducts/_ProductForm", Model)
             </div>
         </div>
     </div>
