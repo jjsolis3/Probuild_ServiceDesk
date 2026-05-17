@@ -2251,6 +2251,20 @@ public class SettingsController : Controller
         if (id != product.Id) return BadRequest();
         if (!ModelState.IsValid)
         {
+            // Dump the model-state failures to the console so anyone looking
+            // at parse errors in the UI can correlate them with the exact
+            // (key, attempted-value, error) on the server. Format:
+            //   [ModelState] <key>: '<attempted-value>' - <error message>
+            foreach (var kvp in ModelState)
+            {
+                foreach (var err in kvp.Value.Errors)
+                {
+                    var attempted = kvp.Value.AttemptedValue ?? "(null)";
+                    Console.WriteLine(
+                        $"[ModelState] {kvp.Key}: '{attempted}' - {err.ErrorMessage}");
+                }
+            }
+
             ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             return View(product);
         }

@@ -1060,6 +1060,18 @@ public class StoreController : Controller
 
         if (!ModelState.IsValid)
         {
+            // Mirror the Settings flow's diagnostic dump so we can correlate
+            // a parse error in the UI with its server-side (key, value).
+            foreach (var kvp in ModelState)
+            {
+                foreach (var err in kvp.Value.Errors)
+                {
+                    var attempted = kvp.Value.AttemptedValue ?? "(null)";
+                    Console.WriteLine(
+                        $"[ModelState] {kvp.Key}: '{attempted}' - {err.ErrorMessage}");
+                }
+            }
+
             ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             // Reload image data from DB so the view renders existing images correctly.
             var dbSnap = await _context.StoreProducts.Include(p => p.Images).AsNoTracking()

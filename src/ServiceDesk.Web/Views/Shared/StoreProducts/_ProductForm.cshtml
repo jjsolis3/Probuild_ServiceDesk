@@ -39,7 +39,11 @@
     {
         <input type="hidden" asp-for="Id" />
     }
-    @Html.ValidationSummary(true, "", new { @class = "text-danger small" })
+    @* Use excludePropertyErrors:false so every model-state error shows with
+       its field key — necessary for diagnosing parse failures that would
+       otherwise hide as anonymous "input string was not in a correct format"
+       lines at the top of the page. *@
+    @Html.ValidationSummary(false, "", new { @class = "text-danger small" })
 
     <div class="mb-3">
         <label asp-for="Name" class="form-label fw-semibold"></label>
