@@ -2243,9 +2243,9 @@ public class SettingsController : Controller
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        Dictionary<int, string>? imageTags,
-        Dictionary<int, string>? imageAlts,
-        Dictionary<int, int>? imageOrders,
+        Dictionary<string, string>? imageTags,
+        Dictionary<string, string>? imageAlts,
+        Dictionary<string, string>? imageOrders,
         bool clearImage = false)
     {
         if (id != product.Id) return BadRequest();

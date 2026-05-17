@@ -188,15 +188,26 @@ public sealed class StoreProductAdminService
     /// edits, and any newly uploaded gallery files. Returns false when the
     /// product can't be found; otherwise true. Caller does ModelState first.
     /// </summary>
+    /// <remarks>
+    /// The three gallery-metadata dictionaries take <c>string</c> keys instead
+    /// of <c>int</c> so the ASP.NET Core model binder can never throw a
+    /// FormatException while parsing the key out of a form name like
+    /// <c>imageTags[5]</c>. Whatever was happening in our environment, the
+    /// binder kept emitting three identical "input string 'Id' was not in
+    /// a correct format" errors with an empty key whenever any of these
+    /// parameters was typed as <c>Dictionary&lt;int, T&gt;</c> — even with no
+    /// matching form fields posted. String keys side-step the issue and we
+    /// parse to int safely inside this method.
+    /// </remarks>
     public async Task<bool> UpdateAsync(
         int id,
         StoreProduct submitted,
         IFormFile? imageFile,
         IList<IFormFile>? galleryFiles,
         IList<string>? galleryTags,
-        IDictionary<int, string>? imageTags,
-        IDictionary<int, string>? imageAlts,
-        IDictionary<int, int>? imageOrders,
+        IDictionary<string, string>? imageTags,
+        IDictionary<string, string>? imageAlts,
+        IDictionary<string, string>? imageOrders,
         bool clearImage)
     {
         var existing = await GetWithImagesAsync(id);
@@ -229,15 +240,22 @@ public sealed class StoreProductAdminService
             existing.ImagePath = await SaveImageAsync(imageFile, existing.ImagePath);
         }
 
-        // Update tag / alt text / sort order on existing gallery images.
+        // Update tag / alt text / sort order on existing gallery images. Keys
+        // came in as strings; parse them to int once and apply the matching
+        // value when present.
         foreach (var img in existing.Images)
         {
-            if (imageTags != null && imageTags.TryGetValue(img.Id, out var tag))
+            var key = img.Id.ToString();
+            if (imageTags != null && imageTags.TryGetValue(key, out var tag))
                 img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
-            if (imageAlts != null && imageAlts.TryGetValue(img.Id, out var alt))
+            if (imageAlts != null && imageAlts.TryGetValue(key, out var alt))
                 img.Alt = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
-            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var order))
+            if (imageOrders != null
+                && imageOrders.TryGetValue(key, out var orderStr)
+                && int.TryParse(orderStr, out var order))
+            {
                 img.SortOrder = Math.Clamp(order, 0, 9999);
+            }
         }
 
         var startSort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;

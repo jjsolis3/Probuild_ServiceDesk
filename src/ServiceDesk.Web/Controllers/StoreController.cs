@@ -1049,9 +1049,9 @@ public class StoreController : Controller
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        Dictionary<int, string>? imageTags,
-        Dictionary<int, string>? imageAlts,
-        Dictionary<int, int>? imageOrders,
+        Dictionary<string, string>? imageTags,
+        Dictionary<string, string>? imageAlts,
+        Dictionary<string, string>? imageOrders,
         bool clearImage = false)
     {
         var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
