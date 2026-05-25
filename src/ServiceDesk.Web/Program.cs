@@ -62,6 +62,9 @@ builder.Services.AddScoped<StoreCartService>();
 // StoreController (Ops Hub) so the two flows can't drift again.
 builder.Services.AddScoped<StoreProductAdminService>();
 
+// Computes per-receipt payroll totals (second rate + monthly retainer burn-down)
+builder.Services.AddScoped<PayrollCalculatorService>();
+
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();
 

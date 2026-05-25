@@ -14,11 +14,16 @@ public class ContractorController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
+    private readonly PayrollCalculatorService _payroll;
 
-    public ContractorController(ServiceDeskDbContext context, EmailNotificationService emailService)
+    public ContractorController(
+        ServiceDeskDbContext context,
+        EmailNotificationService emailService,
+        PayrollCalculatorService payroll)
     {
         _context = context;
         _emailService = emailService;
+        _payroll = payroll;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -113,23 +118,27 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        var totalHours     = entries.Sum(e => e.Hours);
-        var billableHours  = entries.Where(e => e.IsBillable).Sum(e => e.Hours);
-        var rate           = contractor.HourlyRate ?? 0m;
-        var totalAmount    = billableHours * rate;
+        var calc = await _payroll.CalculateAsync(contractor, entries);
 
         var receipt = new PayrollReceipt
         {
-            ContractorId       = contractor.Id,
-            PeriodStart        = periodStart,
-            PeriodEnd          = periodEnd,
-            TotalHours         = totalHours,
-            TotalBillableHours = billableHours,
-            HourlyRateSnapshot = rate,
-            TotalAmount        = totalAmount,
-            Status             = "Draft",
-            Notes              = notes,
-            CreatedDate        = DateTime.UtcNow,
+            ContractorId                   = contractor.Id,
+            PeriodStart                    = periodStart,
+            PeriodEnd                      = periodEnd,
+            TotalHours                     = calc.TotalHours,
+            TotalBillableHours             = calc.TotalBillableHours,
+            HourlyRateSnapshot             = contractor.HourlyRate ?? 0m,
+            EmergencyRateSnapshot          = contractor.EmergencyHourlyRate,
+            TotalStandardHours             = calc.TotalStandardHours,
+            TotalEmergencyHours            = calc.TotalEmergencyHours,
+            MonthlyRetainerAmountSnapshot  = contractor.MonthlyRetainerAmount,
+            MonthlyRetainerHoursSnapshot   = contractor.MonthlyRetainerHoursIncluded,
+            TotalRetainerHoursApplied      = calc.TotalRetainerHoursApplied,
+            TotalRetainerAmountApplied     = calc.TotalRetainerAmountApplied,
+            TotalAmount                    = calc.TotalAmount,
+            Status                         = "Draft",
+            Notes                          = notes,
+            CreatedDate                    = DateTime.UtcNow,
         };
 
         _context.PayrollReceipts.Add(receipt);
