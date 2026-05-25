@@ -81,7 +81,7 @@
         font-weight: 700;
         letter-spacing: .04em;
         color: #fff;
-        background: @statusColor;
+        background: var(--status-color);
         margin-top: 4px;
     }
 
@@ -272,7 +272,7 @@
             <div>
                 <div class="invoice-company-name">@companyName</div>
                 <div class="invoice-doc-type">Contractor Payroll Receipt</div>
-                <div class="status-pill mt-2">
+                <div class="status-pill mt-2" style="--status-color:@statusColor;">
                     <i class="bi @statusIcon"></i>@Model.Status
                 </div>
             </div>
@@ -317,14 +317,14 @@
                 <div class="bill-box">
                     <div class="bill-label">Rates</div>
                     <div class="bill-value">
-                        <strong>@($"${Model.HourlyRateSnapshot:N2}/hr")</strong> standard
+                        <strong>@Model.HourlyRateSnapshot.ToString("C2")/hr</strong> standard
                         @if (Model.EmergencyRateSnapshot.HasValue)
                         {
-                            <br /><strong class="text-danger">@($"${Model.EmergencyRateSnapshot.Value:N2}/hr")</strong> emergency
+                            <br /><strong class="text-danger">@Model.EmergencyRateSnapshot.Value.ToString("C2")/hr</strong> emergency
                         }
                         @if (Model.MonthlyRetainerAmountSnapshot.HasValue && Model.MonthlyRetainerAmountSnapshot.Value > 0)
                         {
-                            <br /><span class="text-muted small">+ @($"${Model.MonthlyRetainerAmountSnapshot.Value:N2}/mo") retainer</span>
+                            <br /><span class="text-muted small">+ @Model.MonthlyRetainerAmountSnapshot.Value.ToString("C2")/mo retainer</span>
                         }
                     </div>
                 </div>
@@ -459,16 +459,16 @@
                                 <tr class="small">
                                     <td class="ps-4"><i class="bi bi-arrow-return-right me-1"></i>Billable at standard rate</td>
                                     <td class="text-end">@stdBill.ToString("0.##") h</td>
-                                    <td class="text-end">@($"${stdRate:N2}")</td>
-                                    <td class="text-end fw-semibold">@($"${calc.StandardBillableAmount:N2}")</td>
+                                    <td class="text-end">@stdRate.ToString("C2")</td>
+                                    <td class="text-end fw-semibold">@calc.StandardBillableAmount.ToString("C2")</td>
                                 </tr>
                                 @if (emerHours > 0)
                                 {
                                     <tr>
                                         <td class="fw-semibold">Emergency hours</td>
                                         <td class="text-end">@emerHours.ToString("0.##") h</td>
-                                        <td class="text-end">@($"${emerRate:N2}")</td>
-                                        <td class="text-end fw-semibold">@($"${calc.EmergencyBillableAmount:N2}")</td>
+                                        <td class="text-end">@emerRate.ToString("C2")</td>
+                                        <td class="text-end fw-semibold">@calc.EmergencyBillableAmount.ToString("C2")</td>
                                     </tr>
                                 }
                                 @foreach (var m in calc.Months.Where(b => b.RetainerAmountThisReceipt > 0))
@@ -482,7 +482,7 @@
                                         </td>
                                         <td></td>
                                         <td></td>
-                                        <td class="text-end fw-semibold">@($"${m.RetainerAmountThisReceipt:N2}")</td>
+                                        <td class="text-end fw-semibold">@m.RetainerAmountThisReceipt.ToString("C2")</td>
                                     </tr>
                                 }
                                 @foreach (var m in calc.Months.Where(b =>
