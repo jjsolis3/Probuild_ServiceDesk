@@ -77,6 +77,31 @@ public class Employee
     [DataType(DataType.Currency)]
     public decimal? HourlyRate { get; set; }
 
+    /// <summary>
+    /// Optional second rate for urgent / weekend / after-hours work. Leave
+    /// null to hide the "Rate Type" picker on time entries (single-rate
+    /// contractor). Setting a value enables the Emergency rate type.
+    /// </summary>
+    [Display(Name = "Emergency / Weekend Rate")]
+    [DataType(DataType.Currency)]
+    public decimal? EmergencyHourlyRate { get; set; }
+
+    /// <summary>
+    /// Optional monthly retainer dollar amount paid out on the first receipt
+    /// of each calendar month for this contractor. Leave null = no retainer.
+    /// </summary>
+    [Display(Name = "Monthly Retainer Amount")]
+    [DataType(DataType.Currency)]
+    public decimal? MonthlyRetainerAmount { get; set; }
+
+    /// <summary>
+    /// Standard hours included in the monthly retainer. Within a calendar
+    /// month, these hours are absorbed before any standard hour bills at
+    /// HourlyRate (burn-down model). Emergency hours never burn the pool.
+    /// </summary>
+    [Display(Name = "Retainer Hours Included")]
+    public decimal? MonthlyRetainerHoursIncluded { get; set; }
+
     // Navigation properties
     public Branch? Branch { get; set; }
     public ICollection<Ticket> SubmittedTickets { get; set; } = new List<Ticket>();

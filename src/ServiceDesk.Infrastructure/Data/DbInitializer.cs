@@ -1768,6 +1768,66 @@ public static class DbInitializer
                 END
             ");
 
+            // 63. Contractor payroll — second rate + monthly retainer columns
+            //     on Employees, RateType on TicketTimeEntries, and snapshot
+            //     columns on PayrollReceipts for the burn-down retainer model.
+            //     All nullable / defaulted so existing receipts continue to
+            //     load cleanly.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Employees')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'EmergencyHourlyRate')
+                        ALTER TABLE dbo.Employees ADD EmergencyHourlyRate DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'MonthlyRetainerAmount')
+                        ALTER TABLE dbo.Employees ADD MonthlyRetainerAmount DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'MonthlyRetainerHoursIncluded')
+                        ALTER TABLE dbo.Employees ADD MonthlyRetainerHoursIncluded DECIMAL(6,2) NULL;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'RateType')
+                BEGIN
+                    ALTER TABLE dbo.TicketTimeEntries
+                        ADD RateType TINYINT NOT NULL CONSTRAINT DF_TicketTimeEntries_RateType DEFAULT 0;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'EmergencyRateSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD EmergencyRateSnapshot DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalStandardHours')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalStandardHours DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalStandardHours DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalEmergencyHours')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalEmergencyHours DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalEmergencyHours DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'MonthlyRetainerAmountSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD MonthlyRetainerAmountSnapshot DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'MonthlyRetainerHoursSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD MonthlyRetainerHoursSnapshot DECIMAL(6,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalRetainerHoursApplied')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalRetainerHoursApplied DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalRetainerHoursApplied DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalRetainerAmountApplied')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalRetainerAmountApplied DECIMAL(12,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalRetainerAmountApplied DEFAULT 0;
+                END");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')

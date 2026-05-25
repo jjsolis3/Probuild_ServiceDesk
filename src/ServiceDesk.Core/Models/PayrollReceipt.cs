@@ -29,6 +29,55 @@ public class PayrollReceipt
     [Display(Name = "Rate ($/hr)")]
     public decimal HourlyRateSnapshot { get; set; }
 
+    /// <summary>
+    /// Emergency rate locked at receipt creation. Null when the contractor
+    /// had no emergency rate configured (in which case there should be no
+    /// Emergency entries on this receipt either).
+    /// </summary>
+    [Display(Name = "Emergency Rate ($/hr)")]
+    public decimal? EmergencyRateSnapshot { get; set; }
+
+    /// <summary>Sum of standard billable hours across all entries.</summary>
+    [Display(Name = "Standard Hours")]
+    public decimal TotalStandardHours { get; set; }
+
+    /// <summary>Sum of emergency billable hours across all entries.</summary>
+    [Display(Name = "Emergency Hours")]
+    public decimal TotalEmergencyHours { get; set; }
+
+    /// <summary>
+    /// Retainer dollar amount snapshot at receipt creation — copied from
+    /// Employee.MonthlyRetainerAmount. Used to render the per-month
+    /// retainer line(s); the actual dollar applied across receipts is in
+    /// RetainerAmountApplied.
+    /// </summary>
+    [Display(Name = "Monthly Retainer Amount")]
+    public decimal? MonthlyRetainerAmountSnapshot { get; set; }
+
+    /// <summary>
+    /// Retainer hours snapshot at receipt creation — copied from
+    /// Employee.MonthlyRetainerHoursIncluded.
+    /// </summary>
+    [Display(Name = "Retainer Hours Included")]
+    public decimal? MonthlyRetainerHoursSnapshot { get; set; }
+
+    /// <summary>
+    /// Sum of standard hours on this receipt that were absorbed by the
+    /// retainer pool (not billed at HourlyRate). The receipt UI shows this
+    /// as "Covered by retainer".
+    /// </summary>
+    [Display(Name = "Retainer Hours Applied")]
+    public decimal TotalRetainerHoursApplied { get; set; }
+
+    /// <summary>
+    /// Dollar amount of the retainer line(s) added to this receipt — sum of
+    /// per-month retainer amounts when this is the first receipt to touch a
+    /// month. Zero when retainer not configured or when no first-of-month
+    /// claim applied here.
+    /// </summary>
+    [Display(Name = "Retainer Amount Applied")]
+    public decimal TotalRetainerAmountApplied { get; set; }
+
     [Display(Name = "Total Amount")]
     public decimal TotalAmount { get; set; }
 

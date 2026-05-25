@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using ServiceDesk.Core.Enums;
 
 namespace ServiceDesk.Core.Models;
 
@@ -32,6 +33,15 @@ public class TicketTimeEntry
 
     [Display(Name = "Billable")]
     public bool IsBillable { get; set; } = false;
+
+    /// <summary>
+    /// Which pay rate this entry charges against. Default Standard; switch to
+    /// Emergency for urgent / weekend / after-hours work that bills at the
+    /// EmergencyHourlyRate. Emergency hours never burn down the monthly
+    /// retainer pool — the retainer covers Standard hours only.
+    /// </summary>
+    [Display(Name = "Rate Type")]
+    public PayRateType RateType { get; set; } = PayRateType.Standard;
 
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
