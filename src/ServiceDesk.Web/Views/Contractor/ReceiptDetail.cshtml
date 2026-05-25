@@ -317,14 +317,14 @@
                 <div class="bill-box">
                     <div class="bill-label">Rates</div>
                     <div class="bill-value">
-                        <strong>@Model.HourlyRateSnapshot.ToString("C2")/hr</strong> standard
+                        <strong>@($"{Model.HourlyRateSnapshot:C2}/hr")</strong><text> standard</text>
                         @if (Model.EmergencyRateSnapshot.HasValue)
                         {
-                            <br /><strong class="text-danger">@Model.EmergencyRateSnapshot.Value.ToString("C2")/hr</strong> emergency
+                            <br /><strong class="text-danger">@($"{Model.EmergencyRateSnapshot.Value:C2}/hr")</strong><text> emergency</text>
                         }
                         @if (Model.MonthlyRetainerAmountSnapshot.HasValue && Model.MonthlyRetainerAmountSnapshot.Value > 0)
                         {
-                            <br /><span class="text-muted small">+ @Model.MonthlyRetainerAmountSnapshot.Value.ToString("C2")/mo retainer</span>
+                            <br /><span class="text-muted small">@($"+ {Model.MonthlyRetainerAmountSnapshot.Value:C2}/mo retainer")</span>
                         }
                     </div>
                 </div>
