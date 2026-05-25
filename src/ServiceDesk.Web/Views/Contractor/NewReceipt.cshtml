@@ -3,10 +3,10 @@
     var contractor  = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
     var periodStart = ViewBag.PeriodStart as string;
     var periodEnd   = ViewBag.PeriodEnd   as string;
-    var totalHours    = Model.Sum(e => e.Hours);
-    var billableHours = Model.Where(e => e.IsBillable).Sum(e => e.Hours);
-    var rate          = contractor?.HourlyRate ?? 0m;
-    var estimated     = billableHours * rate;
+    var calc        = ViewBag.PayrollCalc as ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation;
+    var stdRate     = contractor?.HourlyRate ?? 0m;
+    var emerRate    = contractor?.EmergencyHourlyRate ?? 0m;
+    var hasEmerRate = emerRate > 0m;
 }
 
 <div class="row page-titles">
@@ -66,6 +66,7 @@ else
                             <th>Ticket</th>
                             <th>Description</th>
                             <th class="text-center">Hours</th>
+                            <th class="text-center">Rate Type</th>
                             <th class="text-center">Billable</th>
                             <th class="text-end">Amount</th>
                         </tr>
@@ -73,7 +74,9 @@ else
                     <tbody>
                         @foreach (var entry in Model)
                         {
-                            var amount = entry.IsBillable ? entry.Hours * rate : 0m;
+                            var isEmer    = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+                            var rateForRow = isEmer ? emerRate : stdRate;
+                            var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
                             <tr>
                                 <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
                                 <td class="small">
@@ -85,53 +88,99 @@ else
                                 <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
                                 <td class="text-center small">@entry.Hours.ToString("0.##")</td>
                                 <td class="text-center">
-                                    @if (entry.IsBillable)
-                                    {
-                                        <span class="badge bg-success">Yes</span>
-                                    }
+                                    @if (isEmer)
+                                    { <span class="badge bg-danger">Emergency</span> }
                                     else
-                                    {
-                                        <span class="badge bg-secondary">No</span>
-                                    }
+                                    { <span class="badge bg-secondary">Standard</span> }
+                                </td>
+                                <td class="text-center">
+                                    @if (entry.IsBillable)
+                                    { <span class="badge bg-success">Yes</span> }
+                                    else
+                                    { <span class="badge bg-secondary">No</span> }
                                 </td>
                                 <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
                             </tr>
                         }
                     </tbody>
-                    <tfoot class="table-secondary fw-semibold">
-                        <tr>
-                            <td colspan="3" class="text-end">Totals:</td>
-                            <td class="text-center">@totalHours.ToString("0.##")</td>
-                            <td></td>
-                            <td class="text-end">$@estimated.ToString("N2")</td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
         </div>
     </div>
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header"><i class="fas fa-file-invoice-dollar me-1"></i>Summary</div>
+        <div class="card-header"><i class="fas fa-file-invoice-dollar me-1"></i>Estimated Payout Summary</div>
         <div class="card-body">
-            <div class="row g-3 mb-3">
-                <div class="col-md-3 text-center">
-                    <div class="text-muted small">Total Hours</div>
-                    <div class="fw-bold fs-4">@totalHours.ToString("0.##")</div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="text-muted small">Billable Hours</div>
-                    <div class="fw-bold fs-4 text-success">@billableHours.ToString("0.##")</div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="text-muted small">Rate / hr</div>
-                    <div class="fw-bold fs-4">$@rate.ToString("N2")</div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="text-muted small">Estimated Total</div>
-                    <div class="fw-bold fs-4 text-primary">$@estimated.ToString("N2")</div>
-                </div>
-            </div>
+            @if (calc != null)
+            {
+                <table class="table table-sm align-middle mb-3">
+                    <tbody>
+                        <tr>
+                            <td class="fw-semibold">Standard hours</td>
+                            <td class="text-end">@calc.TotalStandardHours.ToString("0.##") h</td>
+                            <td colspan="2"></td>
+                        </tr>
+                        @if (calc.TotalRetainerHoursApplied > 0)
+                        {
+                            <tr class="text-muted small">
+                                <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Covered by retainer</td>
+                                <td class="text-end">@calc.TotalRetainerHoursApplied.ToString("0.##") h</td>
+                                <td class="text-end">@ $0.00</td>
+                                <td class="text-end">$0.00</td>
+                            </tr>
+                        }
+                        <tr class="small">
+                            <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Billable at standard rate</td>
+                            <td class="text-end">@calc.StandardBillableHours.ToString("0.##") h</td>
+                            <td class="text-end">@ $@stdRate.ToString("N2")</td>
+                            <td class="text-end fw-semibold">$@calc.StandardBillableAmount.ToString("N2")</td>
+                        </tr>
+                        @if (calc.TotalEmergencyHours > 0)
+                        {
+                            <tr>
+                                <td class="fw-semibold">Emergency hours</td>
+                                <td class="text-end">@calc.TotalEmergencyHours.ToString("0.##") h</td>
+                                <td class="text-end">@ $@emerRate.ToString("N2")</td>
+                                <td class="text-end fw-semibold">$@calc.EmergencyBillableAmount.ToString("N2")</td>
+                            </tr>
+                        }
+                        @foreach (var m in calc.Months.Where(b => b.RetainerAmountThisReceipt > 0))
+                        {
+                            <tr>
+                                <td class="fw-semibold">
+                                    Monthly retainer — @m.Label
+                                    <span class="text-muted small">
+                                        (covers up to @((contractor?.MonthlyRetainerHoursIncluded ?? 0m).ToString("0.##")) h)
+                                    </span>
+                                </td>
+                                <td colspan="2"></td>
+                                <td class="text-end fw-semibold">$@m.RetainerAmountThisReceipt.ToString("N2")</td>
+                            </tr>
+                        }
+                        @foreach (var m in calc.Months.Where(b =>
+                            !b.IsFirstReceiptOfMonth
+                            && (contractor?.MonthlyRetainerAmount ?? 0m) > 0))
+                        {
+                            <tr class="text-muted small">
+                                <td>
+                                    <i class="fas fa-info-circle me-1"></i>@m.Label retainer already applied to a prior receipt
+                                    @if (m.RetainerHoursApplied > 0)
+                                    { <text>(@m.RetainerHoursApplied.ToString("0.##") h absorbed from this receipt's pool)</text> }
+                                </td>
+                                <td colspan="3"></td>
+                            </tr>
+                        }
+                        <tr style="border-top:2px solid #333;">
+                            <td class="fw-bold pt-2">Estimated total</td>
+                            <td class="text-end pt-2">
+                                <span class="text-muted small">@calc.TotalHours.ToString("0.##") h logged</span>
+                            </td>
+                            <td></td>
+                            <td class="text-end fw-bold pt-2" style="font-size:1.1rem; color:#0d6efd;">$@calc.TotalAmount.ToString("N2")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
             <form asp-action="NewReceipt" method="post" class="row g-3 align-items-end">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="periodStart" value="@periodStart" />

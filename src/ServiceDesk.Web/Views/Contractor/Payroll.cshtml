@@ -204,7 +204,19 @@
 <div class="pay-page-header">
     <div>
         <h1 class="pay-page-title"><i class="bi bi-file-invoice-fill me-2" style="color:var(--pay-blue);"></i>My Payroll</h1>
-        <p class="pay-page-sub">Track billable hours and generate invoices · Rate: <strong>$@(contractor?.HourlyRate?.ToString("N2") ?? "—")/hr</strong></p>
+        <p class="pay-page-sub">
+            Track billable hours and generate invoices ·
+            <strong>Standard: $@(contractor?.HourlyRate?.ToString("N2") ?? "—")/hr</strong>
+            @if (contractor?.EmergencyHourlyRate.HasValue == true)
+            {
+                <text> · <strong class="text-danger">Emergency: $@contractor.EmergencyHourlyRate.Value.ToString("N2")/hr</strong></text>
+            }
+            @if (contractor?.MonthlyRetainerAmount.HasValue == true)
+            {
+                <text> · <strong>Retainer: $@contractor.MonthlyRetainerAmount.Value.ToString("N2")/mo</strong>
+                    <span class="text-muted">(covers up to @((contractor.MonthlyRetainerHoursIncluded ?? 0m).ToString("0.##")) h)</span></text>
+            }
+        </p>
     </div>
     <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#newReceiptPanel">
         <i class="bi bi-plus-lg me-1"></i>New Receipt
@@ -280,7 +292,12 @@
             <div class="kpi-tile @(hasOutstanding ? "kpi-navy" : "kpi-neutral")">
                 <div class="kpi-label">Estimated Amount</div>
                 <div class="kpi-value" style="font-size:1.5rem;">$@unclaimedAmt.ToString("N2")</div>
-                <div class="kpi-sub">at $@(contractor?.HourlyRate?.ToString("N2") ?? "—")/hr</div>
+                <div class="kpi-sub">
+                    @if (contractor?.EmergencyHourlyRate.HasValue == true)
+                    { <text>per-entry rate (retainer not yet applied)</text> }
+                    else
+                    { <text>at $@(contractor?.HourlyRate?.ToString("N2") ?? "—")/hr</text> }
+                </div>
             </div>
             <div class="kpi-tile kpi-neutral">
                 <div class="kpi-label">Total Hrs Logged</div>
@@ -336,14 +353,21 @@
                             <th>Ticket</th>
                             <th>Description</th>
                             <th class="text-center">Hours</th>
+                            <th class="text-center">Rate Type</th>
                             <th class="text-center">Billable</th>
                             <th class="text-end">Est. Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        @{
+                            var emerRateDash = contractor?.EmergencyHourlyRate ?? 0m;
+                            var stdRateDash  = contractor?.HourlyRate ?? 0m;
+                        }
                         @foreach (var entry in unclaimed)
                         {
-                            var entryAmt = entry.IsBillable ? entry.Hours * (contractor?.HourlyRate ?? 0) : 0;
+                            var isEmerDash = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+                            var rateDash   = isEmerDash ? emerRateDash : stdRateDash;
+                            var entryAmt   = entry.IsBillable ? entry.Hours * rateDash : 0;
                             <tr>
                                 <td class="text-nowrap">@entry.WorkDate.ToString("MMM d, yyyy")</td>
                                 <td>
@@ -358,6 +382,12 @@
                                 </td>
                                 <td class="text-muted small">@(entry.Description ?? "—")</td>
                                 <td class="text-center fw-semibold">@entry.Hours.ToString("0.##")</td>
+                                <td class="text-center">
+                                    @if (isEmerDash)
+                                    { <span class="badge bg-danger">Emergency</span> }
+                                    else
+                                    { <span class="badge bg-secondary">Standard</span> }
+                                </td>
                                 <td class="text-center">
                                     @if (entry.IsBillable)
                                     { <span class="badge-bill-yes">Billable</span> }

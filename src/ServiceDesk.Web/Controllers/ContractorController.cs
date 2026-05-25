@@ -63,11 +63,21 @@ public class ContractorController : Controller
             .OrderByDescending(e => e.WorkDate)
             .ToListAsync();
 
+        // Estimated unclaimed amount uses per-entry rate (Standard or Emergency)
+        // so contractors with a mixed workload see a realistic figure on the
+        // dashboard, not a single-rate approximation.
+        var standardRateForDashboard  = contractor.HourlyRate ?? 0m;
+        var emergencyRateForDashboard = contractor.EmergencyHourlyRate ?? 0m;
+        var unclaimedAmount = unclaimed
+            .Where(e => e.IsBillable)
+            .Sum(e => e.Hours * (e.RateType == Core.Enums.PayRateType.Emergency
+                                    ? emergencyRateForDashboard
+                                    : standardRateForDashboard));
+
         ViewBag.Contractor          = contractor;
         ViewBag.UnclaimedEntries    = unclaimed;
         ViewBag.UnclaimedBillableHrs = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours);
-        ViewBag.UnclaimedAmount     = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours)
-                                        * (contractor.HourlyRate ?? 0);
+        ViewBag.UnclaimedAmount      = unclaimedAmount;
         ViewData["Title"] = "Payroll";
         return View(receipts);
     }
@@ -92,6 +102,11 @@ public class ContractorController : Controller
         ViewBag.PeriodEnd   = end.ToString("yyyy-MM-dd");
 
         var entries = await GetUnclaimedEntriesAsync(contractor.Id, start, end);
+
+        // Preview the same totals the POST handler will persist — keeps the
+        // user from being surprised by retainer / rate-type math on submit.
+        ViewBag.PayrollCalc = await _payroll.CalculateAsync(contractor, entries);
+
         return View(entries);
     }
 
@@ -174,6 +189,12 @@ public class ContractorController : Controller
 
         var companyName = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
+
+        // Rebuild the per-month breakdown for display. The receipt's own
+        // entries are excluded from the "already claimed" check so the
+        // retainer math reflects the moment this receipt was created.
+        ViewBag.PayrollCalc = await _payroll.CalculateAsync(
+            receipt.Contractor!, receipt.TimeEntries.ToList(), receiptIdToIgnore: receipt.Id);
 
         ViewBag.CompanyName = companyName;
         ViewData["Title"] = $"Receipt #{receipt.Id}";
@@ -305,8 +326,8 @@ public class ContractorController : Controller
 
         ws.Row(6).Height = 6;
 
-        // Row 7: Column headers
-        var headers = new[] { "Work Date", "Ticket #", "Description", "Hours", "Billable", "Rate ($/hr)", "Amount" };
+        // Row 7: Column headers — Rate Type column inserted between Hours and Billable
+        var headers = new[] { "Work Date", "Ticket #", "Description", "Hours", "Rate Type", "Billable", "Rate ($/hr)", "Amount" };
         for (int col = 1; col <= headers.Length; col++)
         {
             var cell = ws.Cell(7, col);
@@ -317,43 +338,103 @@ public class ContractorController : Controller
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         }
 
+        var stdRate  = receipt.HourlyRateSnapshot;
+        var emerRate = receipt.EmergencyRateSnapshot ?? 0m;
+
         // Data rows
         int row = 8;
         bool alt = false;
         foreach (var entry in receipt.TimeEntries.OrderBy(e => e.WorkDate))
         {
-            var amount = entry.IsBillable ? entry.Hours * receipt.HourlyRateSnapshot : 0m;
+            var isEmer     = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+            var rateForRow = isEmer ? emerRate : stdRate;
+            var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
+
             if (alt)
-                ws.Range(row, 1, row, 7).Style.Fill.BackgroundColor = altRow;
+                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = altRow;
 
             ws.Cell(row, 1).Value = entry.WorkDate.ToString("yyyy-MM-dd");
             ws.Cell(row, 2).Value = entry.Ticket?.Id.ToString() ?? "-";
             ws.Cell(row, 3).Value = entry.Description ?? entry.Ticket?.Title ?? "-";
             ws.Cell(row, 4).Value = (double)entry.Hours;
             ws.Cell(row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 5).Value = entry.IsBillable ? "Yes" : "No";
+            ws.Cell(row, 5).Value = isEmer ? "Emergency" : "Standard";
             ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 6).Value = entry.IsBillable ? (double)receipt.HourlyRateSnapshot : 0;
-            ws.Cell(row, 6).Style.NumberFormat.Format = "$#,##0.00";
-            ws.Cell(row, 7).Value = (double)amount;
+            if (isEmer)
+            {
+                ws.Cell(row, 5).Style.Font.Bold      = true;
+                ws.Cell(row, 5).Style.Font.FontColor = XLColor.FromHtml("#dc3545");
+            }
+            ws.Cell(row, 6).Value = entry.IsBillable ? "Yes" : "No";
+            ws.Cell(row, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(row, 7).Value = entry.IsBillable ? (double)rateForRow : 0;
             ws.Cell(row, 7).Style.NumberFormat.Format = "$#,##0.00";
+            ws.Cell(row, 8).Value = (double)amount;
+            ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
 
             alt = !alt;
             row++;
         }
 
-        // Totals row
+        // Breakdown rows — Standard / Emergency / Retainer subtotals
         var totalsBg = XLColor.FromHtml("#e9ecef");
-        ws.Range(row, 1, row, 7).Style.Fill.BackgroundColor = totalsBg;
+        var stdHrs   = receipt.TotalStandardHours;
+        var emerHrs  = receipt.TotalEmergencyHours;
+        var stdAbsorbed = receipt.TotalRetainerHoursApplied;
+        var stdBillable = stdHrs - stdAbsorbed;
+
+        void BreakdownRow(string label, string? hoursText, string? rateText, decimal? amount, bool indent = false, bool muted = false)
+        {
+            ws.Cell(row, 1).Value = indent ? "   " + label : label;
+            ws.Range(row, 1, row, 5).Merge();
+            ws.Cell(row, 1).Style.Font.Italic = muted;
+            if (muted) ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
+            if (hoursText != null) ws.Cell(row, 6).Value = hoursText;
+            if (rateText  != null) ws.Cell(row, 7).Value = rateText;
+            if (amount.HasValue)
+            {
+                ws.Cell(row, 8).Value = (double)amount.Value;
+                ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
+            }
+            row++;
+        }
+
+        row++; // blank spacer row
+        BreakdownRow("Standard hours",
+            hoursText: stdHrs.ToString("0.##") + " h", rateText: null, amount: null);
+        if (stdAbsorbed > 0)
+        {
+            BreakdownRow("Covered by retainer",
+                hoursText: stdAbsorbed.ToString("0.##") + " h",
+                rateText: "$0.00", amount: 0m, indent: true, muted: true);
+        }
+        BreakdownRow("Billable at standard rate",
+            hoursText: stdBillable.ToString("0.##") + " h",
+            rateText: "$" + stdRate.ToString("N2"),
+            amount: stdBillable * stdRate, indent: true);
+        if (emerHrs > 0)
+        {
+            BreakdownRow("Emergency hours",
+                hoursText: emerHrs.ToString("0.##") + " h",
+                rateText: "$" + emerRate.ToString("N2"),
+                amount: emerHrs * emerRate);
+        }
+        if (receipt.TotalRetainerAmountApplied > 0)
+        {
+            BreakdownRow($"Monthly retainer (covers up to {(receipt.MonthlyRetainerHoursSnapshot ?? 0m):0.##} h)",
+                hoursText: null, rateText: null,
+                amount: receipt.TotalRetainerAmountApplied);
+        }
+
+        ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = totalsBg;
         ws.Cell(row, 1).Value = "TOTAL";
         ws.Cell(row, 1).Style.Font.Bold = true;
-        ws.Range(row, 1, row, 3).Merge();
-        ws.Cell(row, 4).Value = (double)receipt.TotalHours;
-        ws.Cell(row, 4).Style.Font.Bold = true;
-        ws.Cell(row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        ws.Cell(row, 7).Value = (double)receipt.TotalAmount;
-        ws.Cell(row, 7).Style.Font.Bold           = true;
-        ws.Cell(row, 7).Style.NumberFormat.Format = "$#,##0.00";
+        ws.Range(row, 1, row, 5).Merge();
+        ws.Cell(row, 6).Value = receipt.TotalHours.ToString("0.##") + " h";
+        ws.Cell(row, 6).Style.Font.Bold = true;
+        ws.Cell(row, 8).Value = (double)receipt.TotalAmount;
+        ws.Cell(row, 8).Style.Font.Bold           = true;
+        ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
 
         ws.Columns().AdjustToContents();
 
