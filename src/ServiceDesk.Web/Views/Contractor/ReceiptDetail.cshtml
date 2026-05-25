@@ -452,14 +452,14 @@
                                     <tr class="text-muted small">
                                         <td class="ps-4"><i class="bi bi-arrow-return-right me-1"></i>Covered by retainer</td>
                                         <td class="text-end">@stdAbsorbed.ToString("0.##") h</td>
-                                        <td class="text-end">@($"@ $0.00")</td>
+                                        <td class="text-end">$0.00</td>
                                         <td class="text-end">$0.00</td>
                                     </tr>
                                 }
                                 <tr class="small">
                                     <td class="ps-4"><i class="bi bi-arrow-return-right me-1"></i>Billable at standard rate</td>
                                     <td class="text-end">@stdBill.ToString("0.##") h</td>
-                                    <td class="text-end">@ $@stdRate.ToString("N2")</td>
+                                    <td class="text-end">$@stdRate.ToString("N2")</td>
                                     <td class="text-end fw-semibold">$@calc.StandardBillableAmount.ToString("N2")</td>
                                 </tr>
                                 @if (emerHours > 0)
@@ -467,7 +467,7 @@
                                     <tr>
                                         <td class="fw-semibold">Emergency hours</td>
                                         <td class="text-end">@emerHours.ToString("0.##") h</td>
-                                        <td class="text-end">@ $@emerRate.ToString("N2")</td>
+                                        <td class="text-end">$@emerRate.ToString("N2")</td>
                                         <td class="text-end fw-semibold">$@calc.EmergencyBillableAmount.ToString("N2")</td>
                                     </tr>
                                 }
