@@ -370,8 +370,11 @@ public class EmployeesController : Controller
             // Contractor settings — Admin-only inputs on the form
             if (User.IsInRole("Admin"))
             {
-                existing.IsContractor = employee.IsContractor;
-                existing.HourlyRate   = employee.HourlyRate;
+                existing.IsContractor                  = employee.IsContractor;
+                existing.HourlyRate                    = employee.HourlyRate;
+                existing.EmergencyHourlyRate           = employee.EmergencyHourlyRate;
+                existing.MonthlyRetainerAmount         = employee.MonthlyRetainerAmount;
+                existing.MonthlyRetainerHoursIncluded  = employee.MonthlyRetainerHoursIncluded;
             }
 
             await _context.SaveChangesAsync();

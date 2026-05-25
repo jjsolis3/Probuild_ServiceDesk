@@ -136,12 +136,45 @@
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <label asp-for="HourlyRate" class="form-label"></label>
+                        <label asp-for="HourlyRate" class="form-label">Hourly Rate (Standard)</label>
                         <div class="input-group">
                             <span class="input-group-text">$</span>
                             <input asp-for="HourlyRate" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" />
                         </div>
                         <span asp-validation-for="HourlyRate" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="EmergencyHourlyRate" class="form-label">Emergency / Weekend Rate</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input asp-for="EmergencyHourlyRate" class="form-control" type="number" step="0.01" min="0" placeholder="Leave blank to disable" />
+                        </div>
+                        <small class="text-muted">Blank = single-rate contractor; no Rate Type picker on time entries.</small>
+                        <span asp-validation-for="EmergencyHourlyRate" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-12">
+                        <h6 class="text-muted mb-2"><i class="fas fa-hand-holding-usd me-1"></i>Monthly Retainer
+                            <small class="text-muted">— optional. Burn-down model: included hours are absorbed before any Standard hour bills at the hourly rate. Emergency hours always bill at the Emergency rate.</small>
+                        </h6>
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="MonthlyRetainerAmount" class="form-label">Retainer Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input asp-for="MonthlyRetainerAmount" class="form-control" type="number" step="0.01" min="0" placeholder="Leave blank for no retainer" />
+                            <span class="input-group-text">/ mo</span>
+                        </div>
+                        <span asp-validation-for="MonthlyRetainerAmount" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="MonthlyRetainerHoursIncluded" class="form-label">Hours Included</label>
+                        <div class="input-group">
+                            <input asp-for="MonthlyRetainerHoursIncluded" class="form-control" type="number" step="0.25" min="0" placeholder="e.g. 20" />
+                            <span class="input-group-text">hrs / mo</span>
+                        </div>
+                        <span asp-validation-for="MonthlyRetainerHoursIncluded" class="text-danger"></span>
                     </div>
                 </div>
             }
