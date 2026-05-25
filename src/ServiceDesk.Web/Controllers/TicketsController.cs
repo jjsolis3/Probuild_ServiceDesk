@@ -450,13 +450,28 @@ public class TicketsController : Controller
         ViewBag.TimeTotalHours = ticket.TimeEntries.Sum(e => e.Hours);
         ViewBag.TimeBillableHours = ticket.TimeEntries.Where(e => e.IsBillable).Sum(e => e.Hours);
 
+        // Show the Emergency-rate picker on the time-entry form only when the
+        // logged-in contractor actually has an EmergencyHourlyRate configured.
+        var currentUserEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+        ViewBag.LoggerHasEmergencyRate = false;
+        if (!string.IsNullOrWhiteSpace(currentUserEmail))
+        {
+            ViewBag.LoggerHasEmergencyRate = await _context.Employees
+                .AsNoTracking()
+                .AnyAsync(e => e.Email == currentUserEmail
+                            && e.EmergencyHourlyRate != null
+                            && e.EmergencyHourlyRate > 0);
+        }
+
         return View(ticket);
     }
 
     // ──────────────────────────── Time Tracking ────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
-        string? description, bool isBillable, string? returnAction = null)
+        string? description, bool isBillable,
+        ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        string? returnAction = null)
     {
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
@@ -477,12 +492,22 @@ public class TicketsController : Controller
 
         var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
         int? empId = null;
+        Employee? logger = null;
         if (!string.IsNullOrWhiteSpace(userEmail))
         {
-            empId = await _context.Employees
-                .Where(e => e.Email == userEmail)
-                .Select(e => (int?)e.Id)
-                .FirstOrDefaultAsync();
+            logger = await _context.Employees
+                .FirstOrDefaultAsync(e => e.Email == userEmail);
+            empId = logger?.Id;
+        }
+
+        // Emergency rate requires the logging contractor to actually have an
+        // EmergencyHourlyRate configured. If the form somehow posts Emergency
+        // for a single-rate contractor, silently fall back to Standard so the
+        // entry isn't silently mis-rated.
+        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency
+            && (logger?.EmergencyHourlyRate == null || logger.EmergencyHourlyRate <= 0))
+        {
+            rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
         }
 
         var entry = new TicketTimeEntry
@@ -492,6 +517,7 @@ public class TicketsController : Controller
             Hours = hours,
             Description = description,
             IsBillable = isBillable,
+            RateType = rateType,
             LoggedByEmail = userEmail,
             LoggedByEmployeeId = empId,
             CreatedDate = DateTime.UtcNow
