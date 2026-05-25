@@ -430,7 +430,8 @@
                         <th>Contractor</th>
                         <th>Period</th>
                         <th class="text-center">Total Hrs</th>
-                        <th class="text-center">Billable Hrs</th>
+                        <th class="text-center">Std / Emerg</th>
+                        <th class="text-center">Retainer</th>
                         <th class="text-end">Amount</th>
                         <th>Status</th>
                         <th>Submitted</th>
@@ -474,7 +475,33 @@
                                 @receipt.PeriodStart.ToString("MMM d") – @receipt.PeriodEnd.ToString("MMM d, yyyy")
                             </td>
                             <td class="text-center">@receipt.TotalHours.ToString("0.##")</td>
-                            <td class="text-center fw-semibold" style="color:var(--ap-navy);">@receipt.TotalBillableHours.ToString("0.##")</td>
+                            <td class="text-center small">
+                                <span class="text-muted">@receipt.TotalStandardHours.ToString("0.##")</span>
+                                <span class="mx-1 text-muted">/</span>
+                                @if (receipt.TotalEmergencyHours > 0)
+                                {
+                                    <span class="fw-bold text-danger" title="Emergency hours billed at @(receipt.EmergencyRateSnapshot?.ToString("C") ?? "—")">
+                                        @receipt.TotalEmergencyHours.ToString("0.##")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td class="text-center small">
+                                @if (receipt.TotalRetainerAmountApplied > 0)
+                                {
+                                    <span class="fw-semibold text-success"
+                                          title="@receipt.TotalRetainerHoursApplied.ToString("0.##") h absorbed by retainer">
+                                        $@receipt.TotalRetainerAmountApplied.ToString("N0")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                             <td class="text-end fw-bold" style="color:var(--ap-navy);">$@receipt.TotalAmount.ToString("N2")</td>
                             <td><span class="sp @pillClass">@receipt.Status</span></td>
                             <td class="small text-muted text-nowrap">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
