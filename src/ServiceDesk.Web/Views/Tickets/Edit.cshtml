@@ -786,6 +786,16 @@
 
 <!-- Toast for comment post feedback -->
 <!-- ── Log Time Modal ──────────────────────────────────────────── -->
+@{
+    // Hoisted so both the AddTimeEntry form AND the sibling EditEntry panel
+    // can see it — the original @{ } block lives inside <form>/modal-body so
+    // its scope doesn't reach the edit panel below.
+    var modalShowRateType = ViewBag.LoggerHasEmergencyRate is bool mShowRate && mShowRate;
+    var modalTimeEntries  = Model.TimeEntries?.OrderByDescending(e => e.WorkDate).ToList()
+                            ?? new List<ServiceDesk.Core.Models.TicketTimeEntry>();
+    var modalTotalHours    = (decimal)(ViewBag.TimeTotalHours ?? 0m);
+    var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
+}
 <div class="modal fade" id="timeTrackingModal" tabindex="-1" aria-labelledby="timeTrackingModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -799,13 +809,6 @@
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="returnAction" value="Edit" />
                 <div class="modal-body">
-                    @{
-                        var modalTimeEntries   = Model.TimeEntries?.OrderByDescending(e => e.WorkDate).ToList()
-                                                ?? new List<ServiceDesk.Core.Models.TicketTimeEntry>();
-                        var modalTotalHours    = (decimal)(ViewBag.TimeTotalHours ?? 0m);
-                        var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
-                        var modalShowRateType  = ViewBag.LoggerHasEmergencyRate is bool mb && mb;
-                    }
                     <div class="row g-2 mb-2">
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold mb-1">Date</label>
