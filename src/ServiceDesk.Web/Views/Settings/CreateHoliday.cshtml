@@ -1,0 +1,50 @@
+@model CompanyHoliday
+@{
+    ViewData["Title"] = "Add Holiday";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Holidays">Company Holidays</a></li>
+        <li class="breadcrumb-item active">New Holiday</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Add Holiday</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="CreateHoliday" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="e.g. Independence Day" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control" type="date" />
+                <span asp-validation-for="Date" class="text-danger"></span>
+                <div class="form-text">For yearly holidays, only the month and day are used at match time.</div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input asp-for="IsRecurringYearly" class="form-check-input" type="checkbox" />
+                <label asp-for="IsRecurringYearly" class="form-check-label"></label>
+                <div class="form-text">Check this for fixed-date holidays (New Year's Day, July 4, Christmas). Leave unchecked for one-off observances or floating dates (e.g. Thanksgiving 2026).</div>
+            </div>
+
+            <div class="alert alert-info small">
+                <i class="bi bi-info-circle"></i>
+                When a contractor logs time on this date, the rate-type picker will default to <strong>Emergency</strong>. The contractor can still override.
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Add Holiday</button>
+                <a asp-action="Holidays" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

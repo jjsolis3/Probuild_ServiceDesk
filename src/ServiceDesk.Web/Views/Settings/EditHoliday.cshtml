@@ -1,0 +1,46 @@
+@model CompanyHoliday
+@{
+    ViewData["Title"] = "Edit Holiday";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Holidays">Company Holidays</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-pencil"></i> Edit Holiday</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="EditHoliday" method="post">
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="CreatedDate" />
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control" type="date" />
+                <span asp-validation-for="Date" class="text-danger"></span>
+                <div class="form-text">For yearly holidays, only the month and day are used at match time.</div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input asp-for="IsRecurringYearly" class="form-check-input" type="checkbox" />
+                <label asp-for="IsRecurringYearly" class="form-check-label"></label>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+                <a asp-action="Holidays" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

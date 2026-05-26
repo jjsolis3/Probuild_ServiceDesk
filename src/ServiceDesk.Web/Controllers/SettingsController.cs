@@ -2163,6 +2163,86 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(Csat));
     }
 
+    // ==================== COMPANY HOLIDAYS ====================
+
+    // GET: Settings/Holidays
+    public async Task<IActionResult> Holidays()
+    {
+        var holidays = await _context.CompanyHolidays
+            .OrderBy(h => h.IsRecurringYearly)
+            .ThenBy(h => h.Date.Month)
+            .ThenBy(h => h.Date.Day)
+            .ThenBy(h => h.Date.Year)
+            .ToListAsync();
+        return View(holidays);
+    }
+
+    // GET: Settings/CreateHoliday
+    public IActionResult CreateHoliday()
+    {
+        return View(new CompanyHoliday { Date = DateTime.Today });
+    }
+
+    // POST: Settings/CreateHoliday
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateHoliday(CompanyHoliday holiday)
+    {
+        if (ModelState.IsValid)
+        {
+            holiday.CreatedDate = DateTime.UtcNow;
+            _context.CompanyHolidays.Add(holiday);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" added.";
+            return RedirectToAction(nameof(Holidays));
+        }
+        return View(holiday);
+    }
+
+    // GET: Settings/EditHoliday/5
+    public async Task<IActionResult> EditHoliday(int? id)
+    {
+        if (id == null) return NotFound();
+        var holiday = await _context.CompanyHolidays.FindAsync(id);
+        if (holiday == null) return NotFound();
+        return View(holiday);
+    }
+
+    // POST: Settings/EditHoliday/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditHoliday(int id, CompanyHoliday holiday)
+    {
+        if (id != holiday.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            var existing = await _context.CompanyHolidays.FindAsync(id);
+            if (existing == null) return NotFound();
+            existing.Date              = holiday.Date;
+            existing.Name              = holiday.Name;
+            existing.IsRecurringYearly = holiday.IsRecurringYearly;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" updated.";
+            return RedirectToAction(nameof(Holidays));
+        }
+        return View(holiday);
+    }
+
+    // POST: Settings/DeleteHoliday/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteHoliday(int id)
+    {
+        var holiday = await _context.CompanyHolidays.FindAsync(id);
+        if (holiday != null)
+        {
+            _context.CompanyHolidays.Remove(holiday);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" removed.";
+        }
+        return RedirectToAction(nameof(Holidays));
+    }
+
     // ==================== QUARTERLY STORE ====================
 
     // GET: Settings/StoreSettings
