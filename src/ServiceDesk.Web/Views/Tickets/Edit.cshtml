@@ -806,46 +806,54 @@
                         var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
                         var modalShowRateType  = ViewBag.LoggerHasEmergencyRate is bool mb && mb;
                     }
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-3">
-                            <label class="form-label small fw-semibold">Date</label>
-                            <input type="date" name="workDate" id="modalWorkDate" class="form-control"
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold mb-1">Date</label>
+                            <input type="date" name="workDate" id="modalWorkDate" class="form-control form-control-sm"
                                    value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small fw-semibold">Hours</label>
-                            <input type="number" name="hours" step="0.25" min="0.25" max="999"
-                                   class="form-control" placeholder="0.00" required />
+                            <label class="form-label small fw-semibold mb-1">Hours</label>
+                            <input type="number" name="hours" id="modalHours" step="0.25" min="0.25" max="999"
+                                   class="form-control form-control-sm" placeholder="0.00" required />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold mb-1">Clock In / Out <span class="text-muted small">opt.</span></label>
+                            <div class="d-flex gap-1">
+                                <input type="time" name="startTime" id="modalStartTime" class="form-control form-control-sm" />
+                                <input type="time" name="endTime"   id="modalEndTime"   class="form-control form-control-sm" />
+                            </div>
+                            <small id="modalClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
                         </div>
                         @if (modalShowRateType)
                         {
-                            <div class="col-md-3">
-                                <label class="form-label small fw-semibold">Rate Type</label>
-                                <select name="rateType" id="modalRateType" class="form-select">
+                            <div class="col-md-2">
+                                <label class="form-label small fw-semibold mb-1">Rate Type</label>
+                                <select name="rateType" id="modalRateType" class="form-select form-select-sm">
                                     <option value="Standard" selected>Standard</option>
                                     <option value="Emergency">Emergency / Weekend</option>
                                 </select>
-                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.7rem;line-height:1.1;"></small>
+                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label small fw-semibold">Description</label>
-                                <input type="text" name="description" class="form-control"
+                                <label class="form-label small fw-semibold mb-1">Description</label>
+                                <input type="text" name="description" class="form-control form-control-sm"
                                        maxlength="1000" placeholder="Notes" />
                             </div>
                         }
                         else
                         {
-                            <div class="col-md-5">
-                                <label class="form-label small fw-semibold">Description</label>
-                                <input type="text" name="description" class="form-control"
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold mb-1">Description</label>
+                                <input type="text" name="description" class="form-control form-control-sm"
                                        maxlength="1000" placeholder="What did you work on?" />
                             </div>
                         }
-                        <div class="col-md-2">
-                            <label class="form-label small fw-semibold d-block">&nbsp;</label>
-                            <div class="form-check mt-2">
+                        <div class="col-md-1">
+                            <label class="form-label small fw-semibold d-block mb-1">&nbsp;</label>
+                            <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="modalBillableChk" />
-                                <label class="form-check-label" for="modalBillableChk">Billable</label>
+                                <label class="form-check-label small" for="modalBillableChk">Bill.</label>
                             </div>
                         </div>
                     </div>
@@ -877,8 +885,22 @@
                                     @foreach (var e in modalTimeEntries)
                                     {
                                         var claimed = e.PayrollReceiptId != null;
+                                        var clockStr = (e.StartTime.HasValue && e.EndTime.HasValue)
+                                            ? (e.StartTime.Value.ToString("h:mm tt") + "–" + e.EndTime.Value.ToString("h:mm tt"))
+                                            : "";
+                                        var startStr = e.StartTime?.ToString("HH:mm") ?? "";
+                                        var endStr   = e.EndTime?.ToString("HH:mm")   ?? "";
+                                        var modTooltip = e.ModifiedDate.HasValue
+                                            ? $"Last edited {e.ModifiedDate.Value:MMM d, yyyy h:mm tt} by {e.ModifiedByEmail} · {e.ModificationReason}"
+                                            : "";
                                         <tr>
-                                            <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
+                                            <td class="small text-nowrap">
+                                                @e.WorkDate.ToString("MMM d, yyyy")
+                                                @if (!string.IsNullOrEmpty(clockStr))
+                                                {
+                                                    <div class="text-muted" style="font-size:.7rem;"><i class="bi bi-clock"></i> @clockStr</div>
+                                                }
+                                            </td>
                                             <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
                                             @if (modalShowRateType)
                                             {
@@ -893,7 +915,14 @@
                                                     }
                                                 </td>
                                             }
-                                            <td class="small">@e.Description</td>
+                                            <td class="small">
+                                                @e.Description
+                                                @if (e.ModificationCount > 0)
+                                                {
+                                                    <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;cursor:help;"
+                                                          data-bs-toggle="tooltip" title="@modTooltip">edited</span>
+                                                }
+                                            </td>
                                             <td>
                                                 @if (e.IsBillable)
                                                 { <span class="badge bg-success">Billable</span> }
@@ -906,7 +935,7 @@
                                                 {
                                                     <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1"
                                                             title="Edit entry"
-                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"),'@e.RateType')">
+                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"),'@e.RateType','@startStr','@endStr')">
                                                         <i class="bi bi-pencil" style="font-size:.7rem;"></i>
                                                     </button>
                                                 }
@@ -942,42 +971,55 @@
                     <input type="hidden" name="returnAction" value="Edit" />
                     <div class="fw-semibold small mb-2 text-primary"><i class="bi bi-pencil me-1"></i>Edit Entry</div>
                     <div class="row g-2">
-                        <div class="col-md-3">
-                            <label class="form-label small">Date</label>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Date</label>
                             <input type="date" name="workDate" id="editWorkDate" class="form-control form-control-sm" required />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small">Hours</label>
+                            <label class="form-label small mb-1">Hours</label>
                             <input type="number" name="hours" id="editHours" step="0.25" min="0.25" max="999" class="form-control form-control-sm" required />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Clock In / Out <span class="text-muted small">opt.</span></label>
+                            <div class="d-flex gap-1">
+                                <input type="time" name="startTime" id="editStartTime" class="form-control form-control-sm" />
+                                <input type="time" name="endTime"   id="editEndTime"   class="form-control form-control-sm" />
+                            </div>
+                            <small id="editClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
                         </div>
                         @if (modalShowRateType)
                         {
-                            <div class="col-md-3">
-                                <label class="form-label small">Rate Type</label>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1">Rate Type</label>
                                 <select name="rateType" id="editRateType" class="form-select form-select-sm">
                                     <option value="Standard">Standard</option>
                                     <option value="Emergency">Emergency / Weekend</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label small">Description</label>
+                                <label class="form-label small mb-1">Description</label>
                                 <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
                             </div>
                         }
                         else
                         {
-                            <div class="col-md-5">
-                                <label class="form-label small">Description</label>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Description</label>
                                 <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
                             </div>
                         }
-                        <div class="col-md-2">
-                            <label class="form-label small d-block">&nbsp;</label>
+                        <div class="col-md-1">
+                            <label class="form-label small d-block mb-1">&nbsp;</label>
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="editBillable" />
-                                <label class="form-check-label small" for="editBillable">Billable</label>
+                                <label class="form-check-label small" for="editBillable">Bill.</label>
                             </div>
                         </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small mb-1">Reason for edit <span class="text-danger">*</span></label>
+                        <input type="text" name="modificationReason" id="editModReason" class="form-control form-control-sm"
+                               maxlength="500" required placeholder="Why is this being changed? (audit trail)" />
                     </div>
                     <div class="d-flex gap-2 mt-2">
                         <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
@@ -1036,17 +1078,61 @@ function wireRateAutoDetect(dateInputId, rateSelectId, hintId) {
     apply();
 }
 
+// Auto-compute Hours when both Start and End times are entered. Once the user
+// types a clock interval, we stop letting them override the computed hours.
+// Clearing either time field releases the lock.
+function wireClockAutoCompute(startId, endId, hoursId, hintId) {
+    var startEl = document.getElementById(startId);
+    var endEl   = document.getElementById(endId);
+    var hoursEl = document.getElementById(hoursId);
+    var hintEl  = hintId ? document.getElementById(hintId) : null;
+    if (!startEl || !endEl || !hoursEl) return;
+
+    function compute() {
+        if (!startEl.value || !endEl.value) {
+            hoursEl.readOnly = false;
+            if (hintEl) hintEl.textContent = '';
+            return;
+        }
+        var sp = startEl.value.split(':'); var ep = endEl.value.split(':');
+        if (sp.length !== 2 || ep.length !== 2) return;
+        var sMin = (+sp[0]) * 60 + (+sp[1]);
+        var eMin = (+ep[0]) * 60 + (+ep[1]);
+        if (eMin <= sMin) eMin += 24 * 60;  // overnight roll
+        var diff = (eMin - sMin) / 60;
+        if (diff <= 0 || diff > 24) {
+            if (hintEl) hintEl.textContent = 'Interval out of range';
+            return;
+        }
+        // Snap to nearest quarter-hour
+        var quartered = Math.round(diff * 4) / 4;
+        hoursEl.value = quartered.toFixed(2);
+        hoursEl.readOnly = true;
+        if (hintEl) hintEl.textContent = '= ' + quartered + 'h (auto)';
+    }
+    startEl.addEventListener('change', compute);
+    endEl.addEventListener('change', compute);
+    compute();
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     wireRateAutoDetect('modalWorkDate', 'modalRateType', 'modalRateTypeHint');
     wireRateAutoDetect('editWorkDate',  'editRateType',  null);
+    wireClockAutoCompute('modalStartTime', 'modalEndTime', 'modalHours', 'modalClockHint');
+    wireClockAutoCompute('editStartTime',  'editEndTime',  'editHours',  'editClockHint');
+
+    // Enable Bootstrap tooltips for "edited" pills in the entries list
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (el) { new bootstrap.Tooltip(el); });
 });
 
-function fillEditEntry(id, date, hours, desc, billable, rateType) {
-    document.getElementById('editEntryId').value   = id;
-    document.getElementById('editWorkDate').value  = date;
-    document.getElementById('editHours').value     = hours;
+function fillEditEntry(id, date, hours, desc, billable, rateType, startTime, endTime) {
+    document.getElementById('editEntryId').value     = id;
+    document.getElementById('editWorkDate').value    = date;
+    document.getElementById('editHours').value       = hours;
     document.getElementById('editDescription').value = desc;
-    document.getElementById('editBillable').checked = billable;
+    document.getElementById('editBillable').checked  = billable;
+
     var rateEl = document.getElementById('editRateType');
     if (rateEl && rateType) {
         rateEl.value = rateType;
@@ -1054,6 +1140,17 @@ function fillEditEntry(id, date, hours, desc, billable, rateType) {
         // existing entry's rate while the user is editing it.
         rateEl.dataset.manual = '1';
     }
+
+    var startEl = document.getElementById('editStartTime');
+    var endEl   = document.getElementById('editEndTime');
+    if (startEl) startEl.value = startTime || '';
+    if (endEl)   endEl.value   = endTime   || '';
+    var hoursEl = document.getElementById('editHours');
+    if (hoursEl) hoursEl.readOnly = !!(startTime && endTime);
+
+    var reasonEl = document.getElementById('editModReason');
+    if (reasonEl) reasonEl.value = '';
+
     document.getElementById('editEntryPanel').style.display = 'block';
     document.getElementById('editEntryPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }

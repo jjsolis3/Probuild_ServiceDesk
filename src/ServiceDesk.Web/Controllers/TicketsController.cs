@@ -481,10 +481,29 @@ public class TicketsController : Controller
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
         string? description, bool isBillable,
         ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        string? startTime = null, string? endTime = null,
         string? returnAction = null)
     {
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
+
+        // If clock-in / clock-out times were provided, prefer them over the
+        // flat-hours field. Both must be present and form a positive interval.
+        // The TimeOnly is combined with workDate to produce a full DateTime.
+        DateTime? startStamp = null;
+        DateTime? endStamp   = null;
+        if (TryBuildInterval(workDate, startTime, endTime, out var s, out var e, out var intervalHours, out var intervalError))
+        {
+            startStamp = s;
+            endStamp   = e;
+            hours      = intervalHours;
+        }
+        else if (intervalError != null)
+        {
+            TempData["Error"] = intervalError;
+            var ti = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(ti, new { id });
+        }
 
         if (hours <= 0)
         {
@@ -525,6 +544,8 @@ public class TicketsController : Controller
             TicketId = id,
             WorkDate = workDate.Date == default ? DateTime.UtcNow.Date : workDate.Date,
             Hours = hours,
+            StartTime = startStamp,
+            EndTime = endStamp,
             Description = description,
             IsBillable = isBillable,
             RateType = rateType,
@@ -555,10 +576,62 @@ public class TicketsController : Controller
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    // Builds DateTime stamps from an HH:mm start/end pair anchored on workDate.
+    // Returns true when both are valid and the interval is positive. Returns
+    // false (with intervalError=null) when neither was provided (caller should
+    // fall back to flat hours). Returns false with intervalError set when the
+    // pair is malformed or inverted.
+    private static bool TryBuildInterval(DateTime workDate, string? startTime, string? endTime,
+        out DateTime startStamp, out DateTime endStamp, out decimal intervalHours, out string? intervalError)
+    {
+        startStamp = default;
+        endStamp   = default;
+        intervalHours = 0;
+        intervalError = null;
+
+        var hasStart = !string.IsNullOrWhiteSpace(startTime);
+        var hasEnd   = !string.IsNullOrWhiteSpace(endTime);
+        if (!hasStart && !hasEnd) return false; // caller uses flat hours
+        if (hasStart != hasEnd)
+        {
+            intervalError = "Both Start and End times are required when using clock-in/clock-out.";
+            return false;
+        }
+
+        if (!TimeSpan.TryParse(startTime, out var sTs) || !TimeSpan.TryParse(endTime, out var eTs))
+        {
+            intervalError = "Start/End must be valid HH:mm times.";
+            return false;
+        }
+
+        var baseDate = workDate.Date == default ? DateTime.UtcNow.Date : workDate.Date;
+        startStamp = baseDate.Add(sTs);
+        endStamp   = baseDate.Add(eTs);
+
+        // Allow End to roll past midnight by treating it as next-day when
+        // strictly before Start. Caps the shift at 24h to catch typos.
+        if (endStamp <= startStamp)
+            endStamp = endStamp.AddDays(1);
+
+        var diff = endStamp - startStamp;
+        if (diff.TotalHours <= 0 || diff.TotalHours > 24)
+        {
+            intervalError = "Time interval must be between 0 and 24 hours.";
+            return false;
+        }
+
+        // Round to nearest quarter-hour for consistency with the flat-hours
+        // input which uses step=0.25.
+        intervalHours = Math.Round((decimal)diff.TotalHours * 4m, MidpointRounding.AwayFromZero) / 4m;
+        return true;
+    }
+
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
         string? description, bool isBillable,
         ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        string? startTime = null, string? endTime = null,
+        string? modificationReason = null,
         string? returnAction = null)
     {
         var entry = await _context.TicketTimeEntries
@@ -570,6 +643,28 @@ public class TicketsController : Controller
             TempData["Error"] = "This entry is claimed on a payroll receipt and cannot be edited.";
             var t0 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
             return RedirectToAction(t0, new { id });
+        }
+
+        if (string.IsNullOrWhiteSpace(modificationReason))
+        {
+            TempData["Error"] = "A reason is required when editing a time entry.";
+            var tr = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(tr, new { id });
+        }
+
+        DateTime? startStamp = null;
+        DateTime? endStamp   = null;
+        if (TryBuildInterval(workDate, startTime, endTime, out var sIv, out var eIv, out var intervalHours, out var intervalError))
+        {
+            startStamp = sIv;
+            endStamp   = eIv;
+            hours      = intervalHours;
+        }
+        else if (intervalError != null)
+        {
+            TempData["Error"] = intervalError;
+            var ti = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(ti, new { id });
         }
 
         if (hours <= 0)
@@ -600,11 +695,19 @@ public class TicketsController : Controller
                 rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
         }
 
-        entry.WorkDate    = workDate.Date;
-        entry.Hours       = hours;
-        entry.Description = description;
-        entry.IsBillable  = isBillable;
-        entry.RateType    = rateType;
+        var editorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        entry.WorkDate           = workDate.Date;
+        entry.Hours              = hours;
+        entry.StartTime          = startStamp;
+        entry.EndTime            = endStamp;
+        entry.Description        = description;
+        entry.IsBillable         = isBillable;
+        entry.RateType           = rateType;
+        entry.ModifiedDate       = DateTime.UtcNow;
+        entry.ModifiedByEmail    = editorEmail;
+        entry.ModificationReason = modificationReason?.Trim();
+        entry.ModificationCount += 1;
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
