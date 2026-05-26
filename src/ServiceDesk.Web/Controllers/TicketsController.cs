@@ -481,9 +481,15 @@ public class TicketsController : Controller
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
         string? description, bool isBillable,
         ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        bool isEmergency = false,
         string? startTime = null, string? endTime = null,
         string? returnAction = null)
     {
+        // The forms now post a single `isEmergency` checkbox instead of a
+        // rateType dropdown. The legacy rateType param remains for backward
+        // compat; the checkbox wins when ticked.
+        if (isEmergency) rateType = ServiceDesk.Core.Enums.PayRateType.Emergency;
+
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
 
@@ -630,10 +636,12 @@ public class TicketsController : Controller
     public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
         string? description, bool isBillable,
         ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        bool isEmergency = false,
         string? startTime = null, string? endTime = null,
         string? modificationReason = null,
         string? returnAction = null)
     {
+        if (isEmergency) rateType = ServiceDesk.Core.Enums.PayRateType.Emergency;
         var entry = await _context.TicketTimeEntries
             .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
         if (entry == null) return NotFound();

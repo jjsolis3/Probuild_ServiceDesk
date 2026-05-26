@@ -828,36 +828,25 @@
                             </div>
                             <small id="modalClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
                         </div>
-                        @if (modalShowRateType)
-                        {
-                            <div class="col-md-2">
-                                <label class="form-label small fw-semibold mb-1">Rate Type</label>
-                                <select name="rateType" id="modalRateType" class="form-select form-select-sm">
-                                    <option value="Standard" selected>Standard</option>
-                                    <option value="Emergency">Emergency / Weekend</option>
-                                </select>
-                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small fw-semibold mb-1">Description</label>
-                                <input type="text" name="description" class="form-control form-control-sm"
-                                       maxlength="1000" placeholder="Notes" />
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="col-md-4">
-                                <label class="form-label small fw-semibold mb-1">Description</label>
-                                <input type="text" name="description" class="form-control form-control-sm"
-                                       maxlength="1000" placeholder="What did you work on?" />
-                            </div>
-                        }
-                        <div class="col-md-1">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold mb-1">Description</label>
+                            <input type="text" name="description" class="form-control form-control-sm"
+                                   maxlength="1000" placeholder="What did you work on?" />
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label small fw-semibold d-block mb-1">&nbsp;</label>
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="modalBillableChk" />
-                                <label class="form-check-label small" for="modalBillableChk">Bill.</label>
+                                <label class="form-check-label small" for="modalBillableChk">Billable</label>
                             </div>
+                            @if (modalShowRateType)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="modalIsEmergency" />
+                                    <label class="form-check-label small text-danger" for="modalIsEmergency">Emergency</label>
+                                </div>
+                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                            }
                         </div>
                     </div>
 
@@ -990,33 +979,23 @@
                             </div>
                             <small id="editClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
                         </div>
-                        @if (modalShowRateType)
-                        {
-                            <div class="col-md-2">
-                                <label class="form-label small mb-1">Rate Type</label>
-                                <select name="rateType" id="editRateType" class="form-select form-select-sm">
-                                    <option value="Standard">Standard</option>
-                                    <option value="Emergency">Emergency / Weekend</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small mb-1">Description</label>
-                                <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Description</label>
-                                <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
-                            </div>
-                        }
-                        <div class="col-md-1">
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Description</label>
+                            <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label small d-block mb-1">&nbsp;</label>
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="editBillable" />
-                                <label class="form-check-label small" for="editBillable">Bill.</label>
+                                <label class="form-check-label small" for="editBillable">Billable</label>
                             </div>
+                            @if (modalShowRateType)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="editIsEmergency" />
+                                    <label class="form-check-label small text-danger" for="editIsEmergency">Emergency</label>
+                                </div>
+                            }
                         </div>
                     </div>
                     <div class="mt-2">
@@ -1062,9 +1041,9 @@ function isEmergencyDate(yyyyMmDd) {
 
 // Auto-suggest Emergency when the date changes — only if the picker hasn't
 // been manually overridden. We track manual override via a data attribute.
-function wireRateAutoDetect(dateInputId, rateSelectId, hintId) {
+function wireRateAutoDetect(dateInputId, rateCheckboxId, hintId) {
     var dateEl = document.getElementById(dateInputId);
-    var rateEl = document.getElementById(rateSelectId);
+    var rateEl = document.getElementById(rateCheckboxId);
     if (!dateEl || !rateEl) return;
     rateEl.addEventListener('change', function () { rateEl.dataset.manual = '1'; });
     function apply() {
@@ -1074,8 +1053,8 @@ function wireRateAutoDetect(dateInputId, rateSelectId, hintId) {
             if (hint) hint.textContent = '';
             return;
         }
-        rateEl.value = r.is ? 'Emergency' : 'Standard';
-        if (hint) hint.textContent = r.is ? ('Auto-set to Emergency · ' + r.label) : '';
+        rateEl.checked = r.is;
+        if (hint) hint.textContent = r.is ? ('Auto · ' + r.label) : '';
     }
     dateEl.addEventListener('change', apply);
     apply();
@@ -1119,8 +1098,8 @@ function wireClockAutoCompute(startId, endId, hoursId, hintId) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    wireRateAutoDetect('modalWorkDate', 'modalRateType', 'modalRateTypeHint');
-    wireRateAutoDetect('editWorkDate',  'editRateType',  null);
+    wireRateAutoDetect('modalWorkDate', 'modalIsEmergency', 'modalRateTypeHint');
+    wireRateAutoDetect('editWorkDate',  'editIsEmergency',  null);
     wireClockAutoCompute('modalStartTime', 'modalEndTime', 'modalHours', 'modalClockHint');
     wireClockAutoCompute('editStartTime',  'editEndTime',  'editHours',  'editClockHint');
 
@@ -1136,9 +1115,9 @@ function fillEditEntry(id, date, hours, desc, billable, rateType, startTime, end
     document.getElementById('editDescription').value = desc;
     document.getElementById('editBillable').checked  = billable;
 
-    var rateEl = document.getElementById('editRateType');
-    if (rateEl && rateType) {
-        rateEl.value = rateType;
+    var rateEl = document.getElementById('editIsEmergency');
+    if (rateEl) {
+        rateEl.checked = (rateType === 'Emergency');
         // Mark as manual so the date-change auto-detect won't overwrite the
         // existing entry's rate while the user is editing it.
         rateEl.dataset.manual = '1';

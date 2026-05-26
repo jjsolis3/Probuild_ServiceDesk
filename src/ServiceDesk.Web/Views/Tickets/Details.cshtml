@@ -398,36 +398,25 @@
                 </div>
                 <small id="detailsClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
             </div>
-            @if (showRateType)
-            {
-                <div class="col-md-2">
-                    <label class="form-label small mb-1">Rate Type</label>
-                    <select name="rateType" id="detailsRateType" class="form-select form-select-sm">
-                        <option value="Standard" selected>Standard</option>
-                        <option value="Emergency">Emergency / Weekend</option>
-                    </select>
-                    <small id="detailsRateHint" class="text-muted d-block" style="font-size:.7rem;line-height:1.1;"></small>
-                </div>
-                <div class="col-md-1">
-                    <label class="form-label small mb-1">Notes</label>
-                    <input type="text" name="description" class="form-control form-control-sm"
-                           maxlength="1000" placeholder="…" />
-                </div>
-            }
-            else
-            {
-                <div class="col-md-3">
-                    <label class="form-label small mb-1">Description</label>
-                    <input type="text" name="description" class="form-control form-control-sm"
-                           maxlength="1000" placeholder="What did you work on?" />
-                </div>
-            }
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Description</label>
+                <input type="text" name="description" class="form-control form-control-sm"
+                       maxlength="1000" placeholder="What did you work on?" />
+            </div>
             <div class="col-md-2">
-                <div class="form-check mb-2">
+                <div class="form-check mb-1">
                     <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="billableChk" />
                     <label class="form-check-label small" for="billableChk">Billable</label>
                 </div>
-                <button type="submit" class="btn btn-primary btn-sm w-100">
+                @if (showRateType)
+                {
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="detailsIsEmergency" />
+                        <label class="form-check-label small text-danger" for="detailsIsEmergency">Emergency</label>
+                    </div>
+                    <small id="detailsRateHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                }
+                <button type="submit" class="btn btn-primary btn-sm w-100 mt-1">
                     <i class="bi bi-plus-lg"></i> Log
                 </button>
             </div>
@@ -561,7 +550,7 @@ document.addEventListener('DOMContentLoaded', function () {
     (function () {
         var holidayInfo = @Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}");
         var dateEl = document.getElementById('detailsWorkDate');
-        var rateEl = document.getElementById('detailsRateType');
+        var rateEl = document.getElementById('detailsIsEmergency');
         var hintEl = document.getElementById('detailsRateHint');
         if (!dateEl || !rateEl) return;
 
@@ -586,8 +575,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (hintEl) hintEl.textContent = '';
                 return;
             }
-            rateEl.value = r.is ? 'Emergency' : 'Standard';
-            if (hintEl) hintEl.textContent = r.is ? ('Auto-set to Emergency · ' + r.label) : '';
+            rateEl.checked = r.is;
+            if (hintEl) hintEl.textContent = r.is ? ('Auto · ' + r.label) : '';
         }
         dateEl.addEventListener('change', apply);
         apply();
