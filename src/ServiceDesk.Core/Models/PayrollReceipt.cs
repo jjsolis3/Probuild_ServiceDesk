@@ -107,6 +107,17 @@ public class PayrollReceipt
     [StringLength(1000)]
     public string? RejectionNote { get; set; }
 
+    /// <summary>
+    /// Optional note recorded when the admin approves the receipt — surfaced
+    /// on the receipt detail + email so the contractor sees any context
+    /// (e.g. "Reviewed and matches PO #142"). Independent of
+    /// <see cref="RejectionNote"/> so a previously-rejected-then-resubmitted
+    /// receipt keeps both reasons in its audit trail.
+    /// </summary>
+    [StringLength(1000)]
+    [Display(Name = "Approval Note")]
+    public string? ApprovalNote { get; set; }
+
     // Time entries claimed by this receipt
     public ICollection<TicketTimeEntry> TimeEntries { get; set; } = new List<TicketTimeEntry>();
 }

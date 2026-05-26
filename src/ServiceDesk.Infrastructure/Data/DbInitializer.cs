@@ -1828,6 +1828,57 @@ public static class DbInitializer
                         ALTER TABLE dbo.PayrollReceipts ADD TotalRetainerAmountApplied DECIMAL(12,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalRetainerAmountApplied DEFAULT 0;
                 END");
 
+            // 64. Time-entry clock-in/out + modification audit + payroll
+            //     receipt ApprovalNote + CompanyHolidays admin table. All
+            //     additions are idempotent ALTER TABLE / CREATE TABLE checks.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'StartTime')
+                        ALTER TABLE dbo.TicketTimeEntries ADD StartTime DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'EndTime')
+                        ALTER TABLE dbo.TicketTimeEntries ADD EndTime DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModifiedDate')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModifiedDate DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModifiedByEmail')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModifiedByEmail NVARCHAR(200) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModificationReason')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModificationReason NVARCHAR(500) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModificationCount')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModificationCount INT NOT NULL CONSTRAINT DF_TicketTimeEntries_ModificationCount DEFAULT 0;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'ApprovalNote')
+                BEGIN
+                    ALTER TABLE dbo.PayrollReceipts ADD ApprovalNote NVARCHAR(1000) NULL;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CompanyHolidays')
+                BEGIN
+                    CREATE TABLE dbo.CompanyHolidays (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Date                DATE            NOT NULL,
+                        Name                NVARCHAR(120)   NOT NULL,
+                        IsRecurringYearly   BIT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_CompanyHolidays_Date ON dbo.CompanyHolidays (Date);
+                END");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')

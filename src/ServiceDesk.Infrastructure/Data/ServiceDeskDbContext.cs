@@ -90,6 +90,9 @@ public class ServiceDeskDbContext : DbContext
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
 
+    // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
+    public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
+
     // Notification / email activity log (outbound sends)
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
