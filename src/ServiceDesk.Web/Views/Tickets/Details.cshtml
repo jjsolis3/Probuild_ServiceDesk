@@ -382,7 +382,7 @@
             @Html.AntiForgeryToken()
             <div class="col-md-2">
                 <label class="form-label small mb-1">Date</label>
-                <input type="date" name="workDate" class="form-control form-control-sm"
+                <input type="date" name="workDate" id="detailsWorkDate" class="form-control form-control-sm"
                        value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
             </div>
             <div class="col-md-2">
@@ -394,10 +394,11 @@
             {
                 <div class="col-md-2">
                     <label class="form-label small mb-1">Rate Type</label>
-                    <select name="rateType" class="form-select form-select-sm">
+                    <select name="rateType" id="detailsRateType" class="form-select form-select-sm">
                         <option value="Standard" selected>Standard</option>
                         <option value="Emergency">Emergency / Weekend</option>
                     </select>
+                    <small id="detailsRateHint" class="text-muted d-block" style="font-size:.7rem;line-height:1.1;"></small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small mb-1">Description</label>
@@ -489,6 +490,45 @@
 </div> @* /.ticket-details *@
 
 @section Scripts {
+@if (showRateType)
+{
+    <script>
+    (function () {
+        var holidayInfo = @Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}");
+        var dateEl = document.getElementById('detailsWorkDate');
+        var rateEl = document.getElementById('detailsRateType');
+        var hintEl = document.getElementById('detailsRateHint');
+        if (!dateEl || !rateEl) return;
+
+        rateEl.addEventListener('change', function () { rateEl.dataset.manual = '1'; });
+
+        function check(yyyyMmDd) {
+            var parts = (yyyyMmDd || '').split('-');
+            if (parts.length !== 3) return { is: false, label: '' };
+            var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            var dow = d.getDay();
+            if (dow === 0) return { is: true, label: 'Sunday (weekend)' };
+            if (dow === 6) return { is: true, label: 'Saturday (weekend)' };
+            var mmdd = parts[1] + '-' + parts[2];
+            if ((holidayInfo.recurring || []).indexOf(mmdd) !== -1) return { is: true, label: 'Company holiday' };
+            if ((holidayInfo.oneTime || []).indexOf(yyyyMmDd) !== -1) return { is: true, label: 'Company holiday' };
+            return { is: false, label: '' };
+        }
+
+        function apply() {
+            var r = check(dateEl.value);
+            if (rateEl.dataset.manual === '1') {
+                if (hintEl) hintEl.textContent = '';
+                return;
+            }
+            rateEl.value = r.is ? 'Emergency' : 'Standard';
+            if (hintEl) hintEl.textContent = r.is ? ('Auto-set to Emergency · ' + r.label) : '';
+        }
+        dateEl.addEventListener('change', apply);
+        apply();
+    })();
+    </script>
+}
 @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
 {
     <script>

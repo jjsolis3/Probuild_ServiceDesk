@@ -450,20 +450,30 @@ public class TicketsController : Controller
         ViewBag.TimeTotalHours = ticket.TimeEntries.Sum(e => e.Hours);
         ViewBag.TimeBillableHours = ticket.TimeEntries.Where(e => e.IsBillable).Sum(e => e.Hours);
 
-        // Show the Emergency-rate picker on the time-entry form only when the
-        // logged-in contractor actually has an EmergencyHourlyRate configured.
+        await PopulateTimeEntryViewBagAsync();
+
+        return View(ticket);
+    }
+
+    // Shared between Details and Edit: drives the Rate Type picker visibility
+    // plus the JSON holiday list that the time-entry form JS uses to auto-
+    // suggest Emergency when a Saturday/Sunday/holiday is selected.
+    private async Task PopulateTimeEntryViewBagAsync()
+    {
         var currentUserEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
-        ViewBag.LoggerHasEmergencyRate = false;
-        if (!string.IsNullOrWhiteSpace(currentUserEmail))
-        {
-            ViewBag.LoggerHasEmergencyRate = await _context.Employees
+        ViewBag.LoggerHasEmergencyRate = !string.IsNullOrWhiteSpace(currentUserEmail)
+            && await _context.Employees
                 .AsNoTracking()
                 .AnyAsync(e => e.Email == currentUserEmail
                             && e.EmergencyHourlyRate != null
                             && e.EmergencyHourlyRate > 0);
-        }
 
-        return View(ticket);
+        var holidays = await _context.CompanyHolidays.AsNoTracking().ToListAsync();
+        ViewBag.HolidayJson = JsonSerializer.Serialize(new
+        {
+            recurring = holidays.Where(h => h.IsRecurringYearly).Select(h => h.Date.ToString("MM-dd")).ToArray(),
+            oneTime   = holidays.Where(h => !h.IsRecurringYearly).Select(h => h.Date.ToString("yyyy-MM-dd")).ToArray()
+        });
     }
 
     // ──────────────────────────── Time Tracking ────────────────────────────
@@ -547,7 +557,9 @@ public class TicketsController : Controller
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
-        string? description, bool isBillable, string? returnAction = null)
+        string? description, bool isBillable,
+        ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        string? returnAction = null)
     {
         var entry = await _context.TicketTimeEntries
             .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
@@ -574,10 +586,25 @@ public class TicketsController : Controller
             return RedirectToAction(t2, new { id });
         }
 
+        // Emergency rate requires the assigned contractor to have an
+        // EmergencyHourlyRate configured. Fall back to Standard if not.
+        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency
+            && !string.IsNullOrWhiteSpace(entry.LoggedByEmail))
+        {
+            var hasEmergencyRate = await _context.Employees
+                .AsNoTracking()
+                .AnyAsync(e => e.Email == entry.LoggedByEmail
+                            && e.EmergencyHourlyRate != null
+                            && e.EmergencyHourlyRate > 0);
+            if (!hasEmergencyRate)
+                rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
+        }
+
         entry.WorkDate    = workDate.Date;
         entry.Hours       = hours;
         entry.Description = description;
         entry.IsBillable  = isBillable;
+        entry.RateType    = rateType;
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
@@ -703,6 +730,7 @@ public class TicketsController : Controller
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
+            .Include(t => t.TimeEntries)
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
@@ -726,6 +754,10 @@ public class TicketsController : Controller
         ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
         ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
         ViewBag.NoteCount         = ticket.Notes?.Count ?? 0;
+        ViewBag.TimeTotalHours    = ticket.TimeEntries?.Sum(e => e.Hours) ?? 0m;
+        ViewBag.TimeBillableHours = ticket.TimeEntries?.Where(e => e.IsBillable).Sum(e => e.Hours) ?? 0m;
+
+        await PopulateTimeEntryViewBagAsync();
 
         PopulateDropdowns(ticket);
         return View(ticket);

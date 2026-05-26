@@ -804,11 +804,12 @@
                                                 ?? new List<ServiceDesk.Core.Models.TicketTimeEntry>();
                         var modalTotalHours    = (decimal)(ViewBag.TimeTotalHours ?? 0m);
                         var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
+                        var modalShowRateType  = ViewBag.LoggerHasEmergencyRate is bool mb && mb;
                     }
                     <div class="row g-3 mb-3">
                         <div class="col-md-3">
                             <label class="form-label small fw-semibold">Date</label>
-                            <input type="date" name="workDate" class="form-control"
+                            <input type="date" name="workDate" id="modalWorkDate" class="form-control"
                                    value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
                         </div>
                         <div class="col-md-2">
@@ -816,11 +817,30 @@
                             <input type="number" name="hours" step="0.25" min="0.25" max="999"
                                    class="form-control" placeholder="0.00" required />
                         </div>
-                        <div class="col-md-5">
-                            <label class="form-label small fw-semibold">Description</label>
-                            <input type="text" name="description" class="form-control"
-                                   maxlength="1000" placeholder="What did you work on?" />
-                        </div>
+                        @if (modalShowRateType)
+                        {
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Rate Type</label>
+                                <select name="rateType" id="modalRateType" class="form-select">
+                                    <option value="Standard" selected>Standard</option>
+                                    <option value="Emergency">Emergency / Weekend</option>
+                                </select>
+                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.7rem;line-height:1.1;"></small>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-semibold">Description</label>
+                                <input type="text" name="description" class="form-control"
+                                       maxlength="1000" placeholder="Notes" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-md-5">
+                                <label class="form-label small fw-semibold">Description</label>
+                                <input type="text" name="description" class="form-control"
+                                       maxlength="1000" placeholder="What did you work on?" />
+                            </div>
+                        }
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold d-block">&nbsp;</label>
                             <div class="form-check mt-2">
@@ -846,6 +866,7 @@
                                     <tr>
                                         <th>Date</th>
                                         <th>Hours</th>
+                                        @if (modalShowRateType) { <th>Rate</th> }
                                         <th>Description</th>
                                         <th>Billable</th>
                                         <th>By</th>
@@ -859,6 +880,19 @@
                                         <tr>
                                             <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
                                             <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
+                                            @if (modalShowRateType)
+                                            {
+                                                <td>
+                                                    @if (e.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency)
+                                                    {
+                                                        <span class="badge bg-danger" title="Emergency / weekend / after-hours">Emergency</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Standard</span>
+                                                    }
+                                                </td>
+                                            }
                                             <td class="small">@e.Description</td>
                                             <td>
                                                 @if (e.IsBillable)
@@ -872,7 +906,7 @@
                                                 {
                                                     <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1"
                                                             title="Edit entry"
-                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"))">
+                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"),'@e.RateType')">
                                                         <i class="bi bi-pencil" style="font-size:.7rem;"></i>
                                                     </button>
                                                 }
@@ -916,10 +950,27 @@
                             <label class="form-label small">Hours</label>
                             <input type="number" name="hours" id="editHours" step="0.25" min="0.25" max="999" class="form-control form-control-sm" required />
                         </div>
-                        <div class="col-md-5">
-                            <label class="form-label small">Description</label>
-                            <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
-                        </div>
+                        @if (modalShowRateType)
+                        {
+                            <div class="col-md-3">
+                                <label class="form-label small">Rate Type</label>
+                                <select name="rateType" id="editRateType" class="form-select form-select-sm">
+                                    <option value="Standard">Standard</option>
+                                    <option value="Emergency">Emergency / Weekend</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Description</label>
+                                <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-md-5">
+                                <label class="form-label small">Description</label>
+                                <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
+                            </div>
+                        }
                         <div class="col-md-2">
                             <label class="form-label small d-block">&nbsp;</label>
                             <div class="form-check mt-1">
@@ -939,12 +990,70 @@
 </div>
 
 <script>
-function fillEditEntry(id, date, hours, desc, billable) {
+// Holiday list serialized server-side. Used to suggest the Emergency rate
+// when the contractor logs time on a Saturday/Sunday OR a configured holiday.
+window.__holidayInfo = @Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}");
+
+function isEmergencyDate(yyyyMmDd) {
+    if (!yyyyMmDd) return { is: false, label: '' };
+    // Parse as local date (avoid timezone shift from new Date('YYYY-MM-DD'))
+    var parts = yyyyMmDd.split('-');
+    if (parts.length !== 3) return { is: false, label: '' };
+    var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    var dow = d.getDay(); // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6) {
+        return { is: true, label: dow === 0 ? 'Sunday (weekend)' : 'Saturday (weekend)' };
+    }
+    var info = window.__holidayInfo || { recurring: [], oneTime: [] };
+    var mmdd = (parts[1] + '-' + parts[2]);
+    if ((info.recurring || []).indexOf(mmdd) !== -1) {
+        return { is: true, label: 'Company holiday' };
+    }
+    if ((info.oneTime || []).indexOf(yyyyMmDd) !== -1) {
+        return { is: true, label: 'Company holiday' };
+    }
+    return { is: false, label: '' };
+}
+
+// Auto-suggest Emergency when the date changes — only if the picker hasn't
+// been manually overridden. We track manual override via a data attribute.
+function wireRateAutoDetect(dateInputId, rateSelectId, hintId) {
+    var dateEl = document.getElementById(dateInputId);
+    var rateEl = document.getElementById(rateSelectId);
+    if (!dateEl || !rateEl) return;
+    rateEl.addEventListener('change', function () { rateEl.dataset.manual = '1'; });
+    function apply() {
+        var hint = hintId ? document.getElementById(hintId) : null;
+        var r = isEmergencyDate(dateEl.value);
+        if (rateEl.dataset.manual === '1') {
+            if (hint) hint.textContent = '';
+            return;
+        }
+        rateEl.value = r.is ? 'Emergency' : 'Standard';
+        if (hint) hint.textContent = r.is ? ('Auto-set to Emergency · ' + r.label) : '';
+    }
+    dateEl.addEventListener('change', apply);
+    apply();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    wireRateAutoDetect('modalWorkDate', 'modalRateType', 'modalRateTypeHint');
+    wireRateAutoDetect('editWorkDate',  'editRateType',  null);
+});
+
+function fillEditEntry(id, date, hours, desc, billable, rateType) {
     document.getElementById('editEntryId').value   = id;
     document.getElementById('editWorkDate').value  = date;
     document.getElementById('editHours').value     = hours;
     document.getElementById('editDescription').value = desc;
     document.getElementById('editBillable').checked = billable;
+    var rateEl = document.getElementById('editRateType');
+    if (rateEl && rateType) {
+        rateEl.value = rateType;
+        // Mark as manual so the date-change auto-detect won't overwrite the
+        // existing entry's rate while the user is editing it.
+        rateEl.dataset.manual = '1';
+    }
     document.getElementById('editEntryPanel').style.display = 'block';
     document.getElementById('editEntryPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
