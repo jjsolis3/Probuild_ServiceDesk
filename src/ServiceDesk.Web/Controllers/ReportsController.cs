@@ -847,4 +847,279 @@ public class ReportsController : Controller
             return $"\"{value.Replace("\"", "\"\"")}\"";
         return value;
     }
+
+    // ──────────────────────────── Contractor Payroll Reports ────────────────────────────
+
+    /// <summary>
+    /// Payroll report dashboard. Filter receipts by date range, contractor,
+    /// rate-type composition, and status. Aggregates totals across the
+    /// matching receipts and shows a per-contractor roll-up so AP can see
+    /// at a glance who got paid what during the period.
+    /// </summary>
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> Payroll(DateTime? from, DateTime? to,
+        int? contractorId, string? rateType, string? status)
+    {
+        // Default window = current calendar month
+        var now = DateTime.UtcNow;
+        var defaultFrom = new DateTime(now.Year, now.Month, 1);
+        var defaultTo   = defaultFrom.AddMonths(1).AddDays(-1);
+        from ??= defaultFrom;
+        to   ??= defaultTo;
+
+        var query = _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.ApprovedBy)
+            .Where(r => r.PeriodStart <= to && r.PeriodEnd >= from);
+
+        if (contractorId.HasValue)
+            query = query.Where(r => r.ContractorId == contractorId.Value);
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(r => r.Status == status);
+
+        var receipts = await query.OrderByDescending(r => r.PeriodStart).ToListAsync();
+
+        // Rate-type filter applied client-side (in-memory) so we can use the
+        // same enum-derived predicates as the AdminPayroll list.
+        if (!string.IsNullOrEmpty(rateType))
+        {
+            receipts = rateType switch
+            {
+                "StandardOnly" => receipts.Where(r => r.TotalEmergencyHours == 0).ToList(),
+                "HasEmergency" => receipts.Where(r => r.TotalEmergencyHours > 0).ToList(),
+                "HasRetainer"  => receipts.Where(r => r.TotalRetainerAmountApplied > 0).ToList(),
+                _              => receipts
+            };
+        }
+
+        // Aggregate metrics
+        ViewBag.TotalReceipts        = receipts.Count;
+        ViewBag.TotalContractors     = receipts.Select(r => r.ContractorId).Distinct().Count();
+        ViewBag.TotalStandardHours   = receipts.Sum(r => r.TotalStandardHours);
+        ViewBag.TotalEmergencyHours  = receipts.Sum(r => r.TotalEmergencyHours);
+        ViewBag.TotalRetainerHours   = receipts.Sum(r => r.TotalRetainerHoursApplied);
+        ViewBag.TotalRetainerAmount  = receipts.Sum(r => r.TotalRetainerAmountApplied);
+        ViewBag.TotalAmount          = receipts.Sum(r => r.TotalAmount);
+        ViewBag.PaidAmount           = receipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+        ViewBag.ApprovedAmount       = receipts.Where(r => r.Status == "Approved").Sum(r => r.TotalAmount);
+        ViewBag.PendingAmount        = receipts.Where(r => r.Status == "Submitted").Sum(r => r.TotalAmount);
+
+        // Per-contractor roll-up
+        var byContractor = receipts
+            .GroupBy(r => r.ContractorId)
+            .Select(g => new
+            {
+                ContractorId   = g.Key,
+                ContractorName = g.First().Contractor != null
+                    ? (g.First().Contractor!.FirstName + " " + g.First().Contractor!.LastName)
+                    : "(unknown)",
+                ReceiptCount    = g.Count(),
+                StandardHours   = g.Sum(r => r.TotalStandardHours),
+                EmergencyHours  = g.Sum(r => r.TotalEmergencyHours),
+                RetainerApplied = g.Sum(r => r.TotalRetainerAmountApplied),
+                TotalAmount     = g.Sum(r => r.TotalAmount),
+                PaidAmount      = g.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount)
+            })
+            .OrderByDescending(x => x.TotalAmount)
+            .ToList();
+        ViewBag.ByContractor = byContractor;
+
+        ViewBag.Contractors = await _context.Employees
+            .Where(e => e.IsContractor)
+            .OrderBy(e => e.LastName)
+            .ToListAsync();
+
+        ViewBag.FilterFrom         = from;
+        ViewBag.FilterTo           = to;
+        ViewBag.FilterContractorId = contractorId;
+        ViewBag.FilterRateType     = rateType;
+        ViewBag.FilterStatus       = status;
+
+        return View(receipts);
+    }
+
+    /// <summary>
+    /// Excel export of the same payroll report. Two sheets — Summary (one row
+    /// per contractor) and Receipts (one row per receipt with full breakdown).
+    /// </summary>
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> PayrollExport(DateTime? from, DateTime? to,
+        int? contractorId, string? rateType, string? status)
+    {
+        var now = DateTime.UtcNow;
+        var defaultFrom = new DateTime(now.Year, now.Month, 1);
+        var defaultTo   = defaultFrom.AddMonths(1).AddDays(-1);
+        from ??= defaultFrom;
+        to   ??= defaultTo;
+
+        var query = _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.ApprovedBy)
+            .Where(r => r.PeriodStart <= to && r.PeriodEnd >= from);
+
+        if (contractorId.HasValue)
+            query = query.Where(r => r.ContractorId == contractorId.Value);
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(r => r.Status == status);
+
+        var receipts = await query.OrderBy(r => r.PeriodStart).ToListAsync();
+
+        if (!string.IsNullOrEmpty(rateType))
+        {
+            receipts = rateType switch
+            {
+                "StandardOnly" => receipts.Where(r => r.TotalEmergencyHours == 0).ToList(),
+                "HasEmergency" => receipts.Where(r => r.TotalEmergencyHours > 0).ToList(),
+                "HasRetainer"  => receipts.Where(r => r.TotalRetainerAmountApplied > 0).ToList(),
+                _              => receipts
+            };
+        }
+
+        var companyName = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ProBuild";
+
+        using var wb = new XLWorkbook();
+
+        // ── Sheet 1: Summary ──
+        var sum = wb.Worksheets.Add("Summary");
+        var brandBlue = XLColor.FromHtml("#0d6efd");
+        var headerGray = XLColor.FromHtml("#343a40");
+
+        sum.Cell(1, 1).Value = companyName;
+        sum.Cell(1, 1).Style.Font.Bold = true;
+        sum.Cell(1, 1).Style.Font.FontSize = 18;
+        sum.Cell(1, 1).Style.Font.FontColor = brandBlue;
+        sum.Range(1, 1, 1, 8).Merge();
+
+        sum.Cell(2, 1).Value = "Contractor Payroll Report";
+        sum.Cell(2, 1).Style.Font.Bold = true;
+        sum.Cell(2, 1).Style.Font.FontSize = 13;
+        sum.Range(2, 1, 2, 8).Merge();
+
+        sum.Cell(3, 1).Value = $"Period: {from:MMM d, yyyy} → {to:MMM d, yyyy}  |  Generated: {now:MMM d, yyyy 'at' h:mm tt} UTC";
+        sum.Cell(3, 1).Style.Font.FontSize = 9;
+        sum.Cell(3, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
+        sum.Range(3, 1, 3, 8).Merge();
+
+        var sumHeaders = new[] { "Contractor", "Receipts", "Standard Hrs", "Emergency Hrs", "Retainer Applied", "Total Amount", "Paid Amount" };
+        for (int c = 0; c < sumHeaders.Length; c++)
+        {
+            var cell = sum.Cell(5, c + 1);
+            cell.Value = sumHeaders[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = headerGray;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        int sRow = 6;
+        var byContractor = receipts
+            .GroupBy(r => r.ContractorId)
+            .Select(g => new
+            {
+                Name            = g.First().Contractor != null ? g.First().Contractor!.FirstName + " " + g.First().Contractor!.LastName : "(unknown)",
+                Count           = g.Count(),
+                StandardHours   = g.Sum(r => r.TotalStandardHours),
+                EmergencyHours  = g.Sum(r => r.TotalEmergencyHours),
+                RetainerApplied = g.Sum(r => r.TotalRetainerAmountApplied),
+                TotalAmount     = g.Sum(r => r.TotalAmount),
+                PaidAmount      = g.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount)
+            })
+            .OrderByDescending(x => x.TotalAmount)
+            .ToList();
+
+        foreach (var c in byContractor)
+        {
+            sum.Cell(sRow, 1).Value = c.Name;
+            sum.Cell(sRow, 2).Value = c.Count;
+            sum.Cell(sRow, 3).Value = c.StandardHours;
+            sum.Cell(sRow, 4).Value = c.EmergencyHours;
+            sum.Cell(sRow, 5).Value = c.RetainerApplied;
+            sum.Cell(sRow, 6).Value = c.TotalAmount;
+            sum.Cell(sRow, 7).Value = c.PaidAmount;
+            sum.Cell(sRow, 5).Style.NumberFormat.Format = "$#,##0.00";
+            sum.Cell(sRow, 6).Style.NumberFormat.Format = "$#,##0.00";
+            sum.Cell(sRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+            sRow++;
+        }
+
+        // Totals row
+        if (byContractor.Count > 0)
+        {
+            var totalsRow = sRow;
+            sum.Cell(totalsRow, 1).Value = "TOTAL";
+            sum.Cell(totalsRow, 2).Value = byContractor.Sum(x => x.Count);
+            sum.Cell(totalsRow, 3).Value = byContractor.Sum(x => x.StandardHours);
+            sum.Cell(totalsRow, 4).Value = byContractor.Sum(x => x.EmergencyHours);
+            sum.Cell(totalsRow, 5).Value = byContractor.Sum(x => x.RetainerApplied);
+            sum.Cell(totalsRow, 6).Value = byContractor.Sum(x => x.TotalAmount);
+            sum.Cell(totalsRow, 7).Value = byContractor.Sum(x => x.PaidAmount);
+            sum.Range(totalsRow, 1, totalsRow, 7).Style.Font.Bold = true;
+            sum.Range(totalsRow, 1, totalsRow, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#e9ecef");
+            sum.Range(totalsRow, 5, totalsRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+        }
+
+        sum.Columns().AdjustToContents();
+
+        // ── Sheet 2: Receipts ──
+        var det = wb.Worksheets.Add("Receipts");
+        det.Cell(1, 1).Value = "Contractor Payroll — Receipt Detail";
+        det.Cell(1, 1).Style.Font.Bold = true;
+        det.Cell(1, 1).Style.Font.FontSize = 13;
+        det.Range(1, 1, 1, 13).Merge();
+
+        var detHeaders = new[] {
+            "Receipt #", "Contractor", "Period Start", "Period End", "Status",
+            "Std Hrs", "Std Rate", "Emerg Hrs", "Emerg Rate",
+            "Retainer Hrs", "Retainer Applied", "Total Amount",
+            "Approved By"
+        };
+        for (int c = 0; c < detHeaders.Length; c++)
+        {
+            var cell = det.Cell(3, c + 1);
+            cell.Value = detHeaders[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = headerGray;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        int dRow = 4;
+        foreach (var r in receipts)
+        {
+            var contractorName = r.Contractor != null ? r.Contractor.FirstName + " " + r.Contractor.LastName : "(unknown)";
+            var approverName   = r.ApprovedBy != null ? r.ApprovedBy.FirstName + " " + r.ApprovedBy.LastName : "";
+            det.Cell(dRow, 1).Value  = r.Id;
+            det.Cell(dRow, 2).Value  = contractorName;
+            det.Cell(dRow, 3).Value  = r.PeriodStart;
+            det.Cell(dRow, 4).Value  = r.PeriodEnd;
+            det.Cell(dRow, 5).Value  = r.Status;
+            det.Cell(dRow, 6).Value  = r.TotalStandardHours;
+            det.Cell(dRow, 7).Value  = r.HourlyRateSnapshot;
+            det.Cell(dRow, 8).Value  = r.TotalEmergencyHours;
+            det.Cell(dRow, 9).Value  = r.EmergencyRateSnapshot ?? 0m;
+            det.Cell(dRow, 10).Value = r.TotalRetainerHoursApplied;
+            det.Cell(dRow, 11).Value = r.TotalRetainerAmountApplied;
+            det.Cell(dRow, 12).Value = r.TotalAmount;
+            det.Cell(dRow, 13).Value = approverName;
+            det.Cell(dRow, 3).Style.DateFormat.Format = "yyyy-mm-dd";
+            det.Cell(dRow, 4).Style.DateFormat.Format = "yyyy-mm-dd";
+            det.Cell(dRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 9).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 11).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 12).Style.NumberFormat.Format = "$#,##0.00";
+            dRow++;
+        }
+        det.Columns().AdjustToContents();
+
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var fileName = $"Payroll_{from:yyyyMMdd}_to_{to:yyyyMMdd}.xlsx";
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
 }
