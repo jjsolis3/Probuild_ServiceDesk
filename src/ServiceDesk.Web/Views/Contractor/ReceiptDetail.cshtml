@@ -538,6 +538,26 @@
                 </div>
             }
 
+            @if ((Model.Status == "Approved" || Model.Status == "Paid") && Model.ApprovedDate.HasValue)
+            {
+                <div style="background:#d1e7dd;border:1px solid #198754;border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+                    <i class="bi bi-check-circle-fill" style="color:#0f5132;font-size:1.1rem;flex-shrink:0;margin-top:2px;"></i>
+                    <div style="flex-grow:1;">
+                        <div style="font-weight:700;color:#0f5132;font-size:.88rem;margin-bottom:3px;">
+                            Approved on @Model.ApprovedDate.Value.ToString("MMMM d, yyyy 'at' h:mm tt") UTC
+                            @if (Model.ApprovedBy != null)
+                            { <span class="fw-normal">by @Model.ApprovedBy.FullName</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.ApprovalNote))
+                        {
+                            <div style="color:#0a3622;font-size:.875rem;">
+                                <strong>Note:</strong> @Model.ApprovalNote
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             <!-- Status timeline -->
             <div class="status-trail">
                 @{

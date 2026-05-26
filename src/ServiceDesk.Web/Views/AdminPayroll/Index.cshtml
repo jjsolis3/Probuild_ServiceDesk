@@ -12,7 +12,9 @@
     var amtPaidMonth    = (decimal)(ViewBag.AmountPaidMonth   ?? 0m);
     var amtPaidAllTime  = (decimal)(ViewBag.AmountPaidAllTime ?? 0m);
 
-    bool isFiltered = !string.IsNullOrEmpty(filterStatus) || filterContractorId.HasValue;
+    bool isFiltered = !string.IsNullOrEmpty(filterStatus)
+                    || filterContractorId.HasValue
+                    || !string.IsNullOrEmpty(ViewBag.FilterRateType as string);
 }
 
 @section Styles {
@@ -357,6 +359,16 @@
                         }
                     </select>
                 </div>
+                <div>
+                    @{ var filterRateType = ViewBag.FilterRateType as string; }
+                    <div class="ap-filter-label">Rate Type</div>
+                    <select name="rateType" class="ap-filter-select">
+                        <option value="">All</option>
+                        <option value="StandardOnly" selected="@(filterRateType == "StandardOnly")">Standard only</option>
+                        <option value="HasEmergency" selected="@(filterRateType == "HasEmergency")">Has Emergency hours</option>
+                        <option value="HasRetainer"  selected="@(filterRateType == "HasRetainer")">Has Retainer applied</option>
+                    </select>
+                </div>
                 <button type="submit" class="ap-btn-filter">
                     <i class="bi bi-funnel-fill"></i>Apply Filter
                 </button>
@@ -377,6 +389,19 @@
             {
                 var name = contractors.FirstOrDefault(c => c.Id == filterContractorId)?.FullName ?? $"#{filterContractorId}";
                 <span class="filter-chip">Contractor: @name</span>
+            }
+            @{
+                var rateTypeChip = ViewBag.FilterRateType as string;
+            }
+            @if (!string.IsNullOrEmpty(rateTypeChip))
+            {
+                var label = rateTypeChip switch {
+                    "StandardOnly" => "Standard only",
+                    "HasEmergency" => "Has Emergency",
+                    "HasRetainer"  => "Has Retainer",
+                    _              => rateTypeChip
+                };
+                <span class="filter-chip">Rate type: @label</span>
             }
             <span style="color:var(--ap-muted);margin-left:4px;">· @Model.Count() result@(Model.Count() == 1 ? "" : "s")</span>
         </div>
@@ -505,17 +530,35 @@
                             <td class="text-end fw-bold" style="color:var(--ap-navy);">$@receipt.TotalAmount.ToString("N2")</td>
                             <td><span class="sp @pillClass">@receipt.Status</span></td>
                             <td class="small text-muted text-nowrap">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
-                            <td class="small text-muted text-nowrap">@(receipt.ApprovedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td class="small text-nowrap">
+                                @if (receipt.ApprovedDate.HasValue)
+                                {
+                                    <div class="text-muted">@receipt.ApprovedDate.Value.ToString("MMM d, yyyy")</div>
+                                    @if (receipt.ApprovedBy != null)
+                                    {
+                                        <div style="font-size:.7rem;color:var(--ap-muted);">by @receipt.ApprovedBy.FullName</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(receipt.ApprovalNote))
+                                    {
+                                        <i class="bi bi-chat-square-text-fill text-info"
+                                           data-bs-toggle="tooltip"
+                                           title="@receipt.ApprovalNote"
+                                           style="font-size:.78rem; cursor:help;"></i>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
                                     @if (receipt.Status == "Submitted" && User.IsInRole("Admin"))
                                     {
-                                        <form asp-action="Approve" asp-route-id="@receipt.Id" method="post" class="d-inline">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="ap-btn ap-btn-approve">
-                                                <i class="bi bi-check-lg"></i>Approve
-                                            </button>
-                                        </form>
+                                        <button type="button" class="ap-btn ap-btn-approve"
+                                                onclick="openApproveModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
+                                            <i class="bi bi-check-lg"></i>Approve
+                                        </button>
                                         <button type="button" class="ap-btn ap-btn-reject"
                                                 onclick="openRejectModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
                                             <i class="bi bi-x-lg"></i>Reject
@@ -570,6 +613,42 @@
     </button>
 </div>
 
+@* ── Approve Modal ────────────────────────────────────────────────────────── *@
+<div class="modal fade" id="approveModal" tabindex="-1" aria-labelledby="approveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-green);color:#fff;">
+                <h5 class="modal-title" id="approveModalLabel">
+                    <i class="bi bi-check-circle me-2"></i>Approve Receipt
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="approveForm" asp-action="Approve" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="approveReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Approving <strong id="approveContractorName"></strong>'s receipt records you
+                        as the approver and stamps the timestamp. The contractor will be notified
+                        by email.
+                    </p>
+                    <div>
+                        <label class="form-label fw-semibold">Approval note <span class="text-muted fw-normal">(optional — included in the email)</span></label>
+                        <textarea name="approvalNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Matches PO #142 — approved for payment in next cycle"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Approve Receipt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @* ── Reject Modal ─────────────────────────────────────────────────────────── *@
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -608,11 +687,24 @@
 
 @section Scripts {
 <script>
+function openApproveModal(id, name) {
+    document.getElementById('approveReceiptId').value = id;
+    document.getElementById('approveContractorName').textContent = name;
+    new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+
 function openRejectModal(id, name) {
     document.getElementById('rejectReceiptId').value = id;
     document.getElementById('rejectContractorName').textContent = name;
     new bootstrap.Modal(document.getElementById('rejectModal')).show();
 }
+
+// Bootstrap tooltips for the approval-note icons + any other [data-bs-toggle=tooltip] elements.
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
+});
 
 function toggleAllRows(checked) {
     document.querySelectorAll('.row-chk').forEach(cb => cb.checked = checked);

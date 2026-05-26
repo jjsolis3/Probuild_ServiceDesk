@@ -19,11 +19,12 @@ public class AdminPayrollController : Controller
     }
 
     // GET /AdminPayroll
-    public async Task<IActionResult> Index(string? status, int? contractorId)
+    public async Task<IActionResult> Index(string? status, int? contractorId, string? rateType)
     {
         // Summary stats from ALL receipts (unfiltered) for KPI tiles
         var allReceipts = await _context.PayrollReceipts
             .Include(r => r.Contractor)
+            .Include(r => r.ApprovedBy)
             .ToListAsync();
 
         var now = DateTime.UtcNow;
@@ -47,6 +48,22 @@ public class AdminPayrollController : Controller
         if (contractorId.HasValue)
             receipts = receipts.Where(r => r.ContractorId == contractorId.Value);
 
+        // Rate-type filter — narrows the list by which kind of hours the
+        // receipt contains. "StandardOnly" means no Emergency hours posted;
+        // "HasEmergency" surfaces every receipt with any Emergency hour at
+        // all (useful for AP review). "HasRetainer" finds receipts that
+        // included the monthly retainer payout.
+        if (!string.IsNullOrEmpty(rateType))
+        {
+            receipts = rateType switch
+            {
+                "StandardOnly" => receipts.Where(r => r.TotalEmergencyHours == 0),
+                "HasEmergency" => receipts.Where(r => r.TotalEmergencyHours > 0),
+                "HasRetainer"  => receipts.Where(r => r.TotalRetainerAmountApplied > 0),
+                _              => receipts
+            };
+        }
+
         var contractors = await _context.Employees
             .Where(e => e.IsContractor && e.IsActive)
             .OrderBy(e => e.LastName)
@@ -55,6 +72,7 @@ public class AdminPayrollController : Controller
         ViewBag.Contractors        = contractors;
         ViewBag.FilterStatus       = status;
         ViewBag.FilterContractorId = contractorId;
+        ViewBag.FilterRateType     = rateType;
         ViewData["Title"]          = "Contractor Payroll";
         return View(receipts.ToList());
     }
@@ -62,7 +80,7 @@ public class AdminPayrollController : Controller
     // POST /AdminPayroll/Approve/{id}
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Approve(int id)
+    public async Task<IActionResult> Approve(int id, string? approvalNote)
     {
         var receipt = await _context.PayrollReceipts.FindAsync(id);
         if (receipt == null) return NotFound();
@@ -83,6 +101,7 @@ public class AdminPayrollController : Controller
         receipt.Status       = "Approved";
         receipt.ApprovedDate = DateTime.UtcNow;
         receipt.ApprovedById = approver?.EmployeeId;
+        receipt.ApprovalNote = string.IsNullOrWhiteSpace(approvalNote) ? null : approvalNote.Trim();
 
         await _context.SaveChangesAsync();
 
@@ -150,7 +169,7 @@ public class AdminPayrollController : Controller
     // POST /AdminPayroll/BulkApprove
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> BulkApprove(int[] ids)
+    public async Task<IActionResult> BulkApprove(int[] ids, string? approvalNote)
     {
         if (ids == null || ids.Length == 0)
         {
@@ -167,11 +186,13 @@ public class AdminPayrollController : Controller
             .Where(r => ids.Contains(r.Id) && r.Status == "Submitted")
             .ToListAsync();
 
+        var trimmedNote = string.IsNullOrWhiteSpace(approvalNote) ? null : approvalNote.Trim();
         foreach (var r in receipts)
         {
             r.Status       = "Approved";
             r.ApprovedDate = DateTime.UtcNow;
             r.ApprovedById = approver?.EmployeeId;
+            r.ApprovalNote = trimmedNote;
         }
 
         await _context.SaveChangesAsync();

@@ -974,11 +974,21 @@ public class EmailNotificationService
     public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt)
     {
         if (!await IsNotificationEnabled("NotifyOnPayrollApproved")) return;
+
+        // Surface the optional approval note inside a styled call-out so the
+        // contractor sees the context the admin captured at approval time.
+        var noteBlock = string.IsNullOrWhiteSpace(receipt.ApprovalNote)
+            ? string.Empty
+            : $@"<div style='background:#ecfdf5;border-left:4px solid #10b981;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#047857;'>Note from approver:</strong>
+                    <div style='margin-top:6px;color:#065f46;'>{System.Net.WebUtility.HtmlEncode(receipt.ApprovalNote)}</div>
+                 </div>";
+
         await SendContractorReceiptStatusEmailAsync(receipt,
             statusLabel: "Approved",
             subject: $"Your receipt #{receipt.Id} has been approved",
             heading: "Receipt Approved",
-            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.",
+            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.{noteBlock}",
             barColor: "#10b981",
             logType: "PayrollApproved");
     }
