@@ -82,6 +82,98 @@ public class ContractorController : Controller
         return View(receipts);
     }
 
+    // POST /Contractor/EditUnclaimedEntry
+    //
+    // Lets a contractor correct an unclaimed time entry they own — rate-type
+    // mislabel (Standard ↔ Emergency), hours typo, description, billable flag.
+    // Only their own entries, only while still unclaimed (no PayrollReceiptId),
+    // and an audit row (ModifiedDate/By/Reason/Count) is always written.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditUnclaimedEntry(int entryId, decimal hours,
+        string? description, bool isBillable, bool isEmergency,
+        string? modificationReason)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId
+                                   && e.LoggedByEmployeeId == contractor.Id
+                                   && e.PayrollReceiptId == null);
+        if (entry == null)
+        {
+            TempData["Error"] = "Entry not found, claimed on a receipt, or not yours to edit.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        if (string.IsNullOrWhiteSpace(modificationReason))
+        {
+            TempData["Error"] = "A reason is required when editing a time entry.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        var rateType = isEmergency
+            ? Core.Enums.PayRateType.Emergency
+            : Core.Enums.PayRateType.Standard;
+
+        // Emergency requires the contractor to actually have an emergency
+        // rate configured. Silently fall back to Standard otherwise so the
+        // entry doesn't end up billing against a null rate.
+        if (rateType == Core.Enums.PayRateType.Emergency
+            && (contractor.EmergencyHourlyRate == null || contractor.EmergencyHourlyRate <= 0))
+        {
+            rateType = Core.Enums.PayRateType.Standard;
+        }
+
+        entry.Hours              = hours;
+        entry.Description        = description;
+        entry.IsBillable         = isBillable;
+        entry.RateType           = rateType;
+        entry.ModifiedDate       = DateTime.UtcNow;
+        entry.ModifiedByEmail    = contractor.Email;
+        entry.ModificationReason = modificationReason.Trim();
+        entry.ModificationCount += 1;
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Entry on Ticket #{entry.TicketId} updated.";
+        return RedirectToAction(nameof(Payroll));
+    }
+
+    // POST /Contractor/DeleteUnclaimedEntry
+    //
+    // Same ownership and "still unclaimed" gate as EditUnclaimedEntry. Once
+    // an entry hits a receipt it can only be unstuck by deleting the receipt
+    // (existing path) — direct delete here is intentionally blocked.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteUnclaimedEntry(int entryId)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId
+                                   && e.LoggedByEmployeeId == contractor.Id
+                                   && e.PayrollReceiptId == null);
+        if (entry == null)
+        {
+            TempData["Error"] = "Entry not found, claimed on a receipt, or not yours to delete.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        _context.TicketTimeEntries.Remove(entry);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Entry on Ticket #{entry.TicketId} deleted.";
+        return RedirectToAction(nameof(Payroll));
+    }
+
     // ── New Receipt ───────────────────────────────────────────────────────────
 
     // GET /Contractor/NewReceipt
