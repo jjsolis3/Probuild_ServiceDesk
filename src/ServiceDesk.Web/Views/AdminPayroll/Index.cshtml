@@ -593,13 +593,10 @@
      box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:1050;display:none;
      align-items:center;gap:12px;font-size:.875rem;font-weight:600;white-space:nowrap;">
     <span id="bulkCount"></span>
-    <form asp-action="BulkApprove" method="post" id="bulkApproveForm" class="d-inline">
-        @Html.AntiForgeryToken()
-        <span id="bulkApproveIds"></span>
-        <button type="submit" style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
-            <i class="bi bi-check-lg me-1"></i>Approve Selected
-        </button>
-    </form>
+    <button type="button" data-bs-toggle="modal" data-bs-target="#bulkApproveModal"
+            style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+        <i class="bi bi-check-lg me-1"></i>Approve Selected
+    </button>
     <form asp-action="BulkMarkPaid" method="post" id="bulkPaidForm" class="d-inline">
         @Html.AntiForgeryToken()
         <span id="bulkPaidIds"></span>
@@ -642,6 +639,41 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-check-lg me-1"></i>Approve Receipt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Bulk Approve Modal ───────────────────────────────────────────────────── *@
+<div class="modal fade" id="bulkApproveModal" tabindex="-1" aria-labelledby="bulkApproveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#198754;color:#fff;">
+                <h5 class="modal-title" id="bulkApproveModalLabel">
+                    <i class="bi bi-check2-all me-2"></i>Approve <span id="bulkApproveCount">0</span> Receipt(s)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-action="BulkApprove" method="post" id="bulkApproveForm">
+                @Html.AntiForgeryToken()
+                <span id="bulkApproveIds"></span>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        All selected receipts will be approved in one batch. Each contractor receives the
+                        same approval note in their email.
+                    </p>
+                    <div>
+                        <label class="form-label fw-semibold">Approval note <span class="text-muted fw-normal">(optional — included in every email)</span></label>
+                        <textarea name="approvalNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Q2 batch — approved for next pay cycle"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Approve All Selected
                     </button>
                 </div>
             </form>
@@ -722,8 +754,9 @@ function updateBulkBar() {
     // Build hidden inputs for each form
     ['bulkApproveIds','bulkPaidIds'].forEach(spanId => {
         const span = document.getElementById(spanId);
-        span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
+        if (span) span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
     });
+    document.getElementById('bulkApproveCount').textContent = checked.length;
 
     document.getElementById('chkAll').indeterminate =
         checked.length > 0 && checked.length < document.querySelectorAll('.row-chk').length;

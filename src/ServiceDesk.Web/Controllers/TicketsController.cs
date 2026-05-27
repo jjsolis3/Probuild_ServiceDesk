@@ -615,8 +615,14 @@ public class TicketsController : Controller
         endStamp   = baseDate.Add(eTs);
 
         // Allow End to roll past midnight by treating it as next-day when
-        // strictly before Start. Caps the shift at 24h to catch typos.
-        if (endStamp <= startStamp)
+        // strictly before Start. Equal start/end is rejected outright — that
+        // pattern is almost always a typo, not an intentional 0-second log.
+        if (endStamp == startStamp)
+        {
+            intervalError = "Start and End times cannot be identical.";
+            return false;
+        }
+        if (endStamp < startStamp)
             endStamp = endStamp.AddDays(1);
 
         var diff = endStamp - startStamp;
@@ -627,8 +633,11 @@ public class TicketsController : Controller
         }
 
         // Round to nearest quarter-hour for consistency with the flat-hours
-        // input which uses step=0.25.
+        // input which uses step=0.25. Floor to 0.25 so a positive-but-short
+        // interval (e.g. 7 minutes) doesn't collapse to zero and then fail
+        // the downstream `hours <= 0` guard with a misleading message.
         intervalHours = Math.Round((decimal)diff.TotalHours * 4m, MidpointRounding.AwayFromZero) / 4m;
+        if (intervalHours < 0.25m) intervalHours = 0.25m;
         return true;
     }
 
@@ -637,6 +646,11 @@ public class TicketsController : Controller
         string? description, bool isBillable,
         ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
         bool isEmergency = false,
+        // True when the form actually rendered the Emergency picker — only
+        // then should the controller treat the posted rate as authoritative.
+        // An editor who can't see the picker shouldn't silently downgrade
+        // someone else's Emergency entry to Standard.
+        bool rateTypePosted = false,
         string? startTime = null, string? endTime = null,
         string? modificationReason = null,
         string? returnAction = null)
@@ -660,8 +674,12 @@ public class TicketsController : Controller
             return RedirectToAction(tr, new { id });
         }
 
-        DateTime? startStamp = null;
-        DateTime? endStamp   = null;
+        // Clock fields only get rewritten if the form posted a valid interval.
+        // When the form has no Start/End values (TryBuildInterval → false with
+        // no error), we preserve whatever was previously saved on the entry so
+        // an edit doesn't silently wipe historical clock-in/out data.
+        DateTime? startStamp = entry.StartTime;
+        DateTime? endStamp   = entry.EndTime;
         if (TryBuildInterval(workDate, startTime, endTime, out var sIv, out var eIv, out var intervalHours, out var intervalError))
         {
             startStamp = sIv;
@@ -689,21 +707,26 @@ public class TicketsController : Controller
             return RedirectToAction(t2, new { id });
         }
 
-        // Emergency rate requires the assigned contractor to have an
-        // EmergencyHourlyRate configured. Fall back to Standard if not.
-        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency
-            && !string.IsNullOrWhiteSpace(entry.LoggedByEmail))
+        var editorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        // Emergency rate requires *some* contractor to actually have an
+        // EmergencyHourlyRate configured. Prefer the original logger, fall
+        // back to the editor — never skip the gate (an entry without
+        // LoggedByEmail used to slip through and silently accept Emergency).
+        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency)
         {
-            var hasEmergencyRate = await _context.Employees
-                .AsNoTracking()
-                .AnyAsync(e => e.Email == entry.LoggedByEmail
-                            && e.EmergencyHourlyRate != null
-                            && e.EmergencyHourlyRate > 0);
+            var rateOwnerEmail = !string.IsNullOrWhiteSpace(entry.LoggedByEmail)
+                ? entry.LoggedByEmail
+                : editorEmail;
+            var hasEmergencyRate = !string.IsNullOrWhiteSpace(rateOwnerEmail)
+                && await _context.Employees
+                    .AsNoTracking()
+                    .AnyAsync(e => e.Email == rateOwnerEmail
+                                && e.EmergencyHourlyRate != null
+                                && e.EmergencyHourlyRate > 0);
             if (!hasEmergencyRate)
                 rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
         }
-
-        var editorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
 
         entry.WorkDate           = workDate.Date;
         entry.Hours              = hours;
@@ -711,7 +734,11 @@ public class TicketsController : Controller
         entry.EndTime            = endStamp;
         entry.Description        = description;
         entry.IsBillable         = isBillable;
-        entry.RateType           = rateType;
+        // Only overwrite RateType when the editor's form actually surfaced
+        // the picker. Otherwise (e.g. an admin without an EmergencyHourlyRate
+        // editing a contractor's existing Emergency entry) we preserve the
+        // entry's prior rate to avoid silent downgrades.
+        if (rateTypePosted) entry.RateType = rateType;
         entry.ModifiedDate       = DateTime.UtcNow;
         entry.ModifiedByEmail    = editorEmail;
         entry.ModificationReason = modificationReason?.Trim();
@@ -942,6 +969,7 @@ public class TicketsController : Controller
             return RedirectToAction(nameof(Edit), new { id });
         }
         PopulateDropdowns(ticket);
+        await PopulateTimeEntryViewBagAsync();
         return View(ticket);
     }
 

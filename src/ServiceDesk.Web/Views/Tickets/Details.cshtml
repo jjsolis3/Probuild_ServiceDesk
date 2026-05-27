@@ -546,9 +546,10 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 @if (showRateType)
 {
+    <script type="application/json" id="detailsHolidayInfoData">@Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}")</script>
     <script>
     (function () {
-        var holidayInfo = @Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}");
+        var holidayInfo = JSON.parse(document.getElementById('detailsHolidayInfoData').textContent || '{"recurring":[],"oneTime":[]}');
         var dateEl = document.getElementById('detailsWorkDate');
         var rateEl = document.getElementById('detailsIsEmergency');
         var hintEl = document.getElementById('detailsRateHint');

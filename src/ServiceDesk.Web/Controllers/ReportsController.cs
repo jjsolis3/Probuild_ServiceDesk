@@ -866,11 +866,17 @@ public class ReportsController : Controller
         var defaultTo   = defaultFrom.AddMonths(1).AddDays(-1);
         from ??= defaultFrom;
         to   ??= defaultTo;
+        // Normalize the window endpoints to inclusive day boundaries: the
+        // user picks calendar dates, but PeriodStart/PeriodEnd carry full
+        // timestamps. Without this, a receipt with PeriodStart=May 31 09:00
+        // and `to`=May 31 00:00 silently drops out of the boundary day.
+        var fromBoundary = from.Value.Date;
+        var toBoundary   = to.Value.Date.AddDays(1).AddTicks(-1);
 
         var query = _context.PayrollReceipts
             .Include(r => r.Contractor)
             .Include(r => r.ApprovedBy)
-            .Where(r => r.PeriodStart <= to && r.PeriodEnd >= from);
+            .Where(r => r.PeriodStart <= toBoundary && r.PeriodEnd >= fromBoundary);
 
         if (contractorId.HasValue)
             query = query.Where(r => r.ContractorId == contractorId.Value);
