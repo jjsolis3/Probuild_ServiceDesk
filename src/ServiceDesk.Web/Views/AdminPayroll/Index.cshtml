@@ -282,11 +282,15 @@
 }
 
 @* ── Page header ─────────────────────────────────────────────────────── *@
-<div class="ap-header">
+<div class="ap-header d-flex justify-content-between align-items-start">
     <div>
         <h1 class="ap-title"><i class="bi bi-briefcase-fill me-2" style="color:var(--ap-blue);"></i>Contractor Payroll</h1>
         <p class="ap-sub">Review, approve and mark payment for submitted contractor invoices</p>
     </div>
+    <button type="button" class="btn btn-outline-primary"
+            data-bs-toggle="modal" data-bs-target="#weeklyDigestModal" title="Email each contractor their last 7 days of logged hours">
+        <i class="bi bi-envelope-paper me-1"></i> Send Weekly Digest
+    </button>
 </div>
 
 @* ── KPI tiles ───────────────────────────────────────────────────────── *@
@@ -639,6 +643,40 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-check-lg me-1"></i>Approve Receipt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Weekly Digest Modal ──────────────────────────────────────────────────── *@
+<div class="modal fade" id="weeklyDigestModal" tabindex="-1" aria-labelledby="weeklyDigestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-blue);color:#fff;">
+                <h5 class="modal-title" id="weeklyDigestModalLabel">
+                    <i class="bi bi-envelope-paper me-2"></i>Send Weekly Hours Digest
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-action="SendWeeklyDigest" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Emails every active contractor with their last 7 days of logged hours
+                        (Standard / Emergency split, billable totals, per-day rows). Useful as
+                        a nudge before a submission window closes.
+                    </p>
+                    <label class="form-label fw-semibold">Week ends on</label>
+                    <input type="date" name="weekEnd" class="form-control"
+                           value="@DateTime.UtcNow.Date.ToString("yyyy-MM-dd")" />
+                    <div class="form-text">The 7-day window ends on this date (inclusive). Defaults to today.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i>Send Now
                     </button>
                 </div>
             </form>

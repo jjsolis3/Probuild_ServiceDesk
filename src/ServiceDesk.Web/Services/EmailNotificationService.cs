@@ -1033,6 +1033,89 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends a contractor a single-week summary of their logged time —
+    /// total hours, Standard vs. Emergency split, billable vs. non-billable,
+    /// and a per-day breakdown. Triggered on-demand from the AdminPayroll
+    /// "Send Weekly Digest" action.
+    /// </summary>
+    public async Task NotifyContractorWeeklyHoursAsync(
+        Core.Models.Employee contractor, DateTime weekStart, DateTime weekEnd,
+        IReadOnlyList<Core.Models.TicketTimeEntry> entries)
+    {
+        if (string.IsNullOrWhiteSpace(contractor.Email)) return;
+
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var totalHours      = entries.Sum(e => e.Hours);
+        var billableHours   = entries.Where(e => e.IsBillable).Sum(e => e.Hours);
+        var standardHours   = entries.Where(e => e.RateType == Core.Enums.PayRateType.Standard).Sum(e => e.Hours);
+        var emergencyHours  = entries.Where(e => e.RateType == Core.Enums.PayRateType.Emergency).Sum(e => e.Hours);
+
+        var rows = new System.Text.StringBuilder();
+        if (entries.Count == 0)
+        {
+            rows.Append("<tr><td colspan='4' style='padding:12px;text-align:center;color:#6c757d;'>No hours logged this week.</td></tr>");
+        }
+        else
+        {
+            foreach (var dayGroup in entries.GroupBy(e => e.WorkDate.Date).OrderBy(g => g.Key))
+            {
+                var dayTotal     = dayGroup.Sum(e => e.Hours);
+                var dayBillable  = dayGroup.Where(e => e.IsBillable).Sum(e => e.Hours);
+                var dayEmergency = dayGroup.Where(e => e.RateType == Core.Enums.PayRateType.Emergency).Sum(e => e.Hours);
+                rows.Append($@"<tr>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{dayGroup.Key:ddd, MMM d}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{dayTotal:0.##}h</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{dayBillable:0.##}h</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#dc3545;'>{(dayEmergency > 0 ? $"{dayEmergency:0.##}h" : "—")}</td>
+                </tr>");
+            }
+        }
+
+        var subject = $"Weekly hours summary — {weekStart:MMM d} to {weekEnd:MMM d, yyyy}";
+        var contractorName = System.Net.WebUtility.HtmlEncode($"{contractor.FirstName} {contractor.LastName}");
+        var innerContent = $@"<h3>Weekly Hours Summary</h3>
+            <p>Hi {contractorName}, here's your time-logged summary for the week of
+                <strong>{weekStart:MMM d}</strong>–<strong>{weekEnd:MMM d, yyyy}</strong>.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:180px;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{totalHours:0.##}h</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Billable</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{billableHours:0.##}h</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Standard / Emergency</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{standardHours:0.##}h / <span style='color:#dc3545;'>{emergencyHours:0.##}h</span></td></tr>
+            </table>
+            <h4 style='margin-top:24px;'>By Day</h4>
+            <table style='width:100%;border-collapse:collapse;margin:8px 0 15px;'>
+                <thead><tr style='background:#f8f9fa;'>
+                    <th style='padding:8px;text-align:left;border-bottom:2px solid #dee2e6;'>Day</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Total</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Billable</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Emergency</th>
+                </tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+            <p style='margin-top:24px;font-size:.9em;color:#6c757d;'>
+                Heads up — entries don't appear on a payroll receipt until you submit one from the Contractor portal.
+            </p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, contractor.Email, subject, htmlBody, null, null, null);
+            await LogNotificationAsync("PayrollWeeklyDigest", contractor.Email, $"{contractor.FirstName} {contractor.LastName}", subject, null, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Weekly-digest send failed for contractor #{Id}", contractor.Id);
+            await LogNotificationAsync("PayrollWeeklyDigest", contractor.Email, $"{contractor.FirstName} {contractor.LastName}", subject, null, false, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Shared helper for sending contractor-facing receipt status emails.
     /// </summary>
     private async Task SendContractorReceiptStatusEmailAsync(

@@ -239,4 +239,68 @@ public class AdminPayrollController : Controller
         TempData["Success"] = $"{receipts.Count} receipt(s) marked as Paid.";
         return RedirectToAction(nameof(Index));
     }
+
+    // POST /AdminPayroll/SendWeeklyDigest
+    //
+    // Emails every active contractor a summary of their last 7 days of logged
+    // hours (Standard / Emergency split, billable vs. total, per-day rows).
+    // Triggered manually from the AdminPayroll page so payroll can nudge
+    // contractors before a submission window closes.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendWeeklyDigest(DateTime? weekEnd)
+    {
+        // Default: the most recently completed week, Mon–Sun. If the admin
+        // passes a specific weekEnd date, treat it as the inclusive end of
+        // the 7-day window.
+        var end = (weekEnd ?? DateTime.UtcNow.Date).Date;
+        var start = end.AddDays(-6);
+
+        var contractors = await _context.Employees
+            .Where(e => e.IsContractor && e.IsActive && !string.IsNullOrEmpty(e.Email))
+            .ToListAsync();
+
+        if (contractors.Count == 0)
+        {
+            TempData["Error"] = "No active contractors with email addresses.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var contractorIds = contractors.Select(c => c.Id).ToList();
+        var entries = await _context.TicketTimeEntries
+            .AsNoTracking()
+            .Where(e => e.WorkDate >= start && e.WorkDate <= end)
+            .Where(e => e.LoggedByEmployeeId != null && contractorIds.Contains(e.LoggedByEmployeeId!.Value))
+            .ToListAsync();
+
+        var entriesByContractor = entries
+            .GroupBy(e => e.LoggedByEmployeeId!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ServiceDesk.Core.Models.TicketTimeEntry>)g.OrderBy(x => x.WorkDate).ToList());
+
+        int sent = 0;
+        int failed = 0;
+        foreach (var contractor in contractors)
+        {
+            var weekEntries = entriesByContractor.TryGetValue(contractor.Id, out var list)
+                ? list
+                : (IReadOnlyList<ServiceDesk.Core.Models.TicketTimeEntry>)Array.Empty<ServiceDesk.Core.Models.TicketTimeEntry>();
+            try
+            {
+                await _emailService.NotifyContractorWeeklyHoursAsync(contractor, start, end, weekEntries);
+                sent++;
+            }
+            catch (Exception)
+            {
+                failed++;
+                // Per-contractor failure is logged inside the service; keep
+                // sending the rest of the batch so one bad address doesn't
+                // tank the whole digest run.
+            }
+        }
+
+        TempData["Success"] = failed == 0
+            ? $"Weekly digest sent to {sent} contractor(s) for {start:MMM d}–{end:MMM d, yyyy}."
+            : $"Weekly digest sent to {sent} contractor(s); {failed} failed (see Notification Log).";
+        return RedirectToAction(nameof(Index));
+    }
 }

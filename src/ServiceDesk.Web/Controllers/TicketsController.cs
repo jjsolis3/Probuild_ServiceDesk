@@ -545,6 +545,18 @@ public class TicketsController : Controller
             rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
         }
 
+        // Overlap check: if the contractor posted a clock interval, refuse
+        // when it intersects another entry of theirs on the same workDate.
+        // Flat-hours-only entries don't have an interval to compare against,
+        // so they're not part of this check.
+        var overlapMsg = await FindOverlapMessageAsync(empId, userEmail, workDate.Date, startStamp, endStamp, excludeEntryId: null);
+        if (overlapMsg != null)
+        {
+            TempData["Error"] = overlapMsg;
+            var to = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(to, new { id });
+        }
+
         var entry = new TicketTimeEntry
         {
             TicketId = id,
@@ -580,6 +592,40 @@ public class TicketsController : Controller
 
         TempData["Success"] = "Time entry removed.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    // Returns a human-readable conflict message when the proposed interval
+    // overlaps an existing entry for the same contractor on the same workDate.
+    // Returns null when no overlap (or no interval to check). Two intervals
+    // [a,b] and [c,d] overlap iff a < d && c < b — using strict `<` so a
+    // back-to-back entry (one ends exactly when the next starts) is allowed.
+    private async Task<string?> FindOverlapMessageAsync(
+        int? loggerEmployeeId, string? loggerEmail,
+        DateTime workDate, DateTime? startStamp, DateTime? endStamp,
+        int? excludeEntryId)
+    {
+        if (!startStamp.HasValue || !endStamp.HasValue) return null;
+        if (loggerEmployeeId == null && string.IsNullOrWhiteSpace(loggerEmail)) return null;
+
+        var dayStart = workDate.Date;
+        var dayEnd   = workDate.Date.AddDays(1);
+
+        var conflict = await _context.TicketTimeEntries
+            .AsNoTracking()
+            .Where(e => e.WorkDate >= dayStart && e.WorkDate < dayEnd)
+            .Where(e => e.StartTime != null && e.EndTime != null)
+            .Where(e => excludeEntryId == null || e.Id != excludeEntryId.Value)
+            .Where(e => (loggerEmployeeId != null && e.LoggedByEmployeeId == loggerEmployeeId)
+                     || (loggerEmail != null && e.LoggedByEmail == loggerEmail))
+            .Where(e => e.StartTime < endStamp && startStamp < e.EndTime)
+            .Select(e => new { e.Id, e.TicketId, e.StartTime, e.EndTime })
+            .FirstOrDefaultAsync();
+
+        if (conflict == null) return null;
+
+        var s = conflict.StartTime!.Value.ToString("h:mm tt");
+        var e2 = conflict.EndTime!.Value.ToString("h:mm tt");
+        return $"That interval overlaps an existing entry on Ticket #{conflict.TicketId} ({s}–{e2}). Adjust the times or edit the conflicting entry.";
     }
 
     // Builds DateTime stamps from an HH:mm start/end pair anchored on workDate.
@@ -705,6 +751,18 @@ public class TicketsController : Controller
             TempData["Error"] = "Work date cannot be in the future.";
             var t2 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
             return RedirectToAction(t2, new { id });
+        }
+
+        // Overlap check — exclude this entry's own id so editing the start
+        // or description without moving the interval doesn't self-conflict.
+        var overlapMsg = await FindOverlapMessageAsync(
+            entry.LoggedByEmployeeId, entry.LoggedByEmail,
+            workDate.Date, startStamp, endStamp, excludeEntryId: entry.Id);
+        if (overlapMsg != null)
+        {
+            TempData["Error"] = overlapMsg;
+            var to = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(to, new { id });
         }
 
         var editorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
