@@ -8,6 +8,10 @@
     var unclaimedTotal   = unclaimed.Sum(e => e.Hours);
     var earliestDate     = unclaimed.Count > 0 ? unclaimed.Min(e => e.WorkDate) : (DateTime?)null;
     var hasOutstanding   = unclaimedBillHrs > 0;
+    // Hoisted out of the unclaimed-entries @{ } block so the Edit modal at
+    // the bottom of the file can read it. The modal is in a separate scope
+    // from the table loop and can't see locals declared there.
+    var hasEmergencyRate = (contractor?.EmergencyHourlyRate ?? 0m) > 0;
 }
 
 @section Styles {
@@ -361,9 +365,8 @@
                     </thead>
                     <tbody>
                         @{
-                            var emerRateDash      = contractor?.EmergencyHourlyRate ?? 0m;
-                            var stdRateDash       = contractor?.HourlyRate ?? 0m;
-                            var hasEmergencyRate  = (contractor?.EmergencyHourlyRate ?? 0m) > 0;
+                            var emerRateDash = contractor?.EmergencyHourlyRate ?? 0m;
+                            var stdRateDash  = contractor?.HourlyRate ?? 0m;
                         }
                         @foreach (var entry in unclaimed)
                         {
