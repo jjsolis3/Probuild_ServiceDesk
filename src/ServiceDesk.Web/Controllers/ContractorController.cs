@@ -1,4 +1,3 @@
-using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,15 +14,18 @@ public class ContractorController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
     private readonly PayrollCalculatorService _payroll;
+    private readonly PayrollReceiptAttachmentService _attachments;
 
     public ContractorController(
         ServiceDeskDbContext context,
         EmailNotificationService emailService,
-        PayrollCalculatorService payroll)
+        PayrollCalculatorService payroll,
+        PayrollReceiptAttachmentService attachments)
     {
         _context = context;
         _emailService = emailService;
         _payroll = payroll;
+        _attachments = attachments;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -377,166 +379,60 @@ public class ContractorController : Controller
 
         if (receipt == null) return NotFound();
 
-        var companyName = (await _context.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
-
-        using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("Payroll Receipt");
-
-        var brandBlue  = XLColor.FromHtml("#0d6efd");
-        var headerGray = XLColor.FromHtml("#343a40");
-        var altRow     = XLColor.FromHtml("#f8f9fa");
-
-        // Row 1: Company name
-        ws.Cell(1, 1).Value = companyName;
-        ws.Cell(1, 1).Style.Font.Bold      = true;
-        ws.Cell(1, 1).Style.Font.FontSize  = 18;
-        ws.Cell(1, 1).Style.Font.FontColor = brandBlue;
-        ws.Range(1, 1, 1, 7).Merge();
-
-        // Row 2: Document title
-        ws.Cell(2, 1).Value = "Contractor Payroll Receipt";
-        ws.Cell(2, 1).Style.Font.Bold     = true;
-        ws.Cell(2, 1).Style.Font.FontSize = 13;
-        ws.Range(2, 1, 2, 7).Merge();
-
-        // Row 3: Contractor
-        ws.Cell(3, 1).Value = $"Contractor: {receipt.Contractor?.FullName}";
-        ws.Cell(3, 1).Style.Font.FontSize = 11;
-        ws.Range(3, 1, 3, 7).Merge();
-
-        // Row 4: Period
-        ws.Cell(4, 1).Value = $"Period: {receipt.PeriodStart:MMMM dd, yyyy} – {receipt.PeriodEnd:MMMM dd, yyyy}";
-        ws.Cell(4, 1).Style.Font.FontSize = 11;
-        ws.Range(4, 1, 4, 7).Merge();
-
-        // Row 5: Status + generated
-        ws.Cell(5, 1).Value = $"Status: {receipt.Status}   |   Generated: {DateTime.UtcNow:MMM d, yyyy 'at' h:mm tt} UTC";
-        ws.Cell(5, 1).Style.Font.FontSize  = 9;
-        ws.Cell(5, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
-        ws.Range(5, 1, 5, 7).Merge();
-
-        ws.Row(6).Height = 6;
-
-        // Row 7: Column headers — Rate Type column inserted between Hours and Billable
-        var headers = new[] { "Work Date", "Ticket #", "Description", "Hours", "Rate Type", "Billable", "Rate ($/hr)", "Amount" };
-        for (int col = 1; col <= headers.Length; col++)
-        {
-            var cell = ws.Cell(7, col);
-            cell.Value = headers[col - 1];
-            cell.Style.Font.Bold            = true;
-            cell.Style.Font.FontColor       = XLColor.White;
-            cell.Style.Fill.BackgroundColor = headerGray;
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        }
-
-        var stdRate  = receipt.HourlyRateSnapshot;
-        var emerRate = receipt.EmergencyRateSnapshot ?? 0m;
-
-        // Data rows
-        int row = 8;
-        bool alt = false;
-        foreach (var entry in receipt.TimeEntries.OrderBy(e => e.WorkDate))
-        {
-            var isEmer     = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
-            var rateForRow = isEmer ? emerRate : stdRate;
-            var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
-
-            if (alt)
-                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = altRow;
-
-            ws.Cell(row, 1).Value = entry.WorkDate.ToString("yyyy-MM-dd");
-            ws.Cell(row, 2).Value = entry.Ticket?.Id.ToString() ?? "-";
-            ws.Cell(row, 3).Value = entry.Description ?? entry.Ticket?.Title ?? "-";
-            ws.Cell(row, 4).Value = (double)entry.Hours;
-            ws.Cell(row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 5).Value = isEmer ? "Emergency" : "Standard";
-            ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            if (isEmer)
-            {
-                ws.Cell(row, 5).Style.Font.Bold      = true;
-                ws.Cell(row, 5).Style.Font.FontColor = XLColor.FromHtml("#dc3545");
-            }
-            ws.Cell(row, 6).Value = entry.IsBillable ? "Yes" : "No";
-            ws.Cell(row, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 7).Value = entry.IsBillable ? (double)rateForRow : 0;
-            ws.Cell(row, 7).Style.NumberFormat.Format = "$#,##0.00";
-            ws.Cell(row, 8).Value = (double)amount;
-            ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
-
-            alt = !alt;
-            row++;
-        }
-
-        // Breakdown rows — Standard / Emergency / Retainer subtotals
-        var totalsBg = XLColor.FromHtml("#e9ecef");
-        var stdHrs   = receipt.TotalStandardHours;
-        var emerHrs  = receipt.TotalEmergencyHours;
-        var stdAbsorbed = receipt.TotalRetainerHoursApplied;
-        var stdBillable = stdHrs - stdAbsorbed;
-
-        void BreakdownRow(string label, string? hoursText, string? rateText, decimal? amount, bool indent = false, bool muted = false)
-        {
-            ws.Cell(row, 1).Value = indent ? "   " + label : label;
-            ws.Range(row, 1, row, 5).Merge();
-            ws.Cell(row, 1).Style.Font.Italic = muted;
-            if (muted) ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
-            if (hoursText != null) ws.Cell(row, 6).Value = hoursText;
-            if (rateText  != null) ws.Cell(row, 7).Value = rateText;
-            if (amount.HasValue)
-            {
-                ws.Cell(row, 8).Value = (double)amount.Value;
-                ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
-            }
-            row++;
-        }
-
-        row++; // blank spacer row
-        BreakdownRow("Standard hours",
-            hoursText: stdHrs.ToString("0.##") + " h", rateText: null, amount: null);
-        if (stdAbsorbed > 0)
-        {
-            BreakdownRow("Covered by retainer",
-                hoursText: stdAbsorbed.ToString("0.##") + " h",
-                rateText: "$0.00", amount: 0m, indent: true, muted: true);
-        }
-        BreakdownRow("Billable at standard rate",
-            hoursText: stdBillable.ToString("0.##") + " h",
-            rateText: "$" + stdRate.ToString("N2"),
-            amount: stdBillable * stdRate, indent: true);
-        if (emerHrs > 0)
-        {
-            BreakdownRow("Emergency hours",
-                hoursText: emerHrs.ToString("0.##") + " h",
-                rateText: "$" + emerRate.ToString("N2"),
-                amount: emerHrs * emerRate);
-        }
-        if (receipt.TotalRetainerAmountApplied > 0)
-        {
-            BreakdownRow($"Monthly retainer (covers up to {(receipt.MonthlyRetainerHoursSnapshot ?? 0m):0.##} h)",
-                hoursText: null, rateText: null,
-                amount: receipt.TotalRetainerAmountApplied);
-        }
-
-        ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = totalsBg;
-        ws.Cell(row, 1).Value = "TOTAL";
-        ws.Cell(row, 1).Style.Font.Bold = true;
-        ws.Range(row, 1, row, 5).Merge();
-        ws.Cell(row, 6).Value = receipt.TotalHours.ToString("0.##") + " h";
-        ws.Cell(row, 6).Style.Font.Bold = true;
-        ws.Cell(row, 8).Value = (double)receipt.TotalAmount;
-        ws.Cell(row, 8).Style.Font.Bold           = true;
-        ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
-
-        ws.Columns().AdjustToContents();
-
-        using var ms = new MemoryStream();
-        wb.SaveAs(ms);
-        ms.Position = 0;
-
+        var bytes = await _attachments.RenderXlsxAsync(receipt);
         var fileName = $"PayrollReceipt_{receipt.Id}_{receipt.PeriodStart:yyyyMMdd}-{receipt.PeriodEnd:yyyyMMdd}.xlsx";
-        return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
+
+    // POST /Contractor/ShareReceipt/{id}
+    //
+    // Emails a Submitted/Approved/Paid receipt to the recipient(s) the
+    // contractor supplies — typically Accounts Payable. Attaches the
+    // receipt as PDF, XLSX, or both based on the form selection. Draft
+    // receipts are intentionally blocked — sending a half-finished receipt
+    // to AP would be confusing.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ShareReceipt(int id, string toEmail, string? ccEmail,
+        string? subject, string? message, string format)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.TimeEntries)
+                .ThenInclude(e => e.Ticket)
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status == "Draft")
+        {
+            TempData["Error"] = "Submit the receipt before sharing it. Draft receipts cannot be emailed.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+        if (string.IsNullOrWhiteSpace(toEmail))
+        {
+            TempData["Error"] = "Recipient email is required.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var attachments = await _attachments.BuildAsync(receipt, format);
+        if (attachments.Count == 0)
+        {
+            TempData["Error"] = "Invalid attachment format.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var senderDisplay = $"{contractor.FirstName} {contractor.LastName} ({contractor.Email})";
+        var ok = await _emailService.ShareReceiptAsync(receipt, toEmail, ccEmail, subject, message, attachments, senderDisplay);
+
+        TempData[ok ? "Success" : "Error"] = ok
+            ? $"Receipt #{receipt.Id} sent to {toEmail}."
+            : $"Email send failed. Check the Email Activity log for details.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
 
     // ── Private helpers ───────────────────────────────────────────────────────
 

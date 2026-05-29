@@ -11,11 +11,15 @@ public class AdminPayrollController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
+    private readonly PayrollReceiptAttachmentService _attachments;
 
-    public AdminPayrollController(ServiceDeskDbContext context, EmailNotificationService emailService)
+    public AdminPayrollController(ServiceDeskDbContext context,
+        EmailNotificationService emailService,
+        PayrollReceiptAttachmentService attachments)
     {
         _context = context;
         _emailService = emailService;
+        _attachments = attachments;
     }
 
     // GET /AdminPayroll
@@ -301,6 +305,53 @@ public class AdminPayrollController : Controller
         TempData["Success"] = failed == 0
             ? $"Weekly digest sent to {sent} contractor(s) for {start:MMM d}–{end:MMM d, yyyy}."
             : $"Weekly digest sent to {sent} contractor(s); {failed} failed (see Notification Log).";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // POST /AdminPayroll/ShareReceipt/{id}
+    //
+    // Admin-side counterpart to /Contractor/ShareReceipt. Lets the admin
+    // forward an approved/paid receipt to AP/Payroll without first
+    // impersonating the contractor. Same Submitted+ gate (Draft is never
+    // shareable) and the same PDF/XLSX attachment options.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ShareReceipt(int id, string toEmail, string? ccEmail,
+        string? subject, string? message, string format)
+    {
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.TimeEntries)
+                .ThenInclude(e => e.Ticket)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status == "Draft")
+        {
+            TempData["Error"] = "Draft receipts cannot be shared — wait for the contractor to submit.";
+            return RedirectToAction(nameof(Index));
+        }
+        if (string.IsNullOrWhiteSpace(toEmail))
+        {
+            TempData["Error"] = "Recipient email is required.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var attachments = await _attachments.BuildAsync(receipt, format);
+        if (attachments.Count == 0)
+        {
+            TempData["Error"] = "Invalid attachment format.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var senderEmail = User.Identity?.Name ?? "Admin";
+        var ok = await _emailService.ShareReceiptAsync(
+            receipt, toEmail, ccEmail, subject, message, attachments,
+            senderDisplay: $"{senderEmail} (Admin)");
+
+        TempData[ok ? "Success" : "Error"] = ok
+            ? $"Receipt #{receipt.Id} sent to {toEmail}."
+            : "Email send failed. Check the Email Activity log for details.";
         return RedirectToAction(nameof(Index));
     }
 }

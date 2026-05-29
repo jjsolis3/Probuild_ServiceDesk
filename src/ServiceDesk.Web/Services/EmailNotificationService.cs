@@ -1033,6 +1033,87 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Shares a submitted/approved/paid receipt with one or more external
+    /// recipients (typically Accounts Payable). Sender supplies the To,
+    /// optional Cc, optional subject override, and an optional message that
+    /// renders above the receipt summary. The receipt itself is attached as
+    /// PDF and/or XLSX so the recipient has an offline copy.
+    /// </summary>
+    public async Task<bool> ShareReceiptAsync(
+        Core.Models.PayrollReceipt receipt,
+        string toEmail,
+        string? ccEmail,
+        string? subjectOverride,
+        string? message,
+        IList<GmailApiService.EmailAttachment> attachments,
+        string senderDisplay)
+    {
+        if (string.IsNullOrWhiteSpace(toEmail)) return false;
+
+        var config = await GetActiveConfig();
+        if (config == null) return false;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "(unknown)";
+
+        var subject = !string.IsNullOrWhiteSpace(subjectOverride)
+            ? subjectOverride
+            : $"Contractor Receipt #{receipt.Id} — {contractorName} — {receipt.TotalAmount:C}";
+
+        var safeMessage = string.IsNullOrWhiteSpace(message)
+            ? ""
+            : $@"<div style='background:#f8f9fa;border-left:4px solid {brandColor};padding:12px;margin:0 0 16px;'>
+                    <div style='font-size:.75rem;color:#6c757d;text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:4px;'>Message from {System.Net.WebUtility.HtmlEncode(senderDisplay)}</div>
+                    <div style='white-space:pre-wrap;'>{System.Net.WebUtility.HtmlEncode(message)}</div>
+                </div>";
+
+        var attachmentList = string.Join("<br/>",
+            attachments.Select(a => $"<span style='color:#6c757d;'>• {System.Net.WebUtility.HtmlEncode(a.FileName)}</span>"));
+
+        var innerContent = $@"<h3 style='margin-top:0;'>Contractor Payroll Receipt</h3>
+            <p>{System.Net.WebUtility.HtmlEncode(senderDisplay)} has shared a payroll receipt with you. The full receipt is attached for your records.</p>
+            {safeMessage}
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Status}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.TotalHours:0.##} ({receipt.TotalBillableHours:0.##} billable)</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+            </table>
+            <div style='font-size:.85rem;color:#6c757d;'>
+                <strong>Attached:</strong><br/>{attachmentList}
+            </div>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        var primaryName = receipt.Contractor != null ? contractorName : "External";
+        try
+        {
+            var msgId = await _gmailApiService.SendEmailWithAttachmentsAsync(
+                config, _context, toEmail, ccEmail, subject, htmlBody, attachments);
+            await LogNotificationAsync("PayrollShare", toEmail, primaryName, subject, null, msgId != null);
+            return msgId != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Failed to share receipt #{Id} to {Email}", receipt.Id, toEmail);
+            await LogNotificationAsync("PayrollShare", toEmail, primaryName, subject, null, false, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Sends a contractor a single-week summary of their logged time —
     /// total hours, Standard vs. Emergency split, billable vs. non-billable,
     /// and a per-day breakdown. Triggered on-demand from the AdminPayroll

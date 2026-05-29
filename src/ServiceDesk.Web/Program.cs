@@ -64,6 +64,8 @@ builder.Services.AddScoped<StoreProductAdminService>();
 
 // Computes per-receipt payroll totals (second rate + monthly retainer burn-down)
 builder.Services.AddScoped<PayrollCalculatorService>();
+builder.Services.AddScoped<PayrollReceiptPdfService>();
+builder.Services.AddScoped<PayrollReceiptAttachmentService>();
 
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();

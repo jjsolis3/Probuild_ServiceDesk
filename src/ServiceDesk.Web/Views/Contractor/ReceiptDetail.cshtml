@@ -293,6 +293,14 @@
             <a asp-action="ReceiptExcel" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-success">
                 <i class="bi bi-file-earmark-excel me-1"></i>Download Excel
             </a>
+            @if (Model.Status != "Draft")
+            {
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-bs-toggle="modal" data-bs-target="#shareReceiptModal"
+                        title="Email this receipt to AP, Payroll, or anyone else">
+                    <i class="bi bi-send me-1"></i>Share via Email
+                </button>
+            }
             @if (Model.Status == "Draft")
             {
                 <form asp-action="SubmitReceipt" asp-route-id="@Model.Id" method="post" class="d-inline">
@@ -304,6 +312,71 @@
             }
         </div>
     </div>
+
+    @if (Model.Status != "Draft")
+    {
+        <!-- Share Receipt modal — only rendered for Submitted+ receipts -->
+        <div class="modal fade no-print" id="shareReceiptModal" tabindex="-1" aria-labelledby="shareReceiptModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header" style="background:#0d6efd;color:#fff;">
+                        <h5 class="modal-title" id="shareReceiptModalLabel">
+                            <i class="bi bi-send me-2"></i>Share Receipt #@Model.Id
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form asp-action="ShareReceipt" asp-route-id="@Model.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">To <span class="text-danger">*</span></label>
+                                <input type="email" name="toEmail" class="form-control" required
+                                       placeholder="ap@example.com" />
+                                <div class="form-text">Where to send the receipt (single email).</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cc <span class="text-muted fw-normal">(optional)</span></label>
+                                <input type="text" name="ccEmail" class="form-control"
+                                       placeholder="payroll@example.com, you@example.com" />
+                                <div class="form-text">Comma-separated if multiple.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Subject <span class="text-muted fw-normal">(optional)</span></label>
+                                <input type="text" name="subject" class="form-control"
+                                       value="Contractor Receipt #@Model.Id — @Model.PeriodStart.ToString("MMM d") to @Model.PeriodEnd.ToString("MMM d, yyyy")" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Message <span class="text-muted fw-normal">(optional)</span></label>
+                                <textarea name="message" class="form-control" rows="3"
+                                          placeholder="e.g. Hi AP — receipt for the May 16–31 window, approved by Jane. Please process this pay cycle."></textarea>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label fw-semibold d-block">Attach</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtPdf" value="pdf" />
+                                    <label class="form-check-label" for="fmtPdf">PDF</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtXlsx" value="xlsx" />
+                                    <label class="form-check-label" for="fmtXlsx">Excel (XLSX)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtBoth" value="both" checked />
+                                    <label class="form-check-label" for="fmtBoth">Both</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-send me-1"></i>Send
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
 
     <!-- Invoice card -->
     <div class="invoice-card">

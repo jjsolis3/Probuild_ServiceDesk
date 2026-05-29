@@ -581,6 +581,14 @@
                                        class="ap-btn ap-btn-view">
                                         <i class="bi bi-eye"></i>View
                                     </a>
+                                    @if (receipt.Status != "Draft")
+                                    {
+                                        <button type="button" class="ap-btn ap-btn-view"
+                                                onclick="openShareModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))', '@receipt.PeriodStart.ToString("MMM d")', '@receipt.PeriodEnd.ToString("MMM d, yyyy")')"
+                                                title="Email this receipt">
+                                            <i class="bi bi-send"></i>Share
+                                        </button>
+                                    }
                                 </div>
                             </td>
                         </tr>
@@ -719,6 +727,68 @@
     </div>
 </div>
 
+@* ── Share Receipt Modal ──────────────────────────────────────────────────── *@
+<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#0d6efd;color:#fff;">
+                <h5 class="modal-title" id="shareModalLabel">
+                    <i class="bi bi-send me-2"></i>Share Receipt <span id="shareReceiptNum"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="shareForm" asp-action="ShareReceipt" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="shareReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Forward <strong id="shareContractorName"></strong>'s receipt to Accounts Payable
+                        or any other recipient. The PDF and/or XLSX is attached automatically.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">To <span class="text-danger">*</span></label>
+                        <input type="email" name="toEmail" class="form-control" required placeholder="ap@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Cc <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="ccEmail" class="form-control" placeholder="payroll@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Subject</label>
+                        <input type="text" name="subject" id="shareSubject" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Message <span class="text-muted fw-normal">(optional)</span></label>
+                        <textarea name="message" class="form-control" rows="3"
+                                  placeholder="e.g. Approved this morning — please process in the next pay run."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold d-block">Attach</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtPdf" value="pdf" />
+                            <label class="form-check-label" for="shareFmtPdf">PDF</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtXlsx" value="xlsx" />
+                            <label class="form-check-label" for="shareFmtXlsx">Excel</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtBoth" value="both" checked />
+                            <label class="form-check-label" for="shareFmtBoth">Both</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i>Send
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @* ── Reject Modal ─────────────────────────────────────────────────────────── *@
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -757,6 +827,19 @@
 
 @section Scripts {
 <script>
+function openShareModal(id, name, periodStart, periodEnd) {
+    document.getElementById('shareReceiptId').value = id;
+    document.getElementById('shareReceiptNum').textContent = '#' + id;
+    document.getElementById('shareContractorName').textContent = name;
+    document.getElementById('shareSubject').value =
+        'Contractor Receipt #' + id + ' — ' + name + ' — ' + periodStart + ' to ' + periodEnd;
+    // The asp-action="ShareReceipt" tag-helper renders /AdminPayroll/ShareReceipt
+    // and the hidden 'id' is sent in the form body. Refresh the form's action
+    // url so the receipt id is also in the route for clarity.
+    var form = document.getElementById('shareForm');
+    form.action = form.action.replace(/\/ShareReceipt(\/\d+)?$/, '/ShareReceipt/' + id);
+    new bootstrap.Modal(document.getElementById('shareModal')).show();
+}
 function openApproveModal(id, name) {
     document.getElementById('approveReceiptId').value = id;
     document.getElementById('approveContractorName').textContent = name;
