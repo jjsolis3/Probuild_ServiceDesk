@@ -223,10 +223,54 @@
 
     /* Print */
     @@media print {
-        .no-print { display: none !important; }
-        body { background: #fff !important; }
-        .invoice-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+        /* Hide the Jobick admin chrome that bleeds into the print output
+           when the user hits the browser Print button. The page uses
+           _Layout.cshtml whose top-level structure is:
+             .nav-header (brand bar)
+             .header     (search/profile bar)
+             .dlabnav    (left sidebar nav)
+             .content-body (main content — what we want)
+             .footer     (footer strip)
+           Only .content-body should survive, and even there we strip
+           padding/background so the receipt card sits flush on the page. */
+        .nav-header, .header, .dlabnav, .footer,
+        .modal-backdrop,
+        .no-print {
+            display: none !important;
+        }
+        body, html {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        /* The Jobick wrapper indents .content-body to make room for the
+           sidebar — once the sidebar is hidden, drop the indent so the
+           receipt uses the full printable width. */
+        #main-wrapper, .content-body, .container-fluid, .container {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        .receipt-page {
+            margin: 0 !important;
+            padding: 8px !important;
+        }
+        .invoice-card {
+            box-shadow: none !important;
+            border: 1px solid #ccc !important;
+            page-break-inside: avoid;
+        }
         .invoice-table tbody tr:hover { background: inherit; }
+        /* Force colour on the status badge / accents in print — Chrome
+           strips background colours otherwise. */
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        /* Avoid splitting a single time-entry row across pages. */
+        .invoice-table tr { page-break-inside: avoid; }
+        @@page { margin: 0.5in; }
     }
 </style>
 }
