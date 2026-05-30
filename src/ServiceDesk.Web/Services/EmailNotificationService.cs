@@ -923,22 +923,48 @@ public class EmailNotificationService
             ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
             : "Contractor";
 
-        // Notify every active Admin with an email on file — a single
-        // admin used to be the recipient, which silently dropped the
-        // notification whenever that admin was out of office. The
-        // store-ops notification pattern (per-recipient send + log) is
-        // mirrored here so each admin's delivery success/failure is
-        // tracked independently.
-        var admins = await _context.PortalUsers
-            .Include(u => u.Role)
-            .Where(u => u.IsActive
-                     && u.Role != null && u.Role.Name == "Admin"
-                     && !string.IsNullOrEmpty(u.Email))
+        // Recipients are resolved from the PayrollNotificationRecipients
+        // configuration table — admin/HR/owner/AP can each be added
+        // individually, mixing portal users with free-form external
+        // emails. When the table is empty (fresh install or admin hasn't
+        // configured it yet) we fall back to "every active Admin" so
+        // notifications never silently disappear.
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
             .ToListAsync();
 
-        if (admins.Count == 0)
+        var recipients = configured
+            .Select(r =>
+            {
+                // Linked portal user wins — picks up rename/email change
+                // without us having to sync.
+                var email = r.PortalUser?.Email ?? r.Email;
+                var name  = r.PortalUser?.FullName
+                            ?? r.DisplayName
+                            ?? r.Email;
+                return (Email: email, Name: name);
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
         {
-            _logger.LogWarning("[Payroll] No Admin users found to notify on receipt #{Id} submit.", receipt.Id);
+            // Fallback: every active Admin with an email on file.
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive
+                         && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+
+        if (recipients.Count == 0)
+        {
+            _logger.LogWarning("[Payroll] No recipients configured (and no active Admins) — receipt #{Id} submit notification skipped.", receipt.Id);
             return;
         }
 
@@ -963,17 +989,17 @@ public class EmailNotificationService
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
 
-        foreach (var admin in admins)
+        foreach (var (email, name) in recipients)
         {
             try
             {
-                await _gmailApiService.SendEmailViaGmailApi(config, _context, admin.Email!, subject, htmlBody, null, null, null);
-                await LogNotificationAsync("PayrollSubmitted", admin.Email!, admin.FullName, subject, null, true);
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("PayrollSubmitted", email, name, subject, null, true);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Payroll] Failed to notify admin {Email} of receipt #{Id} submit", admin.Email, receipt.Id);
-                await LogNotificationAsync("PayrollSubmitted", admin.Email!, admin.FullName, subject, null, false, ex.Message);
+                _logger.LogError(ex, "[Payroll] Failed to notify {Email} of receipt #{Id} submit", email, receipt.Id);
+                await LogNotificationAsync("PayrollSubmitted", email, name, subject, null, false, ex.Message);
             }
         }
     }

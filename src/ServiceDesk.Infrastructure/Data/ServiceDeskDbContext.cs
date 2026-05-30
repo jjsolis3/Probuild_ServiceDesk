@@ -89,6 +89,7 @@ public class ServiceDeskDbContext : DbContext
 
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
+    public DbSet<PayrollNotificationRecipient> PayrollNotificationRecipients => Set<PayrollNotificationRecipient>();
 
     // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
@@ -663,6 +664,19 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<PayrollReceipt>()
             .HasIndex(r => new { r.ContractorId, r.Status });
+
+        // Payroll notification recipients — explicit subscribers for the
+        // "receipt submitted" alert. SetNull on portal-user delete so a
+        // deactivated user leaves the row in place (the email field still
+        // resolves) rather than silently dropping a recipient.
+        modelBuilder.Entity<PayrollNotificationRecipient>()
+            .HasOne(r => r.PortalUser)
+            .WithMany()
+            .HasForeignKey(r => r.PortalUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollNotificationRecipient>()
+            .HasIndex(r => r.Email);
 
         // LicenseSeat -> SoftwareLicense (cascade)
         modelBuilder.Entity<LicenseSeat>()

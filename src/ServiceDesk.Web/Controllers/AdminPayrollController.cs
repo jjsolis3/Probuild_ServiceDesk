@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
+using System.Security.Claims;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -353,5 +355,135 @@ public class AdminPayrollController : Controller
             ? $"Receipt #{receipt.Id} sent to {toEmail}."
             : "Email send failed. Check the Email Activity log for details.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // ── Notification recipients management ────────────────────────────────
+    //
+    // Lets an admin curate exactly who receives the "receipt submitted"
+    // email. Useful when the alert should go to HR or AP rather than to
+    // every admin. Empty list falls back to "all admins" — see
+    // EmailNotificationService.NotifyReceiptSubmittedAsync.
+
+    // GET /AdminPayroll/NotificationRecipients
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> NotificationRecipients()
+    {
+        var recipients = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .OrderByDescending(r => r.IsActive)
+            .ThenBy(r => r.DisplayName ?? (r.PortalUser != null ? r.PortalUser.FirstName : r.Email))
+            .ToListAsync();
+
+        // For the "Add from portal user" dropdown — active users only,
+        // excluding anyone already on the recipient list.
+        var existingPortalIds = recipients
+            .Where(r => r.PortalUserId.HasValue)
+            .Select(r => r.PortalUserId!.Value)
+            .ToHashSet();
+
+        var portalCandidates = await _context.PortalUsers
+            .Include(u => u.Role)
+            .Where(u => u.IsActive && !string.IsNullOrEmpty(u.Email)
+                     && !existingPortalIds.Contains(u.Id))
+            .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+            .ToListAsync();
+
+        ViewBag.PortalCandidates = portalCandidates;
+        return View(recipients);
+    }
+
+    // POST /AdminPayroll/AddNotificationRecipient
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddNotificationRecipient(int? portalUserId, string? email, string? displayName)
+    {
+        var addedBy = int.TryParse(User.FindFirstValue("PortalUserId"), out var pid) ? pid : (int?)null;
+
+        if (portalUserId.HasValue)
+        {
+            var user = await _context.PortalUsers.FindAsync(portalUserId.Value);
+            if (user == null || string.IsNullOrEmpty(user.Email))
+            {
+                TempData["Error"] = "Selected user has no email on file.";
+                return RedirectToAction(nameof(NotificationRecipients));
+            }
+
+            var dupe = await _context.PayrollNotificationRecipients
+                .AnyAsync(r => r.PortalUserId == user.Id);
+            if (dupe)
+            {
+                TempData["Error"] = $"{user.FirstName} {user.LastName} is already on the recipient list.";
+                return RedirectToAction(nameof(NotificationRecipients));
+            }
+
+            _context.PayrollNotificationRecipients.Add(new PayrollNotificationRecipient
+            {
+                PortalUserId = user.Id,
+                Email = user.Email,
+                DisplayName = $"{user.FirstName} {user.LastName}",
+                IsActive = true,
+                AddedByPortalUserId = addedBy
+            });
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"{user.FirstName} {user.LastName} will receive payroll receipt notifications.";
+            return RedirectToAction(nameof(NotificationRecipients));
+        }
+
+        // External email path
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            TempData["Error"] = "Provide either a portal user or an email address.";
+            return RedirectToAction(nameof(NotificationRecipients));
+        }
+
+        var normalized = email.Trim();
+        var existing = await _context.PayrollNotificationRecipients
+            .AnyAsync(r => r.PortalUserId == null && r.Email == normalized);
+        if (existing)
+        {
+            TempData["Error"] = $"{normalized} is already on the recipient list.";
+            return RedirectToAction(nameof(NotificationRecipients));
+        }
+
+        _context.PayrollNotificationRecipients.Add(new PayrollNotificationRecipient
+        {
+            PortalUserId = null,
+            Email = normalized,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+            IsActive = true,
+            AddedByPortalUserId = addedBy
+        });
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"{normalized} will receive payroll receipt notifications.";
+        return RedirectToAction(nameof(NotificationRecipients));
+    }
+
+    // POST /AdminPayroll/ToggleNotificationRecipient/{id}
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleNotificationRecipient(int id)
+    {
+        var r = await _context.PayrollNotificationRecipients.FindAsync(id);
+        if (r == null) return NotFound();
+        r.IsActive = !r.IsActive;
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Recipient {(r.IsActive ? "enabled" : "paused")}.";
+        return RedirectToAction(nameof(NotificationRecipients));
+    }
+
+    // POST /AdminPayroll/RemoveNotificationRecipient/{id}
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveNotificationRecipient(int id)
+    {
+        var r = await _context.PayrollNotificationRecipients.FindAsync(id);
+        if (r == null) return NotFound();
+        _context.PayrollNotificationRecipients.Remove(r);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = "Recipient removed.";
+        return RedirectToAction(nameof(NotificationRecipients));
     }
 }

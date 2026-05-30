@@ -1,0 +1,232 @@
+@model IEnumerable<ServiceDesk.Core.Models.PayrollNotificationRecipient>
+@{
+    ViewData["Title"] = "Payroll Notification Recipients";
+    var candidates = ViewBag.PortalCandidates as IEnumerable<ServiceDesk.Core.Models.PortalUser> ?? Enumerable.Empty<ServiceDesk.Core.Models.PortalUser>();
+    var active   = Model.Count(r => r.IsActive);
+    var paused   = Model.Count(r => !r.IsActive);
+}
+
+<div class="container-fluid px-4 py-4">
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle me-2"></i>@TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>@TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-bell me-2 text-primary"></i>Payroll Notification Recipients</h2>
+            <p class="text-muted mb-0">
+                Choose who gets the email when a contractor submits a payroll receipt.
+                Mix portal users (HR, owners, admins) with external addresses (AP, payroll vendor).
+            </p>
+        </div>
+        <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Back to Payroll
+        </a>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>No recipients configured.</strong>
+            While this list is empty, the alert falls back to every active <em>Admin</em> user.
+            Add at least one recipient below to take control.
+        </div>
+    }
+    else
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-auto">
+                <div class="border rounded p-2 px-3 bg-light">
+                    <div class="small text-muted">Active</div>
+                    <div class="fs-4 fw-bold text-success">@active</div>
+                </div>
+            </div>
+            <div class="col-auto">
+                <div class="border rounded p-2 px-3 bg-light">
+                    <div class="small text-muted">Paused</div>
+                    <div class="fs-4 fw-bold text-secondary">@paused</div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Recipients table -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-people me-2"></i>Current Recipients</h5>
+        </div>
+        <div class="card-body p-0">
+            @if (!Model.Any())
+            {
+                <div class="p-4 text-center text-muted">
+                    Nothing here yet — add a portal user or external email below.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Source</th>
+                                <th>Added</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in Model)
+                            {
+                                var name = r.PortalUser != null
+                                    ? $"{r.PortalUser.FirstName} {r.PortalUser.LastName}"
+                                    : (r.DisplayName ?? "—");
+                                var emailDisplay = r.PortalUser?.Email ?? r.Email;
+                                <tr class="@(r.IsActive ? "" : "table-secondary")">
+                                    <td>
+                                        <strong>@name</strong>
+                                    </td>
+                                    <td><code class="small">@emailDisplay</code></td>
+                                    <td>
+                                        @if (r.PortalUser != null)
+                                        {
+                                            <span class="badge bg-primary-subtle text-primary">
+                                                <i class="bi bi-person-badge me-1"></i>Portal User
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info-subtle text-info">
+                                                <i class="bi bi-envelope me-1"></i>External
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="small text-muted">@r.CreatedDate.ToString("MMM d, yyyy")</td>
+                                    <td class="text-center">
+                                        @if (r.IsActive)
+                                        {
+                                            <span class="badge bg-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Paused</span>
+                                        }
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <form asp-action="ToggleNotificationRecipient" asp-route-id="@r.Id" method="post" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button class="btn btn-sm btn-outline-secondary" type="submit"
+                                                    title="@(r.IsActive ? "Pause notifications" : "Resume notifications")">
+                                                <i class="bi bi-@(r.IsActive ? "pause" : "play")"></i>
+                                            </button>
+                                        </form>
+                                        <form asp-action="RemoveNotificationRecipient" asp-route-id="@r.Id" method="post"
+                                              class="d-inline"
+                                              onsubmit="return confirm('Remove @name from the notification list?');">
+                                            @Html.AntiForgeryToken()
+                                            <button class="btn btn-sm btn-outline-danger" type="submit" title="Remove">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Add recipient panels -->
+    <div class="row g-3">
+
+        <!-- Pick from portal users -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-person-plus me-2 text-primary"></i>Add a Portal User</h6>
+                </div>
+                <div class="card-body">
+                    @if (!candidates.Any())
+                    {
+                        <p class="text-muted small mb-0">
+                            Every active portal user with an email is already on the list.
+                        </p>
+                    }
+                    else
+                    {
+                        <form asp-action="AddNotificationRecipient" method="post">
+                            @Html.AntiForgeryToken()
+                            <div class="mb-3">
+                                <label class="form-label">Portal User</label>
+                                <select name="portalUserId" class="form-select" required>
+                                    <option value="">— Choose a user —</option>
+                                    @foreach (var u in candidates)
+                                    {
+                                        var role = u.Role?.Name ?? "User";
+                                        <option value="@u.Id">@u.FirstName @u.LastName  ·  @u.Email  ·  @role</option>
+                                    }
+                                </select>
+                                <div class="form-text">
+                                    Email and name auto-update if the user is renamed later.
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-plus-lg me-1"></i>Add User
+                            </button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Add external email -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-envelope-plus me-2 text-info"></i>Add an External Email</h6>
+                </div>
+                <div class="card-body">
+                    <form asp-action="AddNotificationRecipient" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="mb-2">
+                            <label class="form-label">Display Name <span class="text-muted small fw-normal">(optional)</span></label>
+                            <input type="text" name="displayName" class="form-control" placeholder="e.g. Accounts Payable" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email <span class="text-danger">*</span></label>
+                            <input type="email" name="email" class="form-control" required placeholder="ap@vendor.com" />
+                            <div class="form-text">For HR, AP, or payroll vendors who don't have portal access.</div>
+                        </div>
+                        <button type="submit" class="btn btn-info btn-sm text-white">
+                            <i class="bi bi-plus-lg me-1"></i>Add Email
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-secondary mt-4 small mb-0">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>Tip:</strong> The notification itself is still gated by the global
+        <em>NotifyOnPayrollSubmit</em> setting — keep that on if you want any of these
+        recipients to receive emails.
+    </div>
+</div>

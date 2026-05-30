@@ -287,10 +287,19 @@
         <h1 class="ap-title"><i class="bi bi-briefcase-fill me-2" style="color:var(--ap-blue);"></i>Contractor Payroll</h1>
         <p class="ap-sub">Review, approve and mark payment for submitted contractor invoices</p>
     </div>
-    <button type="button" class="btn btn-outline-primary"
-            data-bs-toggle="modal" data-bs-target="#weeklyDigestModal" title="Email each contractor their last 7 days of logged hours">
-        <i class="bi bi-envelope-paper me-1"></i> Send Weekly Digest
-    </button>
+    <div class="d-flex gap-2 flex-wrap">
+        @if (User.IsInRole("Admin"))
+        {
+            <a asp-action="NotificationRecipients" class="btn btn-outline-secondary"
+               title="Pick who receives the 'receipt submitted' email">
+                <i class="bi bi-bell me-1"></i>Notification Recipients
+            </a>
+        }
+        <button type="button" class="btn btn-outline-primary"
+                data-bs-toggle="modal" data-bs-target="#weeklyDigestModal" title="Email each contractor their last 7 days of logged hours">
+            <i class="bi bi-envelope-paper me-1"></i> Send Weekly Digest
+        </button>
+    </div>
 </div>
 
 @* ── KPI tiles ───────────────────────────────────────────────────────── *@
