@@ -367,6 +367,18 @@ public class ServiceDeskDbContext : DbContext
             .Property(e => e.HourlyRate)
             .HasPrecision(10, 2);
 
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.EmergencyHourlyRate)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.MonthlyRetainerAmount)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.MonthlyRetainerHoursIncluded)
+            .HasPrecision(10, 2);
+
         // Ticket -> Branch relationship (location snapshot)
         modelBuilder.Entity<Ticket>()
             .HasOne(t => t.Branch)
@@ -620,6 +632,34 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<PayrollReceipt>()
             .Property(r => r.TotalAmount)
             .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalStandardHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalEmergencyHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRetainerHoursApplied)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRetainerAmountApplied)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.EmergencyRateSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.MonthlyRetainerAmountSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.MonthlyRetainerHoursSnapshot)
+            .HasPrecision(10, 2);
 
         modelBuilder.Entity<PayrollReceipt>()
             .HasIndex(r => new { r.ContractorId, r.Status });
