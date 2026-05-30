@@ -923,16 +923,22 @@ public class EmailNotificationService
             ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
             : "Contractor";
 
-        // Find first Admin user with an email
-        var admin = await _context.PortalUsers
+        // Notify every active Admin with an email on file — a single
+        // admin used to be the recipient, which silently dropped the
+        // notification whenever that admin was out of office. The
+        // store-ops notification pattern (per-recipient send + log) is
+        // mirrored here so each admin's delivery success/failure is
+        // tracked independently.
+        var admins = await _context.PortalUsers
             .Include(u => u.Role)
-            .Where(u => u.Role != null && u.Role.Name == "Admin" && !string.IsNullOrEmpty(u.Email))
-            .OrderBy(u => u.Id)
-            .FirstOrDefaultAsync();
+            .Where(u => u.IsActive
+                     && u.Role != null && u.Role.Name == "Admin"
+                     && !string.IsNullOrEmpty(u.Email))
+            .ToListAsync();
 
-        if (admin == null)
+        if (admins.Count == 0)
         {
-            _logger.LogWarning("[Payroll] No Admin user found to notify on receipt #{Id} submit.", receipt.Id);
+            _logger.LogWarning("[Payroll] No Admin users found to notify on receipt #{Id} submit.", receipt.Id);
             return;
         }
 
@@ -956,15 +962,19 @@ public class EmailNotificationService
             <p>Open the <strong>Contractor Payroll</strong> page in ServiceSphere to review, approve, or reject this receipt.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-        try
+
+        foreach (var admin in admins)
         {
-            await _gmailApiService.SendEmailViaGmailApi(config, _context, admin.Email, subject, htmlBody, null, null, null);
-            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Payroll] Failed to notify admin of receipt #{Id} submit", receipt.Id);
-            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, false, ex.Message);
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, admin.Email!, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("PayrollSubmitted", admin.Email!, admin.FullName, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed to notify admin {Email} of receipt #{Id} submit", admin.Email, receipt.Id);
+                await LogNotificationAsync("PayrollSubmitted", admin.Email!, admin.FullName, subject, null, false, ex.Message);
+            }
         }
     }
 
