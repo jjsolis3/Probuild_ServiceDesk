@@ -54,7 +54,7 @@ public class PayrollReceiptPdfService
             ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
             : "(unknown)";
         var contractorEmail = receipt.Contractor?.Email ?? "";
-        var contractorTitle = receipt.Contractor?.Title ?? "";
+        var contractorTitle = receipt.Contractor?.JobTitle ?? "";
 
         var brandBlue  = "#0d6efd";
         var brandNavy  = "#0b2545";
@@ -281,7 +281,7 @@ public class PayrollReceiptPdfService
         return doc.GeneratePdf();
     }
 
-    private static void TotalTile(QuestPDF.Infrastructure.RowDescriptor r,
+    private static void TotalTile(QuestPDF.Fluent.RowDescriptor r,
         string label, string value, string bg, string fg, bool emphasize = false)
     {
         r.RelativeItem().PaddingHorizontal(4).Background(bg).Padding(8).Column(c =>
