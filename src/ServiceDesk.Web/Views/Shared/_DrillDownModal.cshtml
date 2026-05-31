@@ -1,0 +1,213 @@
+@*
+    Reusable drill-down modal for report KPI cards / leaderboard rows.
+    Renders the modal markup once + ships a tiny global API:
+
+      window.ssDrill.show({
+          title:    "Resolved by Jane Doe",
+          url:      "/Reports/TicketsForAgent?agentId=12&scope=resolved",
+          type:     "tickets" | "surveys",
+          linkUrl:  "/Tickets?assignee=12" // optional "Open in full list" button
+      });
+
+    The modal table uses DataTables for column sort + pagination so the
+    user can dig into hundreds of rows without leaving the report page.
+    Drop one <partial name="_DrillDownModal" /> at the bottom of any
+    report view; everything else is wired by data-attributes on the
+    clickable cards / rows.
+*@
+
+<div class="modal fade" id="ssDrillModal" tabindex="-1" aria-labelledby="ssDrillModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ssDrillModalLabel">Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="ssDrillLoading" class="text-center text-muted py-5">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div>Loading…</div>
+                </div>
+                <div id="ssDrillError" class="text-center text-danger py-4" style="display:none;"></div>
+                <div id="ssDrillTableWrap" class="p-3" style="display:none;">
+                    <table id="ssDrillTable" class="table table-sm table-hover w-100" style="width:100%;">
+                        <thead class="table-light"></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="ssDrillFullLink" class="btn btn-outline-primary" target="_blank" style="display:none;">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>Open in full list
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Reusable hover/cursor cues for clickable report cards + rows. */
+    .ss-drill-card,
+    .ss-drill-row {
+        cursor: pointer;
+        transition: transform .12s, box-shadow .12s, background .12s;
+    }
+    .ss-drill-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
+    .ss-drill-row:hover {
+        background: #f3f6ff;
+    }
+</style>
+
+<script>
+(function () {
+    var modalEl    = document.getElementById('ssDrillModal');
+    if (!modalEl) return;
+    var modal      = new bootstrap.Modal(modalEl);
+    var titleEl    = document.getElementById('ssDrillModalLabel');
+    var loadingEl  = document.getElementById('ssDrillLoading');
+    var errorEl    = document.getElementById('ssDrillError');
+    var wrapEl     = document.getElementById('ssDrillTableWrap');
+    var tableEl    = document.getElementById('ssDrillTable');
+    var fullLink   = document.getElementById('ssDrillFullLink');
+    var dt         = null;
+
+    function esc(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Pre-defined column profiles. Each entry is { th, render(row) }.
+    // Sorting/pagination is taken care of by DataTables once init runs.
+    var profiles = {
+        tickets: [
+            { th: 'ID',          render: function (r) {
+                return '<a href="/Tickets/Edit/' + r.id + '" target="_blank">#' + r.id + '</a>'; } },
+            { th: 'Title',       render: function (r) { return esc(r.title); } },
+            { th: 'Category',    render: function (r) { return esc(r.category); } },
+            { th: 'Priority',    render: function (r) {
+                var c = { Low:'bg-info', Medium:'bg-primary', High:'bg-warning text-dark', Critical:'bg-danger' }[r.priority] || 'bg-secondary';
+                return '<span class="badge ' + c + '">' + esc(r.priority) + '</span>'; } },
+            { th: 'Status',      render: function (r) {
+                var c = { Open:'bg-primary', InProgress:'bg-warning text-dark', Resolved:'bg-success', Closed:'bg-secondary' }[r.status] || 'bg-secondary';
+                var display = r.status === 'InProgress' ? 'In Progress' : r.status;
+                return '<span class="badge ' + c + '">' + esc(display) + '</span>'; } },
+            { th: 'Requester',   render: function (r) { return esc(r.submittedBy); } },
+            { th: 'Assignee',    render: function (r) { return esc(r.assignedTo || 'Unassigned'); } },
+            { th: 'Created',     render: function (r) { return esc(r.created); } },
+        ],
+        surveys: [
+            { th: 'Ticket',      render: function (r) {
+                return '<a href="/Tickets/Edit/' + r.ticketId + '" target="_blank">#' + r.ticketId + '</a>'; } },
+            { th: 'Score',       render: function (r) {
+                var color = r.score >= 4 ? '#16a34a' : (r.score === 3 ? '#f59e0b' : '#dc2626');
+                var stars = '★'.repeat(r.score) + '☆'.repeat(5 - r.score);
+                return '<span style="color:' + color + ';font-weight:700;letter-spacing:-1px;">' + stars + '</span>'; } },
+            { th: 'Category',    render: function (r) { return esc(r.category); } },
+            { th: 'Assignee',    render: function (r) { return esc(r.assignee || '—'); } },
+            { th: 'Title',       render: function (r) { return esc(r.title || ''); } },
+            { th: 'Feedback',    render: function (r) {
+                if (!r.feedback) return '<span class="text-muted">—</span>';
+                var t = r.feedback.length > 120 ? r.feedback.substring(0, 120) + '…' : r.feedback;
+                return '<span title="' + esc(r.feedback) + '">' + esc(t) + '</span>'; } },
+            { th: 'Completed',   render: function (r) { return esc(r.completedDate); } },
+        ]
+    };
+
+    function destroyDt() {
+        if (dt) { try { dt.destroy(); } catch (e) { /* ignore */ } dt = null; }
+        tableEl.querySelector('thead').innerHTML = '';
+        tableEl.querySelector('tbody').innerHTML = '';
+    }
+
+    function renderRows(data, type) {
+        var cols = profiles[type];
+        if (!cols) {
+            errorEl.textContent = 'Unknown drill-down type: ' + type;
+            errorEl.style.display = '';
+            return;
+        }
+        if (!data || data.length === 0) {
+            wrapEl.style.display = '';
+            tableEl.querySelector('thead').innerHTML =
+                '<tr>' + cols.map(function (c) { return '<th>' + esc(c.th) + '</th>'; }).join('') + '</tr>';
+            tableEl.querySelector('tbody').innerHTML =
+                '<tr><td colspan="' + cols.length + '" class="text-center text-muted py-4">No matching rows found.</td></tr>';
+            return;
+        }
+        // Build the table HTML in one pass — DataTables then takes over.
+        var thead = '<tr>' + cols.map(function (c) { return '<th>' + esc(c.th) + '</th>'; }).join('') + '</tr>';
+        var tbody = data.map(function (row) {
+            return '<tr>' + cols.map(function (c) { return '<td>' + c.render(row) + '</td>'; }).join('') + '</tr>';
+        }).join('');
+        tableEl.querySelector('thead').innerHTML = thead;
+        tableEl.querySelector('tbody').innerHTML = tbody;
+        wrapEl.style.display = '';
+
+        // Initialize DataTables with sane defaults — paginated, sortable,
+        // search box at top right, 10 rows/page (changeable). Destroy any
+        // prior instance first so consecutive opens don't double-init.
+        if (window.jQuery && jQuery.fn && jQuery.fn.DataTable) {
+            dt = jQuery(tableEl).DataTable({
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+                order: [],
+                language: { search: 'Filter:', emptyTable: 'No matching rows found.' }
+            });
+        }
+    }
+
+    window.ssDrill = {
+        show: function (opts) {
+            opts = opts || {};
+            titleEl.textContent = opts.title || 'Details';
+            errorEl.style.display = '';
+            errorEl.style.display = 'none';
+            wrapEl.style.display = 'none';
+            loadingEl.style.display = '';
+            destroyDt();
+
+            if (opts.linkUrl) {
+                fullLink.href = opts.linkUrl;
+                fullLink.style.display = '';
+            } else {
+                fullLink.style.display = 'none';
+            }
+
+            modal.show();
+
+            fetch(opts.url, { credentials: 'same-origin' })
+                .then(function (r) { if (!r.ok) throw new Error('Request failed (' + r.status + ')'); return r.json(); })
+                .then(function (data) {
+                    loadingEl.style.display = 'none';
+                    renderRows(data, opts.type || 'tickets');
+                })
+                .catch(function (err) {
+                    loadingEl.style.display = 'none';
+                    errorEl.textContent = err.message || 'Failed to load data.';
+                    errorEl.style.display = '';
+                });
+        }
+    };
+
+    // Declarative wiring — any element with [data-ssdrill] is auto-clickable.
+    // The data attributes serialize the same opts the JS API takes, so views
+    // can drop a class + a few attributes without writing any JavaScript.
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('[data-ssdrill-url]');
+        if (!el) return;
+        e.preventDefault();
+        window.ssDrill.show({
+            title:   el.getAttribute('data-ssdrill-title')   || 'Details',
+            url:     el.getAttribute('data-ssdrill-url'),
+            type:    el.getAttribute('data-ssdrill-type')    || 'tickets',
+            linkUrl: el.getAttribute('data-ssdrill-link')    || null
+        });
+    });
+})();
+</script>

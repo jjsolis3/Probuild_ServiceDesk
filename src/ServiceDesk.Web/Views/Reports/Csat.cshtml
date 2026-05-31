@@ -60,7 +60,13 @@
 }
 else
 {
-    <!-- KPI Strip -->
+    @{
+        // Reused by every drill-link in this view so the modal pulls the
+        // exact slice that produced the number on screen.
+        var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+    }
+
+    <!-- KPI Strip (Promoters / Detractors are clickable) -->
     <div class="row g-3 mb-3">
         <div class="col-md-3">
             <div class="card h-100 shadow-sm">
@@ -97,7 +103,11 @@ else
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/SurveysByTone?tone=promoter&@rangeQs"
+                 data-ssdrill-title="Promoters (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                 data-ssdrill-type="surveys"
+                 title="Click to see the promoter surveys">
                 <div class="card-body text-center">
                     <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Promoters</div>
                     <div style="font-size:2.4rem;font-weight:700;color:#16a34a;line-height:1;">@promoters</div>
@@ -106,7 +116,11 @@ else
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/SurveysByTone?tone=detractor&@rangeQs"
+                 data-ssdrill-title="Detractors (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                 data-ssdrill-type="surveys"
+                 title="Click to see the detractor surveys">
                 <div class="card-body text-center">
                     <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Detractors</div>
                     <div style="font-size:2.4rem;font-weight:700;color:#dc2626;line-height:1;">@detractors</div>
@@ -184,7 +198,11 @@ else
                                 hasCats = true;
                                 var pct = Math.Round(((double)c.Avg / 5.0) * 100);
                                 var color = c.Avg >= 4.0 ? "#16a34a" : (c.Avg >= 3.0 ? "#f59e0b" : "#dc2626");
-                                <tr>
+                                <tr class="ss-drill-row"
+                                    data-ssdrill-url="/Reports/SurveysByCategory?category=@c.Name&@rangeQs"
+                                    data-ssdrill-title="@c.Name surveys (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                    data-ssdrill-type="surveys"
+                                    title="Click to see surveys in this category">
                                     <td style="width:38%;" class="small">@c.Name</td>
                                     <td>
                                         <div class="d-flex align-items-center gap-2">
@@ -223,7 +241,11 @@ else
                                 hasAgents = true;
                                 var pct = Math.Round(((double)a.Avg / 5.0) * 100);
                                 var color = a.Avg >= 4.0 ? "#16a34a" : (a.Avg >= 3.0 ? "#f59e0b" : "#dc2626");
-                                <tr>
+                                <tr class="ss-drill-row"
+                                    data-ssdrill-url="/Reports/SurveysForAgent?agentId=@a.AgentId&@rangeQs"
+                                    data-ssdrill-title="@a.Name — Surveys (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                    data-ssdrill-type="surveys"
+                                    title="Click to see this agent's surveys">
                                     <td style="width:38%;" class="small">@a.Name</td>
                                     <td>
                                         <div class="d-flex align-items-center gap-2">
@@ -293,6 +315,8 @@ else
         </div>
     </div>
 }
+
+@await Html.PartialAsync("_DrillDownModal")
 
 @section Styles {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />

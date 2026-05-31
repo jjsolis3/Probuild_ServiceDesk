@@ -41,10 +41,21 @@
 }
 else
 {
-    <!-- Fleet KPIs -->
+    @{
+        // Pre-format date params once so every drill-link uses the same
+        // window as the parent report. yyyy-MM-dd matches the controller's
+        // DateTime? binding without ambiguity.
+        var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+    }
+
+    <!-- Fleet KPIs (clickable → drill modal) -->
     <div class="row g-3 mb-3">
         <div class="col-md-3">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/TicketsResolvedInRange?@rangeQs"
+                 data-ssdrill-title="Resolved Tickets (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                 data-ssdrill-type="tickets"
+                 title="Click to see the resolved tickets">
                 <div class="card-body text-center">
                     <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Resolved</div>
                     <div style="font-size:2.4rem;font-weight:700;color:#16a34a;line-height:1;">@totalResolved</div>
@@ -53,7 +64,11 @@ else
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/TicketsCurrentlyOpen"
+                 data-ssdrill-title="Currently Open Tickets"
+                 data-ssdrill-type="tickets"
+                 title="Click to see the open tickets">
                 <div class="card-body text-center">
                     <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Currently Open</div>
                     <div style="font-size:2.4rem;font-weight:700;color:#0d6efd;line-height:1;">@totalOpen</div>
@@ -133,23 +148,37 @@ else
                                     <a asp-controller="Tickets" asp-action="Index" asp-route-assignee="@a.AgentId"
                                        class="text-decoration-none fw-semibold">@a.Name</a>
                                 </td>
-                                <td class="text-end fw-semibold" style="color:#16a34a;">@resolved</td>
-                                <td class="text-end">@a.Open</td>
+                                <td class="text-end fw-semibold ss-drill-row" style="color:#16a34a;"
+                                    data-ssdrill-url="/Reports/TicketsForAgent?agentId=@a.AgentId&scope=resolved&@rangeQs"
+                                    data-ssdrill-title="@a.Name — Resolved (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                    data-ssdrill-type="tickets"
+                                    title="Click to see the resolved tickets">@resolved</td>
+                                <td class="text-end ss-drill-row"
+                                    data-ssdrill-url="/Reports/TicketsForAgent?agentId=@a.AgentId&scope=open"
+                                    data-ssdrill-title="@a.Name — Currently Open"
+                                    data-ssdrill-type="tickets"
+                                    title="Click to see this agent's open tickets">@a.Open</td>
                                 <td class="text-end text-muted">
                                     @(a.MttrHours == null ? "—" : ((double)a.MttrHours).ToString("0.0") + "h")
                                 </td>
-                                <td class="text-end">
-                                    @if (csat.HasValue)
-                                    {
+                                @if (csat.HasValue)
+                                {
+                                    <td class="text-end ss-drill-row"
+                                        data-ssdrill-url="/Reports/SurveysForAgent?agentId=@a.AgentId&@rangeQs"
+                                        data-ssdrill-title="@a.Name — Surveys (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                        data-ssdrill-type="surveys"
+                                        title="Click to see this agent's surveys">
                                         <span style="color:@csatColor;font-weight:600;">@csat.Value.ToString("0.0")</span>
                                         <span class="text-muted small">/5</span>
                                         <span class="text-muted small ms-1">(@csatN)</span>
-                                    }
-                                    else
-                                    {
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td class="text-end">
                                         <span class="text-muted small">no surveys</span>
-                                    }
-                                </td>
+                                    </td>
+                                }
                                 <td style="min-width:160px;">
                                     <div style="height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;">
                                         <div style="width:@(pct)%;height:100%;background:linear-gradient(90deg,#3b82f6,#1d4ed8);"></div>
@@ -170,5 +199,8 @@ else
         <em>Open</em> is the live count of in-flight tickets currently assigned (not filtered by date — gives you a "what's on their plate right now" view).
         <em>MTTR</em> = average hours from creation to resolution, computed only over tickets resolved in this window.
         <em>CSAT</em> is the avg score of surveys completed in this window for tickets the agent handled (sample size in parentheses).
+        Click any number to see the underlying tickets / surveys.
     </div>
 }
+
+@await Html.PartialAsync("_DrillDownModal")

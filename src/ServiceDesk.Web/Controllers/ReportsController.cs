@@ -293,9 +293,10 @@ public class ReportsController : Controller
         // ── By assignee (top 10 with at least 3 responses) ─────────
         var byAssignee = completed
             .Where(s => s.Ticket?.AssignedTo != null)
-            .GroupBy(s => s.Ticket!.AssignedTo!.FullName)
+            .GroupBy(s => new { Id = s.Ticket!.AssignedToId!.Value, Name = s.Ticket!.AssignedTo!.FullName })
             .Select(g => new {
-                Name     = g.Key,
+                AgentId  = g.Key.Id,
+                Name     = g.Key.Name,
                 Count    = g.Count(),
                 Avg      = Math.Round(g.Average(s => (double)s.Score!.Value), 2)
             })
@@ -799,6 +800,239 @@ public class ReportsController : Controller
             .ToList();
 
         return Json(filtered);
+    }
+
+    // ==================== Drill-down JSON endpoints for the new reports ====================
+    //
+    // Each endpoint returns a shape compatible with the matching profile
+    // in _DrillDownModal.cshtml (tickets / surveys). Range params mirror
+    // the parent report's filters so a click on a card opens exactly the
+    // slice that produced that number — no double-counting, no skew.
+
+    // GET /Reports/TicketsForAgent?agentId=12&scope=resolved&from=...&to=...
+    // scope: "resolved" → tickets the agent moved to Resolved/Closed in
+    //                     the window (matches the leaderboard Resolved cell)
+    //        "open"     → that agent's currently open tickets (live, not
+    //                     date-bounded — matches the Open cell)
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsForAgent(int agentId, string scope, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var query = _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.AssignedToId == agentId)
+            .AsQueryable();
+
+        if (string.Equals(scope, "resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t =>
+                (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+                && t.ResolvedDate.HasValue
+                && t.ResolvedDate >= rangeFrom
+                && t.ResolvedDate <= rangeTo);
+        }
+        else if (string.Equals(scope, "open", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t =>
+                t.Status != TicketStatus.Resolved
+                && t.Status != TicketStatus.Closed
+                && t.Status != TicketStatus.Cancelled);
+        }
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await query
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/SurveysForAgent?agentId=12&from=...&to=...
+    // Returns the surveys (completed, scored) for tickets the agent
+    // handled in the window. Powers the CSAT cell drill-down on the
+    // Agent leaderboard and the Top Performers row on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysForAgent(int agentId, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null
+                     && s.Ticket.AssignedToId == agentId)
+            .OrderByDescending(s => s.CompletedDate)
+            .ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString(),
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/SurveysByTone?tone=promoter|neutral|detractor&from=...&to=...
+    // Powers the Promoters / Detractors KPI cards on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysByTone(string tone, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+
+        var q = _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo);
+
+        q = (tone?.ToLowerInvariant()) switch
+        {
+            "promoter"  => q.Where(s => s.Score >= 4),
+            "neutral"   => q.Where(s => s.Score == 3),
+            "detractor" => q.Where(s => s.Score <= 2),
+            _           => q
+        };
+
+        var surveys = await q.OrderByDescending(s => s.CompletedDate).ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = s.Ticket != null ? ((Core.Enums.TicketCategory)s.Ticket.Category).ToString() : "—",
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/SurveysByCategory?category=HardwareIssue&from=...&to=...
+    // Drill-down for "Avg Score by Category" rows on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysByCategory(string category, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+
+        // Parse the category string back to its enum int for the WHERE.
+        if (!Enum.TryParse<Core.Enums.TicketCategory>(category, true, out var catEnum))
+            return Json(Array.Empty<object>());
+        var catInt = (int)catEnum;
+
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null
+                     && s.Ticket.Category == catInt)
+            .OrderByDescending(s => s.CompletedDate)
+            .ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString(),
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/TicketsResolvedInRange?from=...&to=...
+    // Fleet-wide drill — powers the Resolved KPI tile on the Agent
+    // Performance page (all agents combined).
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsResolvedInRange(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+                     && t.ResolvedDate.HasValue
+                     && t.ResolvedDate >= rangeFrom
+                     && t.ResolvedDate <= rangeTo)
+            .OrderByDescending(t => t.ResolvedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/TicketsCurrentlyOpen
+    // Fleet-wide drill — powers the Open KPI tile on the Agent
+    // Performance page. Not date-bounded by design: "what's on the
+    // queue right now."
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsCurrentlyOpen()
+    {
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
     }
 
     // ==================== STORE ORDERS REPORT ====================
