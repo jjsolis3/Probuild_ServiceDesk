@@ -67,6 +67,7 @@ builder.Services.AddScoped<PayrollCalculatorService>();
 builder.Services.AddScoped<PayrollReceiptPdfService>();
 builder.Services.AddScoped<PayrollReceiptAttachmentService>();
 builder.Services.AddScoped<PayrollActivityService>();
+builder.Services.AddScoped<BusinessDayCalculator>();
 
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();

@@ -1101,7 +1101,7 @@ public class EmailNotificationService
     /// PayrollNotificationRecipients table for routing — same audience
     /// that gets the initial submit notification.
     /// </summary>
-    public async Task SendStaleReceiptReminderAsync(Core.Models.PayrollReceipt receipt, int graceDays)
+    public async Task SendStaleReceiptReminderAsync(Core.Models.PayrollReceipt receipt, int graceDays, int? elapsedBusinessDays = null)
     {
         var config = await GetActiveConfig();
         if (config == null) return;
@@ -1110,6 +1110,11 @@ public class EmailNotificationService
         var contractorName = receipt.Contractor != null
             ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
             : "Contractor";
+
+        // Prefer the caller-supplied business-day count; fall back to the
+        // grace threshold so the email still reads sensibly if the
+        // reminder service ever invokes us without that argument.
+        var pendingBizDays = elapsedBusinessDays ?? graceDays;
 
         var configured = await _context.PayrollNotificationRecipients
             .Include(r => r.PortalUser)
@@ -1136,14 +1141,12 @@ public class EmailNotificationService
         if (recipients.Count == 0) return;
 
         var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
-        var pendingDays = receipt.SubmittedDate.HasValue
-            ? (int)(DateTime.UtcNow - receipt.SubmittedDate.Value).TotalDays
-            : graceDays;
 
-        var subject = $"Reminder: Receipt #{receipt.Id} has been awaiting approval for {pendingDays} days";
+        var dayWord = pendingBizDays == 1 ? "business day" : "business days";
+        var subject = $"Reminder: Receipt #{receipt.Id} has been awaiting approval for {pendingBizDays} {dayWord}";
 
         var innerContent = $@"<h3 style='color:#b45309;'>Receipt Awaiting Approval</h3>
-            <p>This payroll receipt has been sitting in <strong>Submitted</strong> status for <strong>{pendingDays} day{(pendingDays == 1 ? "" : "s")}</strong> — past the {graceDays}-day grace period.</p>
+            <p>This payroll receipt has been sitting in <strong>Submitted</strong> status for <strong>{pendingBizDays} {dayWord}</strong> — past the {graceDays}-business-day grace period (weekends and company holidays excluded).</p>
             <div style='background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:4px;margin:14px 0;'>
                 <strong>Action needed:</strong> open the Contractor Payroll page and approve, reject, or comment so {System.Net.WebUtility.HtmlEncode(contractorName)} knows where things stand.
             </div>

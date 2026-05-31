@@ -313,6 +313,8 @@
             <p class="text-muted small mb-3">
                 When enabled, the system will email the recipients above (or all admins, if the list is empty)
                 whenever a <strong>Submitted</strong> receipt has been waiting for approval past the grace period.
+                The grace period counts <strong>business days only</strong> — Saturdays, Sundays, and dates in
+                <a asp-controller="Settings" asp-action="Holidays">Company Holidays</a> are skipped.
                 Each receipt is reminded at most once per 24 hours until it's approved or rejected.
             </p>
             <form asp-action="SaveReminderSettings" method="post" class="row g-3 align-items-end">
@@ -327,10 +329,10 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold">Grace period (days)</label>
+                    <label class="form-label fw-semibold">Grace period (business days)</label>
                     <input type="number" class="form-control" name="reminderDays" min="1" max="30"
                            value="@(ViewBag.ReminderDays ?? 3)" />
-                    <div class="form-text">Days a receipt can sit in Submitted before reminding.</div>
+                    <div class="form-text">Weekends and company holidays don't count toward this total.</div>
                 </div>
                 <div class="col-md-4 d-flex justify-content-end">
                     <button type="submit" class="btn btn-warning">

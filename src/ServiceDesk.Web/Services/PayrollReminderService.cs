@@ -50,8 +50,9 @@ public class PayrollReminderService : BackgroundService
     private async Task RunCycleAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db    = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
-        var email = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+        var db       = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+        var email    = scope.ServiceProvider.GetRequiredService<EmailNotificationService>();
+        var calendar = scope.ServiceProvider.GetRequiredService<BusinessDayCalculator>();
 
         var enabledRaw = (await db.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "PayrollReminderEnabled", ct))?.Value;
@@ -62,7 +63,13 @@ public class PayrollReminderService : BackgroundService
             .FirstOrDefaultAsync(s => s.Key == "PayrollReminderDays", ct))?.Value;
         if (!int.TryParse(daysRaw, out var days) || days <= 0) days = 3;
 
-        var cutoff = DateTime.UtcNow.AddDays(-days);
+        // Business-day cutoff: walks back from today skipping Saturdays,
+        // Sundays, and rows in dbo.CompanyHolidays. A receipt is stale
+        // when its SubmittedDate is on or before that cutoff date — i.e.
+        // at least `days` business days have fully elapsed since submit.
+        var cutoffDate = await calendar.NBusinessDaysAgoAsync(days, DateTime.UtcNow);
+        var cutoffEndOfDay = cutoffDate.AddDays(1).AddTicks(-1);
+
         // Once-per-day throttle so a stale receipt produces a single ping
         // per cycle even though we tick hourly.
         var lastRunCutoff = DateTime.UtcNow.AddHours(-23);
@@ -71,20 +78,28 @@ public class PayrollReminderService : BackgroundService
             .Include(r => r.Contractor)
             .Where(r => r.Status == "Submitted"
                      && r.SubmittedDate.HasValue
-                     && r.SubmittedDate <= cutoff
+                     && r.SubmittedDate <= cutoffEndOfDay
                      && (r.LastReminderSentUtc == null || r.LastReminderSentUtc <= lastRunCutoff))
             .ToListAsync(ct);
 
         if (stale.Count == 0) return;
 
-        _logger.LogInformation("[PayrollReminder] {Count} stale Submitted receipt(s) to remind on.", stale.Count);
+        _logger.LogInformation("[PayrollReminder] {Count} stale Submitted receipt(s) past the {Days}-business-day cutoff ({Cutoff:yyyy-MM-dd}).",
+            stale.Count, days, cutoffDate);
 
         foreach (var receipt in stale)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                await email.SendStaleReceiptReminderAsync(receipt, days);
+                // Compute the elapsed business-day count for THIS receipt
+                // so the email body says "5 business days" not just the
+                // configured threshold of "3 business days."
+                var elapsed = receipt.SubmittedDate.HasValue
+                    ? await calendar.BusinessDaysBetweenAsync(receipt.SubmittedDate.Value, DateTime.UtcNow)
+                    : days;
+
+                await email.SendStaleReceiptReminderAsync(receipt, days, elapsed);
                 receipt.LastReminderSentUtc = DateTime.UtcNow;
             }
             catch (Exception ex)
