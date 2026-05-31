@@ -104,10 +104,12 @@
                             @if (User.Identity?.IsAuthenticated == true)
                             {
                                 <li class="nav-item dropdown" id="staffNotificationBell">
+                                    @* Inherits the navbar foreground color so it tracks
+                                       dark/light theme without needing its own override. *@
                                     <a class="nav-link position-relative px-2" href="javascript:void(0);" role="button"
                                        data-bs-toggle="dropdown" aria-expanded="false"
                                        title="Notifications">
-                                        <i class="bi bi-bell" style="font-size:1.15rem;color:rgba(255,255,255,0.9);"></i>
+                                        <i class="bi bi-bell" style="font-size:1.15rem;"></i>
                                         <span id="staffNotifBadge"
                                               class="position-absolute translate-middle badge rounded-pill bg-danger d-none"
                                               style="top:6px;left:75%;font-size:.6rem;padding:3px 5px;">0</span>
