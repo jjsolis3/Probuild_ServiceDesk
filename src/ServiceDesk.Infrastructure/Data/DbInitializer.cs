@@ -1980,7 +1980,9 @@ public static class DbInitializer
 
             // 69. Seed the reminder-cadence AppSettings — off by default so
             //     a fresh install doesn't start emailing recipients before
-            //     the admin has reviewed the list.
+            //     the admin has reviewed the list. Delivery mode defaults
+            //     to "Individual" — privacy-safe for setups that include
+            //     external recipients (AP@vendor.com, payroll bureau).
             context.Database.ExecuteSqlRaw(@"
                 IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AppSettings')
                 BEGIN
@@ -1988,6 +1990,8 @@ public static class DbInitializer
                         INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderEnabled', 'false');
                     IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollReminderDays')
                         INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderDays', '3');
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollNotificationDeliveryMode')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollNotificationDeliveryMode', 'Individual');
                 END");
 
         }

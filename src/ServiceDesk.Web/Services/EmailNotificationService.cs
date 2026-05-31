@@ -173,6 +173,79 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Resolves the configured delivery mode for payroll group-emails.
+    /// "Combined" sends one email with the first address in To and the
+    /// rest in Cc (recipients see each other and can Reply-All).
+    /// Anything else — including missing/blank — means "Individual": one
+    /// independent send per recipient, which is privacy-safe and the
+    /// default. Returns lower-case strings so callers can string-compare.
+    /// </summary>
+    private async Task<string> GetPayrollDeliveryModeAsync()
+    {
+        var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == "PayrollNotificationDeliveryMode");
+        var value = setting?.Value?.Trim().ToLowerInvariant();
+        return value == "combined" ? "combined" : "individual";
+    }
+
+    /// <summary>
+    /// Sends a payroll alert to one or more recipients, honoring the
+    /// admin-configured delivery mode. "Combined" mode makes a single
+    /// Gmail API call (first address as To, rest as Cc) but still logs
+    /// one row per recipient so the notification log stays useful when
+    /// auditing who saw what. "Individual" mode preserves the original
+    /// behavior of one send + one log row per recipient — bouncing on
+    /// recipient #3 doesn't block #4.
+    /// </summary>
+    private async Task SendToPayrollRecipientsAsync(
+        EmailConfiguration config,
+        IList<(string Email, string Name)> recipients,
+        string subject,
+        string htmlBody,
+        string logType)
+    {
+        if (recipients.Count == 0) return;
+
+        var mode = await GetPayrollDeliveryModeAsync();
+
+        if (mode == "combined" && recipients.Count > 1)
+        {
+            var primary = recipients[0];
+            var ccList  = string.Join(", ", recipients.Skip(1).Select(r => r.Email));
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(
+                    config, _context, primary.Email, subject, htmlBody,
+                    ticketId: null, inReplyTo: null, references: null, ccEmail: ccList);
+                // Log each recipient — both To and Cc — so the activity
+                // log captures the full audience.
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Combined send failed for {LogType} ({Count} recipients)", logType, recipients.Count);
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, false, ex.Message);
+            }
+            return;
+        }
+
+        foreach (var (email, name) in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync(logType, email, name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed to send {LogType} to {Email}", logType, email);
+                await LogNotificationAsync(logType, email, name, subject, null, false, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
     /// Sends a confirmation email when a new ticket is created from an inbound email.
     /// Includes the [#SS-XXXXX] reference so future replies thread correctly.
     /// </summary>
@@ -988,20 +1061,7 @@ public class EmailNotificationService
             <p>Open the <strong>Contractor Payroll</strong> page in ServiceSphere to review, approve, or reject this receipt.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-
-        foreach (var (email, name) in recipients)
-        {
-            try
-            {
-                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
-                await LogNotificationAsync("PayrollSubmitted", email, name, subject, null, true);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Payroll] Failed to notify {Email} of receipt #{Id} submit", email, receipt.Id);
-                await LogNotificationAsync("PayrollSubmitted", email, name, subject, null, false, ex.Message);
-            }
-        }
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollSubmitted");
     }
 
     /// <summary>
@@ -1164,20 +1224,7 @@ public class EmailNotificationService
             </table>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-
-        foreach (var (email, name) in recipients)
-        {
-            try
-            {
-                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
-                await LogNotificationAsync("PayrollStaleReminder", email, name, subject, null, true);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Payroll] Failed stale-reminder to {Email} for #{Id}", email, receipt.Id);
-                await LogNotificationAsync("PayrollStaleReminder", email, name, subject, null, false, ex.Message);
-            }
-        }
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollStaleReminder");
     }
 
     /// <summary>
@@ -1249,19 +1296,7 @@ public class EmailNotificationService
             </table>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-        foreach (var (email, name) in recipients)
-        {
-            try
-            {
-                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
-                await LogNotificationAsync("PayrollPaymentConfirmed", email, name, subject, null, true);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Payroll] Failed to notify {Email} of receipt #{Id} payment-confirmed", email, receipt.Id);
-                await LogNotificationAsync("PayrollPaymentConfirmed", email, name, subject, null, false, ex.Message);
-            }
-        }
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollPaymentConfirmed");
     }
 
     /// <summary>

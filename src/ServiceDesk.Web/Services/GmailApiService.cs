@@ -986,6 +986,7 @@ public class GmailApiService : BackgroundService
         int? ticketId = null,
         string? inReplyTo = null,
         string? references = null,
+        string? ccEmail = null,
         CancellationToken ct = default)
     {
         var accessToken = await EnsureValidAccessToken(context, config, ct);
@@ -1000,6 +1001,8 @@ public class GmailApiService : BackgroundService
 
         msgBuilder.AppendLine($"From: ServiceSphere IT Support <{config.EmailAddress}>");
         msgBuilder.AppendLine($"To: {toEmail}");
+        if (!string.IsNullOrWhiteSpace(ccEmail))
+            msgBuilder.AppendLine($"Cc: {ccEmail}");
         msgBuilder.AppendLine($"Subject: {EncodeMailHeaderValue(subject)}");
         msgBuilder.AppendLine($"Message-ID: {ourMessageId}");
 

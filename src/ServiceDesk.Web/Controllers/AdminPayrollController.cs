@@ -566,7 +566,8 @@ public class AdminPayrollController : Controller
             "NotifyOnPayrollRejected",
             "NotifyOnPayrollPaid",
             "PayrollReminderEnabled",
-            "PayrollReminderDays"
+            "PayrollReminderDays",
+            "PayrollNotificationDeliveryMode"
         };
         var settings = await _context.AppSettings
             .Where(s => toggleKeys.Contains(s.Key))
@@ -582,6 +583,9 @@ public class AdminPayrollController : Controller
         ViewBag.ReminderEnabled   = BoolFromSettings("PayrollReminderEnabled", defaultValue: false);
         ViewBag.ReminderDays      = settings.TryGetValue("PayrollReminderDays", out var dv)
                                     && int.TryParse(dv, out var dn) && dn > 0 ? dn : 3;
+        ViewBag.DeliveryMode      = settings.TryGetValue("PayrollNotificationDeliveryMode", out var dm)
+                                    && string.Equals(dm, "Combined", StringComparison.OrdinalIgnoreCase)
+                                    ? "Combined" : "Individual";
 
         // For the "Add from portal user" dropdown — active users only,
         // excluding anyone already on the recipient list.
@@ -621,6 +625,26 @@ public class AdminPayrollController : Controller
         await UpsertSettingAsync("NotifyOnPayrollRejected", notifyOnRejected ? "true" : "false");
         await UpsertSettingAsync("NotifyOnPayrollPaid",     notifyOnPaid     ? "true" : "false");
         TempData["Success"] = "Email notification toggles saved.";
+        return RedirectToAction(nameof(NotificationRecipients));
+    }
+
+    // POST /AdminPayroll/SaveDeliveryMode
+    //
+    // Switches between "Individual" (one email per recipient, default
+    // and privacy-safe) and "Combined" (one email with first recipient
+    // in To and the rest in Cc — recipients see each other and can
+    // Reply-All).
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveDeliveryMode(string deliveryMode)
+    {
+        var normalized = string.Equals(deliveryMode, "Combined", StringComparison.OrdinalIgnoreCase)
+            ? "Combined" : "Individual";
+        await UpsertSettingAsync("PayrollNotificationDeliveryMode", normalized);
+        TempData["Success"] = normalized == "Combined"
+            ? "Payroll alerts will now be sent as a single email with all recipients on the To/Cc lines."
+            : "Payroll alerts will now be sent individually — one email per recipient.";
         return RedirectToAction(nameof(NotificationRecipients));
     }
 
