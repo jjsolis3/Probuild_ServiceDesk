@@ -290,6 +290,22 @@
     <div class="d-flex gap-2 flex-wrap">
         @if (User.IsInRole("Admin"))
         {
+            <div class="dropdown">
+                <button class="btn btn-outline-success dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false"
+                        title="Download Paid-receipt CSV for 1099 / bookkeeping">
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Annual Export
+                </button>
+                <ul class="dropdown-menu">
+                    @{
+                        var thisYear = DateTime.UtcNow.Year;
+                        for (var y = thisYear; y >= thisYear - 4; y--)
+                        {
+                            <li><a class="dropdown-item" asp-action="AnnualExport" asp-route-year="@y">@y (CSV)</a></li>
+                        }
+                    }
+                </ul>
+            </div>
             <a asp-action="NotificationRecipients" class="btn btn-outline-secondary"
                title="Pick who receives the 'receipt submitted' email">
                 <i class="bi bi-bell me-1"></i>Notification Recipients

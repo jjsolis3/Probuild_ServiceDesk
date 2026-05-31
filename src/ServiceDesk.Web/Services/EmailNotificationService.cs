@@ -1096,6 +1096,88 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Daily nudge to the configured recipients for any Submitted receipt
+    /// that's been sitting unapproved past the grace period. Reuses the
+    /// PayrollNotificationRecipients table for routing — same audience
+    /// that gets the initial submit notification.
+    /// </summary>
+    public async Task SendStaleReceiptReminderAsync(Core.Models.PayrollReceipt receipt, int graceDays)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
+
+        var recipients = configured
+            .Select(r => (Email: r.PortalUser?.Email ?? r.Email,
+                          Name:  r.PortalUser?.FullName ?? r.DisplayName ?? r.Email))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+        if (recipients.Count == 0) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var pendingDays = receipt.SubmittedDate.HasValue
+            ? (int)(DateTime.UtcNow - receipt.SubmittedDate.Value).TotalDays
+            : graceDays;
+
+        var subject = $"Reminder: Receipt #{receipt.Id} has been awaiting approval for {pendingDays} days";
+
+        var innerContent = $@"<h3 style='color:#b45309;'>Receipt Awaiting Approval</h3>
+            <p>This payroll receipt has been sitting in <strong>Submitted</strong> status for <strong>{pendingDays} day{(pendingDays == 1 ? "" : "s")}</strong> — past the {graceDays}-day grace period.</p>
+            <div style='background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                <strong>Action needed:</strong> open the Contractor Payroll page and approve, reject, or comment so {System.Net.WebUtility.HtmlEncode(contractorName)} knows where things stand.
+            </div>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Submitted</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.SubmittedDate:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+            </table>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        foreach (var (email, name) in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("PayrollStaleReminder", email, name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed stale-reminder to {Email} for #{Id}", email, receipt.Id);
+                await LogNotificationAsync("PayrollStaleReminder", email, name, subject, null, false, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
     /// Acknowledgement email back to the admin team once the contractor
     /// clicks Confirm Received on a Paid receipt. Closes the loop on the
     /// payment lifecycle. Sent to the same recipient list configured for

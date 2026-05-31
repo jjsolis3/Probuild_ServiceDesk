@@ -421,6 +421,92 @@ public class AdminPayrollController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    // GET /AdminPayroll/AnnualExport?year=2026
+    //
+    // CSV export of every Paid receipt in the requested calendar year.
+    // Two row types: one summary line per contractor ("CONTRACTOR_TOTAL")
+    // and one detail line per receipt. AP / bookkeeping can ingest this
+    // directly when issuing 1099s without any reshaping.
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AnnualExport(int? year)
+    {
+        var y = year ?? DateTime.UtcNow.Year;
+        var rangeStart = new DateTime(y, 1, 1);
+        var rangeEnd   = new DateTime(y + 1, 1, 1);
+
+        // "In year Y" = paid OR the period falls within Y. We use PaidDate
+        // when present (the money-movement event) and fall back to
+        // PeriodEnd so receipts paid in early next year for late-Dec work
+        // still show up where you'd expect.
+        var receipts = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Where(r => r.Status == "Paid"
+                && ((r.PaidDate.HasValue && r.PaidDate >= rangeStart && r.PaidDate < rangeEnd)
+                    || (!r.PaidDate.HasValue && r.PeriodEnd >= rangeStart && r.PeriodEnd < rangeEnd)))
+            .OrderBy(r => r.ContractorId)
+            .ThenBy(r => r.PeriodStart)
+            .ToListAsync();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("RowType,ContractorId,ContractorName,ContractorEmail,ReceiptId,PeriodStart,PeriodEnd,PaidDate,PaymentMethod,PaymentReference,TotalHours,BillableHours,Rate,Amount");
+
+        string Esc(string? s) =>
+            string.IsNullOrEmpty(s) ? "" :
+            (s.Contains(',') || s.Contains('"') || s.Contains('\n'))
+                ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
+
+        foreach (var group in receipts.GroupBy(r => r.ContractorId))
+        {
+            var firstContractor = group.First().Contractor;
+            var name  = firstContractor != null ? $"{firstContractor.FirstName} {firstContractor.LastName}" : "(unknown)";
+            var email = firstContractor?.Email ?? "";
+            var totalAmount = group.Sum(r => r.TotalAmount);
+            var totalHours  = group.Sum(r => r.TotalHours);
+            var totalBill   = group.Sum(r => r.TotalBillableHours);
+
+            sb.AppendLine(string.Join(",",
+                "CONTRACTOR_TOTAL",
+                group.Key,
+                Esc(name),
+                Esc(email),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                totalHours.ToString("0.##"),
+                totalBill.ToString("0.##"),
+                "",
+                totalAmount.ToString("F2")));
+
+            foreach (var r in group)
+            {
+                sb.AppendLine(string.Join(",",
+                    "RECEIPT",
+                    r.ContractorId,
+                    Esc(name),
+                    Esc(email),
+                    r.Id,
+                    r.PeriodStart.ToString("yyyy-MM-dd"),
+                    r.PeriodEnd.ToString("yyyy-MM-dd"),
+                    r.PaidDate?.ToString("yyyy-MM-dd") ?? "",
+                    Esc(r.PaymentMethod),
+                    Esc(r.PaymentReference),
+                    r.TotalHours.ToString("0.##"),
+                    r.TotalBillableHours.ToString("0.##"),
+                    r.HourlyRateSnapshot.ToString("F2"),
+                    r.TotalAmount.ToString("F2")));
+            }
+        }
+
+        var fileName = $"PayrollAnnualExport_{y}.csv";
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return File(bytes, "text/csv", fileName);
+    }
+
     // POST /AdminPayroll/PostComment/{id}
     //
     // Admin posts into a receipt's activity thread. Useful for asking a
@@ -469,6 +555,15 @@ public class AdminPayrollController : Controller
             .ThenBy(r => r.DisplayName ?? (r.PortalUser != null ? r.PortalUser.FirstName : r.Email))
             .ToListAsync();
 
+        // Reminder cadence settings (loaded lazily — falls back to sane
+        // defaults when the keys haven't been seeded yet).
+        var reminderEnabled = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "PayrollReminderEnabled"))?.Value;
+        var reminderDays = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "PayrollReminderDays"))?.Value;
+        ViewBag.ReminderEnabled = bool.TryParse(reminderEnabled, out var en) && en;
+        ViewBag.ReminderDays    = int.TryParse(reminderDays, out var d) && d > 0 ? d : 3;
+
         // For the "Add from portal user" dropdown — active users only,
         // excluding anyone already on the recipient list.
         var existingPortalIds = recipients
@@ -485,6 +580,34 @@ public class AdminPayrollController : Controller
 
         ViewBag.PortalCandidates = portalCandidates;
         return View(recipients);
+    }
+
+    // POST /AdminPayroll/SaveReminderSettings
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveReminderSettings(bool reminderEnabled, int reminderDays)
+    {
+        if (reminderDays < 1) reminderDays = 1;
+        if (reminderDays > 30) reminderDays = 30;
+
+        await UpsertSettingAsync("PayrollReminderEnabled", reminderEnabled ? "true" : "false");
+        await UpsertSettingAsync("PayrollReminderDays", reminderDays.ToString());
+
+        TempData["Success"] = reminderEnabled
+            ? $"Reminders enabled — admins will be nudged when a Submitted receipt sits for more than {reminderDays} day(s)."
+            : "Reminders disabled.";
+        return RedirectToAction(nameof(NotificationRecipients));
+    }
+
+    private async Task UpsertSettingAsync(string key, string value)
+    {
+        var existing = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == key);
+        if (existing == null)
+            _context.AppSettings.Add(new AppSetting { Key = key, Value = value });
+        else
+            existing.Value = value;
+        await _context.SaveChangesAsync();
     }
 
     // POST /AdminPayroll/AddNotificationRecipient

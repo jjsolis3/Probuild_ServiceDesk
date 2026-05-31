@@ -97,6 +97,7 @@ builder.Services.AddSingleton<WorkflowEngineService>();
 
 // Register scheduled offboarding service (checks hourly, auto-offboards employees whose date has arrived)
 builder.Services.AddHostedService<ScheduledOffboardingService>();
+builder.Services.AddHostedService<PayrollReminderService>();
 
 var app = builder.Build();
 

@@ -79,6 +79,21 @@ public class ContractorController : Controller
                                     ? emergencyRateForDashboard
                                     : standardRateForDashboard));
 
+        // YTD aggregates — split between Paid (cash actually in hand) and
+        // Submitted/Approved (in-flight). January 1 of the current year in
+        // the contractor's local time is good enough — payroll dates are
+        // tracked at day-precision so timezone drift around year-end is a
+        // non-issue here.
+        var ytdStart = new DateTime(DateTime.UtcNow.Year, 1, 1);
+        var ytdReceipts = receipts.Where(r => r.PeriodStart >= ytdStart || r.PeriodEnd >= ytdStart).ToList();
+
+        ViewBag.YtdPaidAmount     = ytdReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+        ViewBag.YtdPaidHours      = ytdReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalHours);
+        ViewBag.YtdPendingAmount  = ytdReceipts.Where(r => r.Status == "Submitted" || r.Status == "Approved").Sum(r => r.TotalAmount);
+        ViewBag.YtdPendingHours   = ytdReceipts.Where(r => r.Status == "Submitted" || r.Status == "Approved").Sum(r => r.TotalHours);
+        ViewBag.YtdReceiptCount   = ytdReceipts.Count(r => r.Status != "Draft");
+        ViewBag.YtdYear           = DateTime.UtcNow.Year;
+
         ViewBag.Contractor          = contractor;
         ViewBag.UnclaimedEntries    = unclaimed;
         ViewBag.UnclaimedBillableHrs = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours);

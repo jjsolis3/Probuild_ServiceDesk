@@ -223,9 +223,46 @@
         </div>
     </div>
 
+    <!-- Reminder cadence -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-clock-history me-2 text-warning"></i>Stale Receipt Reminders</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                When enabled, the system will email the recipients above (or all admins, if the list is empty)
+                whenever a <strong>Submitted</strong> receipt has been waiting for approval past the grace period.
+                Each receipt is reminded at most once per 24 hours until it's approved or rejected.
+            </p>
+            <form asp-action="SaveReminderSettings" method="post" class="row g-3 align-items-end">
+                @Html.AntiForgeryToken()
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Enable reminders</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="reminderEnabled" name="reminderEnabled" value="true" @(((bool?)ViewBag.ReminderEnabled ?? false) ? "checked" : "") />
+                        <label class="form-check-label" for="reminderEnabled">
+                            @(((bool?)ViewBag.ReminderEnabled ?? false) ? "Active" : "Paused")
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Grace period (days)</label>
+                    <input type="number" class="form-control" name="reminderDays" min="1" max="30"
+                           value="@(ViewBag.ReminderDays ?? 3)" />
+                    <div class="form-text">Days a receipt can sit in Submitted before reminding.</div>
+                </div>
+                <div class="col-md-4 d-flex justify-content-end">
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-save me-1"></i>Save Reminder Settings
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="alert alert-secondary mt-4 small mb-0">
         <i class="bi bi-info-circle me-1"></i>
-        <strong>Tip:</strong> The notification itself is still gated by the global
+        <strong>Tip:</strong> The submit notification itself is still gated by the global
         <em>NotifyOnPayrollSubmit</em> setting — keep that on if you want any of these
         recipients to receive emails.
     </div>
