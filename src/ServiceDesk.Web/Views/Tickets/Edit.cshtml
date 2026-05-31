@@ -1032,7 +1032,9 @@
         Title    = Model.Title,
         Status   = Model.Status.ToString(),
         Priority = Model.Priority.ToString(),
-        Category = Model.Category?.Name
+        // Ticket.Category is stored as an int — cast back to the enum so
+        // the template sees "HardwareIssue" rather than a raw "2".
+        Category = ((ServiceDesk.Core.Enums.TicketCategory)Model.Category).ToString()
     },
     Requester = new {
         FirstName = Model.SubmittedBy?.FirstName,
