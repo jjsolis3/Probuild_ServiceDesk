@@ -26,6 +26,10 @@
         < -0.01         => "#dc2626",
         _               => "#6b7280"
     };
+
+    // Reused by every drill-link in this view so the modal pulls the
+    // exact slice that produced the number on screen.
+    var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
 }
 
 <nav aria-label="breadcrumb">
@@ -60,12 +64,6 @@
 }
 else
 {
-    @{
-        // Reused by every drill-link in this view so the modal pulls the
-        // exact slice that produced the number on screen.
-        var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
-    }
-
     <!-- KPI Strip (Promoters / Detractors are clickable) -->
     <div class="row g-3 mb-3">
         <div class="col-md-3">

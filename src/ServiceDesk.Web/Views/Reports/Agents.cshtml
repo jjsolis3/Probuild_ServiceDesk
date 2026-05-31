@@ -8,6 +8,10 @@
     var fleetCsat    = (double?)ViewBag.FleetCsat;
     var agents       = (System.Collections.IEnumerable)ViewBag.PerAgent;
     var agentList    = agents.Cast<dynamic>().ToList();
+
+    // Reused by every drill-link in this view so the modal pulls the
+    // exact slice that produced the number on screen.
+    var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
 }
 
 <nav aria-label="breadcrumb">
@@ -41,13 +45,6 @@
 }
 else
 {
-    @{
-        // Pre-format date params once so every drill-link uses the same
-        // window as the parent report. yyyy-MM-dd matches the controller's
-        // DateTime? binding without ambiguity.
-        var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
-    }
-
     <!-- Fleet KPIs (clickable → drill modal) -->
     <div class="row g-3 mb-3">
         <div class="col-md-3">
