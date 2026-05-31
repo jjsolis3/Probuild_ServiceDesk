@@ -1,0 +1,344 @@
+@{
+    ViewData["Title"] = "CSAT Trends";
+    var from           = (DateTime)ViewBag.From;
+    var to             = (DateTime)ViewBag.To;
+    var avgScore       = (double?)ViewBag.AvgScore;
+    var priorAvg       = (double?)ViewBag.PriorAvg;
+    var delta          = (double?)ViewBag.Delta;
+    var responseRate   = (double?)ViewBag.ResponseRate;
+    var totalSent      = (int)ViewBag.TotalSent;
+    var totalCompleted = (int)ViewBag.TotalCompleted;
+    var promoters      = (int)ViewBag.Promoters;
+    var neutrals       = (int)ViewBag.Neutrals;
+    var detractors     = (int)ViewBag.Detractors;
+
+    string DeltaArrow() => delta switch
+    {
+        null            => "",
+        > 0.01          => "▲",
+        < -0.01         => "▼",
+        _               => "→"
+    };
+    string DeltaColor() => delta switch
+    {
+        null            => "#6b7280",
+        > 0.01          => "#16a34a",
+        < -0.01         => "#dc2626",
+        _               => "#6b7280"
+    };
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Reports</a></li>
+        <li class="breadcrumb-item active">CSAT Trends</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0"><i class="bi bi-emoji-smile text-warning me-1"></i>CSAT Trends</h1>
+    <form method="get" class="d-flex gap-2 align-items-center">
+        <label class="small text-muted mb-0">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="form-control form-control-sm" style="width:150px;" />
+        <label class="small text-muted mb-0">To</label>
+        <input type="date" name="to"   value="@to.ToString("yyyy-MM-dd")"   class="form-control form-control-sm" style="width:150px;" />
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
+        <a asp-action="Csat" class="btn btn-sm btn-outline-secondary">Reset</a>
+    </form>
+</div>
+
+@if (totalSent == 0)
+{
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon       = "bi-emoji-smile",
+        Title      = "No surveys sent in this range",
+        Message    = "Once you start resolving tickets with CSAT enabled, surveys will go out automatically and the data will start landing here. Adjust the date range or enable CSAT in Settings if you haven't already.",
+        ActionLink = Url.Action("Csat", "Settings"),
+        ActionText = "Open CSAT Settings",
+        ActionIcon = "bi-gear"
+    })
+}
+else
+{
+    <!-- KPI Strip -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Avg Score</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#0d6efd;line-height:1;">
+                        @(avgScore.HasValue ? avgScore.Value.ToString("0.0") : "—")
+                        <span style="font-size:1.2rem;color:#9ca3af;font-weight:500;">/5</span>
+                    </div>
+                    @if (delta.HasValue)
+                    {
+                        <div class="small mt-2" style="color:@DeltaColor();font-weight:600;">
+                            @DeltaArrow() @Math.Abs(delta.Value).ToString("0.00") vs prior period
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small text-muted mt-2">No prior data</div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Response Rate</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#14b8a6;line-height:1;">
+                        @(responseRate?.ToString("0") ?? "—")<span style="font-size:1.2rem;color:#9ca3af;font-weight:500;">%</span>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        @totalCompleted of @totalSent surveys completed
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Promoters</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#16a34a;line-height:1;">@promoters</div>
+                    <div class="small text-muted mt-2">scored 4 or 5</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Detractors</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#dc2626;line-height:1;">@detractors</div>
+                    <div class="small text-muted mt-2">scored 1 or 2</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promoter / Neutral / Detractor breakdown bar -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex justify-content-between align-items-center small text-muted mb-1">
+                <span>Sentiment breakdown</span>
+                <span>@(totalCompleted) responses</span>
+            </div>
+            @{
+                var pPct = totalCompleted == 0 ? 0 : (int)Math.Round(promoters  * 100.0 / totalCompleted);
+                var nPct = totalCompleted == 0 ? 0 : (int)Math.Round(neutrals   * 100.0 / totalCompleted);
+                var dPct = totalCompleted == 0 ? 0 : (int)Math.Round(detractors * 100.0 / totalCompleted);
+            }
+            <div class="d-flex" style="height:18px;border-radius:9px;overflow:hidden;background:#f3f4f6;">
+                <div style="width:@(pPct)%;background:#16a34a;color:#fff;font-size:11px;text-align:center;line-height:18px;font-weight:600;">@(pPct >= 8 ? $"{pPct}%" : "")</div>
+                <div style="width:@(nPct)%;background:#f59e0b;color:#fff;font-size:11px;text-align:center;line-height:18px;font-weight:600;">@(nPct >= 8 ? $"{nPct}%" : "")</div>
+                <div style="width:@(dPct)%;background:#dc2626;color:#fff;font-size:11px;text-align:center;line-height:18px;font-weight:600;">@(dPct >= 8 ? $"{dPct}%" : "")</div>
+            </div>
+            <div class="d-flex justify-content-between mt-2 small">
+                <span><i class="bi bi-circle-fill" style="color:#16a34a;"></i> Promoters @pPct%</span>
+                <span><i class="bi bi-circle-fill" style="color:#f59e0b;"></i> Neutral @nPct%</span>
+                <span><i class="bi bi-circle-fill" style="color:#dc2626;"></i> Detractors @dPct%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trend + distribution charts -->
+    <div class="row g-3 mb-3">
+        <div class="col-lg-8">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header fw-semibold bg-white">
+                    <i class="bi bi-graph-up me-1 text-primary"></i> Average Score Over Time
+                </div>
+                <div class="card-body">
+                    <div id="chartCsatTrend" style="min-height:280px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header fw-semibold bg-white">
+                    <i class="bi bi-bar-chart me-1 text-primary"></i> Score Distribution
+                </div>
+                <div class="card-body">
+                    <div id="chartCsatDist" style="min-height:280px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- By category + by assignee -->
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header fw-semibold bg-white">
+                    <i class="bi bi-tag me-1 text-primary"></i> Avg Score by Category
+                </div>
+                <div class="card-body">
+                    @{
+                        var cats = (System.Collections.IEnumerable)ViewBag.ByCategory;
+                        var hasCats = false;
+                    }
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (dynamic c in cats)
+                            {
+                                hasCats = true;
+                                var pct = Math.Round(((double)c.Avg / 5.0) * 100);
+                                var color = c.Avg >= 4.0 ? "#16a34a" : (c.Avg >= 3.0 ? "#f59e0b" : "#dc2626");
+                                <tr>
+                                    <td style="width:38%;" class="small">@c.Name</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div style="flex-grow:1;height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;">
+                                                <div style="width:@(pct)%;height:100%;background:@color;"></div>
+                                            </div>
+                                            <span class="small fw-semibold" style="color:@color;width:42px;text-align:right;">@(((double)c.Avg).ToString("0.0"))</span>
+                                            <span class="small text-muted" style="width:50px;text-align:right;">@(c.Count) resp</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            @if (!hasCats)
+                            {
+                                <tr><td colspan="2" class="text-muted small text-center py-3">No category data in this range.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header fw-semibold bg-white">
+                    <i class="bi bi-person-badge me-1 text-primary"></i> Top Performers <span class="text-muted small fw-normal">(3+ responses)</span>
+                </div>
+                <div class="card-body">
+                    @{
+                        var agents = (System.Collections.IEnumerable)ViewBag.ByAssignee;
+                        var hasAgents = false;
+                    }
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (dynamic a in agents)
+                            {
+                                hasAgents = true;
+                                var pct = Math.Round(((double)a.Avg / 5.0) * 100);
+                                var color = a.Avg >= 4.0 ? "#16a34a" : (a.Avg >= 3.0 ? "#f59e0b" : "#dc2626");
+                                <tr>
+                                    <td style="width:38%;" class="small">@a.Name</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div style="flex-grow:1;height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;">
+                                                <div style="width:@(pct)%;height:100%;background:@color;"></div>
+                                            </div>
+                                            <span class="small fw-semibold" style="color:@color;width:42px;text-align:right;">@(((double)a.Avg).ToString("0.0"))</span>
+                                            <span class="small text-muted" style="width:50px;text-align:right;">@(a.Count) resp</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            @if (!hasAgents)
+                            {
+                                <tr><td colspan="2" class="text-muted small text-center py-3">No agent has 3+ responses in this range yet.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent feedback -->
+    <div class="card shadow-sm">
+        <div class="card-header fw-semibold bg-white d-flex justify-content-between">
+            <span><i class="bi bi-chat-quote me-1 text-primary"></i> Latest Comments</span>
+            <span class="text-muted small">Most recent 20</span>
+        </div>
+        <div class="card-body p-0">
+            @{
+                var recent = (System.Collections.IEnumerable)ViewBag.RecentFeedback;
+                var hasRecent = false;
+            }
+            <div class="list-group list-group-flush">
+                @foreach (dynamic r in recent)
+                {
+                    hasRecent = true;
+                    int score = r.Score;
+                    var bg     = score >= 4 ? "#ecfdf5" : (score == 3 ? "#fffbeb" : "#fef2f2");
+                    var color  = score >= 4 ? "#15803d" : (score == 3 ? "#a16207" : "#b91c1c");
+                    var stars  = string.Concat(Enumerable.Repeat("★", score)) + string.Concat(Enumerable.Repeat("☆", 5 - score));
+                    <div class="list-group-item" style="border-left:4px solid @color;background:@bg;">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span style="color:@color;font-weight:700;font-size:1.05rem;letter-spacing:-1px;">@stars</span>
+                                    <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@r.TicketId" class="small fw-semibold text-decoration-none">#@(r.TicketId)</a>
+                                    <span class="text-muted small">·</span>
+                                    <span class="small text-muted">@r.Category</span>
+                                    <span class="text-muted small">·</span>
+                                    <span class="small text-muted">@r.Assignee</span>
+                                </div>
+                                <div class="small" style="color:#1f2937;">@r.Feedback</div>
+                            </div>
+                            <div class="text-muted small text-end" style="white-space:nowrap;">
+                                @(((DateTime)r.CompletedDate).ToString("MMM d, yyyy"))
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (!hasRecent)
+                {
+                    <div class="text-muted text-center py-4 small">No written feedback in this range yet — surveys with scores only are still counted in the KPIs above.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@section Styles {
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />
+}
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
+<script>
+(function () {
+    var labels   = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((string[])ViewBag.TrendLabels));
+    var avgVals  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((object[])ViewBag.TrendAvg));
+    var counts   = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((int[])ViewBag.TrendCount));
+    var dist     = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((int[])ViewBag.Distribution));
+
+    var trendEl = document.getElementById('chartCsatTrend');
+    if (trendEl && labels.length > 0) {
+        new ApexCharts(trendEl, {
+            series: [
+                { name: 'Avg Score', type: 'line',   data: avgVals },
+                { name: 'Responses', type: 'column', data: counts }
+            ],
+            chart:  { height: 280, type: 'line', toolbar: { show: false } },
+            stroke: { width: [3, 0], curve: 'smooth' },
+            colors: ['#0d6efd', '#cbd5e1'],
+            xaxis:  { categories: labels },
+            yaxis: [
+                { min: 0, max: 5, tickAmount: 5, title: { text: 'Avg Score' } },
+                { opposite: true, title: { text: 'Responses' } }
+            ],
+            tooltip: { shared: true, intersect: false },
+            legend:  { position: 'top' },
+            dataLabels: { enabled: false }
+        }).render();
+    }
+
+    var distEl = document.getElementById('chartCsatDist');
+    if (distEl) {
+        new ApexCharts(distEl, {
+            series: [{ name: 'Responses', data: dist }],
+            chart:  { type: 'bar', height: 280, toolbar: { show: false } },
+            plotOptions: { bar: { borderRadius: 6, distributed: true, columnWidth: '55%' } },
+            colors: ['#dc2626', '#f97316', '#f59e0b', '#84cc16', '#16a34a'],
+            xaxis:  { categories: ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'] },
+            legend: { show: false },
+            dataLabels: { enabled: true }
+        }).render();
+    }
+})();
+</script>
+}

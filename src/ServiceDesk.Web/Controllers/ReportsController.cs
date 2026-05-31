@@ -209,6 +209,154 @@ public class ReportsController : Controller
         return View(model);
     }
 
+    /// <summary>
+    /// CSAT trend dashboard — score-over-time, distribution, slice-by-
+    /// category / assignee, and recent feedback. Range defaults to the
+    /// last 90 days. All charts are computed in-memory off a single
+    /// query so a 1-year range with a few thousand responses is still
+    /// snappy.
+    /// </summary>
+    public async Task<IActionResult> Csat(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+        var spanDays  = Math.Max(1, (rangeTo - rangeFrom).TotalDays);
+
+        // Pull surveys + needed nav data in one query. CsatSurveys is
+        // small (one row per surveyed ticket) so projecting in-memory
+        // is the simplest correct path here.
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.SentDate >= rangeFrom && s.SentDate <= rangeTo)
+            .ToListAsync();
+
+        var completed = surveys.Where(s => s.Score.HasValue && s.CompletedDate.HasValue).ToList();
+
+        // ── KPIs ───────────────────────────────────────────────────
+        var avgScore      = completed.Count > 0
+            ? Math.Round(completed.Average(s => (double)s.Score!.Value), 2)
+            : (double?)null;
+        var responseRate  = surveys.Count > 0
+            ? Math.Round((double)completed.Count / surveys.Count * 100, 1)
+            : (double?)null;
+        var promoters     = completed.Count(s => s.Score >= 4);
+        var neutrals      = completed.Count(s => s.Score == 3);
+        var detractors    = completed.Count(s => s.Score <= 2);
+
+        // Trend delta — compare to the immediately-prior period of the
+        // same length. Lets the dashboard show "↑ 0.3 vs prior 90 days."
+        var priorFrom = rangeFrom.AddDays(-spanDays);
+        var priorTo   = rangeFrom.AddTicks(-1);
+        var priorScores = await _context.CsatSurveys
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.SentDate >= priorFrom && s.SentDate <= priorTo)
+            .Select(s => s.Score!.Value)
+            .ToListAsync();
+        double? priorAvg = priorScores.Count > 0
+            ? Math.Round(priorScores.Average(s => (double)s), 2) : (double?)null;
+        double? delta = (avgScore.HasValue && priorAvg.HasValue)
+            ? Math.Round(avgScore.Value - priorAvg.Value, 2) : (double?)null;
+
+        // ── Score over time (monthly buckets) ──────────────────────
+        // Build the bucket spine up front so months with zero responses
+        // still appear on the chart as gaps rather than collapsing the
+        // x-axis.
+        var monthlyBuckets = new List<DateTime>();
+        var cursor = new DateTime(rangeFrom.Year, rangeFrom.Month, 1);
+        var endMonth = new DateTime(rangeTo.Year, rangeTo.Month, 1);
+        while (cursor <= endMonth)
+        {
+            monthlyBuckets.Add(cursor);
+            cursor = cursor.AddMonths(1);
+        }
+
+        var byMonth = completed
+            .GroupBy(s => new DateTime(s.CompletedDate!.Value.Year, s.CompletedDate.Value.Month, 1))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var trendLabels = monthlyBuckets.Select(m => m.ToString("MMM yyyy")).ToArray();
+        var trendAvg    = monthlyBuckets
+            .Select(m => byMonth.TryGetValue(m, out var bucket) && bucket.Count > 0
+                ? (object)Math.Round(bucket.Average(s => (double)s.Score!.Value), 2)
+                : null!)
+            .ToArray();
+        var trendCount = monthlyBuckets
+            .Select(m => byMonth.TryGetValue(m, out var bucket) ? bucket.Count : 0)
+            .ToArray();
+
+        // ── Score distribution (1..5) ──────────────────────────────
+        var distribution = new int[5];
+        foreach (var s in completed)
+            distribution[s.Score!.Value - 1]++;
+
+        // ── By assignee (top 10 with at least 3 responses) ─────────
+        var byAssignee = completed
+            .Where(s => s.Ticket?.AssignedTo != null)
+            .GroupBy(s => s.Ticket!.AssignedTo!.FullName)
+            .Select(g => new {
+                Name     = g.Key,
+                Count    = g.Count(),
+                Avg      = Math.Round(g.Average(s => (double)s.Score!.Value), 2)
+            })
+            .Where(x => x.Count >= 3)
+            .OrderByDescending(x => x.Avg)
+            .ThenByDescending(x => x.Count)
+            .Take(10)
+            .ToList();
+
+        // ── By category ────────────────────────────────────────────
+        var byCategory = completed
+            .Where(s => s.Ticket != null)
+            .GroupBy(s => ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString())
+            .Select(g => new {
+                Name  = g.Key,
+                Count = g.Count(),
+                Avg   = Math.Round(g.Average(s => (double)s.Score!.Value), 2)
+            })
+            .OrderByDescending(x => x.Avg)
+            .ToList();
+
+        // ── Recent feedback (latest 20 completed surveys w/ a comment) ──
+        var recent = completed
+            .Where(s => !string.IsNullOrWhiteSpace(s.Feedback))
+            .OrderByDescending(s => s.CompletedDate)
+            .Take(20)
+            .Select(s => new {
+                s.Id, s.TicketId,
+                Score          = s.Score!.Value,
+                Feedback       = s.Feedback,
+                CompletedDate  = s.CompletedDate!.Value,
+                Assignee       = s.Ticket?.AssignedTo?.FullName ?? "—",
+                Category       = s.Ticket != null
+                    ? ((Core.Enums.TicketCategory)s.Ticket.Category).ToString()
+                    : "—",
+                TicketTitle    = s.Ticket?.Title
+            })
+            .ToList();
+
+        ViewBag.From            = rangeFrom;
+        ViewBag.To              = rangeTo;
+        ViewBag.AvgScore        = avgScore;
+        ViewBag.PriorAvg        = priorAvg;
+        ViewBag.Delta           = delta;
+        ViewBag.ResponseRate    = responseRate;
+        ViewBag.TotalSent       = surveys.Count;
+        ViewBag.TotalCompleted  = completed.Count;
+        ViewBag.Promoters       = promoters;
+        ViewBag.Neutrals        = neutrals;
+        ViewBag.Detractors      = detractors;
+        ViewBag.TrendLabels     = trendLabels;
+        ViewBag.TrendAvg        = trendAvg;
+        ViewBag.TrendCount      = trendCount;
+        ViewBag.Distribution    = distribution;
+        ViewBag.ByAssignee      = byAssignee;
+        ViewBag.ByCategory      = byCategory;
+        ViewBag.RecentFeedback  = recent;
+        ViewData["Title"]       = "CSAT Trends";
+        return View();
+    }
+
     public async Task<IActionResult> Tickets()
     {
         var tickets = await _context.Tickets
