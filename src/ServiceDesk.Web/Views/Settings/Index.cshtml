@@ -167,34 +167,7 @@
             </div>
         </div>
     </div>
-
-    @* Payroll Settings — lifecycle email toggles, notification recipients,
-       stale-receipt reminder cadence. Lives under AdminPayrollController
-       (Admin role) because the entire payroll feature is admin-gated. *@
-    @if (User.IsInRole("Admin"))
-    {
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow-sm border-0">
-                <div class="card-body">
-                    <div class="d-flex align-items-start">
-                        <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
-                            <i class="bi bi-cash-coin display-6 text-primary"></i>
-                        </div>
-                        <div>
-                            <h5 class="card-title mb-1">Payroll Settings</h5>
-                            <p class="card-text text-muted small">Lifecycle email toggles, notification recipients (HR / AP / owner), and stale-receipt reminders</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer bg-transparent border-top-0 pt-0">
-                    <a asp-controller="AdminPayroll" asp-action="NotificationRecipients" class="btn btn-sm btn-primary">
-                        <i class="bi bi-arrow-right-circle me-1"></i> Configure
-                    </a>
-                </div>
-            </div>
-        </div>
-    }
-
+    
     <!-- Email Templates -->
     <div class="col-lg-3 col-md-6">
         <div class="card h-100 shadow-sm border-0">
@@ -260,6 +233,11 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- GOOGLE WORKSPACE SETTINGS -->
+<div class="settings-section-label visually-hidden"><!-- TODO: add better title/description for this group --></div>
+<div class="row g-4 mb-4 settings-row">
 
     <!-- Google Workspace -->
     <div class="col-lg-3 col-md-6">
@@ -420,7 +398,6 @@
             </div>
         </div>
     </div>
-
 
 </div>
 
@@ -708,6 +685,33 @@
             </div>
         </div>
     </div>
+
+    @* Payroll Settings — lifecycle email toggles, notification recipients,
+       stale-receipt reminder cadence. Lives under AdminPayrollController
+       (Admin role) because the entire payroll feature is admin-gated. *@
+    @if (User.IsInRole("Admin"))
+    {
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <div class="d-flex align-items-start">
+                        <div class="rounded-3 p-3 me-3" style="background-color: rgba(13, 110, 253, 0.1);">
+                            <i class="bi bi-cash-coin display-6 text-primary"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-1">Payroll Settings</h5>
+                            <p class="card-text text-muted small">Lifecycle email toggles, notification recipients (HR / AP / owner), and stale-receipt reminders</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-top-0 pt-0">
+                    <a asp-controller="AdminPayroll" asp-action="NotificationRecipients" class="btn btn-sm btn-primary">
+                        <i class="bi bi-arrow-right-circle me-1"></i> Configure
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
 
 </div>
 
