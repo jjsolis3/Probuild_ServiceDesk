@@ -25,6 +25,44 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" />
     <!-- ServiceSphere Overrides -->
     <link rel="stylesheet" href="~/css/servicesphere.css" />
+    <style>
+        /* ── Theme-aware topbar + sidebar fixes ────────────────────────
+           The Jobick template assumes a dark navbar; several inline
+           styles bake white text in. In light mode that produces the
+           white-on-white invisibility the user reported. These rules
+           re-color the offending elements when the theme is light, and
+           let the existing styles win when it's dark. */
+
+        /* Command palette trigger pill in the topbar */
+        #cmdPaletteBtn {
+            background: rgba(0, 0, 0, 0.04) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            color: #4b5563 !important;
+        }
+        #cmdPaletteBtn kbd {
+            background: rgba(0, 0, 0, 0.07) !important;
+            color: #6b7280 !important;
+        }
+        [data-theme-version="dark"] #cmdPaletteBtn {
+            background: rgba(255, 255, 255, 0.12) !important;
+            border-color: rgba(255, 255, 255, 0.22) !important;
+            color: rgba(255, 255, 255, 0.85) !important;
+        }
+        [data-theme-version="dark"] #cmdPaletteBtn kbd {
+            background: rgba(255, 255, 255, 0.15) !important;
+            color: rgba(255, 255, 255, 0.75) !important;
+        }
+
+        /* Sidebar section headers (MAIN / MANAGEMENT / ANALYTICS / ADMIN) */
+        .dlabnav .metismenu > li.menu-title,
+        .dlabnav .metismenu > li.menu-title > span {
+            color: #6b7280 !important;
+        }
+        [data-theme-version="dark"] .dlabnav .metismenu > li.menu-title,
+        [data-theme-version="dark"] .dlabnav .metismenu > li.menu-title > span {
+            color: rgba(255, 255, 255, 0.55) !important;
+        }
+    </style>
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body data-sidebar-style="full" data-layout="vertical" data-nav-headerbg="color_1" data-headerbg="color_1" data-sibebarbg="color_1">
@@ -85,10 +123,10 @@
                             <li class="nav-item d-none d-md-flex align-items-center me-2">
                                 <button type="button" id="cmdPaletteBtn" onclick="openCmdPalette()"
                                         class="btn btn-sm d-flex align-items-center gap-2"
-                                        style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);border-radius:8px;padding:5px 12px;">
+                                        style="border-radius:8px;padding:5px 12px;">
                                     <i class="bi bi-search" style="font-size:13px;"></i>
                                     <span style="font-size:12px;">Search…</span>
-                                    <kbd style="font-size:10px;background:rgba(255,255,255,0.15);border:none;border-radius:4px;padding:1px 5px;color:rgba(255,255,255,0.75);">⌘K</kbd>
+                                    <kbd style="font-size:10px;border:none;border-radius:4px;padding:1px 5px;">⌘K</kbd>
                                 </button>
                             </li>
                             <!-- Dark/Light Mode Toggle -->
