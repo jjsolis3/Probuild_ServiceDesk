@@ -579,12 +579,10 @@
                                     }
                                     @if (receipt.Status == "Approved" && User.IsInRole("Admin"))
                                     {
-                                        <form asp-action="MarkPaid" asp-route-id="@receipt.Id" method="post" class="d-inline">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="ap-btn ap-btn-paid">
-                                                <i class="bi bi-currency-dollar"></i>Mark Paid
-                                            </button>
-                                        </form>
+                                        <button type="button" class="ap-btn ap-btn-paid"
+                                                onclick="openMarkPaidModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))', '@receipt.TotalAmount.ToString("C")')">
+                                            <i class="bi bi-currency-dollar"></i>Mark Paid
+                                        </button>
                                     }
                                     <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
                                        class="ap-btn ap-btn-view">
@@ -736,6 +734,57 @@
     </div>
 </div>
 
+@* ── Mark Paid Modal ─────────────────────────────────────────────────────── *@
+<div class="modal fade" id="markPaidModal" tabindex="-1" aria-labelledby="markPaidModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#198754;color:#fff;">
+                <h5 class="modal-title" id="markPaidModalLabel">
+                    <i class="bi bi-currency-dollar me-2"></i>Mark Paid <span id="markPaidReceiptNum"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="markPaidForm" asp-action="MarkPaid" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="markPaidReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Marking <strong id="markPaidContractor"></strong>'s receipt for
+                        <strong id="markPaidAmount" class="text-success"></strong> as Paid.
+                        Capture how the payment was issued so the contractor can reconcile.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Payment Method <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="paymentMethod" class="form-select">
+                            <option value="">— Not specified —</option>
+                            <option value="Check">Check</option>
+                            <option value="ACH">ACH</option>
+                            <option value="Zelle">Zelle</option>
+                            <option value="Wire">Wire Transfer</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reference <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="paymentReference" class="form-control"
+                               placeholder="e.g. Check #1234, ACH-2X9KQ, Zelle confirmation" />
+                        <div class="form-text">
+                            Shown to the contractor in the payment-issued email and on the receipt detail.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check2-circle me-1"></i>Mark Paid
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @* ── Share Receipt Modal ──────────────────────────────────────────────────── *@
 <div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -836,6 +885,15 @@
 
 @section Scripts {
 <script>
+function openMarkPaidModal(id, name, amount) {
+    document.getElementById('markPaidReceiptId').value = id;
+    document.getElementById('markPaidReceiptNum').textContent = '#' + id;
+    document.getElementById('markPaidContractor').textContent = name;
+    document.getElementById('markPaidAmount').textContent = amount;
+    var form = document.getElementById('markPaidForm');
+    form.action = form.action.replace(/\/MarkPaid(\/\d+)?$/, '/MarkPaid/' + id);
+    new bootstrap.Modal(document.getElementById('markPaidModal')).show();
+}
 function openShareModal(id, name, periodStart, periodEnd) {
     document.getElementById('shareReceiptId').value = id;
     document.getElementById('shareReceiptNum').textContent = '#' + id;

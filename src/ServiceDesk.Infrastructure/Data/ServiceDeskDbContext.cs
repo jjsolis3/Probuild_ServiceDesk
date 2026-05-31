@@ -89,6 +89,7 @@ public class ServiceDeskDbContext : DbContext
 
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
+    public DbSet<PayrollReceiptComment> PayrollReceiptComments => Set<PayrollReceiptComment>();
     public DbSet<PayrollNotificationRecipient> PayrollNotificationRecipients => Set<PayrollNotificationRecipient>();
 
     // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
@@ -664,6 +665,30 @@ public class ServiceDeskDbContext : DbContext
 
         modelBuilder.Entity<PayrollReceipt>()
             .HasIndex(r => new { r.ContractorId, r.Status });
+
+        // Receipt activity / discussion thread — cascade-delete with the
+        // parent receipt; restrict-delete on the author FKs so we keep
+        // the audit row when a person is deleted.
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.Receipt)
+            .WithMany(r => r.Comments)
+            .HasForeignKey(c => c.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.AuthorPortalUser)
+            .WithMany()
+            .HasForeignKey(c => c.AuthorPortalUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.AuthorEmployee)
+            .WithMany()
+            .HasForeignKey(c => c.AuthorEmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasIndex(c => new { c.PayrollReceiptId, c.CreatedDate });
 
         // Payroll notification recipients — explicit subscribers for the
         // "receipt submitted" alert. SetNull on portal-user delete so a

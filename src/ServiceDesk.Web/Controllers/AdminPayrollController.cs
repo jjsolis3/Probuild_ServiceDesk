@@ -14,14 +14,34 @@ public class AdminPayrollController : Controller
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
     private readonly PayrollReceiptAttachmentService _attachments;
+    private readonly PayrollActivityService _activity;
 
     public AdminPayrollController(ServiceDeskDbContext context,
         EmailNotificationService emailService,
-        PayrollReceiptAttachmentService attachments)
+        PayrollReceiptAttachmentService attachments,
+        PayrollActivityService activity)
     {
         _context = context;
         _emailService = emailService;
         _attachments = attachments;
+        _activity = activity;
+    }
+
+    /// <summary>
+    /// Resolves the acting admin's PortalUser row from the auth cookie.
+    /// Used by activity logging + comment posting. Cached per-request via
+    /// a small private field so we don't hit the DB twice in one action.
+    /// </summary>
+    private PortalUser? _actingAdminCache;
+    private async Task<PortalUser?> GetActingAdminAsync()
+    {
+        if (_actingAdminCache != null) return _actingAdminCache;
+        var email = User.Identity?.Name;
+        if (string.IsNullOrEmpty(email)) return null;
+        _actingAdminCache = await _context.PortalUsers
+            .Include(u => u.Employee)
+            .FirstOrDefaultAsync(u => u.Email == email);
+        return _actingAdminCache;
     }
 
     // GET /AdminPayroll
@@ -97,12 +117,7 @@ public class AdminPayrollController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        var approverEmail = User.Identity?.Name;
-        var approver = approverEmail != null
-            ? await _context.PortalUsers
-                .Include(u => u.Employee)
-                .FirstOrDefaultAsync(u => u.Email == approverEmail)
-            : null;
+        var approver = await GetActingAdminAsync();
 
         receipt.Status       = "Approved";
         receipt.ApprovedDate = DateTime.UtcNow;
@@ -110,6 +125,14 @@ public class AdminPayrollController : Controller
         receipt.ApprovalNote = string.IsNullOrWhiteSpace(approvalNote) ? null : approvalNote.Trim();
 
         await _context.SaveChangesAsync();
+
+        if (approver != null)
+        {
+            var summary = string.IsNullOrWhiteSpace(receipt.ApprovalNote)
+                ? "Approved."
+                : $"Approved — {receipt.ApprovalNote}";
+            await _activity.LogAdminAsync(receipt.Id, approver, summary);
+        }
 
         try { await _emailService.NotifyReceiptApprovedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
@@ -119,9 +142,13 @@ public class AdminPayrollController : Controller
     }
 
     // POST /AdminPayroll/MarkPaid/{id}
+    //
+    // Capture method (Check/ACH/Zelle/Wire/Other) + reference so the
+    // contractor sees actionable detail in the "Payment Confirmed" email
+    // and can reconcile against their bank.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MarkPaid(int id)
+    public async Task<IActionResult> MarkPaid(int id, string? paymentMethod, string? paymentReference)
     {
         var receipt = await _context.PayrollReceipts.FindAsync(id);
         if (receipt == null) return NotFound();
@@ -132,10 +159,25 @@ public class AdminPayrollController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        receipt.Status   = "Paid";
-        receipt.PaidDate = DateTime.UtcNow;
+        receipt.Status           = "Paid";
+        receipt.PaidDate         = DateTime.UtcNow;
+        receipt.PaymentMethod    = string.IsNullOrWhiteSpace(paymentMethod)    ? null : paymentMethod.Trim();
+        receipt.PaymentReference = string.IsNullOrWhiteSpace(paymentReference) ? null : paymentReference.Trim();
 
         await _context.SaveChangesAsync();
+
+        var admin = await GetActingAdminAsync();
+        if (admin != null)
+        {
+            var summary = (receipt.PaymentMethod, receipt.PaymentReference) switch
+            {
+                (null, null) => "Marked as Paid.",
+                (var m, null) => $"Marked as Paid via {m}.",
+                (null, var r) => $"Marked as Paid — reference {r}.",
+                (var m, var r) => $"Marked as Paid via {m} — reference {r}."
+            };
+            await _activity.LogAdminAsync(receipt.Id, admin, summary);
+        }
 
         try { await _emailService.NotifyReceiptPaidAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
@@ -165,6 +207,15 @@ public class AdminPayrollController : Controller
 
         await _context.SaveChangesAsync();
 
+        var admin = await GetActingAdminAsync();
+        if (admin != null)
+        {
+            var note = string.IsNullOrWhiteSpace(receipt.RejectionNote)
+                ? "Returned for revision."
+                : $"Returned for revision — {receipt.RejectionNote}";
+            await _activity.LogAdminAsync(receipt.Id, admin, note);
+        }
+
         try { await _emailService.NotifyReceiptRejectedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
@@ -183,10 +234,7 @@ public class AdminPayrollController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        var approverEmail = User.Identity?.Name;
-        var approver = approverEmail != null
-            ? await _context.PortalUsers.FirstOrDefaultAsync(u => u.Email == approverEmail)
-            : null;
+        var approver = await GetActingAdminAsync();
 
         var receipts = await _context.PayrollReceipts
             .Where(r => ids.Contains(r.Id) && r.Status == "Submitted")
@@ -202,6 +250,15 @@ public class AdminPayrollController : Controller
         }
 
         await _context.SaveChangesAsync();
+
+        if (approver != null)
+        {
+            var msg = string.IsNullOrWhiteSpace(trimmedNote)
+                ? "Approved (bulk)."
+                : $"Approved (bulk) — {trimmedNote}";
+            foreach (var r in receipts)
+                await _activity.LogAdminAsync(r.Id, approver, msg);
+        }
 
         foreach (var r in receipts)
         {
@@ -235,6 +292,13 @@ public class AdminPayrollController : Controller
         }
 
         await _context.SaveChangesAsync();
+
+        var admin = await GetActingAdminAsync();
+        if (admin != null)
+        {
+            foreach (var r in receipts)
+                await _activity.LogAdminAsync(r.Id, admin, "Marked as Paid (bulk).");
+        }
 
         foreach (var r in receipts)
         {
@@ -355,6 +419,37 @@ public class AdminPayrollController : Controller
             ? $"Receipt #{receipt.Id} sent to {toEmail}."
             : "Email send failed. Check the Email Activity log for details.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // POST /AdminPayroll/PostComment/{id}
+    //
+    // Admin posts into a receipt's activity thread. Useful for asking a
+    // clarification on a Submitted receipt without having to formally
+    // reject it.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PostComment(int id, string body, string? returnUrl)
+    {
+        var receipt = await _context.PayrollReceipts.FindAsync(id);
+        if (receipt == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            TempData["Error"] = "Comment cannot be empty.";
+        }
+        else
+        {
+            var admin = await GetActingAdminAsync();
+            if (admin != null)
+            {
+                await _activity.LogAdminAsync(receipt.Id, admin, body.Trim());
+                TempData["Success"] = "Comment posted.";
+            }
+        }
+
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+        return RedirectToAction("ReceiptDetail", "Contractor", new { id });
     }
 
     // ── Notification recipients management ────────────────────────────────

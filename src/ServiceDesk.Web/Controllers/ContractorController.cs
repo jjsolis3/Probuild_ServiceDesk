@@ -15,17 +15,20 @@ public class ContractorController : Controller
     private readonly EmailNotificationService _emailService;
     private readonly PayrollCalculatorService _payroll;
     private readonly PayrollReceiptAttachmentService _attachments;
+    private readonly PayrollActivityService _activity;
 
     public ContractorController(
         ServiceDeskDbContext context,
         EmailNotificationService emailService,
         PayrollCalculatorService payroll,
-        PayrollReceiptAttachmentService attachments)
+        PayrollReceiptAttachmentService attachments,
+        PayrollActivityService activity)
     {
         _context = context;
         _emailService = emailService;
         _payroll = payroll;
         _attachments = attachments;
+        _activity = activity;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -268,16 +271,25 @@ public class ContractorController : Controller
     // GET /Contractor/ReceiptDetail/{id}
     public async Task<IActionResult> ReceiptDetail(int id)
     {
+        // Admins / IT Agents can view any receipt (needed for the AdminPayroll
+        // "View" link to work and for the activity thread to be visible to
+        // them); contractors can only see their own.
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("IT Agent");
         var contractor = await GetContractorEmployeeAsync();
-        if (contractor == null)
+        if (!isAdmin && contractor == null)
             return RedirectToAction(nameof(Payroll));
 
-        var receipt = await _context.PayrollReceipts
+        var query = _context.PayrollReceipts
             .Include(r => r.Contractor)
             .Include(r => r.ApprovedBy)
             .Include(r => r.TimeEntries)
                 .ThenInclude(e => e.Ticket)
-            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+            .AsQueryable();
+
+        if (!isAdmin)
+            query = query.Where(r => r.ContractorId == contractor!.Id);
+
+        var receipt = await query.FirstOrDefaultAsync(r => r.Id == id);
 
         if (receipt == null) return NotFound();
 
@@ -291,6 +303,10 @@ public class ContractorController : Controller
             receipt.Contractor!, receipt.TimeEntries.ToList(), receiptIdToIgnore: receipt.Id);
 
         ViewBag.CompanyName = companyName;
+        ViewBag.Comments = await _context.PayrollReceiptComments
+            .Where(c => c.PayrollReceiptId == receipt.Id)
+            .OrderBy(c => c.CreatedDate)
+            .ToListAsync();
         ViewData["Title"] = $"Receipt #{receipt.Id}";
         return View(receipt);
     }
@@ -316,16 +332,98 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(ReceiptDetail), new { id });
         }
 
+        // Detect resubmit vs initial submit by looking for a prior
+        // rejection. The timeline message differs so the admin sees that
+        // the contractor responded to feedback.
+        var isResubmit = !string.IsNullOrWhiteSpace(receipt.RejectionNote);
+        var priorRejectionNote = receipt.RejectionNote;
+
         receipt.Status        = "Submitted";
         receipt.SubmittedDate = DateTime.UtcNow;
         receipt.RejectionNote = null;  // clear any prior rejection note on resubmit
+        receipt.LastReminderSentUtc = null; // restart the reminder clock
         await _context.SaveChangesAsync();
+
+        await _activity.LogContractorAsync(receipt.Id, contractor,
+            isResubmit
+                ? $"Resubmitted after revision."
+                : "Submitted for review.");
 
         receipt.Contractor ??= contractor;
         try { await _emailService.NotifyReceiptSubmittedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
-        TempData["Success"] = "Receipt submitted for review.";
+        TempData["Success"] = isResubmit ? "Receipt resubmitted for review." : "Receipt submitted for review.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    // POST /Contractor/ConfirmPaymentReceived/{id}
+    //
+    // Closes the loop on a Paid receipt — contractor attests that the
+    // funds landed. We don't change Status (still "Paid") because Paid
+    // is the payer's claim; ConfirmedDate is the payee's attestation.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmPaymentReceived(int id, string? confirmationNote)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status != "Paid")
+        {
+            TempData["Error"] = "Only Paid receipts can be confirmed.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+        if (receipt.PaymentConfirmedDate.HasValue)
+        {
+            TempData["Warning"] = "Payment has already been confirmed for this receipt.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        receipt.PaymentConfirmedDate = DateTime.UtcNow;
+        receipt.PaymentConfirmedNote = string.IsNullOrWhiteSpace(confirmationNote) ? null : confirmationNote.Trim();
+        await _context.SaveChangesAsync();
+
+        var summary = string.IsNullOrWhiteSpace(receipt.PaymentConfirmedNote)
+            ? "Confirmed payment received."
+            : $"Confirmed payment received — {receipt.PaymentConfirmedNote}";
+        await _activity.LogContractorAsync(receipt.Id, contractor, summary);
+
+        try { await _emailService.NotifyReceiptPaymentConfirmedAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
+
+        TempData["Success"] = "Thanks — payment confirmed.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    // POST /Contractor/PostReceiptComment/{id}
+    //
+    // Contractor-side write into the receipt activity thread. Allowed on
+    // any non-Draft receipt the contractor owns, so they can ask
+    // questions on a Submitted receipt or attach a note to a Paid one.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PostReceiptComment(int id, string body)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            TempData["Error"] = "Comment cannot be empty.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        await _activity.LogContractorAsync(receipt.Id, contractor, body.Trim());
+        TempData["Success"] = "Comment posted.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });
     }
 

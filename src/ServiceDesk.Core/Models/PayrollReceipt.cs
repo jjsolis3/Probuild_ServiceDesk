@@ -101,6 +101,44 @@ public class PayrollReceipt
     [Display(Name = "Paid")]
     public DateTime? PaidDate { get; set; }
 
+    /// <summary>
+    /// How payment was issued — Check / ACH / Zelle / Wire / Other.
+    /// Free-form so we can add channels without a schema change, but
+    /// admin UI restricts to a known list.
+    /// </summary>
+    [StringLength(50)]
+    [Display(Name = "Payment Method")]
+    public string? PaymentMethod { get; set; }
+
+    /// <summary>
+    /// Reference number captured at Mark Paid time — check number,
+    /// ACH transaction ID, Zelle confirmation, etc. Stored verbatim and
+    /// surfaced on the receipt + in the contractor email so the
+    /// contractor can reconcile against their bank.
+    /// </summary>
+    [StringLength(200)]
+    [Display(Name = "Payment Reference")]
+    public string? PaymentReference { get; set; }
+
+    /// <summary>
+    /// When the contractor confirmed they received the funds. Distinct
+    /// from PaidDate (set by admin at issue time) — this closes the
+    /// loop by capturing the payee's attestation.
+    /// </summary>
+    [Display(Name = "Payment Confirmed")]
+    public DateTime? PaymentConfirmedDate { get; set; }
+
+    /// <summary>Optional note left by the contractor on confirmation.</summary>
+    [StringLength(500)]
+    public string? PaymentConfirmedNote { get; set; }
+
+    /// <summary>
+    /// Last time the stale-Submitted reminder was sent. Throttles the
+    /// daily reminder so a single Submitted receipt doesn't spam
+    /// recipients more than once per day.
+    /// </summary>
+    public DateTime? LastReminderSentUtc { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
     // Set by admin when returning a receipt to Draft with feedback
@@ -120,4 +158,7 @@ public class PayrollReceipt
 
     // Time entries claimed by this receipt
     public ICollection<TicketTimeEntry> TimeEntries { get; set; } = new List<TicketTimeEntry>();
+
+    // Activity / discussion thread — see PayrollReceiptComment
+    public ICollection<PayrollReceiptComment> Comments { get; set; } = new List<PayrollReceiptComment>();
 }

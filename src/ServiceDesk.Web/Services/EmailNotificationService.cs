@@ -1059,13 +1059,124 @@ public class EmailNotificationService
     public async Task NotifyReceiptPaidAsync(Core.Models.PayrollReceipt receipt)
     {
         if (!await IsNotificationEnabled("NotifyOnPayrollPaid")) return;
+
+        // Bundle method + reference into a styled call-out so the
+        // contractor has the exact strings they need to find the
+        // payment in their bank statement (check #, ACH ID, etc.).
+        var detailRows = new List<string>();
+        if (!string.IsNullOrWhiteSpace(receipt.PaymentMethod))
+            detailRows.Add($"<div><strong>Method:</strong> {System.Net.WebUtility.HtmlEncode(receipt.PaymentMethod)}</div>");
+        if (!string.IsNullOrWhiteSpace(receipt.PaymentReference))
+            detailRows.Add($"<div><strong>Reference:</strong> <code>{System.Net.WebUtility.HtmlEncode(receipt.PaymentReference)}</code></div>");
+        if (receipt.PaidDate.HasValue)
+            detailRows.Add($"<div><strong>Issued:</strong> {receipt.PaidDate:MMM d, yyyy}</div>");
+
+        var paymentBlock = detailRows.Count == 0
+            ? string.Empty
+            : $@"<div style='background:#ecfeff;border-left:4px solid #06b6d4;padding:12px 14px;border-radius:4px;margin:14px 0;color:#0e7490;'>
+                    <strong>Payment Details</strong>
+                    <div style='margin-top:6px;line-height:1.5;'>{string.Join("", detailRows)}</div>
+                 </div>";
+
+        var confirmBlock = receipt.PaymentConfirmedDate.HasValue
+            ? string.Empty
+            : @"<p style='margin-top:14px;font-size:.9rem;color:#475569;'>
+                    Once the funds land in your account, please open the receipt in
+                    the portal and click <strong>Confirm Received</strong> so we can
+                    close the loop on this payment.
+                </p>";
+
         await SendContractorReceiptStatusEmailAsync(receipt,
             statusLabel: "Paid",
-            subject: $"Payment confirmed for receipt #{receipt.Id} — {receipt.TotalAmount:C}",
-            heading: "Payment Confirmed",
-            body: $"Payment for your payroll receipt has been processed. Please allow 1–3 business days for the funds to appear in your account.",
+            subject: $"Payment issued for receipt #{receipt.Id} — {receipt.TotalAmount:C}",
+            heading: "Payment Issued",
+            body: $"Payment for your payroll receipt has been processed. Please allow 1–3 business days for the funds to appear in your account.{paymentBlock}{confirmBlock}",
             barColor: "#0ea5e9",
             logType: "PayrollPaid");
+    }
+
+    /// <summary>
+    /// Acknowledgement email back to the admin team once the contractor
+    /// clicks Confirm Received on a Paid receipt. Closes the loop on the
+    /// payment lifecycle. Sent to the same recipient list configured for
+    /// receipt-submitted alerts (so HR / AP / owner all hear about it).
+    /// </summary>
+    public async Task NotifyReceiptPaymentConfirmedAsync(Core.Models.PayrollReceipt receipt)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        // Same resolution logic as receipt-submitted — recipients table
+        // first, then fall back to all active Admins.
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
+
+        var recipients = configured
+            .Select(r => (Email: r.PortalUser?.Email ?? r.Email,
+                          Name:  r.PortalUser?.FullName ?? r.DisplayName ?? r.Email))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+        if (recipients.Count == 0) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var subject = $"Receipt #{receipt.Id} payment confirmed received by {contractorName}";
+
+        var noteBlock = string.IsNullOrWhiteSpace(receipt.PaymentConfirmedNote)
+            ? string.Empty
+            : $@"<div style='background:#ecfdf5;border-left:4px solid #10b981;padding:10px 12px;border-radius:4px;margin:12px 0;color:#065f46;'>
+                    <strong>Note from contractor:</strong>
+                    <div style='margin-top:4px;'>{System.Net.WebUtility.HtmlEncode(receipt.PaymentConfirmedNote)}</div>
+                </div>";
+
+        var innerContent = $@"<h3>Payment Confirmed Received</h3>
+            <p>{System.Net.WebUtility.HtmlEncode(contractorName)} has confirmed they received payment for receipt #{receipt.Id}.</p>
+            {noteBlock}
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Amount</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Paid On</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PaidDate:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Confirmed On</td>
+                    <td style='padding:8px;'>{receipt.PaymentConfirmedDate:MMM d, yyyy}</td></tr>
+            </table>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        foreach (var (email, name) in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("PayrollPaymentConfirmed", email, name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed to notify {Email} of receipt #{Id} payment-confirmed", email, receipt.Id);
+                await LogNotificationAsync("PayrollPaymentConfirmed", email, name, subject, null, false, ex.Message);
+            }
+        }
     }
 
     /// <summary>
