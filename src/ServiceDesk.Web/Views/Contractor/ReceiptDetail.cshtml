@@ -284,8 +284,20 @@
             <div class="text-muted small">@Model.PeriodStart.ToString("MMMM d, yyyy") – @Model.PeriodEnd.ToString("MMMM d, yyyy")</div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a asp-action="Payroll" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-arrow-left me-1"></i>Back
+            @{
+                // Back button routes by audience: admins / IT agents land
+                // on the AdminPayroll queue they came from; contractors
+                // go to their own My Payroll page. Avoids the "your
+                // employee profile is not flagged as a contractor"
+                // bounce when an admin clicks Back from a contractor's
+                // receipt.
+                var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
+                var backController = isAdminViewer ? "AdminPayroll" : "Contractor";
+                var backAction     = isAdminViewer ? "Index"        : "Payroll";
+                var backLabel      = isAdminViewer ? "Back to Payroll Queue" : "Back";
+            }
+            <a asp-controller="@backController" asp-action="@backAction" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>@backLabel
             </a>
             <button onclick="window.print()" class="btn btn-sm btn-outline-dark">
                 <i class="bi bi-printer me-1"></i>Print / PDF
