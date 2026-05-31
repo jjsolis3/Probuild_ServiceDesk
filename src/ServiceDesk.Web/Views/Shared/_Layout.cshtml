@@ -301,10 +301,14 @@
                             <span class="nav-text">Reports</span>
                         </a>
                         <ul aria-expanded="@(currentController == "Reports" ? "true" : "false")">
+                            <li class="@NavClass("Reports","Executive")"><a asp-controller="Reports" asp-action="Executive">Executive Dashboard</a></li>
                             <li class="@NavClass("Reports","Tickets")"><a asp-controller="Reports" asp-action="Tickets">Ticket Reports</a></li>
                             <li class="@NavClass("Reports","Assets")"><a asp-controller="Reports" asp-action="Assets">Asset Reports</a></li>
                             <li class="@NavClass("Reports","Users")"><a asp-controller="Reports" asp-action="Users">User Reports</a></li>
+                            <li class="@NavClass("Reports","Agents")"><a asp-controller="Reports" asp-action="Agents">Agent Performance</a></li>
+                            <li class="@NavClass("Reports","Csat")"><a asp-controller="Reports" asp-action="Csat">CSAT Trends</a></li>
                             <li class="@NavClass("Reports","StoreOrders")"><a asp-controller="Reports" asp-action="StoreOrders">Store Orders</a></li>
+                            <li class="@NavClass("Reports","Payroll")"><a asp-controller="Reports" asp-action="Payroll">Contractor Payroll</a></li>
                         </ul>
                     </li>
 
