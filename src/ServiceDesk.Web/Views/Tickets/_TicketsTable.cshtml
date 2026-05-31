@@ -162,12 +162,17 @@
 
 @if (!Model.Any())
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3 mb-3">No tickets found matching the current filters.</p>
-        <a href="/Tickets/Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> New Ticket</a>
-        <a href="/Tickets"        class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon          = "bi-inbox",
+        Title         = "No tickets match your filters",
+        Message       = "Either the queue is genuinely empty (nice work) or your filters are too narrow. Open a new ticket below, or clear filters to see everything.",
+        ActionLink    = Url.Action("Create", "Tickets"),
+        ActionText    = "New Ticket",
+        ActionIcon    = "bi-plus-lg",
+        SecondaryLink = Url.Action("Index", "Tickets"),
+        SecondaryText = "Clear Filters",
+        SecondaryIcon = "bi-x-circle"
+    })
 }
 
 <!-- Pagination -->

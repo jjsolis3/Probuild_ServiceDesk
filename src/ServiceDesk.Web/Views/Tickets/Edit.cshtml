@@ -1022,6 +1022,41 @@
     </div>
 </div>
 
+@* Server-side data context for canned-response variable substitution.
+   Mirrors the variables documented on the Create/Edit canned response
+   pages — keep both in sync when adding a token. *@
+<script type="application/json" id="__ssTicketTemplateCtx">
+@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    Ticket = new {
+        Id       = Model.Id,
+        Title    = Model.Title,
+        Status   = Model.Status.ToString(),
+        Priority = Model.Priority.ToString(),
+        Category = Model.Category?.Name
+    },
+    Requester = new {
+        FirstName = Model.SubmittedBy?.FirstName,
+        LastName  = Model.SubmittedBy?.LastName,
+        FullName  = Model.SubmittedBy?.FullName,
+        Email     = Model.SubmittedBy?.Email,
+        Branch    = Model.SubmittedBy?.Branch?.Name
+    },
+    Assignee = new {
+        FirstName = Model.AssignedTo?.FirstName,
+        FullName  = Model.AssignedTo?.FullName,
+        Email     = Model.AssignedTo?.Email
+    },
+    Agent = new {
+        FirstName = (User.Identity?.Name ?? "").Split(' ').FirstOrDefault(),
+        FullName  = User.Identity?.Name
+    },
+    Company = new {
+        Name = (string)(ViewBag.CompanyName ?? "ServiceSphere")
+    },
+    Today = DateTime.Now.ToString("MMMM d, yyyy"),
+    Now   = DateTime.Now.ToString("MMM d, yyyy h:mm tt")
+}))
+</script>
 <script type="application/json" id="holidayInfoData">@Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}")</script>
 <script>
 // Holiday list serialized server-side. Used to suggest the Emergency rate
@@ -1402,6 +1437,36 @@ function filterSelectOptions(input) {
         const ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
         let loaded = false;
 
+        // Template variable context — populated from the server-side model so
+        // every {{Token}} resolves against the live record without a round-
+        // trip. Tokens that can't resolve (e.g. {{Assignee.FirstName}} on an
+        // unassigned ticket) are left as-is so the agent sees what to fill in.
+        var ctx = (function () {
+            try {
+                var raw = document.getElementById('__ssTicketTemplateCtx');
+                return raw ? JSON.parse(raw.textContent) : {};
+            } catch (e) { return {}; }
+        })();
+
+        function lookup(path) {
+            var parts = path.split('.');
+            var cur = ctx;
+            for (var i = 0; i < parts.length; i++) {
+                if (cur == null) return null;
+                cur = cur[parts[i]];
+            }
+            return (cur == null || cur === '') ? null : String(cur);
+        }
+
+        function expand(content) {
+            if (!content) return content;
+            return content.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)\s*\}\}/g,
+                function (whole, path) {
+                    var v = lookup(path);
+                    return v == null ? whole : v;
+                });
+        }
+
         function buildItem(t) {
             const li = document.createElement('li');
             const a  = document.createElement('a');
@@ -1418,12 +1483,17 @@ function filterSelectOptions(input) {
             const span = document.createElement('span');
             span.textContent = t.title;
             a.appendChild(span);
-            a.title = t.content.substring(0, 120);
+            // Preview shows the EXPANDED text so the agent sees variable
+            // substitution before committing.
+            a.title = expand(t.content).substring(0, 120);
             a.addEventListener('click', function (e) {
                 e.preventDefault();
                 const ta = document.getElementById('newCommentText');
                 if (ta) {
-                    ta.value = ta.value ? ta.value + '\n\n' + t.content : t.content;
+                    var resolved = expand(t.content);
+                    ta.value = ta.value ? ta.value + '\n\n' + resolved : resolved;
+                    // Notify autosave + any other input listeners.
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
                     ta.focus();
                 }
             });

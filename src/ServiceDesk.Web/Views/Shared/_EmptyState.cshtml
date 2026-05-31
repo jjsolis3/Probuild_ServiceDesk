@@ -1,0 +1,68 @@
+@*
+    Generic empty-state partial. Pass a small anonymous model when invoking:
+        @await Html.PartialAsync("_EmptyState", new {
+            Icon       = "bi-ticket-perforated",
+            Title      = "No tickets yet",
+            Message    = "Tickets you submit or are assigned to will appear here.",
+            ActionLink = Url.Action("Create", "Tickets"),
+            ActionText = "New Ticket",
+            ActionIcon = "bi-plus-lg"
+        })
+
+    Fields beyond Icon/Title/Message are optional — omit the action chunk to
+    render a no-CTA "nothing here" state. Tone defaults to neutral; pass
+    Tone = "success" / "warning" to recolor the icon for "happy empty"
+    (caught up) or "needs attention" (config missing) variants.
+*@
+@{
+    var icon       = (string)((dynamic)Model).Icon ?? "bi-inbox";
+    var title      = (string)((dynamic)Model).Title ?? "Nothing here yet";
+    var message    = (string?)((dynamic)Model).Message;
+    var actionLink = (string?)((dynamic)Model).ActionLink;
+    var actionText = (string?)((dynamic)Model).ActionText;
+    var actionIcon = (string?)((dynamic)Model).ActionIcon ?? "bi-plus-lg";
+    var tone       = ((string?)((dynamic)Model).Tone) ?? "neutral";
+
+    var iconColor = tone switch
+    {
+        "success" => "#16a34a",
+        "warning" => "#f59e0b",
+        "danger"  => "#dc2626",
+        _         => "#6c757d"
+    };
+    var bgColor = tone switch
+    {
+        "success" => "#ecfdf5",
+        "warning" => "#fffbeb",
+        "danger"  => "#fef2f2",
+        _         => "#f8f9fb"
+    };
+}
+<div class="text-center py-5 px-3 rounded" style="background:@bgColor;border:1px dashed #e5e7eb;">
+    <div class="d-inline-flex align-items-center justify-content-center mb-3"
+         style="width:72px;height:72px;border-radius:50%;background:#fff;color:@iconColor;font-size:2rem;border:1px solid #e5e7eb;">
+        <i class="bi @icon"></i>
+    </div>
+    <h5 class="mb-2" style="color:#1f2937;">@title</h5>
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <p class="text-muted mb-3" style="max-width:480px;margin:0 auto;">@message</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(actionLink) && !string.IsNullOrWhiteSpace(actionText))
+    {
+        <a href="@actionLink" class="btn btn-primary">
+            <i class="bi @actionIcon me-1"></i>@actionText
+        </a>
+    }
+    @{
+        var secondaryLink = (string?)((dynamic)Model).SecondaryLink;
+        var secondaryText = (string?)((dynamic)Model).SecondaryText;
+        var secondaryIcon = (string?)((dynamic)Model).SecondaryIcon ?? "bi-arrow-right";
+    }
+    @if (!string.IsNullOrWhiteSpace(secondaryLink) && !string.IsNullOrWhiteSpace(secondaryText))
+    {
+        <a href="@secondaryLink" class="btn btn-outline-secondary ms-2">
+            <i class="bi @secondaryIcon me-1"></i>@secondaryText
+        </a>
+    }
+</div>
