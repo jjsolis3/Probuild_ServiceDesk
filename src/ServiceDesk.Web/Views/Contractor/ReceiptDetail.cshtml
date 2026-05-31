@@ -854,7 +854,9 @@
                             <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
                         }
                         <label class="form-label small fw-semibold">Add a comment</label>
-                        <textarea name="body" class="form-control" rows="2" required placeholder="@promptText"></textarea>
+                        <textarea name="body" class="form-control" rows="2" required
+                                  data-autosave="receipt-@Model.Id-comment"
+                                  placeholder="@promptText"></textarea>
                         <div class="mt-2 d-flex justify-content-end">
                             <button type="submit" class="btn btn-sm btn-primary">
                                 <i class="bi bi-send me-1"></i>Post

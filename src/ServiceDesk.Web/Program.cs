@@ -54,6 +54,7 @@ builder.Services.AddScoped<EmailNotificationService>();
 
 // Register in-app portal notification service (scoped, drives the notification bell)
 builder.Services.AddScoped<PortalNotificationService>();
+builder.Services.AddScoped<MentionService>();
 
 // Persistent store cart service (scoped)
 builder.Services.AddScoped<StoreCartService>();

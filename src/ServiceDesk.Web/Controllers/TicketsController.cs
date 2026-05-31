@@ -27,6 +27,8 @@ public class TicketsController : Controller
     private readonly WorkflowEngineService _workflowEngine;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketsController> _logger;
+    private readonly PortalNotificationService _bell;
+    private readonly MentionService _mentions;
 
     public TicketsController(
         ServiceDeskDbContext context,
@@ -38,7 +40,9 @@ public class TicketsController : Controller
         SlaRiskService slaRisk,
         WorkflowEngineService workflowEngine,
         IServiceScopeFactory scopeFactory,
-        ILogger<TicketsController> logger)
+        ILogger<TicketsController> logger,
+        PortalNotificationService bell,
+        MentionService mentions)
     {
         _context            = context;
         _assignmentResolver = assignmentResolver;
@@ -50,6 +54,26 @@ public class TicketsController : Controller
         _workflowEngine     = workflowEngine;
         _scopeFactory       = scopeFactory;
         _logger             = logger;
+        _bell               = bell;
+        _mentions           = mentions;
+    }
+
+    /// <summary>
+    /// Fire-and-forget bell notification helper. Looks up the portal user
+    /// associated with an employee id and pings them; swallows any
+    /// exception so notification failures can't break the ticket action.
+    /// </summary>
+    private async Task NotifyEmployeeOnBellAsync(int employeeId, string type, string title, string? message, string? link, string? icon)
+    {
+        try
+        {
+            var portalUser = await _context.PortalUsers
+                .Where(u => u.EmployeeId == employeeId && u.IsActive)
+                .FirstOrDefaultAsync();
+            if (portalUser == null) return;
+            await _bell.NotifyAsync(portalUser.Id, type, title, message, link, icon);
+        }
+        catch (Exception) { /* never block the ticket flow */ }
     }
 
     /// <summary>
@@ -1117,6 +1141,7 @@ public class TicketsController : Controller
         }
 
         if (notifyAssignment)
+        {
             _ = Task.Run(async () =>
             {
                 try
@@ -1126,6 +1151,18 @@ public class TicketsController : Controller
                 }
                 catch { }
             });
+
+            if (ticket.AssignedToId.HasValue)
+            {
+                await NotifyEmployeeOnBellAsync(
+                    ticket.AssignedToId.Value,
+                    type:    "TicketAssigned",
+                    title:   $"Ticket #{ticket.Id} assigned to you",
+                    message: ticket.Title?.Length > 140 ? ticket.Title[..140] + "…" : ticket.Title,
+                    link:    Url.Action("Details", "Tickets", new { id = ticket.Id }),
+                    icon:    "bi-person-plus");
+            }
+        }
 
         if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
             _ = Task.Run(async () =>
@@ -1165,6 +1202,42 @@ public class TicketsController : Controller
         _context.TicketNotes.Add(note);
         ticket.UpdatedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        // ── Bell notifications + @mentions ────────────────────────────
+        var ticketLink = Url.Action("Details", "Tickets", new { id = ticket.Id }) ?? "#";
+        var authorName = User.Identity?.Name ?? "Agent";
+        var preview    = content.Length > 140 ? content[..140] + "…" : content;
+
+        // Ping the assignee on every comment (internal AND public —
+        // they own the ticket either way). Skip if the comment author IS
+        // the assignee, which happens often as agents narrate progress.
+        if (ticket.AssignedToId.HasValue)
+        {
+            var actorEmpId = int.TryParse(User.FindFirstValue("EmployeeId"), out var ei) ? ei : 0;
+            if (ticket.AssignedToId.Value != actorEmpId)
+            {
+                await NotifyEmployeeOnBellAsync(
+                    ticket.AssignedToId.Value,
+                    type:    "TicketComment",
+                    title:   $"New comment on Ticket #{ticket.Id}",
+                    message: preview,
+                    link:    ticketLink,
+                    icon:    isInternal ? "bi-shield-lock" : "bi-chat-square-text");
+            }
+        }
+
+        // @mentions get a separate "you were mentioned" ping. Internal
+        // notes can't mention the requester (they don't see internal
+        // notes), so mention scanning is limited to public comments.
+        if (!isInternal)
+        {
+            await _mentions.ProcessMentionsAsync(
+                body:              content,
+                authorDisplayName: authorName,
+                sourceLabel:       $"Ticket #{ticket.Id}",
+                linkUrl:           ticketLink,
+                notificationType:  "TicketMention");
+        }
 
         // Fire escalation detection in background for public (non-internal) comments on active tickets
         if (!isInternal

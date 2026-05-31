@@ -16,19 +16,25 @@ public class ContractorController : Controller
     private readonly PayrollCalculatorService _payroll;
     private readonly PayrollReceiptAttachmentService _attachments;
     private readonly PayrollActivityService _activity;
+    private readonly PortalNotificationService _bell;
+    private readonly MentionService _mentions;
 
     public ContractorController(
         ServiceDeskDbContext context,
         EmailNotificationService emailService,
         PayrollCalculatorService payroll,
         PayrollReceiptAttachmentService attachments,
-        PayrollActivityService activity)
+        PayrollActivityService activity,
+        PortalNotificationService bell,
+        MentionService mentions)
     {
         _context = context;
         _emailService = emailService;
         _payroll = payroll;
         _attachments = attachments;
         _activity = activity;
+        _bell = bell;
+        _mentions = mentions;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -368,6 +374,17 @@ public class ContractorController : Controller
         try { await _emailService.NotifyReceiptSubmittedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
+        // In-app bell: ping every active admin so the receipt shows up
+        // on their notification feed alongside the email. The
+        // configured-recipients table isn't relevant for the bell —
+        // payroll IS an admin-side task, so admins always see it.
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollSubmitted",
+            title:   $"Receipt #{receipt.Id} submitted by {contractor.FirstName} {contractor.LastName}",
+            message: $"{receipt.TotalHours:0.##} hrs · {receipt.TotalAmount:C}",
+            link:    Url.Action(nameof(ReceiptDetail), new { id = receipt.Id }),
+            icon:    "bi-file-earmark-check");
+
         TempData["Success"] = isResubmit ? "Receipt resubmitted for review." : "Receipt submitted for review.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });
     }
@@ -411,6 +428,13 @@ public class ContractorController : Controller
         try { await _emailService.NotifyReceiptPaymentConfirmedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollConfirmed",
+            title:   $"{contractor.FirstName} confirmed payment on #{receipt.Id}",
+            message: receipt.PaymentConfirmedNote ?? $"{receipt.TotalAmount:C} received",
+            link:    Url.Action(nameof(ReceiptDetail), new { id = receipt.Id }),
+            icon:    "bi-check2-all");
+
         TempData["Success"] = "Thanks — payment confirmed.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });
     }
@@ -438,8 +462,50 @@ public class ContractorController : Controller
         }
 
         await _activity.LogContractorAsync(receipt.Id, contractor, body.Trim());
+
+        var linkUrl = Url.Action(nameof(ReceiptDetail), "Contractor", new { id }) ?? "#";
+
+        // Bell admins on every contractor comment — the receipt
+        // belongs in their queue so they need to see the new note.
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollComment",
+            title:   $"New comment on receipt #{receipt.Id}",
+            message: body.Length > 140 ? body[..140] + "…" : body,
+            link:    linkUrl,
+            icon:    "bi-chat-square-text");
+
+        // @mention scan — anyone @-tagged gets a separate "you were
+        // mentioned" ping.
+        await _mentions.ProcessMentionsAsync(
+            body:              body,
+            authorDisplayName: $"{contractor.FirstName} {contractor.LastName}",
+            sourceLabel:       $"Receipt #{receipt.Id}",
+            linkUrl:           linkUrl,
+            notificationType:  "ReceiptMention");
+
         TempData["Success"] = "Comment posted.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    /// <summary>
+    /// Broadcasts an in-app bell notification to every active Admin.
+    /// Mirrors the safety pattern used by EmailNotificationService — any
+    /// exception is logged and swallowed so a flaky NotifyAsync call
+    /// can't break the surrounding flow (submit, approve, etc.).
+    /// </summary>
+    private async Task NotifyAdminsOnBellAsync(string type, string title, string? message, string? link, string? icon)
+    {
+        try
+        {
+            var adminIds = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin")
+                .Select(u => u.Id)
+                .ToListAsync();
+            if (adminIds.Count == 0) return;
+            await _bell.NotifyManyAsync(adminIds, type, title, message, link, icon);
+        }
+        catch (Exception) { /* never block the flow */ }
     }
 
     // ── Delete Draft Receipt ──────────────────────────────────────────────────

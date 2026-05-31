@@ -15,17 +15,45 @@ public class AdminPayrollController : Controller
     private readonly EmailNotificationService _emailService;
     private readonly PayrollReceiptAttachmentService _attachments;
     private readonly PayrollActivityService _activity;
+    private readonly PortalNotificationService _bell;
+    private readonly MentionService _mentions;
 
     public AdminPayrollController(ServiceDeskDbContext context,
         EmailNotificationService emailService,
         PayrollReceiptAttachmentService attachments,
-        PayrollActivityService activity)
+        PayrollActivityService activity,
+        PortalNotificationService bell,
+        MentionService mentions)
     {
         _context = context;
         _emailService = emailService;
         _attachments = attachments;
         _activity = activity;
+        _bell = bell;
+        _mentions = mentions;
     }
+
+    /// <summary>
+    /// Pings the contractor's portal account (if any) about a lifecycle
+    /// event on their receipt. No-ops cleanly when the contractor has no
+    /// portal user. Wrapped in try/catch so a bell failure can't break
+    /// the surrounding admin action.
+    /// </summary>
+    private async Task NotifyContractorOnBellAsync(int contractorEmployeeId, string type, string title, string? message, string? link, string? icon)
+    {
+        try
+        {
+            var portalUser = await _context.PortalUsers
+                .Where(u => u.EmployeeId == contractorEmployeeId && u.IsActive)
+                .FirstOrDefaultAsync();
+            if (portalUser == null) return;
+            await _bell.NotifyAsync(portalUser.Id, type, title, message, link, icon);
+        }
+        catch (Exception) { /* never block the flow */ }
+    }
+
+    private static string ContractorReceiptLink(IUrlHelper url, int receiptId) =>
+        url.Action("ReceiptDetail", "Contractor", new { id = receiptId }) ?? "#";
 
     /// <summary>
     /// Resolves the acting admin's PortalUser row from the auth cookie.
@@ -137,6 +165,14 @@ public class AdminPayrollController : Controller
         try { await _emailService.NotifyReceiptApprovedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
+        await NotifyContractorOnBellAsync(
+            receipt.ContractorId,
+            type:    "PayrollApproved",
+            title:   $"Your receipt #{receipt.Id} was approved",
+            message: receipt.ApprovalNote ?? $"{receipt.TotalAmount:C} · awaiting payment",
+            link:    ContractorReceiptLink(Url, receipt.Id),
+            icon:    "bi-check-circle");
+
         TempData["Success"] = "Receipt approved.";
         return RedirectToAction(nameof(Index));
     }
@@ -182,6 +218,21 @@ public class AdminPayrollController : Controller
         try { await _emailService.NotifyReceiptPaidAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
+        var paidDetail = (receipt.PaymentMethod, receipt.PaymentReference) switch
+        {
+            (null, null)   => $"{receipt.TotalAmount:C} issued",
+            (var m, null)  => $"{receipt.TotalAmount:C} · {m}",
+            (null, var r)  => $"{receipt.TotalAmount:C} · ref {r}",
+            (var m, var r) => $"{receipt.TotalAmount:C} · {m} · {r}"
+        };
+        await NotifyContractorOnBellAsync(
+            receipt.ContractorId,
+            type:    "PayrollPaid",
+            title:   $"Payment issued for receipt #{receipt.Id}",
+            message: paidDetail,
+            link:    ContractorReceiptLink(Url, receipt.Id),
+            icon:    "bi-cash-coin");
+
         TempData["Success"] = "Receipt marked as Paid.";
         return RedirectToAction(nameof(Index));
     }
@@ -218,6 +269,14 @@ public class AdminPayrollController : Controller
 
         try { await _emailService.NotifyReceiptRejectedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
+
+        await NotifyContractorOnBellAsync(
+            receipt.ContractorId,
+            type:    "PayrollRejected",
+            title:   $"Receipt #{receipt.Id} returned for revision",
+            message: receipt.RejectionNote ?? "Please review and resubmit.",
+            link:    ContractorReceiptLink(Url, receipt.Id),
+            icon:    "bi-arrow-counterclockwise");
 
         TempData["Success"] = "Receipt returned to contractor for revision.";
         return RedirectToAction(nameof(Index));
@@ -264,6 +323,13 @@ public class AdminPayrollController : Controller
         {
             try { await _emailService.NotifyReceiptApprovedAsync(r); }
             catch (Exception) { /* email failure should not block UI flow */ }
+
+            await NotifyContractorOnBellAsync(
+                r.ContractorId, "PayrollApproved",
+                title:   $"Your receipt #{r.Id} was approved",
+                message: r.ApprovalNote ?? $"{r.TotalAmount:C} · awaiting payment",
+                link:    ContractorReceiptLink(Url, r.Id),
+                icon:    "bi-check-circle");
         }
 
         TempData["Success"] = $"{receipts.Count} receipt(s) approved.";
@@ -304,6 +370,13 @@ public class AdminPayrollController : Controller
         {
             try { await _emailService.NotifyReceiptPaidAsync(r); }
             catch (Exception) { /* email failure should not block UI flow */ }
+
+            await NotifyContractorOnBellAsync(
+                r.ContractorId, "PayrollPaid",
+                title:   $"Payment issued for receipt #{r.Id}",
+                message: $"{r.TotalAmount:C} issued",
+                link:    ContractorReceiptLink(Url, r.Id),
+                icon:    "bi-cash-coin");
         }
 
         TempData["Success"] = $"{receipts.Count} receipt(s) marked as Paid.";
@@ -529,6 +602,30 @@ public class AdminPayrollController : Controller
             if (admin != null)
             {
                 await _activity.LogAdminAsync(receipt.Id, admin, body.Trim());
+
+                var linkUrl = ContractorReceiptLink(Url, receipt.Id);
+                // Always ping the contractor about an admin comment on
+                // their receipt — they own the receipt; they should know
+                // someone weighed in.
+                await NotifyContractorOnBellAsync(
+                    receipt.ContractorId, "PayrollComment",
+                    title:   $"New comment on receipt #{receipt.Id}",
+                    message: body.Length > 140 ? body[..140] + "…" : body,
+                    link:    linkUrl,
+                    icon:    "bi-chat-square-text");
+
+                // @mentions get an explicit "you were mentioned" ping
+                // (separate notification type so the user sees the
+                // distinction in their feed). Author is excluded so the
+                // admin doesn't notify themselves.
+                await _mentions.ProcessMentionsAsync(
+                    body:              body,
+                    authorDisplayName: $"{admin.FirstName} {admin.LastName}",
+                    sourceLabel:       $"Receipt #{receipt.Id}",
+                    linkUrl:           linkUrl,
+                    notificationType:  "ReceiptMention",
+                    excludeUserId:     admin.Id);
+
                 TempData["Success"] = "Comment posted.";
             }
         }
