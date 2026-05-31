@@ -555,14 +555,33 @@ public class AdminPayrollController : Controller
             .ThenBy(r => r.DisplayName ?? (r.PortalUser != null ? r.PortalUser.FirstName : r.Email))
             .ToListAsync();
 
-        // Reminder cadence settings (loaded lazily — falls back to sane
-        // defaults when the keys haven't been seeded yet).
-        var reminderEnabled = (await _context.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == "PayrollReminderEnabled"))?.Value;
-        var reminderDays = (await _context.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == "PayrollReminderDays"))?.Value;
-        ViewBag.ReminderEnabled = bool.TryParse(reminderEnabled, out var en) && en;
-        ViewBag.ReminderDays    = int.TryParse(reminderDays, out var d) && d > 0 ? d : 3;
+        // Per-event email toggles — load all 4 in one round-trip and bind
+        // sensible defaults so a fresh install with no seed rows still
+        // shows the panel in a reasonable state (Submit/Approved/Rejected
+        // default on; Paid defaults on as well).
+        var toggleKeys = new[]
+        {
+            "NotifyOnPayrollSubmit",
+            "NotifyOnPayrollApproved",
+            "NotifyOnPayrollRejected",
+            "NotifyOnPayrollPaid",
+            "PayrollReminderEnabled",
+            "PayrollReminderDays"
+        };
+        var settings = await _context.AppSettings
+            .Where(s => toggleKeys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+        bool BoolFromSettings(string key, bool defaultValue = true)
+            => settings.TryGetValue(key, out var v) && bool.TryParse(v, out var b) ? b : defaultValue;
+
+        ViewBag.NotifyOnSubmit    = BoolFromSettings("NotifyOnPayrollSubmit");
+        ViewBag.NotifyOnApproved  = BoolFromSettings("NotifyOnPayrollApproved");
+        ViewBag.NotifyOnRejected  = BoolFromSettings("NotifyOnPayrollRejected");
+        ViewBag.NotifyOnPaid      = BoolFromSettings("NotifyOnPayrollPaid");
+        ViewBag.ReminderEnabled   = BoolFromSettings("PayrollReminderEnabled", defaultValue: false);
+        ViewBag.ReminderDays      = settings.TryGetValue("PayrollReminderDays", out var dv)
+                                    && int.TryParse(dv, out var dn) && dn > 0 ? dn : 3;
 
         // For the "Add from portal user" dropdown — active users only,
         // excluding anyone already on the recipient list.
@@ -580,6 +599,29 @@ public class AdminPayrollController : Controller
 
         ViewBag.PortalCandidates = portalCandidates;
         return View(recipients);
+    }
+
+    // POST /AdminPayroll/SaveNotificationToggles
+    //
+    // Per-event email switches. Each toggle is rendered as a single
+    // checkbox so an unchecked box doesn't post anything — the action
+    // params default to false and we write false to AppSettings in that
+    // case. That way the saved state always matches what's in the UI.
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveNotificationToggles(
+        bool notifyOnSubmit,
+        bool notifyOnApproved,
+        bool notifyOnRejected,
+        bool notifyOnPaid)
+    {
+        await UpsertSettingAsync("NotifyOnPayrollSubmit",   notifyOnSubmit   ? "true" : "false");
+        await UpsertSettingAsync("NotifyOnPayrollApproved", notifyOnApproved ? "true" : "false");
+        await UpsertSettingAsync("NotifyOnPayrollRejected", notifyOnRejected ? "true" : "false");
+        await UpsertSettingAsync("NotifyOnPayrollPaid",     notifyOnPaid     ? "true" : "false");
+        TempData["Success"] = "Email notification toggles saved.";
+        return RedirectToAction(nameof(NotificationRecipients));
     }
 
     // POST /AdminPayroll/SaveReminderSettings

@@ -1902,6 +1902,94 @@ public static class DbInitializer
                         ON dbo.WorkflowRules (IsActive, [Trigger], SortOrder);
                 END");
 
+            // 66. Payroll notification recipients — curated list of who gets
+            //     the "receipt submitted" / payment-confirmed alerts. When
+            //     empty the notifier falls back to "all active admins."
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollNotificationRecipients')
+                BEGIN
+                    CREATE TABLE dbo.PayrollNotificationRecipients (
+                        Id                      INT             IDENTITY(1,1) NOT NULL,
+                        PortalUserId            INT             NULL,
+                        DisplayName             NVARCHAR(200)   NULL,
+                        Email                   NVARCHAR(200)   NOT NULL,
+                        IsActive                BIT             NOT NULL DEFAULT 1,
+                        CreatedDate             DATETIME2(7)    NOT NULL DEFAULT SYSUTCDATETIME(),
+                        AddedByPortalUserId     INT             NULL,
+                        CONSTRAINT PK_PayrollNotificationRecipients PRIMARY KEY CLUSTERED (Id),
+                        CONSTRAINT FK_PayrollNotificationRecipients_PortalUser
+                            FOREIGN KEY (PortalUserId) REFERENCES dbo.PortalUsers (Id)
+                            ON DELETE SET NULL
+                    );
+
+                    CREATE INDEX IX_PayrollNotificationRecipients_Email
+                        ON dbo.PayrollNotificationRecipients (Email);
+                END");
+
+            // 67. Payroll lifecycle — payment method/reference, contractor's
+            //     confirm-received attestation, and the stale-reminder
+            //     throttle timestamp. All nullable so existing rows are
+            //     untouched.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentMethod') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentMethod NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentReference') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentReference NVARCHAR(200) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentConfirmedDate') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentConfirmedDate DATETIME2(7) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentConfirmedNote') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentConfirmedNote NVARCHAR(500) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'LastReminderSentUtc') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD LastReminderSentUtc DATETIME2(7) NULL;
+                END");
+
+            // 68. Payroll receipt activity / discussion thread — shared by
+            //     human comments (admin <-> contractor) and system-
+            //     generated audit entries. Cascade-delete with the parent
+            //     receipt; SetNull on author deletion so the audit row
+            //     survives.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptComments')
+                BEGIN
+                    CREATE TABLE dbo.PayrollReceiptComments (
+                        Id                      INT             IDENTITY(1,1) NOT NULL,
+                        PayrollReceiptId        INT             NOT NULL,
+                        AuthorPortalUserId      INT             NULL,
+                        AuthorEmployeeId        INT             NULL,
+                        AuthorName              NVARCHAR(200)   NOT NULL,
+                        AuthorRole              NVARCHAR(20)    NOT NULL DEFAULT N'System',
+                        Body                    NVARCHAR(2000)  NOT NULL,
+                        CreatedDate             DATETIME2(7)    NOT NULL DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT PK_PayrollReceiptComments PRIMARY KEY CLUSTERED (Id),
+                        CONSTRAINT FK_PayrollReceiptComments_Receipt
+                            FOREIGN KEY (PayrollReceiptId) REFERENCES dbo.PayrollReceipts (Id)
+                            ON DELETE CASCADE,
+                        CONSTRAINT FK_PayrollReceiptComments_PortalUser
+                            FOREIGN KEY (AuthorPortalUserId) REFERENCES dbo.PortalUsers (Id)
+                            ON DELETE SET NULL,
+                        CONSTRAINT FK_PayrollReceiptComments_Employee
+                            FOREIGN KEY (AuthorEmployeeId) REFERENCES dbo.Employees (Id)
+                            ON DELETE SET NULL
+                    );
+
+                    CREATE INDEX IX_PayrollReceiptComments_Receipt_Created
+                        ON dbo.PayrollReceiptComments (PayrollReceiptId, CreatedDate);
+                END");
+
+            // 69. Seed the reminder-cadence AppSettings — off by default so
+            //     a fresh install doesn't start emailing recipients before
+            //     the admin has reviewed the list.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AppSettings')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollReminderEnabled')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderEnabled', 'false');
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollReminderDays')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderDays', '3');
+                END");
+
         }
         catch (Exception ex)
         {
