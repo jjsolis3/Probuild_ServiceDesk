@@ -278,36 +278,40 @@
     var ytdPendingAmt  = (decimal)(ViewBag.YtdPendingAmount ?? 0m);
     var ytdPendingHrs  = (decimal)(ViewBag.YtdPendingHours ?? 0m);
     var ytdReceiptCnt  = (int)(ViewBag.YtdReceiptCount ?? 0);
+    var ytdHasPaid     = ytdPaidAmt > 0;
+    var ytdHasPending  = ytdPendingAmt > 0;
 }
 <div class="pay-card">
-    <div class="pay-card-accent" style="background:linear-gradient(180deg,#0d6efd 0%,#0a58ca 100%);"></div>
+    <div class="pay-card-accent"></div>
     <div class="pay-card-header">
         <span class="pay-card-header-title">
-            <i class="bi bi-calendar3" style="color:#0d6efd;"></i>
+            <i class="bi bi-calendar3" style="color:var(--pay-blue);"></i>
             @ytdYear Year-to-Date Summary
         </span>
         <span class="text-muted small">@ytdReceiptCnt receipt@(ytdReceiptCnt == 1 ? "" : "s")</span>
     </div>
-    <div class="kpi-grid">
-        <div class="kpi-card" style="background:#ecfdf5;">
-            <div class="kpi-icon" style="background:#10b981;"><i class="bi bi-cash-coin"></i></div>
-            <div class="kpi-value" style="color:#047857;">$@ytdPaidAmt.ToString("N2")</div>
-            <div class="kpi-label">Paid YTD</div>
-        </div>
-        <div class="kpi-card" style="background:#fff7ed;">
-            <div class="kpi-icon" style="background:#f97316;"><i class="bi bi-hourglass-split"></i></div>
-            <div class="kpi-value" style="color:#c2410c;">$@ytdPendingAmt.ToString("N2")</div>
-            <div class="kpi-label">Pending (Submitted + Approved)</div>
-        </div>
-        <div class="kpi-card" style="background:#eff6ff;">
-            <div class="kpi-icon" style="background:#0d6efd;"><i class="bi bi-clock-history"></i></div>
-            <div class="kpi-value" style="color:#0d6efd;">@((ytdPaidHrs + ytdPendingHrs).ToString("0.##")) h</div>
-            <div class="kpi-label">Total Hours YTD</div>
-        </div>
-        <div class="kpi-card" style="background:#f5f3ff;">
-            <div class="kpi-icon" style="background:#7c3aed;"><i class="bi bi-graph-up"></i></div>
-            <div class="kpi-value" style="color:#6d28d9;">$@((ytdPaidAmt + ytdPendingAmt).ToString("N2"))</div>
-            <div class="kpi-label">Gross YTD</div>
+    <div class="pay-card-body">
+        <div class="kpi-grid">
+            <div class="kpi-tile @(ytdHasPaid ? "kpi-green" : "kpi-neutral")">
+                <div class="kpi-label">Paid YTD</div>
+                <div class="kpi-value" style="font-size:1.55rem;">$@ytdPaidAmt.ToString("N2")</div>
+                <div class="kpi-sub">@ytdPaidHrs.ToString("0.##") hours</div>
+            </div>
+            <div class="kpi-tile @(ytdHasPending ? "kpi-amber" : "kpi-neutral")">
+                <div class="kpi-label">Pending</div>
+                <div class="kpi-value" style="font-size:1.55rem;">$@ytdPendingAmt.ToString("N2")</div>
+                <div class="kpi-sub">submitted + approved</div>
+            </div>
+            <div class="kpi-tile kpi-blue">
+                <div class="kpi-label">Total Hours YTD</div>
+                <div class="kpi-value">@((ytdPaidHrs + ytdPendingHrs).ToString("0.##"))</div>
+                <div class="kpi-sub">paid + pending</div>
+            </div>
+            <div class="kpi-tile kpi-navy">
+                <div class="kpi-label">Gross YTD</div>
+                <div class="kpi-value" style="font-size:1.55rem;">$@((ytdPaidAmt + ytdPendingAmt).ToString("N2"))</div>
+                <div class="kpi-sub">all non-draft receipts</div>
+            </div>
         </div>
     </div>
 </div>
