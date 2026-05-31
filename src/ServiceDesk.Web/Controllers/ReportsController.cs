@@ -357,6 +357,98 @@ public class ReportsController : Controller
         return View();
     }
 
+    /// <summary>
+    /// Agent Performance leaderboard — for each active agent, surfaces
+    /// resolved-count, open-count, avg resolution hours, and avg CSAT
+    /// score across the configured date range. Defaults to last 30 days
+    /// so the page reflects "recent" performance without an admin having
+    /// to pick a range first.
+    /// </summary>
+    public async Task<IActionResult> Agents(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        // Two pulls: tickets assigned to an agent in range (for volume +
+        // MTTR) and CSAT surveys completed in the same range (for the
+        // satisfaction column). Both are bounded so a multi-year DB
+        // doesn't pull the world.
+        var ticketsInRange = await _context.Tickets
+            .Include(t => t.AssignedTo)
+            .Where(t => t.AssignedToId != null
+                     && t.CreatedDate <= rangeTo
+                     && (t.ResolvedDate == null || t.ResolvedDate >= rangeFrom))
+            .ToListAsync();
+
+        var resolvedSurveys = await _context.CsatSurveys
+            .Include(s => s.Ticket)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null && s.Ticket.AssignedToId != null)
+            .ToListAsync();
+
+        var perAgent = ticketsInRange
+            .GroupBy(t => new { t.AssignedToId, Name = t.AssignedTo!.FullName })
+            .Select(g =>
+            {
+                var resolved = g.Where(t =>
+                    (t.Status == Core.Enums.TicketStatus.Resolved || t.Status == Core.Enums.TicketStatus.Closed)
+                    && t.ResolvedDate.HasValue
+                    && t.ResolvedDate >= rangeFrom
+                    && t.ResolvedDate <= rangeTo).ToList();
+
+                var open = g.Where(t =>
+                    t.Status != Core.Enums.TicketStatus.Resolved
+                    && t.Status != Core.Enums.TicketStatus.Closed
+                    && t.Status != Core.Enums.TicketStatus.Cancelled).Count();
+
+                var mttrHours = resolved.Count > 0
+                    ? resolved.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours)
+                    : (double?)null;
+
+                var agentSurveys = resolvedSurveys
+                    .Where(s => s.Ticket!.AssignedToId == g.Key.AssignedToId)
+                    .ToList();
+                var csat = agentSurveys.Count > 0
+                    ? Math.Round(agentSurveys.Average(s => (double)s.Score!.Value), 2)
+                    : (double?)null;
+
+                return new
+                {
+                    AgentId      = g.Key.AssignedToId!.Value,
+                    Name         = g.Key.Name,
+                    Resolved     = resolved.Count,
+                    Open         = open,
+                    MttrHours    = mttrHours.HasValue ? Math.Round(mttrHours.Value, 1) : (double?)null,
+                    CsatAvg      = csat,
+                    CsatCount    = agentSurveys.Count
+                };
+            })
+            .OrderByDescending(x => x.Resolved)
+            .ThenByDescending(x => x.CsatAvg ?? 0)
+            .ToList();
+
+        // Headline KPIs across all agents in scope.
+        var totalResolved = perAgent.Sum(a => a.Resolved);
+        var totalOpen     = perAgent.Sum(a => a.Open);
+        var avgMttr       = perAgent.Where(a => a.MttrHours.HasValue).Select(a => a.MttrHours!.Value).ToList();
+        var fleetMttr     = avgMttr.Count > 0 ? Math.Round(avgMttr.Average(), 1) : (double?)null;
+        var fleetCsat     = perAgent.Where(a => a.CsatAvg.HasValue).Select(a => a.CsatAvg!.Value).ToList();
+        var fleetCsatAvg  = fleetCsat.Count > 0 ? Math.Round(fleetCsat.Average(), 2) : (double?)null;
+
+        ViewBag.From          = rangeFrom;
+        ViewBag.To            = rangeTo;
+        ViewBag.PerAgent      = perAgent;
+        ViewBag.TotalResolved = totalResolved;
+        ViewBag.TotalOpen     = totalOpen;
+        ViewBag.FleetMttr     = fleetMttr;
+        ViewBag.FleetCsat     = fleetCsatAvg;
+        ViewData["Title"]     = "Agent Performance";
+        return View();
+    }
+
     public async Task<IActionResult> Tickets()
     {
         var tickets = await _context.Tickets

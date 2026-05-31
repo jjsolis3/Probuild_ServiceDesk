@@ -9,19 +9,37 @@
             ActionIcon = "bi-plus-lg"
         })
 
-    Fields beyond Icon/Title/Message are optional — omit the action chunk to
-    render a no-CTA "nothing here" state. Tone defaults to neutral; pass
-    Tone = "success" / "warning" to recolor the icon for "happy empty"
-    (caught up) or "needs attention" (config missing) variants.
+    Optional fields:
+        SecondaryLink / SecondaryText / SecondaryIcon — second CTA
+        Tone — "success" | "warning" | "danger" | "neutral" (default)
+
+    Properties are read reflectively so call sites only need to pass what
+    they care about; missing properties resolve to null without throwing
+    a dynamic-binder exception. Use anonymous objects freely.
 *@
 @{
-    var icon       = (string)((dynamic)Model).Icon ?? "bi-inbox";
-    var title      = (string)((dynamic)Model).Title ?? "Nothing here yet";
-    var message    = (string?)((dynamic)Model).Message;
-    var actionLink = (string?)((dynamic)Model).ActionLink;
-    var actionText = (string?)((dynamic)Model).ActionText;
-    var actionIcon = (string?)((dynamic)Model).ActionIcon ?? "bi-plus-lg";
-    var tone       = ((string?)((dynamic)Model).Tone) ?? "neutral";
+    // Reflection-based lookup — works against any anonymous type because
+    // anonymous types are public read-only properties under the hood.
+    // Returns null when the property doesn't exist on the supplied model,
+    // which is the behavior the call sites have always expected.
+    string? GetString(string name)
+    {
+        var prop = Model?.GetType().GetProperty(name);
+        var v    = prop?.GetValue(Model);
+        return v?.ToString();
+    }
+
+    var icon       = GetString("Icon")       ?? "bi-inbox";
+    var title      = GetString("Title")      ?? "Nothing here yet";
+    var message    = GetString("Message");
+    var actionLink = GetString("ActionLink");
+    var actionText = GetString("ActionText");
+    var actionIcon = GetString("ActionIcon") ?? "bi-plus-lg";
+    var tone       = GetString("Tone")       ?? "neutral";
+
+    var secondaryLink = GetString("SecondaryLink");
+    var secondaryText = GetString("SecondaryText");
+    var secondaryIcon = GetString("SecondaryIcon") ?? "bi-arrow-right";
 
     var iconColor = tone switch
     {
@@ -53,11 +71,6 @@
         <a href="@actionLink" class="btn btn-primary">
             <i class="bi @actionIcon me-1"></i>@actionText
         </a>
-    }
-    @{
-        var secondaryLink = (string?)((dynamic)Model).SecondaryLink;
-        var secondaryText = (string?)((dynamic)Model).SecondaryText;
-        var secondaryIcon = (string?)((dynamic)Model).SecondaryIcon ?? "bi-arrow-right";
     }
     @if (!string.IsNullOrWhiteSpace(secondaryLink) && !string.IsNullOrWhiteSpace(secondaryText))
     {
