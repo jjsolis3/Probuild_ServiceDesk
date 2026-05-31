@@ -149,6 +149,7 @@ public class UserReportViewModel
 
 public class UserTicketStats
 {
+    public int EmployeeId { get; set; }
     public string EmployeeName { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public string Branch { get; set; } = string.Empty;

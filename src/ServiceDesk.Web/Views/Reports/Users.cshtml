@@ -43,11 +43,22 @@
                         @foreach (var user in Model.UserStats)
                         {
                             <tr>
-                                <td>@user.EmployeeName</td>
+                                <td>
+                                    <a asp-controller="Employees" asp-action="Details" asp-route-id="@user.EmployeeId"
+                                       class="text-decoration-none fw-semibold">@user.EmployeeName</a>
+                                </td>
                                 <td><span class="badge bg-light text-dark border">@user.Branch</span></td>
                                 <td>@user.Department</td>
-                                <td class="text-end">@user.TicketsSubmitted</td>
-                                <td class="text-end">
+                                <td class="text-end @(user.TicketsSubmitted > 0 ? "ss-drill-row" : "")"
+                                    @(user.TicketsSubmitted > 0
+                                        ? Html.Raw($"data-ssdrill-url=\"/Reports/TicketsForRequester?employeeId={user.EmployeeId}&scope=all\" data-ssdrill-title=\"Tickets submitted by {Html.Encode(user.EmployeeName)}\" data-ssdrill-type=\"tickets\" title=\"View submitted tickets\"")
+                                        : Html.Raw(""))>
+                                    @user.TicketsSubmitted
+                                </td>
+                                <td class="text-end @(user.TicketsOpen > 0 ? "ss-drill-row" : "")"
+                                    @(user.TicketsOpen > 0
+                                        ? Html.Raw($"data-ssdrill-url=\"/Reports/TicketsForRequester?employeeId={user.EmployeeId}&scope=open\" data-ssdrill-title=\"Open tickets submitted by {Html.Encode(user.EmployeeName)}\" data-ssdrill-type=\"tickets\" title=\"View open tickets\"")
+                                        : Html.Raw(""))>
                                     @if (user.TicketsOpen > 0)
                                     {
                                         <span class="badge bg-warning text-dark">@user.TicketsOpen</span>
@@ -57,7 +68,10 @@
                                         <span>0</span>
                                     }
                                 </td>
-                                <td class="text-end">
+                                <td class="text-end @(user.TicketsResolved > 0 ? "ss-drill-row" : "")"
+                                    @(user.TicketsResolved > 0
+                                        ? Html.Raw($"data-ssdrill-url=\"/Reports/TicketsForRequester?employeeId={user.EmployeeId}&scope=resolved\" data-ssdrill-title=\"Resolved tickets submitted by {Html.Encode(user.EmployeeName)}\" data-ssdrill-type=\"tickets\" title=\"View resolved tickets\"")
+                                        : Html.Raw(""))>
                                     @if (user.TicketsResolved > 0)
                                     {
                                         <span class="badge bg-success">@user.TicketsResolved</span>
@@ -67,7 +81,12 @@
                                         <span>0</span>
                                     }
                                 </td>
-                                <td class="text-end">@user.AssetsAssigned</td>
+                                <td class="text-end @(user.AssetsAssigned > 0 ? "ss-drill-row" : "")"
+                                    @(user.AssetsAssigned > 0
+                                        ? Html.Raw($"data-ssdrill-url=\"/Reports/AssetsAssignedToEmployee?employeeId={user.EmployeeId}\" data-ssdrill-title=\"Assets assigned to {Html.Encode(user.EmployeeName)}\" data-ssdrill-type=\"assets\" title=\"View assigned assets\"")
+                                        : Html.Raw(""))>
+                                    @user.AssetsAssigned
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -145,3 +164,5 @@
     </div>
 </div>
 </div><!-- /ss-export-target -->
+
+@await Html.PartialAsync("_DrillDownModal")

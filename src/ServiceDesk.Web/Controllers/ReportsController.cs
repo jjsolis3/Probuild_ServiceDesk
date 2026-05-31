@@ -652,6 +652,7 @@ public class ReportsController : Controller
         var userStats = employees.Select(e => {
             ticketStats.TryGetValue(e.Id, out var s);
             return new UserTicketStats {
+                EmployeeId       = e.Id,
                 EmployeeName     = e.FullName,
                 Department       = e.Department,
                 Branch           = e.BranchName,
@@ -1017,6 +1018,103 @@ public class ReportsController : Controller
             .Where(t => t.Status != TicketStatus.Resolved
                      && t.Status != TicketStatus.Closed
                      && t.Status != TicketStatus.Cancelled)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/AllAssets — flat list of every asset, for the Total
+    // Assets card on the Assets report. Filtered, sortable, paginated
+    // inside the drill modal via DataTables.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> AllAssets()
+    {
+        var raw = await _context.Assets
+            .Include(a => a.AssignedTo).ThenInclude(e => e!.Branch)
+            .OrderByDescending(a => a.PurchaseDate)
+            .Select(a => new {
+                a.Id, a.AssetTag, a.Name, a.AssetType, a.Status,
+                AssignedTo   = a.AssignedTo != null ? a.AssignedTo.FirstName + " " + a.AssignedTo.LastName : null,
+                Branch       = a.AssignedTo != null && a.AssignedTo.Branch != null ? a.AssignedTo.Branch.Name : null,
+                PurchaseDate = a.PurchaseDate
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(a => new {
+            id            = a.Id,
+            assetTag      = a.AssetTag,
+            name          = a.Name,
+            type          = a.AssetType.ToString(),
+            status        = a.Status.ToString(),
+            assignedTo    = a.AssignedTo,
+            branch        = a.Branch,
+            purchaseDate  = a.PurchaseDate?.ToString("MMM dd, yyyy")
+        }));
+    }
+
+    // GET /Reports/AssetsAssignedToEmployee?employeeId=N
+    // Powers the asset-drill cell on the User Reports table.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> AssetsAssignedToEmployee(int employeeId)
+    {
+        var raw = await _context.Assets
+            .Include(a => a.AssignedTo).ThenInclude(e => e!.Branch)
+            .Where(a => a.AssignedToId == employeeId)
+            .OrderByDescending(a => a.PurchaseDate)
+            .Select(a => new {
+                a.Id, a.AssetTag, a.Name, a.AssetType, a.Status,
+                AssignedTo   = a.AssignedTo != null ? a.AssignedTo.FirstName + " " + a.AssignedTo.LastName : null,
+                Branch       = a.AssignedTo != null && a.AssignedTo.Branch != null ? a.AssignedTo.Branch.Name : null,
+                PurchaseDate = a.PurchaseDate
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(a => new {
+            id            = a.Id,
+            assetTag      = a.AssetTag,
+            name          = a.Name,
+            type          = a.AssetType.ToString(),
+            status        = a.Status.ToString(),
+            assignedTo    = a.AssignedTo,
+            branch        = a.Branch,
+            purchaseDate  = a.PurchaseDate?.ToString("MMM dd, yyyy")
+        }));
+    }
+
+    // GET /Reports/TicketsForRequester?employeeId=N&scope=open|resolved|all
+    // Powers the ticket-drill cells on the User Reports table.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsForRequester(int employeeId, string? scope)
+    {
+        var query = _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.SubmittedById == employeeId);
+
+        if (string.Equals(scope, "open", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(t => t.Status != TicketStatus.Resolved
+                                  && t.Status != TicketStatus.Closed
+                                  && t.Status != TicketStatus.Cancelled);
+        else if (string.Equals(scope, "resolved", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await query
             .OrderByDescending(t => t.CreatedDate)
             .Select(t => new {
                 t.Id, t.Title, t.Category, t.Priority, t.Status,

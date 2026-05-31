@@ -67,7 +67,11 @@
         </div>
     </div>
     <div class="col-6 col-md-4 col-lg-2">
-        <div class="card border-0 shadow-sm text-center h-100 exec-kpi">
+        <div class="card border-0 shadow-sm text-center h-100 exec-kpi ss-drill-card"
+             data-ssdrill-url="/Reports/TicketsCurrentlyOpen"
+             data-ssdrill-title="Currently Open Tickets"
+             data-ssdrill-type="tickets"
+             data-ssdrill-link="/Tickets?status=Open">
             <div class="card-body py-3 px-2">
                 <div class="small text-muted text-uppercase fw-semibold mb-1">Open</div>
                 <div class="fs-4 fw-bold text-dark">@Model.TotalOpen</div>
@@ -76,7 +80,11 @@
         </div>
     </div>
     <div class="col-6 col-md-4 col-lg-2">
-        <div class="card border-0 shadow-sm text-center h-100 exec-kpi">
+        <div class="card border-0 shadow-sm text-center h-100 exec-kpi ss-drill-card"
+             data-ssdrill-url="/Reports/TicketsResolvedInRange?from=@(DateTime.UtcNow.AddDays(-30).ToString("yyyy-MM-dd"))&to=@(DateTime.UtcNow.ToString("yyyy-MM-dd"))"
+             data-ssdrill-title="Resolved in the Last 30 Days"
+             data-ssdrill-type="tickets"
+             data-ssdrill-link="/Tickets?status=Resolved">
             <div class="card-body py-3 px-2">
                 <div class="small text-muted text-uppercase fw-semibold mb-1">Resolved</div>
                 <div class="fs-4 fw-bold text-success">@Model.ResolvedLast30Days</div>
@@ -387,6 +395,8 @@
     </div>
 </div>
 </div><!-- /ss-export-target -->
+
+@await Html.PartialAsync("_DrillDownModal")
 
 @section Styles {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />
