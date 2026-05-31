@@ -65,7 +65,7 @@
 <script>
 (function () {
     // Wait for Bootstrap (and jQuery for DataTables) to load. The Razor
-    // partial is rendered inside @RenderBody, which appears BEFORE the
+    // partial is rendered inside @@RenderBody, which appears BEFORE the
     // layout's bottom <script> tags — running new bootstrap.Modal() at
     // parse time would throw "bootstrap is not defined".
     function init() {

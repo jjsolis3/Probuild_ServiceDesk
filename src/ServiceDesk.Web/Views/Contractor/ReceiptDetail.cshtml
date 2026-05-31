@@ -1,5 +1,10 @@
 @model ServiceDesk.Core.Models.PayrollReceipt
 @{
+    // Single source of truth for "is this page being viewed by an
+    // admin?" — referenced by both the Back button at the top and the
+    // comment-post form lower down. Declared once at file scope so a
+    // duplicate `var isAdminViewer` doesn't shadow / conflict.
+    var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
     var companyName = ViewBag.CompanyName as string ?? "ServiceSphere";
     var statusColor = Model.Status switch {
         "Draft"     => "#6c757d",
@@ -291,7 +296,6 @@
                 // employee profile is not flagged as a contractor"
                 // bounce when an admin clicks Back from a contractor's
                 // receipt.
-                var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
                 var backController = isAdminViewer ? "AdminPayroll" : "Contractor";
                 var backAction     = isAdminViewer ? "Index"        : "Payroll";
                 var backLabel      = isAdminViewer ? "Back to Payroll Queue" : "Back";
@@ -852,7 +856,6 @@
 
                 @if (Model.Status != "Draft")
                 {
-                    var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
                     var postController = isAdminViewer ? "AdminPayroll" : "Contractor";
                     var postAction     = isAdminViewer ? "PostComment"  : "PostReceiptComment";
                     var promptText     = isAdminViewer
