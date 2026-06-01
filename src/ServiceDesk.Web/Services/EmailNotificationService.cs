@@ -1065,9 +1065,15 @@ public class EmailNotificationService
     }
 
     /// <summary>
-    /// Notifies the contractor that their submitted receipt has been approved.
+    /// <summary>
+    /// Notifies the contractor that their submitted receipt has been
+    /// approved. When the admin chose to forward a copy in the Approve
+    /// modal, the corresponding flags tell the contractor which
+    /// downstream team (HR / AP) now has the receipt for processing —
+    /// without exposing internal email addresses.
     /// </summary>
-    public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt)
+    public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt,
+        bool forwardedToHr = false, bool forwardedToAp = false)
     {
         if (!await IsNotificationEnabled("NotifyOnPayrollApproved")) return;
 
@@ -1080,11 +1086,30 @@ public class EmailNotificationService
                     <div style='margin-top:6px;color:#065f46;'>{System.Net.WebUtility.HtmlEncode(receipt.ApprovalNote)}</div>
                  </div>";
 
+        // Forwarded-to call-out — only renders if at least one downstream
+        // copy actually went out. Naming is generic ("our HR / Accounts
+        // Payable team") so we don't leak internal email addresses to
+        // the contractor.
+        string forwardBlock = string.Empty;
+        if (forwardedToHr || forwardedToAp)
+        {
+            var targets = new List<string>();
+            if (forwardedToHr) targets.Add("our <strong>HR</strong> team");
+            if (forwardedToAp) targets.Add("our <strong>Accounts Payable</strong> team");
+            var targetText = string.Join(" and ", targets);
+            forwardBlock = $@"<div style='background:#eef4ff;border-left:4px solid #0d6efd;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#0a58ca;'>Sent for processing</strong>
+                    <div style='margin-top:6px;color:#1e40af;'>
+                        A copy of your approved receipt has been forwarded to {targetText} for payment processing.
+                    </div>
+                </div>";
+        }
+
         await SendContractorReceiptStatusEmailAsync(receipt,
             statusLabel: "Approved",
             subject: $"Your receipt #{receipt.Id} has been approved",
             heading: "Receipt Approved",
-            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.{noteBlock}",
+            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.{noteBlock}{forwardBlock}",
             barColor: "#10b981",
             logType: "PayrollApproved");
     }

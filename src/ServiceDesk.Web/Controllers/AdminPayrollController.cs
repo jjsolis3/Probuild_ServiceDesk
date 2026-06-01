@@ -177,42 +177,56 @@ public class AdminPayrollController : Controller
             await _activity.LogAdminAsync(receipt.Id, approver, summary);
         }
 
-        try { await _emailService.NotifyReceiptApprovedAsync(receipt); }
+        // Forward FIRST so the contractor's email reflects the truth.
+        // The helper returns which downstream addresses actually
+        // succeeded; those flags feed the contractor email body so it
+        // can accurately say "forwarded to HR / AP for processing"
+        // instead of guessing. If a forward fails we just don't
+        // mention it (better than promising something that didn't
+        // happen).
+        var (forwardCount, hrSent, apSent) = await ForwardOnApprovalAsync(
+            receipt, approver, sendToHr, hrEmail, sendToAp, apEmail);
+
+        try { await _emailService.NotifyReceiptApprovedAsync(receipt,
+                forwardedToHr: hrSent, forwardedToAp: apSent); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
+        // Tailor the in-app bell message to the same outcome.
+        var bellMessage = (hrSent, apSent) switch
+        {
+            (true, true)  => $"Forwarded to HR and AP · {receipt.TotalAmount:C}",
+            (true, false) => $"Forwarded to HR · {receipt.TotalAmount:C}",
+            (false, true) => $"Forwarded to AP · {receipt.TotalAmount:C}",
+            _             => receipt.ApprovalNote ?? $"{receipt.TotalAmount:C} · awaiting payment"
+        };
         await NotifyContractorOnBellAsync(
             receipt.ContractorId,
             type:    "PayrollApproved",
             title:   $"Your receipt #{receipt.Id} was approved",
-            message: receipt.ApprovalNote ?? $"{receipt.TotalAmount:C} · awaiting payment",
+            message: bellMessage,
             link:    ContractorReceiptLink(Url, receipt.Id),
             icon:    "bi-check-circle");
 
-        // Forward-on-approve workflow — if the admin checked HR or AP
-        // boxes in the modal, fire share-receipt sends with both PDF and
-        // XLSX attached. We also persist whatever address they typed so
-        // the next approval auto-fills the same value (the "remember
-        // overrides on the spot" behavior).
-        var forwarded = await ForwardOnApprovalAsync(receipt, approver,
-            sendToHr, hrEmail, sendToAp, apEmail);
-
-        TempData["Success"] = forwarded > 0
-            ? $"Receipt approved and forwarded to {forwarded} recipient(s)."
+        TempData["Success"] = forwardCount > 0
+            ? $"Receipt approved and forwarded to {forwardCount} recipient(s)."
             : "Receipt approved.";
         return RedirectToAction(nameof(Index));
     }
 
     /// <summary>
     /// Sends a copy of the just-approved receipt to the HR / AP
-    /// addresses the admin chose in the modal. Returns the number of
-    /// successful sends so the controller can include it in the toast.
+    /// addresses the admin chose in the modal. Returns a tuple of
+    ///   - total successful sends (for the toast)
+    ///   - hrSent flag (so the contractor email can mention it)
+    ///   - apSent flag (same)
     /// Persists any newly-typed address to AppSettings so subsequent
     /// approvals pre-fill the same value.
     /// </summary>
-    private async Task<int> ForwardOnApprovalAsync(PayrollReceipt receipt, PortalUser? approver,
+    private async Task<(int Count, bool HrSent, bool ApSent)> ForwardOnApprovalAsync(
+        PayrollReceipt receipt, PortalUser? approver,
         bool sendToHr, string? hrEmail, bool sendToAp, string? apEmail)
     {
-        if (!sendToHr && !sendToAp) return 0;
+        if (!sendToHr && !sendToAp) return (0, false, false);
 
         // Build the attachment set once — both addresses receive the
         // same PDF + XLSX bundle.
@@ -226,8 +240,6 @@ public class AdminPayrollController : Controller
                 ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
                 : "Contractor") +
             $" — {receipt.TotalAmount:C}";
-
-        var sent = 0;
 
         async Task<bool> ForwardOneAsync(string label, string email)
         {
@@ -247,17 +259,20 @@ public class AdminPayrollController : Controller
             catch (Exception) { return false; }
         }
 
+        var hrSent = false;
+        var apSent = false;
         if (sendToHr && await ForwardOneAsync("HR", hrEmail ?? ""))
         {
-            sent++;
+            hrSent = true;
             await UpsertSettingAsync("PayrollHrEmail", (hrEmail ?? "").Trim());
         }
         if (sendToAp && await ForwardOneAsync("Accounts Payable", apEmail ?? ""))
         {
-            sent++;
+            apSent = true;
             await UpsertSettingAsync("PayrollApEmail", (apEmail ?? "").Trim());
         }
-        return sent;
+        var total = (hrSent ? 1 : 0) + (apSent ? 1 : 0);
+        return (total, hrSent, apSent);
     }
 
     // POST /AdminPayroll/MarkPaid/{id}
