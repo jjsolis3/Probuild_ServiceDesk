@@ -664,10 +664,64 @@
                         as the approver and stamps the timestamp. The contractor will be notified
                         by email.
                     </p>
-                    <div>
+                    <div class="mb-3">
                         <label class="form-label fw-semibold">Approval note <span class="text-muted fw-normal">(optional — included in the email)</span></label>
                         <textarea name="approvalNote" class="form-control" rows="3" maxlength="1000"
                                   placeholder="e.g. Matches PO #142 — approved for payment in next cycle"></textarea>
+                    </div>
+
+                    @{
+                        var defaultHrEmail = (string?)ViewBag.DefaultHrEmail ?? "";
+                        var defaultApEmail = (string?)ViewBag.DefaultApEmail ?? "";
+                    }
+                    @* Forward-on-approve workflow.
+                       Two-row mini form that lets the admin push the
+                       approved receipt straight to HR / AP without
+                       leaving the modal. Email fields are always
+                       editable — any change the admin makes here is
+                       persisted as the new default for next time. *@
+                    <div class="border rounded p-3" style="background:#f8fafc;">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="bi bi-send-arrow-up me-2 text-primary"></i>
+                            <span class="fw-semibold">Forward a copy on approval</span>
+                            <span class="text-muted small ms-2">(optional)</span>
+                        </div>
+                        <div class="text-muted small mb-3">
+                            Sends the receipt (PDF + Excel) to the addresses below as soon as approval lands.
+                            The email you type here becomes the default the next time you approve a receipt.
+                        </div>
+
+                        <div class="row g-2 align-items-center mb-2">
+                            <div class="col-auto" style="min-width:140px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="approveSendHr" name="sendToHr" value="true" />
+                                    <label class="form-check-label fw-semibold" for="approveSendHr">
+                                        Send to HR
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <input type="email" name="hrEmail" id="approveHrEmail" class="form-control form-control-sm"
+                                       value="@defaultHrEmail"
+                                       placeholder="hr@yourcompany.com" />
+                            </div>
+                        </div>
+
+                        <div class="row g-2 align-items-center">
+                            <div class="col-auto" style="min-width:140px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="approveSendAp" name="sendToAp" value="true" />
+                                    <label class="form-check-label fw-semibold" for="approveSendAp">
+                                        Send to AP
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <input type="email" name="apEmail" id="approveApEmail" class="form-control form-control-sm"
+                                       value="@defaultApEmail"
+                                       placeholder="ap@yourcompany.com" />
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -928,6 +982,24 @@ function openApproveModal(id, name) {
     document.getElementById('approveContractorName').textContent = name;
     new bootstrap.Modal(document.getElementById('approveModal')).show();
 }
+
+// Auto-tick the matching checkbox the moment the admin types in either
+// forward-on-approve field. Saves the "I typed the address but forgot to
+// flip the toggle" footgun.
+(function () {
+    function bindAutoCheck(emailId, checkId) {
+        var emailEl = document.getElementById(emailId);
+        var checkEl = document.getElementById(checkId);
+        if (!emailEl || !checkEl) return;
+        emailEl.addEventListener('input', function () {
+            if (emailEl.value.trim().length > 0) checkEl.checked = true;
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        bindAutoCheck('approveHrEmail', 'approveSendHr');
+        bindAutoCheck('approveApEmail', 'approveSendAp');
+    });
+})();
 
 function openRejectModal(id, name) {
     document.getElementById('rejectReceiptId').value = id;

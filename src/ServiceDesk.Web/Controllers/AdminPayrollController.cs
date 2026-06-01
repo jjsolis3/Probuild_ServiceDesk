@@ -127,6 +127,15 @@ public class AdminPayrollController : Controller
         ViewBag.FilterStatus       = status;
         ViewBag.FilterContractorId = contractorId;
         ViewBag.FilterRateType     = rateType;
+
+        // Defaults for the "Forward on Approve" workflow — pre-fill the
+        // HR / AP email fields in the approval modal so the admin can
+        // one-click forward without re-typing on every approval.
+        var defaultsLookup = await _context.AppSettings
+            .Where(s => s.Key == "PayrollHrEmail" || s.Key == "PayrollApEmail")
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        ViewBag.DefaultHrEmail = defaultsLookup.TryGetValue("PayrollHrEmail", out var hr) ? hr : "";
+        ViewBag.DefaultApEmail = defaultsLookup.TryGetValue("PayrollApEmail", out var ap) ? ap : "";
         ViewData["Title"]          = "Contractor Payroll";
         return View(receipts.ToList());
     }
@@ -134,9 +143,15 @@ public class AdminPayrollController : Controller
     // POST /AdminPayroll/Approve/{id}
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Approve(int id, string? approvalNote)
+    public async Task<IActionResult> Approve(int id, string? approvalNote,
+        bool sendToHr = false, string? hrEmail = null,
+        bool sendToAp = false, string? apEmail = null)
     {
-        var receipt = await _context.PayrollReceipts.FindAsync(id);
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.TimeEntries)
+                .ThenInclude(e => e.Ticket)
+            .FirstOrDefaultAsync(r => r.Id == id);
         if (receipt == null) return NotFound();
 
         if (receipt.Status != "Submitted")
@@ -173,8 +188,76 @@ public class AdminPayrollController : Controller
             link:    ContractorReceiptLink(Url, receipt.Id),
             icon:    "bi-check-circle");
 
-        TempData["Success"] = "Receipt approved.";
+        // Forward-on-approve workflow — if the admin checked HR or AP
+        // boxes in the modal, fire share-receipt sends with both PDF and
+        // XLSX attached. We also persist whatever address they typed so
+        // the next approval auto-fills the same value (the "remember
+        // overrides on the spot" behavior).
+        var forwarded = await ForwardOnApprovalAsync(receipt, approver,
+            sendToHr, hrEmail, sendToAp, apEmail);
+
+        TempData["Success"] = forwarded > 0
+            ? $"Receipt approved and forwarded to {forwarded} recipient(s)."
+            : "Receipt approved.";
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Sends a copy of the just-approved receipt to the HR / AP
+    /// addresses the admin chose in the modal. Returns the number of
+    /// successful sends so the controller can include it in the toast.
+    /// Persists any newly-typed address to AppSettings so subsequent
+    /// approvals pre-fill the same value.
+    /// </summary>
+    private async Task<int> ForwardOnApprovalAsync(PayrollReceipt receipt, PortalUser? approver,
+        bool sendToHr, string? hrEmail, bool sendToAp, string? apEmail)
+    {
+        if (!sendToHr && !sendToAp) return 0;
+
+        // Build the attachment set once — both addresses receive the
+        // same PDF + XLSX bundle.
+        var attachments = await _attachments.BuildAsync(receipt, "both");
+        var senderDisplay = approver != null
+            ? $"{approver.FirstName} {approver.LastName} (Admin)"
+            : "Admin";
+
+        var subject = $"Approved Receipt #{receipt.Id} — " +
+            (receipt.Contractor != null
+                ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+                : "Contractor") +
+            $" — {receipt.TotalAmount:C}";
+
+        var sent = 0;
+
+        async Task<bool> ForwardOneAsync(string label, string email)
+        {
+            if (string.IsNullOrWhiteSpace(email)) return false;
+            var message = $"Hi {label} — receipt #{receipt.Id} just cleared approval, please process " +
+                          $"in the next pay run. Approval note: " +
+                          (string.IsNullOrWhiteSpace(receipt.ApprovalNote)
+                              ? "(none)"
+                              : receipt.ApprovalNote);
+            try
+            {
+                return await _emailService.ShareReceiptAsync(
+                    receipt, email.Trim(), ccEmail: null,
+                    subjectOverride: subject, message: message,
+                    attachments: attachments, senderDisplay: senderDisplay);
+            }
+            catch (Exception) { return false; }
+        }
+
+        if (sendToHr && await ForwardOneAsync("HR", hrEmail ?? ""))
+        {
+            sent++;
+            await UpsertSettingAsync("PayrollHrEmail", (hrEmail ?? "").Trim());
+        }
+        if (sendToAp && await ForwardOneAsync("Accounts Payable", apEmail ?? ""))
+        {
+            sent++;
+            await UpsertSettingAsync("PayrollApEmail", (apEmail ?? "").Trim());
+        }
+        return sent;
     }
 
     // POST /AdminPayroll/MarkPaid/{id}
