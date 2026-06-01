@@ -30,6 +30,15 @@ public class TicketHistory
     [Display(Name = "Changed")]
     public DateTime ChangedDate { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Optional admin-supplied justification for the change — e.g. the
+    /// "why" behind a due-date extension. Surfaces in the ticket
+    /// history view + makes audits answerable without a side query.
+    /// </summary>
+    [StringLength(500)]
+    [Display(Name = "Reason")]
+    public string? Reason { get; set; }
+
     // Navigation
     public Ticket? Ticket { get; set; }
 }

@@ -532,14 +532,44 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                @{
+                                    var isAdmin = User.IsInRole("Admin");
+                                    var isExtended = Model.OriginalDueDate.HasValue
+                                                  && Model.DueDate.HasValue
+                                                  && Model.OriginalDueDate.Value != Model.DueDate.Value;
+                                }
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <label class="form-label fw-semibold mb-0">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                    @if (isAdmin)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                                data-bs-toggle="modal" data-bs-target="#extendSlaModal"
+                                                title="Extend / adjust the SLA due date (admin only)">
+                                            <i class="bi bi-clock-history me-1"></i>Adjust SLA
+                                        </button>
+                                    }
+                                </div>
                                 <input type="datetime-local" id="dueDatePicker"
-                                       class="form-control @(Model.IsOverdue ? "border-danger" : "")"
+                                       class="form-control @(Model.IsOverdue ? "border-danger" : "") @(isAdmin ? "" : "bg-light")"
                                        value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
-                                       onchange="document.getElementById('dueDateHidden').value = this.value;" />
+                                       onchange="document.getElementById('dueDateHidden').value = this.value;"
+                                       @(isAdmin ? "" : "readonly") />
                                 @if (Model.IsOverdue)
                                 {
                                     <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Overdue since @Model.DueDate!.Value.ToString("MMM dd, yyyy")</div>
+                                }
+                                @if (isExtended)
+                                {
+                                    <div class="alert alert-warning py-2 px-3 small mt-2 mb-0 d-flex align-items-start gap-2"
+                                         style="border-left:4px solid #f59e0b;">
+                                        <i class="bi bi-info-circle mt-1"></i>
+                                        <div>
+                                            <strong>SLA extended.</strong>
+                                            Original due date was
+                                            <strong>@Model.OriginalDueDate!.Value.ToString("MMM d, yyyy h:mm tt")</strong>.
+                                            See Audit Trail for the reason.
+                                        </div>
+                                    </div>
                                 }
                             </div>
                             @if (Model.ResolvedDate.HasValue)
@@ -745,6 +775,13 @@
                                         <i class="bi bi-arrow-right mx-1 text-muted"></i>
                                         <span class="fw-semibold">@(hist.NewValue ?? "—")</span>
                                     </div>
+                                    @if (!string.IsNullOrWhiteSpace(hist.Reason))
+                                    {
+                                        <div class="small mt-1" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:3px;">
+                                            <strong class="text-warning-emphasis">Reason:</strong>
+                                            <span>@hist.Reason</span>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         }
@@ -1288,6 +1325,98 @@ function fillEditEntry(id, date, hours, desc, billable, rateType, startTime, end
 </div>
 
 </div> @* /.ticket-edit-page *@
+
+@if (User.IsInRole("Admin"))
+{
+    @* SLA extension modal — Admin only. Posts via fetch to
+       /Tickets/ExtendDueDate so the page can update inline without a
+       full reload. The reason field is required; the back end also
+       enforces it. *@
+    <div class="modal fade" id="extendSlaModal" tabindex="-1" aria-labelledby="extendSlaModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#f59e0b;color:#fff;">
+                    <h5 class="modal-title" id="extendSlaModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Adjust SLA Due Date
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Changing the due date updates this ticket's SLA target.
+                        @if (Model.OriginalDueDate.HasValue)
+                        {
+                            <span>The <strong>original SLA</strong> (<strong>@Model.OriginalDueDate.Value.ToString("MMM d, yyyy h:mm tt")</strong>) stays on record for leadership reports.</span>
+                        }
+                        A reason is required so the audit trail captures the why.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">New due date <span class="text-danger">*</span></label>
+                        <input type="datetime-local" id="extendNewDueDate" class="form-control"
+                               value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
+                        <textarea id="extendReason" class="form-control" rows="3" maxlength="500"
+                                  placeholder="e.g. Customer's site unreachable until Monday; parts on order; coordinated extension with requester."></textarea>
+                        <div class="form-text">Shows on the ticket history. Cannot be left blank.</div>
+                    </div>
+                    <div id="extendSlaError" class="alert alert-danger py-2 small mb-0 d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="extendSlaSubmit" class="btn btn-warning">
+                        <i class="bi bi-check2 me-1"></i>Save Adjustment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var ticketId = @Model.Id;
+        var token    = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+        var btn      = document.getElementById('extendSlaSubmit');
+        var dateInp  = document.getElementById('extendNewDueDate');
+        var reasonEl = document.getElementById('extendReason');
+        var errEl    = document.getElementById('extendSlaError');
+        if (!btn || !dateInp || !reasonEl) return;
+
+        btn.addEventListener('click', function () {
+            errEl.classList.add('d-none');
+            var newDue = dateInp.value;
+            var reason = (reasonEl.value || '').trim();
+            if (!newDue) { errEl.textContent = 'Pick a new due date.'; errEl.classList.remove('d-none'); return; }
+            if (!reason) { errEl.textContent = 'Reason is required.'; errEl.classList.remove('d-none'); return; }
+
+            btn.disabled = true;
+            var fd = new FormData();
+            fd.append('id', ticketId);
+            fd.append('newDueDate', newDue);
+            fd.append('reason', reason);
+            if (token) fd.append('__RequestVerificationToken', token);
+
+            fetch('/Tickets/ExtendDueDate', { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) {
+                    if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || 'Save failed (' + r.status + ')'); });
+                    return r.json();
+                })
+                .then(function () {
+                    // Simplest correctness path: reload so the banner +
+                    // history entry render with fresh server data.
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    btn.disabled = false;
+                    errEl.textContent = err.message || 'Save failed.';
+                    errEl.classList.remove('d-none');
+                });
+        });
+    })();
+    </script>
+}
 
 @section Scripts {
 @{ var ollamaOn = (bool)(ViewBag.OllamaEnabled ?? false); }

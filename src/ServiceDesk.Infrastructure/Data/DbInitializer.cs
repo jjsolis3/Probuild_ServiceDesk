@@ -1994,6 +1994,35 @@ public static class DbInitializer
                         INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollNotificationDeliveryMode', 'Individual');
                 END");
 
+            // 70. Admin SLA override — Tickets.OriginalDueDate captures
+            //     the SLA target snapshot at creation so we still know
+            //     what would have been due even after an admin extends
+            //     DueDate. TicketHistory.Reason carries the admin's
+            //     justification so the audit trail is self-contained.
+            //     Both columns are nullable / additive — existing rows
+            //     keep working unchanged.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Tickets')
+                   AND COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.Tickets ADD OriginalDueDate DATETIME2(7) NULL;
+
+                    -- Backfill: for tickets that already have a DueDate,
+                    -- treat that DueDate as the original snapshot.
+                    -- (Same value isn't shown as 'extended' until a real
+                    -- admin override mutates DueDate.)
+                    UPDATE dbo.Tickets
+                       SET OriginalDueDate = DueDate
+                     WHERE OriginalDueDate IS NULL AND DueDate IS NOT NULL;
+                END");
+
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketHistory')
+                   AND COL_LENGTH('dbo.TicketHistory', 'Reason') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.TicketHistory ADD Reason NVARCHAR(500) NULL;
+                END");
+
         }
         catch (Exception ex)
         {

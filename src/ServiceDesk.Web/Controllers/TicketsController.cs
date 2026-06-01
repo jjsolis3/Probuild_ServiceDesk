@@ -864,6 +864,10 @@ public class TicketsController : Controller
         {
             ticket.CreatedDate = DateTime.UtcNow;
             ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
+            // Capture the snapshot once — extensions update DueDate but
+            // leave this immutable so leadership reports can still see
+            // the "would have breached the original SLA" answer.
+            ticket.OriginalDueDate ??= ticket.DueDate;
 
             // Auto-assign via assignment rules when no assignee was explicitly chosen.
             if (ticket.AssignedToId == null)
@@ -1178,6 +1182,68 @@ public class TicketsController : Controller
             });
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
+    }
+
+    // POST /Tickets/ExtendDueDate
+    //
+    // Admin-only override of a ticket's SLA due date. Captures the
+    // before/after pair + the admin's justification in TicketHistory
+    // so the audit trail is self-contained. The OriginalDueDate column
+    // stays frozen at the first-ever value so leadership reports can
+    // still answer "would this have breached the ORIGINAL SLA?" — the
+    // extension only relaxes the rolling metric.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ExtendDueDate(int id, DateTime newDueDate, string reason)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return BadRequest(new { error = "A reason is required for SLA changes." });
+        if (reason.Length > 500) reason = reason[..500];
+
+        // Backfill the snapshot if this ticket pre-dates the column.
+        ticket.OriginalDueDate ??= ticket.DueDate;
+        var oldDueDate = ticket.DueDate;
+        ticket.DueDate     = newDueDate;
+        ticket.UpdatedDate = DateTime.UtcNow;
+
+        var changedBy = User.Identity?.Name ?? "Admin";
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = changedBy,
+            FieldName   = "Due Date",
+            OldValue    = oldDueDate?.ToString("yyyy-MM-dd HH:mm 'UTC'") ?? "(none)",
+            NewValue    = newDueDate.ToString("yyyy-MM-dd HH:mm 'UTC'"),
+            Reason      = reason.Trim(),
+            ChangedDate = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync();
+
+        // Bell the assignee so they know the deadline moved without
+        // having to refresh the ticket.
+        if (ticket.AssignedToId.HasValue)
+        {
+            await NotifyEmployeeOnBellAsync(
+                ticket.AssignedToId.Value,
+                type:    "TicketSlaExtended",
+                title:   $"SLA extended on Ticket #{ticket.Id}",
+                message: $"New due date: {newDueDate:MMM d, yyyy h:mm tt}",
+                link:    Url.Action("Edit", "Tickets", new { id = ticket.Id }),
+                icon:    "bi-clock-history");
+        }
+
+        return Ok(new
+        {
+            success    = true,
+            newDueDate = newDueDate.ToString("yyyy-MM-dd HH:mm 'UTC'"),
+            isExtended = ticket.OriginalDueDate.HasValue && ticket.DueDate != ticket.OriginalDueDate,
+            original   = ticket.OriginalDueDate?.ToString("yyyy-MM-dd HH:mm 'UTC'")
+        });
     }
 
     [HttpPost]
