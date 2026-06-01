@@ -362,6 +362,75 @@
         </div>
     </div>
 
+    @* Forward-on-Approve defaults — addresses the Approve modal
+       pre-fills the "Send to HR" / "Send to AP" fields with. The
+       admin can still type a one-off override at approval time;
+       overrides automatically become the new default on save (in
+       the controller). This card is the place to configure them
+       ahead of time so they're already in the modal on the first
+       approval. *@
+    @{
+        var hrEmail = (string?)ViewBag.HrEmail ?? "";
+        var apEmail = (string?)ViewBag.ApEmail ?? "";
+        var hrConfigured = !string.IsNullOrWhiteSpace(hrEmail);
+        var apConfigured = !string.IsNullOrWhiteSpace(apEmail);
+    }
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-send-arrow-up me-2 text-success"></i>Forward-on-Approval Defaults (HR / AP)</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                When an admin approves a receipt, the approval modal asks whether to forward
+                a copy to HR or AP for payment processing. The addresses below pre-fill
+                that modal. If an address is blank, the modal shows an empty editable
+                field; whatever the admin types there becomes the new default automatically.
+            </p>
+            <form asp-action="SaveForwardDefaults" method="post" class="row g-3 align-items-end">
+                @Html.AntiForgeryToken()
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">
+                        HR email
+                        @if (hrConfigured)
+                        {
+                            <span class="badge bg-success-subtle text-success ms-1">Configured</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning-subtle text-warning ms-1">Not set</span>
+                        }
+                    </label>
+                    <input type="email" name="hrEmail" class="form-control"
+                           value="@hrEmail"
+                           placeholder="hr@yourcompany.com" />
+                    <div class="form-text">Pre-fills the HR field in the Approve modal.</div>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">
+                        Accounts Payable email
+                        @if (apConfigured)
+                        {
+                            <span class="badge bg-success-subtle text-success ms-1">Configured</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning-subtle text-warning ms-1">Not set</span>
+                        }
+                    </label>
+                    <input type="email" name="apEmail" class="form-control"
+                           value="@apEmail"
+                           placeholder="ap@yourcompany.com" />
+                    <div class="form-text">Pre-fills the AP field in the Approve modal.</div>
+                </div>
+                <div class="col-md-2 d-flex justify-content-end">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-save me-1"></i>Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Reminder cadence -->
     <div class="card shadow-sm mt-4">
         <div class="card-header bg-white">

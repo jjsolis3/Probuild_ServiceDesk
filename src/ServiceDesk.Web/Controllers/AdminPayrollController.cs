@@ -747,7 +747,9 @@ public class AdminPayrollController : Controller
             "NotifyOnPayrollPaid",
             "PayrollReminderEnabled",
             "PayrollReminderDays",
-            "PayrollNotificationDeliveryMode"
+            "PayrollNotificationDeliveryMode",
+            "PayrollHrEmail",
+            "PayrollApEmail"
         };
         var settings = await _context.AppSettings
             .Where(s => toggleKeys.Contains(s.Key))
@@ -766,6 +768,8 @@ public class AdminPayrollController : Controller
         ViewBag.DeliveryMode      = settings.TryGetValue("PayrollNotificationDeliveryMode", out var dm)
                                     && string.Equals(dm, "Combined", StringComparison.OrdinalIgnoreCase)
                                     ? "Combined" : "Individual";
+        ViewBag.HrEmail = settings.TryGetValue("PayrollHrEmail", out var hr) ? hr ?? "" : "";
+        ViewBag.ApEmail = settings.TryGetValue("PayrollApEmail", out var ap) ? ap ?? "" : "";
 
         // For the "Add from portal user" dropdown — active users only,
         // excluding anyone already on the recipient list.
@@ -825,6 +829,23 @@ public class AdminPayrollController : Controller
         TempData["Success"] = normalized == "Combined"
             ? "Payroll alerts will now be sent as a single email with all recipients on the To/Cc lines."
             : "Payroll alerts will now be sent individually — one email per recipient.";
+        return RedirectToAction(nameof(NotificationRecipients));
+    }
+
+    // POST /AdminPayroll/SaveForwardDefaults
+    //
+    // Persists the default HR / AP email addresses the Approve modal
+    // will pre-fill from. Empty strings are written through so an admin
+    // can intentionally clear a default without it falling back to a
+    // stale value. Trim trims away whitespace pastes.
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveForwardDefaults(string? hrEmail, string? apEmail)
+    {
+        await UpsertSettingAsync("PayrollHrEmail", (hrEmail ?? "").Trim());
+        await UpsertSettingAsync("PayrollApEmail", (apEmail ?? "").Trim());
+        TempData["Success"] = "Forward-on-approval defaults saved.";
         return RedirectToAction(nameof(NotificationRecipients));
     }
 

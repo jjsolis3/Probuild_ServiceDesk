@@ -673,6 +673,8 @@
                     @{
                         var defaultHrEmail = (string?)ViewBag.DefaultHrEmail ?? "";
                         var defaultApEmail = (string?)ViewBag.DefaultApEmail ?? "";
+                        var hrConfigured = !string.IsNullOrWhiteSpace(defaultHrEmail);
+                        var apConfigured = !string.IsNullOrWhiteSpace(defaultApEmail);
                     }
                     @* Forward-on-approve workflow.
                        Two-row mini form that lets the admin push the
@@ -687,8 +689,8 @@
                             <span class="text-muted small ms-2">(optional)</span>
                         </div>
                         <div class="text-muted small mb-3">
-                            Sends the receipt (PDF + Excel) to the addresses below as soon as approval lands.
-                            The email you type here becomes the default the next time you approve a receipt.
+                            Sends the receipt (PDF + Excel) for payment processing.
+                            Anything you type here is remembered as the default for next time.
                         </div>
 
                         <div class="row g-2 align-items-center mb-2">
@@ -697,13 +699,17 @@
                                     <input class="form-check-input" type="checkbox" id="approveSendHr" name="sendToHr" value="true" />
                                     <label class="form-check-label fw-semibold" for="approveSendHr">
                                         Send to HR
+                                        @if (hrConfigured)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success ms-1" title="Default configured"></i>
+                                        }
                                     </label>
                                 </div>
                             </div>
                             <div class="col">
                                 <input type="email" name="hrEmail" id="approveHrEmail" class="form-control form-control-sm"
                                        value="@defaultHrEmail"
-                                       placeholder="hr@yourcompany.com" />
+                                       placeholder="@(hrConfigured ? "hr@yourcompany.com" : "No default — enter HR address to enable")" />
                             </div>
                         </div>
 
@@ -713,15 +719,28 @@
                                     <input class="form-check-input" type="checkbox" id="approveSendAp" name="sendToAp" value="true" />
                                     <label class="form-check-label fw-semibold" for="approveSendAp">
                                         Send to AP
+                                        @if (apConfigured)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success ms-1" title="Default configured"></i>
+                                        }
                                     </label>
                                 </div>
                             </div>
                             <div class="col">
                                 <input type="email" name="apEmail" id="approveApEmail" class="form-control form-control-sm"
                                        value="@defaultApEmail"
-                                       placeholder="ap@yourcompany.com" />
+                                       placeholder="@(apConfigured ? "ap@yourcompany.com" : "No default — enter AP address to enable")" />
                             </div>
                         </div>
+
+                        @if (!hrConfigured && !apConfigured)
+                        {
+                            <div class="small text-muted mt-2">
+                                <i class="bi bi-info-circle me-1"></i>
+                                You can set lasting defaults in
+                                <a asp-action="NotificationRecipients">Payroll Settings</a>.
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="modal-footer">
