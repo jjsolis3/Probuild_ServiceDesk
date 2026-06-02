@@ -231,7 +231,7 @@ public class ContractorController : Controller
     // POST /Contractor/NewReceipt
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes)
+    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes, int[]? selectedEntryIds)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null)
@@ -243,13 +243,23 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        var entries = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
-
-        if (!entries.Any())
+        if (selectedEntryIds == null || selectedEntryIds.Length == 0)
         {
-            TempData["Warning"] = "No unclaimed billable time entries found for the selected period.";
+            TempData["Error"] = "Pick at least one entry to include on the receipt.";
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
+
+        var available = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
+        var requestedSet = selectedEntryIds.ToHashSet();
+        var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
+
+        if (entries.Count == 0)
+        {
+            TempData["Warning"] = "The selected entries are no longer available (they may have been claimed or deleted).";
+            return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
+        }
+
+        var droppedCount = selectedEntryIds.Length - entries.Count;
 
         var calc = await _payroll.CalculateAsync(contractor, entries);
 
@@ -283,8 +293,34 @@ public class ContractorController : Controller
 
         await _context.SaveChangesAsync();
 
-        TempData["Success"] = "Payroll receipt created as Draft.";
+        TempData["Success"] = droppedCount > 0
+            ? $"Payroll receipt created as Draft. ({droppedCount} selected entr{(droppedCount == 1 ? "y was" : "ies were")} no longer available and got skipped.)"
+            : "Payroll receipt created as Draft.";
         return RedirectToAction(nameof(ReceiptDetail), new { id = receipt.Id });
+    }
+
+    // POST /Contractor/RecalcReceiptPreview
+    // Re-renders the summary card body for the New Receipt page when the
+    // contractor ticks / unticks entries. Returns the partial as HTML so the
+    // client can swap it in directly.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecalcReceiptPreview(DateTime periodStart, DateTime periodEnd, int[]? selectedEntryIds)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return Forbid();
+
+        ViewBag.Contractor = contractor;
+
+        var available = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
+        var requestedSet = (selectedEntryIds ?? Array.Empty<int>()).ToHashSet();
+        var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
+
+        var calc = entries.Count == 0
+            ? null
+            : await _payroll.CalculateAsync(contractor, entries);
+
+        return PartialView("_NewReceiptSummary", calc);
     }
 
     // ── Receipt Detail (printable) ────────────────────────────────────────────

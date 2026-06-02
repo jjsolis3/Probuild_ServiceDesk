@@ -6,13 +6,13 @@
     var calc        = ViewBag.PayrollCalc as ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation;
     var stdRate     = contractor?.HourlyRate ?? 0m;
     var emerRate    = contractor?.EmergencyHourlyRate ?? 0m;
-    var hasEmerRate = emerRate > 0m;
+    var entries     = Model.ToList();
 }
 
 <div class="row page-titles">
     <div class="col-sm-6">
         <h4>New Payroll Receipt</h4>
-        <p class="text-muted mb-0">Preview unclaimed billable time entries for the selected period</p>
+        <p class="text-muted mb-0">Pick the unclaimed time entries to include on this receipt</p>
     </div>
     <div class="col-sm-6 text-end">
         <a asp-action="Payroll" class="btn btn-outline-secondary">
@@ -24,7 +24,7 @@
 <div class="card shadow-sm mb-4">
     <div class="card-header"><i class="fas fa-calendar-alt me-1"></i>Select Period</div>
     <div class="card-body">
-        <form method="get" asp-action="NewReceipt" class="row g-3 align-items-end">
+        <form method="get" asp-action="NewReceipt" class="row g-3 align-items-end" id="periodForm">
             <div class="col-md-3">
                 <label class="form-label">Period Start</label>
                 <input type="date" name="periodStart" class="form-control" value="@periodStart" required />
@@ -42,159 +42,209 @@
     </div>
 </div>
 
-@if (!Model.Any())
+@if (!entries.Any())
 {
-    <div class="alert alert-warning">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        No unclaimed billable time entries found for <strong>@periodStart</strong> to <strong>@periodEnd</strong>.
-        <br><span class="small text-muted">Already-claimed entries (in a submitted/approved/paid receipt) are excluded.</span>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon    = "bi-hourglass",
+        Title   = "No unclaimed entries in this period",
+        Message = "Adjust the period above, or log new hours on a ticket first. Already-claimed entries (in a submitted, approved, or paid receipt) are excluded."
+    })
 }
 else
 {
-    <div class="card shadow-sm mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="fas fa-list me-1"></i>Time Entries Preview</span>
-            <span class="badge bg-primary">@Model.Count() entries</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Work Date</th>
-                            <th>Ticket</th>
-                            <th>Description</th>
-                            <th class="text-center">Hours</th>
-                            <th class="text-center">Rate Type</th>
-                            <th class="text-center">Billable</th>
-                            <th class="text-end">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var entry in Model)
-                        {
-                            var isEmer    = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
-                            var rateForRow = isEmer ? emerRate : stdRate;
-                            var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
+    <form id="newReceiptForm" method="post" asp-action="NewReceipt"
+          data-recalc-url="@Url.Action("RecalcReceiptPreview")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="periodStart" value="@periodStart" />
+        <input type="hidden" name="periodEnd" value="@periodEnd" />
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-list me-1"></i>Time Entries</span>
+                <span class="text-muted small">
+                    <span id="selCount">@entries.Count</span> of @entries.Count selected ·
+                    <span id="selHours">@entries.Sum(e => e.Hours).ToString("0.##")</span> h ·
+                    <a href="#" id="selectAllLink" class="ms-2">Select all</a> ·
+                    <a href="#" id="clearAllLink" class="ms-1">Clear all</a>
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
-                                <td class="small">
-                                    @if (entry.Ticket != null)
-                                    {
-                                        <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@entry.Ticket.Id">#@entry.Ticket.Id</a>
-                                    }
-                                </td>
-                                <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
-                                <td class="text-center small">@entry.Hours.ToString("0.##")</td>
-                                <td class="text-center">
-                                    @if (isEmer)
-                                    { <span class="badge bg-danger">Emergency</span> }
-                                    else
-                                    { <span class="badge bg-secondary">Standard</span> }
-                                </td>
-                                <td class="text-center">
-                                    @if (entry.IsBillable)
-                                    { <span class="badge bg-success">Yes</span> }
-                                    else
-                                    { <span class="badge bg-secondary">No</span> }
-                                </td>
-                                <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                                <th class="text-center" style="width:38px;">
+                                    <input type="checkbox" id="selectAllCheck" class="form-check-input" checked
+                                           aria-label="Select all entries" />
+                                </th>
+                                <th>Work Date</th>
+                                <th>Ticket</th>
+                                <th>Description</th>
+                                <th class="text-center">Hours</th>
+                                <th class="text-center">Rate Type</th>
+                                <th class="text-center">Billable</th>
+                                <th class="text-end">Amount</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in entries)
+                            {
+                                var isEmer     = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+                                var rateForRow = isEmer ? emerRate : stdRate;
+                                var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox" name="selectedEntryIds" value="@entry.Id"
+                                               class="form-check-input entry-check" checked
+                                               data-hours="@entry.Hours.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                               aria-label="Include entry @entry.Id" />
+                                    </td>
+                                    <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
+                                    <td class="small">
+                                        @if (entry.Ticket != null)
+                                        {
+                                            <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@entry.Ticket.Id">#@entry.Ticket.Id</a>
+                                        }
+                                    </td>
+                                    <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
+                                    <td class="text-center small">@entry.Hours.ToString("0.##")</td>
+                                    <td class="text-center">
+                                        @if (isEmer)
+                                        { <span class="badge bg-danger">Emergency</span> }
+                                        else
+                                        { <span class="badge bg-secondary">Standard</span> }
+                                    </td>
+                                    <td class="text-center">
+                                        @if (entry.IsBillable)
+                                        { <span class="badge bg-success">Yes</span> }
+                                        else
+                                        { <span class="badge bg-secondary">No</span> }
+                                    </td>
+                                    <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header"><i class="fas fa-file-invoice-dollar me-1"></i>Estimated Payout Summary</div>
-        <div class="card-body">
-            @if (calc != null)
-            {
-                <table class="table table-sm align-middle mb-3">
-                    <tbody>
-                        <tr>
-                            <td class="fw-semibold">Standard hours</td>
-                            <td class="text-end">@calc.TotalStandardHours.ToString("0.##") h</td>
-                            <td colspan="2"></td>
-                        </tr>
-                        @if (calc.TotalRetainerHoursApplied > 0)
-                        {
-                            <tr class="text-muted small">
-                                <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Covered by retainer</td>
-                                <td class="text-end">@calc.TotalRetainerHoursApplied.ToString("0.##") h</td>
-                                <td class="text-end">$0.00</td>
-                                <td class="text-end">$0.00</td>
-                            </tr>
-                        }
-                        <tr class="small">
-                            <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Billable at standard rate</td>
-                            <td class="text-end">@calc.StandardBillableHours.ToString("0.##") h</td>
-                            <td class="text-end">@stdRate.ToString("C2")</td>
-                            <td class="text-end fw-semibold">@calc.StandardBillableAmount.ToString("C2")</td>
-                        </tr>
-                        @if (calc.TotalEmergencyHours > 0)
-                        {
-                            <tr>
-                                <td class="fw-semibold">Emergency hours</td>
-                                <td class="text-end">@calc.TotalEmergencyHours.ToString("0.##") h</td>
-                                <td class="text-end">@emerRate.ToString("C2")</td>
-                                <td class="text-end fw-semibold">@calc.EmergencyBillableAmount.ToString("C2")</td>
-                            </tr>
-                        }
-                        @foreach (var m in calc.Months.Where(b => b.RetainerAmountThisReceipt > 0))
-                        {
-                            <tr>
-                                <td class="fw-semibold">
-                                    Monthly retainer — @m.Label
-                                    <span class="text-muted small">
-                                        (covers up to @((contractor?.MonthlyRetainerHoursIncluded ?? 0m).ToString("0.##")) h)
-                                    </span>
-                                </td>
-                                <td colspan="2"></td>
-                                <td class="text-end fw-semibold">@m.RetainerAmountThisReceipt.ToString("C2")</td>
-                            </tr>
-                        }
-                        @foreach (var m in calc.Months.Where(b =>
-                            !b.IsFirstReceiptOfMonth
-                            && (contractor?.MonthlyRetainerAmount ?? 0m) > 0))
-                        {
-                            <tr class="text-muted small">
-                                <td>
-                                    <i class="fas fa-info-circle me-1"></i>@m.Label retainer already applied to a prior receipt
-                                    @if (m.RetainerHoursApplied > 0)
-                                    { <text>(@m.RetainerHoursApplied.ToString("0.##") h absorbed from this receipt's pool)</text> }
-                                </td>
-                                <td colspan="3"></td>
-                            </tr>
-                        }
-                        <tr style="border-top:2px solid #333;">
-                            <td class="fw-bold pt-2">Estimated total</td>
-                            <td class="text-end pt-2">
-                                <span class="text-muted small">@calc.TotalHours.ToString("0.##") h logged</span>
-                            </td>
-                            <td></td>
-                            <td class="text-end fw-bold pt-2" style="font-size:1.1rem; color:#0d6efd;">$@calc.TotalAmount.ToString("N2")</td>
-                        </tr>
-                    </tbody>
-                </table>
-            }
-            <form asp-action="NewReceipt" method="post" class="row g-3 align-items-end">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="periodStart" value="@periodStart" />
-                <input type="hidden" name="periodEnd" value="@periodEnd" />
-                <div class="col-md-8">
-                    <label class="form-label">Notes (optional)</label>
-                    <input type="text" name="notes" class="form-control" placeholder="e.g. May 2026 invoice" maxlength="2000" />
+        <div class="card shadow-sm mb-4" id="summaryCard">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-file-invoice-dollar me-1"></i>Estimated Payout Summary</span>
+                <span id="summarySpinner" class="text-muted small d-none">
+                    <span class="spinner-border spinner-border-sm me-1"></span>Recalculating…
+                </span>
+            </div>
+            <div class="card-body">
+                <div id="summaryBody">
+                    @await Html.PartialAsync("_NewReceiptSummary", calc)
                 </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-success w-100">
-                        <i class="fas fa-save me-1"></i>Save as Draft
-                    </button>
+                <div class="row g-3 align-items-end mt-2">
+                    <div class="col-md-8">
+                        <label class="form-label">Notes (optional)</label>
+                        <input type="text" name="notes" class="form-control" placeholder="e.g. May 2026 invoice" maxlength="2000" />
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-success w-100" id="saveBtn">
+                            <i class="fas fa-save me-1"></i>Save as Draft
+                        </button>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
-    </div>
+    </form>
+
+    @section Scripts {
+        <script>
+            (function () {
+                var form         = document.getElementById('newReceiptForm');
+                if (!form) return;
+                var recalcUrl    = form.dataset.recalcUrl;
+                var token        = form.querySelector('input[name="__RequestVerificationToken"]').value;
+                var periodStart  = form.querySelector('input[name="periodStart"]').value;
+                var periodEnd    = form.querySelector('input[name="periodEnd"]').value;
+                var checks       = Array.prototype.slice.call(form.querySelectorAll('.entry-check'));
+                var selectAll    = document.getElementById('selectAllCheck');
+                var selectAllLnk = document.getElementById('selectAllLink');
+                var clearAllLnk  = document.getElementById('clearAllLink');
+                var selCount     = document.getElementById('selCount');
+                var selHours     = document.getElementById('selHours');
+                var saveBtn      = document.getElementById('saveBtn');
+                var summaryBody  = document.getElementById('summaryBody');
+                var spinner      = document.getElementById('summarySpinner');
+
+                var debounceId   = null;
+                var inflight     = null;
+
+                function updateRunningTotals() {
+                    var n = 0, h = 0;
+                    checks.forEach(function (c) {
+                        if (c.checked) { n++; h += parseFloat(c.dataset.hours || '0') || 0; }
+                    });
+                    selCount.textContent = n;
+                    selHours.textContent = (Math.round(h * 100) / 100).toString();
+                    saveBtn.disabled = (n === 0);
+                    selectAll.checked = (n === checks.length && n > 0);
+                    selectAll.indeterminate = (n > 0 && n < checks.length);
+                }
+
+                function recalcSummary() {
+                    var fd = new FormData();
+                    fd.append('__RequestVerificationToken', token);
+                    fd.append('periodStart', periodStart);
+                    fd.append('periodEnd', periodEnd);
+                    checks.forEach(function (c) {
+                        if (c.checked) fd.append('selectedEntryIds', c.value);
+                    });
+
+                    if (inflight) inflight.abort();
+                    inflight = new AbortController();
+                    spinner.classList.remove('d-none');
+
+                    fetch(recalcUrl, { method: 'POST', body: fd, signal: inflight.signal })
+                        .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+                        .then(function (html) { summaryBody.innerHTML = html; })
+                        .catch(function (err) {
+                            if (err && err.name === 'AbortError') return;
+                            summaryBody.innerHTML = '<p class="text-danger mb-0">Could not refresh the summary. Save will still recompute on the server.</p>';
+                        })
+                        .finally(function () { spinner.classList.add('d-none'); });
+                }
+
+                function scheduleRecalc() {
+                    if (debounceId) clearTimeout(debounceId);
+                    debounceId = setTimeout(recalcSummary, 300);
+                }
+
+                checks.forEach(function (c) {
+                    c.addEventListener('change', function () {
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                });
+
+                selectAll.addEventListener('change', function () {
+                    checks.forEach(function (c) { c.checked = selectAll.checked; });
+                    updateRunningTotals();
+                    scheduleRecalc();
+                });
+
+                selectAllLnk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    checks.forEach(function (c) { c.checked = true; });
+                    updateRunningTotals();
+                    scheduleRecalc();
+                });
+                clearAllLnk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    checks.forEach(function (c) { c.checked = false; });
+                    updateRunningTotals();
+                    scheduleRecalc();
+                });
+
+                updateRunningTotals();
+            })();
+        </script>
+    }
 }
