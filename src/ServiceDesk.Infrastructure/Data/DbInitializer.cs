@@ -1994,41 +1994,60 @@ public static class DbInitializer
                         INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollNotificationDeliveryMode', 'Individual');
                 END");
 
-            // 70. Admin SLA override — Tickets.OriginalDueDate captures
-            //     the SLA target snapshot at creation so we still know
-            //     what would have been due even after an admin extends
-            //     DueDate. TicketHistory.Reason carries the admin's
-            //     justification so the audit trail is self-contained.
-            //     Both columns are nullable / additive — existing rows
-            //     keep working unchanged.
-            context.Database.ExecuteSqlRaw(@"
-                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Tickets')
-                   AND COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NULL
-                BEGIN
-                    ALTER TABLE dbo.Tickets ADD OriginalDueDate DATETIME2(7) NULL;
-
-                    -- Backfill: for tickets that already have a DueDate,
-                    -- treat that DueDate as the original snapshot.
-                    -- (Same value isn't shown as 'extended' until a real
-                    -- admin override mutates DueDate.)
-                    UPDATE dbo.Tickets
-                       SET OriginalDueDate = DueDate
-                     WHERE OriginalDueDate IS NULL AND DueDate IS NOT NULL;
-                END");
-
-            context.Database.ExecuteSqlRaw(@"
-                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketHistory')
-                   AND COL_LENGTH('dbo.TicketHistory', 'Reason') IS NULL
-                BEGIN
-                    ALTER TABLE dbo.TicketHistory ADD Reason NVARCHAR(500) NULL;
-                END");
-
         }
         catch (Exception ex)
         {
             // Log and continue — the app can still start even if upgrades fail
             // (tables may not exist yet on a fresh install)
             Console.WriteLine($"[DbInitializer] Schema upgrade warning: {ex.Message}");
+        }
+
+        // 70. Admin SLA override — Tickets.OriginalDueDate captures the SLA
+        //     target snapshot at creation so we still know what would have
+        //     been due even after an admin extends DueDate. TicketHistory.Reason
+        //     carries the admin's justification so the audit trail is
+        //     self-contained. Both columns are nullable / additive — existing
+        //     rows keep working unchanged.
+        //
+        //     These two blocks run in their own try/catch so a failure in
+        //     any earlier schema upgrade above doesn't skip them — the
+        //     Ticket model references OriginalDueDate and the dashboard
+        //     query breaks if the column is missing.
+        TryRunSchemaUpgrade(context, "AddOriginalDueDateColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Tickets')
+               AND COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NULL
+            BEGIN
+                ALTER TABLE dbo.Tickets ADD OriginalDueDate DATETIME2(7) NULL;
+            END");
+
+        // Backfill runs as a separate statement so the ALTER above can
+        // commit first — SQL Server otherwise refuses to reference a
+        // freshly-added column in the same batch.
+        TryRunSchemaUpgrade(context, "BackfillOriginalDueDate", @"
+            IF COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NOT NULL
+            BEGIN
+                UPDATE dbo.Tickets
+                   SET OriginalDueDate = DueDate
+                 WHERE OriginalDueDate IS NULL AND DueDate IS NOT NULL;
+            END");
+
+        TryRunSchemaUpgrade(context, "AddTicketHistoryReasonColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketHistory')
+               AND COL_LENGTH('dbo.TicketHistory', 'Reason') IS NULL
+            BEGIN
+                ALTER TABLE dbo.TicketHistory ADD Reason NVARCHAR(500) NULL;
+            END");
+    }
+
+    private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)
+    {
+        try
+        {
+            context.Database.ExecuteSqlRaw(sql);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbInitializer] {label} skipped: {ex.Message}");
         }
     }
 
