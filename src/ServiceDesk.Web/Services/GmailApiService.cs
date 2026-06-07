@@ -59,8 +59,15 @@ public class GmailApiService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
 
+        // Don't gate on IsAuthorized here — the field gets auto-flipped to false
+        // whenever a token refresh fails for ANY reason (network blip, 5xx,
+        // rate limit), which used to permanently freeze polling until an admin
+        // manually re-authorised. We keep polling so long as we still hold a
+        // refresh token (admin "Revoke" wipes the token, so that path is
+        // honoured). Genuine token revocation by Google is detected by the
+        // invalid_grant response inside EnsureValidAccessToken below.
         var configs = await context.EmailConfigurations
-            .Where(c => c.IsActive && c.IsAuthorized && c.GmailRefreshToken != null)
+            .Where(c => c.IsActive && c.GmailRefreshToken != null)
             .ToListAsync(stoppingToken);
 
         foreach (var config in configs)
@@ -74,17 +81,96 @@ public class GmailApiService : BackgroundService
             try
             {
                 await PollGmailInbox(context, config, stoppingToken);
-                config.LastPolledDate = DateTime.UtcNow;
-                config.LastError = null;
+                config.LastPolledDate          = DateTime.UtcNow;
+                config.LastSuccessfulPollDate  = DateTime.UtcNow;
+                config.LastError               = null;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error polling Gmail inbox {Email}", config.EmailAddress);
-                config.LastError = $"{DateTime.UtcNow:g}: {ex.Message}";
+                config.LastError      = $"{DateTime.UtcNow:g}: {ex.Message}";
                 config.LastPolledDate = DateTime.UtcNow;
+                // Deliberately NOT updating LastSuccessfulPollDate here — that's
+                // the whole point of the new column.
             }
 
             await context.SaveChangesAsync(stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Runs a single poll cycle for one configuration synchronously and
+    /// returns a structured report — used by the "Poll Now" admin button on
+    /// the Email Integration page so ops staff can see exactly what the
+    /// poller did without tailing logs. Uses its own DbContext scope so the
+    /// HTTP request thread isn't sharing state with the BackgroundService.
+    /// </summary>
+    public async Task<PollReport> PollOnceAsync(int emailConfigurationId, CancellationToken ct = default)
+    {
+        var report = new PollReport { EmailConfigurationId = emailConfigurationId };
+        var startedAt = DateTime.UtcNow;
+
+        using var scope   = _serviceProvider.CreateScope();
+        var context       = scope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+
+        var config = await context.EmailConfigurations.FirstOrDefaultAsync(c => c.Id == emailConfigurationId, ct);
+        if (config == null)
+        {
+            report.Success = false;
+            report.Error   = "Email configuration not found.";
+            return report;
+        }
+        report.EmailAddress = config.EmailAddress;
+
+        try
+        {
+            // Snapshot the inbound-log id watermark so we can attribute new
+            // rows to this exact run (vs anything written by the background
+            // service that may have fired concurrently).
+            var prevLogId = await context.InboundEmailLogs.MaxAsync(l => (int?)l.Id, ct) ?? 0;
+
+            await PollGmailInbox(context, config, ct);
+            config.LastPolledDate         = DateTime.UtcNow;
+            config.LastSuccessfulPollDate = DateTime.UtcNow;
+            config.LastError              = null;
+            await context.SaveChangesAsync(ct);
+
+            // Summarise outcomes from the rows this run produced.
+            var fresh = await context.InboundEmailLogs
+                .Where(l => l.Id > prevLogId && l.EmailConfigurationId == emailConfigurationId)
+                .OrderByDescending(l => l.Id)
+                .ToListAsync(ct);
+
+            report.Outcomes = fresh
+                .GroupBy(l => l.Action)
+                .ToDictionary(g => g.Key, g => g.Count());
+            report.RecentEntries = fresh
+                .Take(20)
+                .Select(l => new PollReportEntry
+                {
+                    Action       = l.Action,
+                    Subject      = l.Subject,
+                    From         = l.FromAddress,
+                    Detail       = l.ActionDetail,
+                    Error        = l.ErrorMessage,
+                    ProcessedAt  = l.ProcessedDate
+                })
+                .ToList();
+            report.MessagesSeen = fresh.Count;
+            report.Success      = true;
+            report.DurationMs   = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Poll-now failed for {Email}", config.EmailAddress);
+            config.LastPolledDate = DateTime.UtcNow;
+            config.LastError      = $"{DateTime.UtcNow:g}: {ex.Message}";
+            try { await context.SaveChangesAsync(ct); } catch { /* swallowed */ }
+            report.Success    = false;
+            report.Error      = ex.Message;
+            report.DurationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+            return report;
         }
     }
 
@@ -109,7 +195,7 @@ public class GmailApiService : BackgroundService
         }
         else
         {
-            messages = await GetUnreadMessages(httpClient, stoppingToken);
+            messages = await GetUnreadMessages(httpClient, config, stoppingToken);
         }
 
         _logger.LogInformation("Found {Count} messages to process for {Email}", messages.Count, config.EmailAddress);
@@ -125,6 +211,13 @@ public class GmailApiService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing Gmail message {MessageId}", gmailMsg.Id);
+                // Surface processing failures in the inbound log too — the
+                // outer catch was the only thing logging this class of error
+                // before, which is why the May 6 outage went unnoticed.
+                WriteInboundLog(context, config, gmailMsg, null, null, null, null,
+                    InboundAction.Failed,
+                    detail: "Exception during ProcessMessage.",
+                    error: ex.Message);
             }
         }
 
@@ -136,7 +229,13 @@ public class GmailApiService : BackgroundService
     {
         // Get full message details
         var fullMessage = await GetMessageDetails(httpClient, gmailMsg.Id, stoppingToken);
-        if (fullMessage == null) return;
+        if (fullMessage == null)
+        {
+            WriteInboundLog(context, config, gmailMsg, null, null, null, null,
+                InboundAction.Failed,
+                detail: "GetMessageDetails returned null — see prior log entries for the cause.");
+            return;
+        }
 
         var headers = fullMessage.Payload?.Headers ?? new List<GmailHeader>();
         var messageId = GetHeader(headers, "Message-ID") ?? GetHeader(headers, "Message-Id");
@@ -154,6 +253,9 @@ public class GmailApiService : BackgroundService
             if (emailAge.TotalHours > 72)
             {
                 _logger.LogInformation("Skipping old email ({Age:0}h): {Subject}", emailAge.TotalHours, subject);
+                WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, from,
+                    InboundAction.SkippedStale,
+                    detail: $"Email is {emailAge.TotalHours:0}h old; cutoff is 72h.");
                 UpdateHistoryId(config, fullMessage.HistoryId);
                 return;
             }
@@ -166,7 +268,9 @@ public class GmailApiService : BackgroundService
         if (fromEmail.Equals(config.EmailAddress, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("Skipping self-sent email: {Subject}", subject);
-            // Update historyId and move on
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.SkippedSelf,
+                detail: $"Sender matches mailbox address ({config.EmailAddress}).");
             UpdateHistoryId(config, fullMessage.HistoryId);
             return;
         }
@@ -176,6 +280,9 @@ public class GmailApiService : BackgroundService
         if (!string.IsNullOrEmpty(autoGenHeader))
         {
             _logger.LogDebug("Skipping ServiceSphere-generated email: {Subject}", subject);
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.SkippedAutoGenerated,
+                detail: $"{AutoGeneratedHeader} header present.");
             UpdateHistoryId(config, fullMessage.HistoryId);
             return;
         }
@@ -188,6 +295,9 @@ public class GmailApiService : BackgroundService
             if (alreadyProcessed)
             {
                 _logger.LogDebug("Skipping already-processed email: {MessageId}", messageId);
+                WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                    InboundAction.SkippedDuplicate,
+                    detail: $"Message-Id {messageId} already in TicketEmails.");
                 UpdateHistoryId(config, fullMessage.HistoryId);
                 return;
             }
@@ -199,6 +309,9 @@ public class GmailApiService : BackgroundService
         if (gmailIdProcessed)
         {
             _logger.LogDebug("Skipping already-processed Gmail message: {GmailId}", gmailMsg.Id);
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.SkippedDuplicate,
+                detail: $"Gmail message id {gmailMsg.Id} already in TicketEmails.");
             UpdateHistoryId(config, fullMessage.HistoryId);
             return;
         }
@@ -207,6 +320,9 @@ public class GmailApiService : BackgroundService
         if (IsAutoReply(headers, fromEmail))
         {
             _logger.LogDebug("Skipping auto-reply/bounce email from: {From}", fromEmail);
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.SkippedAutoReply,
+                detail: $"Auto-reply indicators present (Auto-Submitted / Precedence / noreply-style sender).");
             UpdateHistoryId(config, fullMessage.HistoryId);
             return;
         }
@@ -257,27 +373,44 @@ public class GmailApiService : BackgroundService
         }
 
         // ---- THREADING FALLBACK: match clean subject against recent open tickets ----
-        // Catches forwarded emails and replies that bypass the three header-based checks above.
+        // Catches forwarded emails and replies that bypass the three header-based
+        // checks above. Two safety rails so a generic subject like "Re: Update"
+        // doesn't accidentally absorb every customer's emails:
+        //   1. Window narrowed from 14 days to 7 days. Most replies happen
+        //      within 3-4 days; 14 days caught too many false positives.
+        //   2. Match the original ticket's SubmittedById to a known Employee
+        //      for the inbound sender. If the sender isn't a known employee,
+        //      or if the matched ticket was submitted by someone else, skip
+        //      the fallback entirely (let a fresh ticket be created instead).
         if (!existingTicketId.HasValue)
         {
             var cleanedSubject = CleanSubject(subject);
             if (!string.IsNullOrWhiteSpace(cleanedSubject))
             {
-                var cutoff = DateTime.UtcNow.AddDays(-14);
-                var subjectMatch = await context.Tickets
-                    .Where(t => t.Title == cleanedSubject
-                             && t.CreatedDate >= cutoff
-                             && t.Status != TicketStatus.Closed
-                             && t.Status != TicketStatus.Cancelled)
-                    .OrderByDescending(t => t.CreatedDate)
-                    .Select(t => (int?)t.Id)
+                var submitterEmpId = await context.Employees
+                    .Where(e => e.Email == fromEmail)
+                    .Select(e => (int?)e.Id)
                     .FirstOrDefaultAsync(stoppingToken);
-                if (subjectMatch.HasValue)
+
+                if (submitterEmpId.HasValue)
                 {
-                    existingTicketId = subjectMatch.Value;
-                    _logger.LogInformation(
-                        "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
-                        existingTicketId.Value, cleanedSubject);
+                    var cutoff = DateTime.UtcNow.AddDays(-7);
+                    var subjectMatch = await context.Tickets
+                        .Where(t => t.Title == cleanedSubject
+                                 && t.CreatedDate >= cutoff
+                                 && t.SubmittedById == submitterEmpId.Value
+                                 && t.Status != TicketStatus.Closed
+                                 && t.Status != TicketStatus.Cancelled)
+                        .OrderByDescending(t => t.CreatedDate)
+                        .Select(t => (int?)t.Id)
+                        .FirstOrDefaultAsync(stoppingToken);
+                    if (subjectMatch.HasValue)
+                    {
+                        existingTicketId = subjectMatch.Value;
+                        _logger.LogInformation(
+                            "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
+                            existingTicketId.Value, cleanedSubject);
+                    }
                 }
             }
         }
@@ -307,6 +440,9 @@ public class GmailApiService : BackgroundService
 
             _logger.LogInformation("Added email reply as note to Ticket #{TicketId}: {Subject}",
                 existingTicketId.Value, subject);
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.NoteAppended,
+                detail: $"Threaded into Ticket #{existingTicketId.Value}.");
         }
         else if (config.CreateTicketsFromEmails)
         {
@@ -367,6 +503,9 @@ public class GmailApiService : BackgroundService
             context.TicketNotes.Add(note);
 
             _logger.LogInformation("Created new Ticket #{TicketId} from email: {Subject}", ticket.Id, ticket.Title);
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.TicketCreated,
+                detail: $"Created Ticket #{ticket.Id} (category {detectedCategory}, assignee {resolvedAssigneeId?.ToString() ?? "(unassigned)"}).");
 
             // Run ML.NET triage (category + priority prediction) in background — same as manual create
             _ = Task.Run(async () =>
@@ -454,6 +593,16 @@ public class GmailApiService : BackgroundService
 
             existingTicketId = ticket.Id;
         }
+        else
+        {
+            // No thread match AND CreateTicketsFromEmails is disabled — note
+            // the inbound for the audit log so admins can see why nothing
+            // happened. We still mark-as-read and advance historyId so the
+            // same message doesn't keep getting reconsidered.
+            WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
+                InboundAction.SkippedNoCreate,
+                detail: "No matching thread and CreateTicketsFromEmails is disabled.");
+        }
 
         // Record the email for threading
         if (existingTicketId.HasValue)
@@ -517,9 +666,25 @@ public class GmailApiService : BackgroundService
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogError("Failed to refresh Gmail token: {Error}", errorBody);
-            config.IsAuthorized = false;
-            config.LastError = $"OAuth token refresh failed: {errorBody}";
+            _logger.LogError("Failed to refresh Gmail token for {Email}: {Error}",
+                config.EmailAddress, errorBody);
+            config.LastError = $"{DateTime.UtcNow:g}: OAuth token refresh failed ({(int)response.StatusCode}): {errorBody}";
+
+            // Only auto-disable the integration when Google explicitly tells us
+            // the refresh token itself is no longer usable (invalid_grant). For
+            // every other failure — transient 5xx, rate limiting, network
+            // hiccup — leave IsAuthorized alone so the next poll cycle retries
+            // automatically. The previous behaviour froze the integration on
+            // any failure and required a manual re-auth, which is what caused
+            // the May 6 "no new tickets" outage.
+            if (IsInvalidGrantResponse(errorBody))
+            {
+                config.IsAuthorized = false;
+                _logger.LogError(
+                    "Gmail refresh token for {Email} is invalid (invalid_grant). " +
+                    "Admin must re-authorize the integration.", config.EmailAddress);
+            }
+
             await context.SaveChangesAsync(ct);
             return null;
         }
@@ -537,8 +702,38 @@ public class GmailApiService : BackgroundService
             config.GmailRefreshToken = newRefresh.GetString();
         }
 
+        // Refresh succeeded — clear any stale auth flag from a prior transient
+        // failure so the admin UI reflects the current healthy state.
+        config.IsAuthorized = true;
+        config.LastError    = null;
+
         await context.SaveChangesAsync(ct);
         return config.GmailAccessToken;
+    }
+
+    /// <summary>
+    /// Recognises Google's "this refresh token is permanently dead" error from
+    /// the OAuth response body. Used so we only auto-disable the integration
+    /// for genuine revocation, not transient errors.
+    /// </summary>
+    private static bool IsInvalidGrantResponse(string responseBody)
+    {
+        if (string.IsNullOrEmpty(responseBody)) return false;
+        try
+        {
+            var doc = JsonSerializer.Deserialize<JsonElement>(responseBody);
+            if (doc.ValueKind == JsonValueKind.Object &&
+                doc.TryGetProperty("error", out var errEl) &&
+                errEl.ValueKind == JsonValueKind.String)
+            {
+                return string.Equals(errEl.GetString(), "invalid_grant", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // Fall through to the substring check below.
+        }
+        return responseBody.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>
@@ -557,7 +752,7 @@ public class GmailApiService : BackgroundService
                 // If historyId is invalid (too old), fall back to unread messages
                 _logger.LogWarning("History sync failed, falling back to unread messages.");
                 config.GmailHistoryId = null;
-                return await GetUnreadMessages(httpClient, ct);
+                return await GetUnreadMessages(httpClient, config, ct);
             }
 
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -592,7 +787,7 @@ public class GmailApiService : BackgroundService
         {
             _logger.LogError(ex, "Error fetching Gmail history.");
             config.GmailHistoryId = null;
-            return await GetUnreadMessages(httpClient, ct);
+            return await GetUnreadMessages(httpClient, config, ct);
         }
 
         return messages;
@@ -602,13 +797,23 @@ public class GmailApiService : BackgroundService
     /// Fetches unread messages from the inbox (initial sync or fallback).
     /// Scoped to the last 48 hours so a stale historyId never causes a flood of old messages.
     /// </summary>
-    private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, CancellationToken ct)
+    private async Task<List<GmailMessage>> GetUnreadMessages(HttpClient httpClient, EmailConfiguration config, CancellationToken ct)
     {
         var messages = new List<GmailMessage>();
-        // "after:" uses Unix epoch seconds — limit to 48 h so a reset historyId never
-        // re-processes weeks of old inbox messages and fires notifications for them all.
-        var after = DateTimeOffset.UtcNow.AddHours(-48).ToUnixTimeSeconds();
-        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=50";
+
+        // Dynamic lookback window:
+        //   - Anchor to the last *successful* poll minus 1 h (safety overlap).
+        //   - Floor at "now - 14 days" so we never re-process months of mail
+        //     if LastSuccessfulPollDate is null or absurdly old (e.g. DB
+        //     restored from a backup).
+        //   - The 14-day cap matches the fallback used when no watermark
+        //     exists at all (fresh install).
+        var hardFloor   = DateTime.UtcNow.AddDays(-14);
+        var watermark   = config.LastSuccessfulPollDate?.AddHours(-1) ?? hardFloor;
+        var lookbackUtc = watermark < hardFloor ? hardFloor : watermark;
+        var after       = new DateTimeOffset(DateTime.SpecifyKind(lookbackUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+
+        var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread+in:inbox+after:{after}&maxResults=100";
         var response = await httpClient.GetAsync(url, ct);
 
         if (!response.IsSuccessStatusCode) return messages;
@@ -637,13 +842,38 @@ public class GmailApiService : BackgroundService
         var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{messageId}?format=full";
         var response = await httpClient.GetAsync(url, ct);
 
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Gmail message fetch failed: {MessageId} returned {Status}",
+                messageId, (int)response.StatusCode);
+            return null;
+        }
 
         var json = await response.Content.ReadAsStringAsync(ct);
-        return JsonSerializer.Deserialize<GmailFullMessage>(json, new JsonSerializerOptions
+        try
         {
-            PropertyNameCaseInsensitive = true
-        });
+            return JsonSerializer.Deserialize<GmailFullMessage>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                // Gmail returns internalDate / sizeEstimate / historyId etc. as
+                // *string-encoded* numbers (e.g. "1746556800000"). Without this
+                // option the deserializer throws a JsonException for those fields,
+                // which silently skipped every inbound message — the real cause
+                // of the "no new tickets since May 6" outage.
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+            });
+        }
+        catch (JsonException ex)
+        {
+            // Surface deserialization failures loudly. Returning null silently
+            // (the previous behaviour) is how the May 6 outage went undetected
+            // for over a week.
+            _logger.LogError(ex,
+                "Failed to deserialize Gmail message {MessageId}. Body preview: {Preview}",
+                messageId,
+                json.Length > 500 ? json[..500] : json);
+            return null;
+        }
     }
 
     /// <summary>
@@ -655,6 +885,93 @@ public class GmailApiService : BackgroundService
         var body = JsonSerializer.Serialize(new { removeLabelIds = new[] { "UNREAD" } });
         var content = new StringContent(body, Encoding.UTF8, "application/json");
         await httpClient.PostAsync(url, content, ct);
+    }
+
+    public record EmailAttachment(string FileName, string MimeType, byte[] Bytes);
+
+    /// <summary>
+    /// Sends an email with optional Cc recipients and one-or-more file
+    /// attachments. Builds a multipart/mixed envelope wrapping a
+    /// multipart/alternative html part. The plain text fallback is omitted
+    /// for the attachment send because the share flow always renders the
+    /// branded HTML body — Gmail / Outlook handle this fine.
+    ///
+    /// Returns the Message-ID on success, null on failure.
+    /// </summary>
+    public async Task<string?> SendEmailWithAttachmentsAsync(
+        EmailConfiguration config,
+        ServiceDeskDbContext context,
+        string toEmail,
+        string? ccEmail,
+        string subject,
+        string htmlBody,
+        IList<EmailAttachment> attachments,
+        CancellationToken ct = default)
+    {
+        var accessToken = await EnsureValidAccessToken(context, config, ct);
+        if (string.IsNullOrEmpty(accessToken)) return null;
+
+        var mixedBoundary = $"----=_Mixed_{Guid.NewGuid():N}";
+        var altBoundary   = $"----=_Alt_{Guid.NewGuid():N}";
+        var msg = new StringBuilder();
+        var ourMessageId = $"<ss-share-{Guid.NewGuid():N}@servicesphere.local>";
+
+        msg.AppendLine($"From: ServiceSphere IT Support <{config.EmailAddress}>");
+        msg.AppendLine($"To: {toEmail}");
+        if (!string.IsNullOrWhiteSpace(ccEmail))
+            msg.AppendLine($"Cc: {ccEmail}");
+        msg.AppendLine($"Subject: {EncodeMailHeaderValue(subject)}");
+        msg.AppendLine($"Message-ID: {ourMessageId}");
+        msg.AppendLine($"{AutoGeneratedHeader}: true");
+        msg.AppendLine("MIME-Version: 1.0");
+        msg.AppendLine($"Content-Type: multipart/mixed; boundary=\"{mixedBoundary}\"");
+        msg.AppendLine();
+
+        // -- Alternative (html body) part --
+        msg.AppendLine($"--{mixedBoundary}");
+        msg.AppendLine($"Content-Type: multipart/alternative; boundary=\"{altBoundary}\"");
+        msg.AppendLine();
+        msg.AppendLine($"--{altBoundary}");
+        msg.AppendLine("Content-Type: text/html; charset=UTF-8");
+        msg.AppendLine("Content-Transfer-Encoding: base64");
+        msg.AppendLine();
+        msg.AppendLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(htmlBody)));
+        msg.AppendLine($"--{altBoundary}--");
+
+        // -- File attachments --
+        foreach (var att in attachments)
+        {
+            msg.AppendLine($"--{mixedBoundary}");
+            msg.AppendLine($"Content-Type: {att.MimeType}; name=\"{att.FileName}\"");
+            msg.AppendLine("Content-Transfer-Encoding: base64");
+            msg.AppendLine($"Content-Disposition: attachment; filename=\"{att.FileName}\"");
+            msg.AppendLine();
+            // Insert line breaks every 76 chars per RFC 2045 to keep base64
+            // chunks within the SMTP line-length limit.
+            var b64 = Convert.ToBase64String(att.Bytes);
+            for (int i = 0; i < b64.Length; i += 76)
+                msg.AppendLine(b64.Substring(i, Math.Min(76, b64.Length - i)));
+        }
+        msg.AppendLine($"--{mixedBoundary}--");
+
+        var rawMessage = Convert.ToBase64String(Encoding.UTF8.GetBytes(msg.ToString()))
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var sendUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+        var requestBody = JsonSerializer.Serialize(new { raw = rawMessage });
+        var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync(sendUrl, content, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogError("Failed to send email-with-attachment via Gmail API: {Error}", error);
+            return null;
+        }
+        return ourMessageId;
     }
 
     /// <summary>
@@ -669,6 +986,7 @@ public class GmailApiService : BackgroundService
         int? ticketId = null,
         string? inReplyTo = null,
         string? references = null,
+        string? ccEmail = null,
         CancellationToken ct = default)
     {
         var accessToken = await EnsureValidAccessToken(context, config, ct);
@@ -683,6 +1001,8 @@ public class GmailApiService : BackgroundService
 
         msgBuilder.AppendLine($"From: ServiceSphere IT Support <{config.EmailAddress}>");
         msgBuilder.AppendLine($"To: {toEmail}");
+        if (!string.IsNullOrWhiteSpace(ccEmail))
+            msgBuilder.AppendLine($"Cc: {ccEmail}");
         msgBuilder.AppendLine($"Subject: {EncodeMailHeaderValue(subject)}");
         msgBuilder.AppendLine($"Message-ID: {ourMessageId}");
 
@@ -972,6 +1292,50 @@ public class GmailApiService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Records what the poller did with a single inbound Gmail message. Called
+    /// at every exit point of ProcessMessage so admins can audit (via the
+    /// Settings → Inbound Email Log page) which messages were skipped and why.
+    /// Adds to the DbContext without saving — the surrounding PollGmailInbox
+    /// loop commits everything in one SaveChangesAsync at the end.
+    /// </summary>
+    private static void WriteInboundLog(
+        ServiceDeskDbContext context,
+        EmailConfiguration config,
+        GmailMessage gmailMsg,
+        GmailFullMessage? fullMessage,
+        string? messageId,
+        string? subject,
+        string? fromAddress,
+        InboundAction action,
+        string? detail = null,
+        string? error = null)
+    {
+        DateTime? received = null;
+        if (fullMessage != null && fullMessage.InternalDate > 0)
+        {
+            received = DateTimeOffset.FromUnixTimeMilliseconds(fullMessage.InternalDate).UtcDateTime;
+        }
+
+        // Trim to schema-permitted lengths to avoid silent truncation surprises.
+        string? Trim(string? s, int max) =>
+            string.IsNullOrEmpty(s) ? s : (s.Length <= max ? s : s[..max]);
+
+        context.InboundEmailLogs.Add(new InboundEmailLog
+        {
+            EmailConfigurationId = config.Id,
+            GmailMessageId       = Trim(gmailMsg.Id, 100) ?? string.Empty,
+            MessageId            = Trim(messageId,   500),
+            Subject              = Trim(subject,     500),
+            FromAddress          = Trim(fromAddress, 200),
+            ReceivedDate         = received,
+            ProcessedDate        = DateTime.UtcNow,
+            Action               = action.ToString(),
+            ActionDetail         = Trim(detail, 500),
+            ErrorMessage         = Trim(error,  2000)
+        });
+    }
+
     #endregion
 
     #region Gmail API DTOs
@@ -1013,4 +1377,32 @@ public class GmailApiService : BackgroundService
     }
 
     #endregion
+}
+
+/// <summary>Structured result of a single PollOnceAsync run, surfaced to the
+/// Email Integration admin UI's "Poll Now" modal.</summary>
+public class PollReport
+{
+    public int     EmailConfigurationId { get; set; }
+    public string? EmailAddress         { get; set; }
+    public bool    Success              { get; set; }
+    public string? Error                { get; set; }
+    public int     DurationMs           { get; set; }
+    public int     MessagesSeen         { get; set; }
+
+    /// <summary>Action name → count, for the headline summary line.</summary>
+    public Dictionary<string, int> Outcomes { get; set; } = new();
+
+    /// <summary>Up to 20 newest inbound-log rows produced by this run.</summary>
+    public List<PollReportEntry> RecentEntries { get; set; } = new();
+}
+
+public class PollReportEntry
+{
+    public string?  Action      { get; set; }
+    public string?  Subject     { get; set; }
+    public string?  From        { get; set; }
+    public string?  Detail      { get; set; }
+    public string?  Error       { get; set; }
+    public DateTime ProcessedAt { get; set; }
 }

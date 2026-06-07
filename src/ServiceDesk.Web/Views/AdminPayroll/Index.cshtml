@@ -12,7 +12,9 @@
     var amtPaidMonth    = (decimal)(ViewBag.AmountPaidMonth   ?? 0m);
     var amtPaidAllTime  = (decimal)(ViewBag.AmountPaidAllTime ?? 0m);
 
-    bool isFiltered = !string.IsNullOrEmpty(filterStatus) || filterContractorId.HasValue;
+    bool isFiltered = !string.IsNullOrEmpty(filterStatus)
+                    || filterContractorId.HasValue
+                    || !string.IsNullOrEmpty(ViewBag.FilterRateType as string);
 }
 
 @section Styles {
@@ -280,10 +282,39 @@
 }
 
 @* ── Page header ─────────────────────────────────────────────────────── *@
-<div class="ap-header">
+<div class="ap-header d-flex justify-content-between align-items-start">
     <div>
         <h1 class="ap-title"><i class="bi bi-briefcase-fill me-2" style="color:var(--ap-blue);"></i>Contractor Payroll</h1>
         <p class="ap-sub">Review, approve and mark payment for submitted contractor invoices</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        @if (User.IsInRole("Admin"))
+        {
+            <div class="dropdown">
+                <button class="btn btn-outline-success dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false"
+                        title="Download Paid-receipt CSV for 1099 / bookkeeping">
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Annual Export
+                </button>
+                <ul class="dropdown-menu">
+                    @{
+                        var thisYear = DateTime.UtcNow.Year;
+                        for (var y = thisYear; y >= thisYear - 4; y--)
+                        {
+                            <li><a class="dropdown-item" asp-action="AnnualExport" asp-route-year="@y">@y (CSV)</a></li>
+                        }
+                    }
+                </ul>
+            </div>
+            <a asp-action="NotificationRecipients" class="btn btn-outline-secondary"
+               title="Lifecycle email toggles, recipients, reminder cadence">
+                <i class="bi bi-gear me-1"></i>Payroll Settings
+            </a>
+        }
+        <button type="button" class="btn btn-outline-primary"
+                data-bs-toggle="modal" data-bs-target="#weeklyDigestModal" title="Email each contractor their last 7 days of logged hours">
+            <i class="bi bi-envelope-paper me-1"></i> Send Weekly Digest
+        </button>
     </div>
 </div>
 
@@ -357,6 +388,16 @@
                         }
                     </select>
                 </div>
+                <div>
+                    @{ var filterRateType = ViewBag.FilterRateType as string; }
+                    <div class="ap-filter-label">Rate Type</div>
+                    <select name="rateType" class="ap-filter-select">
+                        <option value="">All</option>
+                        <option value="StandardOnly" selected="@(filterRateType == "StandardOnly")">Standard only</option>
+                        <option value="HasEmergency" selected="@(filterRateType == "HasEmergency")">Has Emergency hours</option>
+                        <option value="HasRetainer"  selected="@(filterRateType == "HasRetainer")">Has Retainer applied</option>
+                    </select>
+                </div>
                 <button type="submit" class="ap-btn-filter">
                     <i class="bi bi-funnel-fill"></i>Apply Filter
                 </button>
@@ -377,6 +418,19 @@
             {
                 var name = contractors.FirstOrDefault(c => c.Id == filterContractorId)?.FullName ?? $"#{filterContractorId}";
                 <span class="filter-chip">Contractor: @name</span>
+            }
+            @{
+                var rateTypeChip = ViewBag.FilterRateType as string;
+            }
+            @if (!string.IsNullOrEmpty(rateTypeChip))
+            {
+                var label = rateTypeChip switch {
+                    "StandardOnly" => "Standard only",
+                    "HasEmergency" => "Has Emergency",
+                    "HasRetainer"  => "Has Retainer",
+                    _              => rateTypeChip
+                };
+                <span class="filter-chip">Rate type: @label</span>
             }
             <span style="color:var(--ap-muted);margin-left:4px;">· @Model.Count() result@(Model.Count() == 1 ? "" : "s")</span>
         </div>
@@ -430,7 +484,8 @@
                         <th>Contractor</th>
                         <th>Period</th>
                         <th class="text-center">Total Hrs</th>
-                        <th class="text-center">Billable Hrs</th>
+                        <th class="text-center">Std / Emerg</th>
+                        <th class="text-center">Retainer</th>
                         <th class="text-end">Amount</th>
                         <th>Status</th>
                         <th>Submitted</th>
@@ -474,21 +529,65 @@
                                 @receipt.PeriodStart.ToString("MMM d") – @receipt.PeriodEnd.ToString("MMM d, yyyy")
                             </td>
                             <td class="text-center">@receipt.TotalHours.ToString("0.##")</td>
-                            <td class="text-center fw-semibold" style="color:var(--ap-navy);">@receipt.TotalBillableHours.ToString("0.##")</td>
+                            <td class="text-center small">
+                                <span class="text-muted">@receipt.TotalStandardHours.ToString("0.##")</span>
+                                <span class="mx-1 text-muted">/</span>
+                                @if (receipt.TotalEmergencyHours > 0)
+                                {
+                                    <span class="fw-bold text-danger" title="Emergency hours billed at @(receipt.EmergencyRateSnapshot?.ToString("C") ?? "—")">
+                                        @receipt.TotalEmergencyHours.ToString("0.##")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td class="text-center small">
+                                @if (receipt.TotalRetainerAmountApplied > 0)
+                                {
+                                    <span class="fw-semibold text-success"
+                                          title="@receipt.TotalRetainerHoursApplied.ToString("0.##") h absorbed by retainer">
+                                        $@receipt.TotalRetainerAmountApplied.ToString("N0")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                             <td class="text-end fw-bold" style="color:var(--ap-navy);">$@receipt.TotalAmount.ToString("N2")</td>
                             <td><span class="sp @pillClass">@receipt.Status</span></td>
                             <td class="small text-muted text-nowrap">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
-                            <td class="small text-muted text-nowrap">@(receipt.ApprovedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td class="small text-nowrap">
+                                @if (receipt.ApprovedDate.HasValue)
+                                {
+                                    <div class="text-muted">@receipt.ApprovedDate.Value.ToString("MMM d, yyyy")</div>
+                                    @if (receipt.ApprovedBy != null)
+                                    {
+                                        <div style="font-size:.7rem;color:var(--ap-muted);">by @receipt.ApprovedBy.FullName</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(receipt.ApprovalNote))
+                                    {
+                                        <i class="bi bi-chat-square-text-fill text-info"
+                                           data-bs-toggle="tooltip"
+                                           title="@receipt.ApprovalNote"
+                                           style="font-size:.78rem; cursor:help;"></i>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
                                     @if (receipt.Status == "Submitted" && User.IsInRole("Admin"))
                                     {
-                                        <form asp-action="Approve" asp-route-id="@receipt.Id" method="post" class="d-inline">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="ap-btn ap-btn-approve">
-                                                <i class="bi bi-check-lg"></i>Approve
-                                            </button>
-                                        </form>
+                                        <button type="button" class="ap-btn ap-btn-approve"
+                                                onclick="openApproveModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
+                                            <i class="bi bi-check-lg"></i>Approve
+                                        </button>
                                         <button type="button" class="ap-btn ap-btn-reject"
                                                 onclick="openRejectModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))')">
                                             <i class="bi bi-x-lg"></i>Reject
@@ -496,17 +595,23 @@
                                     }
                                     @if (receipt.Status == "Approved" && User.IsInRole("Admin"))
                                     {
-                                        <form asp-action="MarkPaid" asp-route-id="@receipt.Id" method="post" class="d-inline">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="ap-btn ap-btn-paid">
-                                                <i class="bi bi-currency-dollar"></i>Mark Paid
-                                            </button>
-                                        </form>
+                                        <button type="button" class="ap-btn ap-btn-paid"
+                                                onclick="openMarkPaidModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))', '@receipt.TotalAmount.ToString("C")')">
+                                            <i class="bi bi-currency-dollar"></i>Mark Paid
+                                        </button>
                                     }
                                     <a asp-controller="Contractor" asp-action="ReceiptDetail" asp-route-id="@receipt.Id"
                                        class="ap-btn ap-btn-view">
                                         <i class="bi bi-eye"></i>View
                                     </a>
+                                    @if (receipt.Status != "Draft")
+                                    {
+                                        <button type="button" class="ap-btn ap-btn-view"
+                                                onclick="openShareModal(@receipt.Id, '@Html.Raw((receipt.Contractor?.FullName ?? "").Replace("'","\\'" ))', '@receipt.PeriodStart.ToString("MMM d")', '@receipt.PeriodEnd.ToString("MMM d, yyyy")')"
+                                                title="Email this receipt">
+                                            <i class="bi bi-send"></i>Share
+                                        </button>
+                                    }
                                 </div>
                             </td>
                         </tr>
@@ -523,13 +628,10 @@
      box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:1050;display:none;
      align-items:center;gap:12px;font-size:.875rem;font-weight:600;white-space:nowrap;">
     <span id="bulkCount"></span>
-    <form asp-action="BulkApprove" method="post" id="bulkApproveForm" class="d-inline">
-        @Html.AntiForgeryToken()
-        <span id="bulkApproveIds"></span>
-        <button type="submit" style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
-            <i class="bi bi-check-lg me-1"></i>Approve Selected
-        </button>
-    </form>
+    <button type="button" data-bs-toggle="modal" data-bs-target="#bulkApproveModal"
+            style="background:#198754;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">
+        <i class="bi bi-check-lg me-1"></i>Approve Selected
+    </button>
     <form asp-action="BulkMarkPaid" method="post" id="bulkPaidForm" class="d-inline">
         @Html.AntiForgeryToken()
         <span id="bulkPaidIds"></span>
@@ -541,6 +643,297 @@
             style="background:transparent;color:#adb5bd;border:none;font-size:1rem;cursor:pointer;line-height:1;">
         <i class="bi bi-x-lg"></i>
     </button>
+</div>
+
+@* ── Approve Modal ────────────────────────────────────────────────────────── *@
+<div class="modal fade" id="approveModal" tabindex="-1" aria-labelledby="approveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-green);color:#fff;">
+                <h5 class="modal-title" id="approveModalLabel">
+                    <i class="bi bi-check-circle me-2"></i>Approve Receipt
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="approveForm" asp-action="Approve" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="approveReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Approving <strong id="approveContractorName"></strong>'s receipt records you
+                        as the approver and stamps the timestamp. The contractor will be notified
+                        by email.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Approval note <span class="text-muted fw-normal">(optional — included in the email)</span></label>
+                        <textarea name="approvalNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Matches PO #142 — approved for payment in next cycle"></textarea>
+                    </div>
+
+                    @{
+                        var defaultHrEmail = (string?)ViewBag.DefaultHrEmail ?? "";
+                        var defaultApEmail = (string?)ViewBag.DefaultApEmail ?? "";
+                        var hrConfigured = !string.IsNullOrWhiteSpace(defaultHrEmail);
+                        var apConfigured = !string.IsNullOrWhiteSpace(defaultApEmail);
+                    }
+                    @* Forward-on-approve workflow.
+                       Two-row mini form that lets the admin push the
+                       approved receipt straight to HR / AP without
+                       leaving the modal. Email fields are always
+                       editable — any change the admin makes here is
+                       persisted as the new default for next time. *@
+                    <div class="border rounded p-3" style="background:#f8fafc;">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="bi bi-send-arrow-up me-2 text-primary"></i>
+                            <span class="fw-semibold">Forward a copy on approval</span>
+                            <span class="text-muted small ms-2">(optional)</span>
+                        </div>
+                        <div class="text-muted small mb-3">
+                            Sends the receipt (PDF + Excel) for payment processing.
+                            Anything you type here is remembered as the default for next time.
+                        </div>
+
+                        <div class="row g-2 align-items-center mb-2">
+                            <div class="col-auto" style="min-width:140px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="approveSendHr" name="sendToHr" value="true" />
+                                    <label class="form-check-label fw-semibold" for="approveSendHr">
+                                        Send to HR
+                                        @if (hrConfigured)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success ms-1" title="Default configured"></i>
+                                        }
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <input type="email" name="hrEmail" id="approveHrEmail" class="form-control form-control-sm"
+                                       value="@defaultHrEmail"
+                                       placeholder="@(hrConfigured ? "hr@yourcompany.com" : "No default — enter HR address to enable")" />
+                            </div>
+                        </div>
+
+                        <div class="row g-2 align-items-center">
+                            <div class="col-auto" style="min-width:140px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="approveSendAp" name="sendToAp" value="true" />
+                                    <label class="form-check-label fw-semibold" for="approveSendAp">
+                                        Send to AP
+                                        @if (apConfigured)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success ms-1" title="Default configured"></i>
+                                        }
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <input type="email" name="apEmail" id="approveApEmail" class="form-control form-control-sm"
+                                       value="@defaultApEmail"
+                                       placeholder="@(apConfigured ? "ap@yourcompany.com" : "No default — enter AP address to enable")" />
+                            </div>
+                        </div>
+
+                        @if (!hrConfigured && !apConfigured)
+                        {
+                            <div class="small text-muted mt-2">
+                                <i class="bi bi-info-circle me-1"></i>
+                                You can set lasting defaults in
+                                <a asp-action="NotificationRecipients">Payroll Settings</a>.
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Approve Receipt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Weekly Digest Modal ──────────────────────────────────────────────────── *@
+<div class="modal fade" id="weeklyDigestModal" tabindex="-1" aria-labelledby="weeklyDigestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--ap-blue);color:#fff;">
+                <h5 class="modal-title" id="weeklyDigestModalLabel">
+                    <i class="bi bi-envelope-paper me-2"></i>Send Weekly Hours Digest
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-action="SendWeeklyDigest" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Emails every active contractor with their last 7 days of logged hours
+                        (Standard / Emergency split, billable totals, per-day rows). Useful as
+                        a nudge before a submission window closes.
+                    </p>
+                    <label class="form-label fw-semibold">Week ends on</label>
+                    <input type="date" name="weekEnd" class="form-control"
+                           value="@DateTime.UtcNow.Date.ToString("yyyy-MM-dd")" />
+                    <div class="form-text">The 7-day window ends on this date (inclusive). Defaults to today.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i>Send Now
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Bulk Approve Modal ───────────────────────────────────────────────────── *@
+<div class="modal fade" id="bulkApproveModal" tabindex="-1" aria-labelledby="bulkApproveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#198754;color:#fff;">
+                <h5 class="modal-title" id="bulkApproveModalLabel">
+                    <i class="bi bi-check2-all me-2"></i>Approve <span id="bulkApproveCount">0</span> Receipt(s)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-action="BulkApprove" method="post" id="bulkApproveForm">
+                @Html.AntiForgeryToken()
+                <span id="bulkApproveIds"></span>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        All selected receipts will be approved in one batch. Each contractor receives the
+                        same approval note in their email.
+                    </p>
+                    <div>
+                        <label class="form-label fw-semibold">Approval note <span class="text-muted fw-normal">(optional — included in every email)</span></label>
+                        <textarea name="approvalNote" class="form-control" rows="3" maxlength="1000"
+                                  placeholder="e.g. Q2 batch — approved for next pay cycle"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Approve All Selected
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Mark Paid Modal ─────────────────────────────────────────────────────── *@
+<div class="modal fade" id="markPaidModal" tabindex="-1" aria-labelledby="markPaidModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#198754;color:#fff;">
+                <h5 class="modal-title" id="markPaidModalLabel">
+                    <i class="bi bi-currency-dollar me-2"></i>Mark Paid <span id="markPaidReceiptNum"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="markPaidForm" asp-action="MarkPaid" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="markPaidReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Marking <strong id="markPaidContractor"></strong>'s receipt for
+                        <strong id="markPaidAmount" class="text-success"></strong> as Paid.
+                        Capture how the payment was issued so the contractor can reconcile.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Payment Method <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="paymentMethod" class="form-select">
+                            <option value="">— Not specified —</option>
+                            <option value="Check">Check</option>
+                            <option value="ACH">ACH</option>
+                            <option value="Zelle">Zelle</option>
+                            <option value="Wire">Wire Transfer</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Reference <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="paymentReference" class="form-control"
+                               placeholder="e.g. Check #1234, ACH-2X9KQ, Zelle confirmation" />
+                        <div class="form-text">
+                            Shown to the contractor in the payment-issued email and on the receipt detail.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check2-circle me-1"></i>Mark Paid
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ── Share Receipt Modal ──────────────────────────────────────────────────── *@
+<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#0d6efd;color:#fff;">
+                <h5 class="modal-title" id="shareModalLabel">
+                    <i class="bi bi-send me-2"></i>Share Receipt <span id="shareReceiptNum"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="shareForm" asp-action="ShareReceipt" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" id="shareReceiptId" />
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Forward <strong id="shareContractorName"></strong>'s receipt to Accounts Payable
+                        or any other recipient. The PDF and/or XLSX is attached automatically.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">To <span class="text-danger">*</span></label>
+                        <input type="email" name="toEmail" class="form-control" required placeholder="ap@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Cc <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="ccEmail" class="form-control" placeholder="payroll@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Subject</label>
+                        <input type="text" name="subject" id="shareSubject" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Message <span class="text-muted fw-normal">(optional)</span></label>
+                        <textarea name="message" class="form-control" rows="3"
+                                  placeholder="e.g. Approved this morning — please process in the next pay run."></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold d-block">Attach</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtPdf" value="pdf" />
+                            <label class="form-check-label" for="shareFmtPdf">PDF</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtXlsx" value="xlsx" />
+                            <label class="form-check-label" for="shareFmtXlsx">Excel</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="format" id="shareFmtBoth" value="both" checked />
+                            <label class="form-check-label" for="shareFmtBoth">Both</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i>Send
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 @* ── Reject Modal ─────────────────────────────────────────────────────────── *@
@@ -581,11 +974,64 @@
 
 @section Scripts {
 <script>
+function openMarkPaidModal(id, name, amount) {
+    document.getElementById('markPaidReceiptId').value = id;
+    document.getElementById('markPaidReceiptNum').textContent = '#' + id;
+    document.getElementById('markPaidContractor').textContent = name;
+    document.getElementById('markPaidAmount').textContent = amount;
+    var form = document.getElementById('markPaidForm');
+    form.action = form.action.replace(/\/MarkPaid(\/\d+)?$/, '/MarkPaid/' + id);
+    new bootstrap.Modal(document.getElementById('markPaidModal')).show();
+}
+function openShareModal(id, name, periodStart, periodEnd) {
+    document.getElementById('shareReceiptId').value = id;
+    document.getElementById('shareReceiptNum').textContent = '#' + id;
+    document.getElementById('shareContractorName').textContent = name;
+    document.getElementById('shareSubject').value =
+        'Contractor Receipt #' + id + ' — ' + name + ' — ' + periodStart + ' to ' + periodEnd;
+    // The asp-action="ShareReceipt" tag-helper renders /AdminPayroll/ShareReceipt
+    // and the hidden 'id' is sent in the form body. Refresh the form's action
+    // url so the receipt id is also in the route for clarity.
+    var form = document.getElementById('shareForm');
+    form.action = form.action.replace(/\/ShareReceipt(\/\d+)?$/, '/ShareReceipt/' + id);
+    new bootstrap.Modal(document.getElementById('shareModal')).show();
+}
+function openApproveModal(id, name) {
+    document.getElementById('approveReceiptId').value = id;
+    document.getElementById('approveContractorName').textContent = name;
+    new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+
+// Auto-tick the matching checkbox the moment the admin types in either
+// forward-on-approve field. Saves the "I typed the address but forgot to
+// flip the toggle" footgun.
+(function () {
+    function bindAutoCheck(emailId, checkId) {
+        var emailEl = document.getElementById(emailId);
+        var checkEl = document.getElementById(checkId);
+        if (!emailEl || !checkEl) return;
+        emailEl.addEventListener('input', function () {
+            if (emailEl.value.trim().length > 0) checkEl.checked = true;
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        bindAutoCheck('approveHrEmail', 'approveSendHr');
+        bindAutoCheck('approveApEmail', 'approveSendAp');
+    });
+})();
+
 function openRejectModal(id, name) {
     document.getElementById('rejectReceiptId').value = id;
     document.getElementById('rejectContractorName').textContent = name;
     new bootstrap.Modal(document.getElementById('rejectModal')).show();
 }
+
+// Bootstrap tooltips for the approval-note icons + any other [data-bs-toggle=tooltip] elements.
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
+});
 
 function toggleAllRows(checked) {
     document.querySelectorAll('.row-chk').forEach(cb => cb.checked = checked);
@@ -603,8 +1049,9 @@ function updateBulkBar() {
     // Build hidden inputs for each form
     ['bulkApproveIds','bulkPaidIds'].forEach(spanId => {
         const span = document.getElementById(spanId);
-        span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
+        if (span) span.innerHTML = checked.map(cb => `<input type="hidden" name="ids" value="${cb.value}">`).join('');
     });
+    document.getElementById('bulkApproveCount').textContent = checked.length;
 
     document.getElementById('chkAll').indeterminate =
         checked.length > 0 && checked.length < document.querySelectorAll('.row-chk').length;

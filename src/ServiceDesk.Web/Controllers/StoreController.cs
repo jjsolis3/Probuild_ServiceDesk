@@ -1,14 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Processing;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -17,19 +13,31 @@ public class StoreController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailNotification;
+    private readonly PortalNotificationService _portalNotifications;
+    private readonly StoreCartService _cartService;
+    private readonly StoreProductAdminService _productAdmin;
     private readonly ILogger<StoreController> _logger;
-    private readonly IWebHostEnvironment _env;
 
     public StoreController(ServiceDeskDbContext context,
         EmailNotificationService emailNotification,
-        ILogger<StoreController> logger,
-        IWebHostEnvironment env)
+        PortalNotificationService portalNotifications,
+        StoreCartService cartService,
+        StoreProductAdminService productAdmin,
+        ILogger<StoreController> logger)
     {
-        _context           = context;
-        _emailNotification = emailNotification;
-        _logger            = logger;
-        _env               = env;
+        _context             = context;
+        _emailNotification   = emailNotification;
+        _portalNotifications = portalNotifications;
+        _cartService         = cartService;
+        _productAdmin        = productAdmin;
+        _logger              = logger;
     }
+
+    /// <summary>
+    /// Absolute base URL (scheme + host) for the current request, used in
+    /// email templates so deep links and image src attributes resolve.
+    /// </summary>
+    private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
 
     // GET /Store — catalog (access + time-window enforced)
     public async Task<IActionResult> Index()
@@ -60,6 +68,13 @@ public class StoreController : Controller
         var welcome = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "StoreWelcomeMessage"))?.Value ?? string.Empty;
 
+        // Surface the store close date to the view so it can show a countdown banner.
+        var closeDateStr = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "StoreCloseDate"))?.Value ?? string.Empty;
+        DateTime? storeCloseDate = null;
+        if (!string.IsNullOrWhiteSpace(closeDateStr) && DateTime.TryParse(closeDateStr, out var cd))
+            storeCloseDate = cd;
+
         var (q, yr) = GetCurrentQuarter();
 
         // Check for an existing non-cancelled order this quarter
@@ -88,18 +103,50 @@ public class StoreController : Controller
                     return $"{totalQty} ordered · Q{latest.Quarter} {latest.Year}";
                 });
 
+        // Favorited product IDs so the catalog can render heart icons + filter.
+        var favoriteIds = await _context.StoreProductFavorites
+            .Where(f => f.PortalUserId == user.Id)
+            .Select(f => f.StoreProductId)
+            .ToListAsync();
+
+        // The most recent non-cancelled, fulfilled-or-confirmed order from a
+        // previous quarter. Drives the "Reorder from last quarter" CTA. We
+        // explicitly skip the current quarter so users don't reorder what
+        // they already submitted this window.
+        var lastOrder = await _context.StoreOrders
+            .Include(o => o.Items)
+            .Where(o => o.PortalUserId == user.Id
+                     && o.Status != "Cancelled"
+                     && !(o.Year == yr && o.Quarter == q))
+            .OrderByDescending(o => o.Year)
+            .ThenByDescending(o => o.Quarter)
+            .ThenByDescending(o => o.OrderDate)
+            .FirstOrDefaultAsync();
+
         ViewBag.WelcomeMessage       = welcome;
         ViewBag.Quarter              = q;
         ViewBag.Year                 = yr;
         ViewBag.CurrentUser          = user;
         ViewBag.ExistingOrderNumber  = existingOrder?.OrderNumber;
         ViewBag.PreviousOrderBadges  = prevOrderBadges;
+        ViewBag.StoreCloseDate       = storeCloseDate;
+        ViewBag.FavoriteProductIds   = favoriteIds;
+        ViewBag.LastOrderId          = lastOrder?.Id;
+        ViewBag.LastOrderLabel       = lastOrder != null
+            ? $"Q{lastOrder.Quarter} {lastOrder.Year}"
+            : null;
+        ViewBag.LastOrderItemCount   = lastOrder?.Items.Count ?? 0;
+        ViewBag.PreferredSize        = user.PreferredStoreSize;
+        ViewBag.PreferredGender      = user.PreferredStoreGender;
+        ViewBag.PreferredColor       = user.PreferredStoreColor;
 
         return View(products);
     }
 
     // POST /Store/PlaceOrder
-    // Accepts a JSON cart payload in the "cartJson" form field, plus optional "notes".
+    // Pulls cart lines from the server cart (StoreCartService). The legacy
+    // "cartJson" form field is still honoured as a fallback when the server
+    // cart is empty so older browser sessions (pre-DB-cart) still work.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(IFormCollection form)
     {
@@ -115,20 +162,37 @@ public class StoreController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        // Parse the cart JSON payload
-        var cartJson = form["cartJson"].ToString();
-        List<CartLineInput> cartItems;
-        try
+        // Source of truth: the user's persisted server cart.
+        var serverCart = await _cartService.GetForUserAsync(user.Id);
+        List<CartLineInput> cartItems = serverCart
+            .Select(c => new CartLineInput
+            {
+                ProductId        = c.StoreProductId,
+                Qty              = c.Quantity,
+                Size             = c.SelectedSize,
+                Gender           = c.SelectedGender,
+                Color            = c.SelectedColor,
+                CustomSelections = DeserializeCustomSelections(c.CustomSelectionsJson)
+            })
+            .ToList();
+
+        // Backward-compat: if the server cart is empty (older browser session
+        // before the DB-cart rollout), fall back to the JSON form payload.
+        if (cartItems.Count == 0)
         {
-            cartItems = System.Text.Json.JsonSerializer.Deserialize<List<CartLineInput>>(
-                string.IsNullOrWhiteSpace(cartJson) ? "[]" : cartJson,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? new List<CartLineInput>();
-        }
-        catch
-        {
-            TempData["Error"] = "Your cart could not be read. Please try again.";
-            return RedirectToAction(nameof(Index));
+            var cartJson = form["cartJson"].ToString();
+            try
+            {
+                cartItems = System.Text.Json.JsonSerializer.Deserialize<List<CartLineInput>>(
+                    string.IsNullOrWhiteSpace(cartJson) ? "[]" : cartJson,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? new List<CartLineInput>();
+            }
+            catch
+            {
+                TempData["Error"] = "Your cart could not be read. Please try again.";
+                return RedirectToAction(nameof(Index));
+            }
         }
 
         cartItems = cartItems.Where(c => c.ProductId > 0 && c.Qty > 0).ToList();
@@ -268,15 +332,71 @@ public class StoreController : Controller
         order.OrderNumber = $"SO-{year}-Q{quarter}-{order.Id:D4}";
         await _context.SaveChangesAsync();
 
-        // Send confirmation email — non-blocking for the user; exceptions are swallowed here
+        // Cart submitted successfully — clear it so the user has a clean slate
+        // for any next-quarter order.
+        await _cartService.ClearAsync(user.Id);
+
+        // Re-load items with the product navigation so emails can render thumbnails.
+        var itemsWithProducts = await _context.StoreOrderItems
+            .Include(i => i.StoreProduct)
+            .Where(i => i.StoreOrderId == order.Id)
+            .ToListAsync();
+
+        // Send confirmation email + ops digest — non-blocking for the user.
         try
         {
             await _emailNotification.SendStoreOrderConfirmationAsync(
-                order, user.Email, user.FullName, order.Items.ToList());
+                order, user.Email, user.FullName, itemsWithProducts, BaseUrl);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send confirmation for order #{OrderId}", order.Id);
+        }
+
+        try
+        {
+            await _emailNotification.SendStoreOrderOpsNotificationAsync(
+                order, user.FullName, itemsWithProducts, BaseUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Store] Failed to send ops notification for order #{OrderId}", order.Id);
+        }
+
+        // In-app notification for the user.
+        await _portalNotifications.NotifyAsync(
+            user.Id,
+            type: "StoreOrderPlaced",
+            title: $"Order {order.OrderNumber} placed",
+            message: $"{order.Items.Sum(i => i.Quantity)} item(s) submitted for Q{order.Quarter} {order.Year}.",
+            linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+            icon: "bi-receipt");
+
+        // In-app notification for every ops user (plus Admins as fallback) so the
+        // notification bell mirrors what the ops digest email said.
+        try
+        {
+            var opsIds = await _context.StoreOperationsAccess
+                .Where(a => a.IsActive)
+                .Select(a => a.PortalUserId)
+                .ToListAsync();
+            var adminIds = await _context.PortalUsers
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin")
+                .Select(u => u.Id)
+                .ToListAsync();
+            var recipients = opsIds.Union(adminIds).Where(id => id != user.Id);
+
+            await _portalNotifications.NotifyManyAsync(
+                recipients,
+                type: "StoreOrderOpsAlert",
+                title: $"New store order: {order.OrderNumber}",
+                message: $"{user.FullName} ordered {order.Items.Sum(i => i.Quantity)} item(s).",
+                linkUrl: Url.Action(nameof(OperationsHub), new { year = order.Year, quarter = order.Quarter, status = "Pending" }),
+                icon: "bi-cart-plus");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Store] Failed to broadcast ops in-app notifications for order #{OrderId}", order.Id);
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} placed successfully. A confirmation email has been sent to {user.Email}.";
@@ -296,6 +416,209 @@ public class StoreController : Controller
 
         if (order == null) return NotFound();
         return View(order);
+    }
+
+    // ── Cart API ──────────────────────────────────────────────────────────────
+    // These endpoints back the catalog UI's cart drawer. The cart is persisted
+    // server-side so it survives device switches and refresh.
+
+    private object SerializeCartLine(StoreCartItem c, Dictionary<string, string>? custom = null)
+        => new
+        {
+            lineId    = c.Id,
+            productId = c.StoreProductId,
+            name      = c.StoreProduct?.Name ?? string.Empty,
+            qty       = c.Quantity,
+            size      = c.SelectedSize   ?? string.Empty,
+            gender    = c.SelectedGender ?? string.Empty,
+            color     = c.SelectedColor  ?? string.Empty,
+            customSelections = custom ?? DeserializeCustomSelections(c.CustomSelectionsJson)
+                                       ?? new Dictionary<string, string>(),
+            unitPrice = c.StoreProduct != null && c.StoreProduct.HasPrice
+                            ? c.StoreProduct.Price
+                            : (decimal?)null,
+            maxQty    = c.StoreProduct?.MaxQtyPerOrder ?? 999
+        };
+
+    // GET /Store/Cart — returns the user's current cart as a JSON array.
+    [HttpGet]
+    public async Task<IActionResult> Cart()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        var items = await _cartService.GetForUserAsync(user.Id);
+        return Json(items.Select(i => SerializeCartLine(i)).ToArray());
+    }
+
+    public class CartAddRequest
+    {
+        public int ProductId { get; set; }
+        public int Qty { get; set; } = 1;
+        public string? Size { get; set; }
+        public string? Gender { get; set; }
+        public string? Color { get; set; }
+        public Dictionary<string, string>? CustomSelections { get; set; }
+    }
+
+    // POST /Store/CartAdd — adds a single line; returns the new line as JSON.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartAdd([FromBody] CartAddRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.ProductId <= 0) return BadRequest();
+
+        var line = await _cartService.AddAsync(
+            user.Id, req.ProductId, req.Qty,
+            req.Size, req.Gender, req.Color, req.CustomSelections);
+
+        if (line == null) return NotFound(new { error = "Product not available." });
+        return Json(SerializeCartLine(line, req.CustomSelections));
+    }
+
+    public class CartSetQtyRequest
+    {
+        public int LineId { get; set; }
+        public int Qty { get; set; }
+    }
+
+    // POST /Store/CartSetQty — updates a line's quantity; qty=0 removes it.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartSetQty([FromBody] CartSetQtyRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.LineId <= 0) return BadRequest();
+
+        var ok = await _cartService.SetQuantityAsync(user.Id, req.LineId, req.Qty);
+        return ok ? Ok() : NotFound();
+    }
+
+    public class CartRemoveRequest { public int LineId { get; set; } }
+
+    // POST /Store/CartRemove — removes a line.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartRemove([FromBody] CartRemoveRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.LineId <= 0) return BadRequest();
+
+        var ok = await _cartService.RemoveAsync(user.Id, req.LineId);
+        return ok ? Ok() : NotFound();
+    }
+
+    // POST /Store/CartClear — empties the user's cart entirely.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CartClear()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        await _cartService.ClearAsync(user.Id);
+        return Ok();
+    }
+
+    // ── Favorites API ─────────────────────────────────────────────────────────
+
+    public class FavoriteToggleRequest { public int ProductId { get; set; } }
+
+    // POST /Store/FavoriteToggle — toggles a product's favorite state for the
+    // current user. Returns the new state so the UI can update instantly.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FavoriteToggle([FromBody] FavoriteToggleRequest req)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+        if (req == null || req.ProductId <= 0) return BadRequest();
+
+        var existing = await _context.StoreProductFavorites
+            .FirstOrDefaultAsync(f => f.PortalUserId == user.Id && f.StoreProductId == req.ProductId);
+
+        bool isFavorite;
+        if (existing != null)
+        {
+            _context.StoreProductFavorites.Remove(existing);
+            isFavorite = false;
+        }
+        else
+        {
+            // Verify the product exists and is active before letting the user
+            // favorite it. Cheaper than enforcing it via a FK constraint check.
+            var exists = await _context.StoreProducts
+                .AnyAsync(p => p.Id == req.ProductId && p.IsActive);
+            if (!exists) return NotFound();
+            _context.StoreProductFavorites.Add(new StoreProductFavorite
+            {
+                PortalUserId   = user.Id,
+                StoreProductId = req.ProductId,
+                AddedDate      = DateTime.UtcNow
+            });
+            isFavorite = true;
+        }
+        await _context.SaveChangesAsync();
+        return Json(new { productId = req.ProductId, isFavorite });
+    }
+
+    // ── Quick reorder ─────────────────────────────────────────────────────────
+
+    // POST /Store/ReorderLastOrder — copies eligible items from the user's most
+    // recent non-cancelled order (prior quarter) into the current cart.
+    // Items whose product is no longer active or whose stored variants are
+    // missing are skipped silently; the response reports how many were added.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReorderLastOrder()
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return Unauthorized();
+
+        var (hasAccess, isOpen, _) = await CheckStoreStatusAsync(user.Id);
+        if (!hasAccess || !isOpen)
+            return BadRequest(new { error = "Store is closed." });
+
+        var (q, yr) = GetCurrentQuarter();
+
+        var lastOrder = await _context.StoreOrders
+            .Include(o => o.Items)
+            .Where(o => o.PortalUserId == user.Id
+                     && o.Status != "Cancelled"
+                     && !(o.Year == yr && o.Quarter == q))
+            .OrderByDescending(o => o.Year)
+            .ThenByDescending(o => o.Quarter)
+            .ThenByDescending(o => o.OrderDate)
+            .FirstOrDefaultAsync();
+
+        if (lastOrder == null)
+            return NotFound(new { error = "No previous order to reorder from." });
+
+        int added = 0, skipped = 0;
+        foreach (var item in lastOrder.Items)
+        {
+            var custom = DeserializeCustomSelections(item.CustomSelectionsJson);
+            var line = await _cartService.AddAsync(
+                user.Id,
+                item.StoreProductId,
+                item.Quantity,
+                item.SelectedSize,
+                item.SelectedGender,
+                item.SelectedColor,
+                custom);
+            if (line != null) added++; else skipped++;
+        }
+
+        return Json(new { added, skipped, sourceOrder = lastOrder.OrderNumber });
+    }
+
+    private static Dictionary<string, string>? DeserializeCustomSelections(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // GET /Store/MyOrders — all historical orders for the current user
@@ -437,6 +760,8 @@ public class StoreController : Controller
 
         var oldStatus = order.Status;
         order.Status = newStatus;
+        if (oldStatus != newStatus)
+            order.LastStatusChangedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         if (oldStatus != newStatus)
@@ -444,12 +769,32 @@ public class StoreController : Controller
             try
             {
                 await _emailNotification.SendOrderStatusUpdateAsync(
-                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus, BaseUrl);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OpsHub] Failed to send status update email for order #{OrderId}", order.Id);
             }
+
+            await _portalNotifications.NotifyAsync(
+                order.PortalUserId,
+                type: "StoreOrderStatus",
+                title: $"Order {order.OrderNumber} — {newStatus}",
+                message: newStatus switch
+                {
+                    "Confirmed" => "Your order has been reviewed and confirmed.",
+                    "Fulfilled" => "Your order has been fulfilled.",
+                    "Cancelled" => "Your order was cancelled.",
+                    _           => $"Status updated to {newStatus}."
+                },
+                linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+                icon: newStatus switch
+                {
+                    "Confirmed" => "bi-check-circle",
+                    "Fulfilled" => "bi-box-seam",
+                    "Cancelled" => "bi-x-circle",
+                    _           => "bi-receipt"
+                });
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} marked as {newStatus}. A notification email has been sent to {order.PortalUser.Email}.";
@@ -481,20 +826,42 @@ public class StoreController : Controller
             .ToListAsync();
 
         int updated = 0;
+        var now = DateTime.UtcNow;
         foreach (var order in orders)
         {
             if (order.Status == newStatus) continue;
             order.Status = newStatus;
+            order.LastStatusChangedDate = now;
             updated++;
             try
             {
                 await _emailNotification.SendOrderStatusUpdateAsync(
-                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus);
+                    order, order.PortalUser.Email, order.PortalUser.FullName, newStatus, BaseUrl);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OpsHub] Bulk: failed to send status email for order #{OrderId}", order.Id);
             }
+
+            await _portalNotifications.NotifyAsync(
+                order.PortalUserId,
+                type: "StoreOrderStatus",
+                title: $"Order {order.OrderNumber} — {newStatus}",
+                message: newStatus switch
+                {
+                    "Confirmed" => "Your order has been reviewed and confirmed.",
+                    "Fulfilled" => "Your order has been fulfilled.",
+                    "Cancelled" => "Your order was cancelled.",
+                    _           => $"Status updated to {newStatus}."
+                },
+                linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
+                icon: newStatus switch
+                {
+                    "Confirmed" => "bi-check-circle",
+                    "Fulfilled" => "bi-box-seam",
+                    "Cancelled" => "bi-x-circle",
+                    _           => "bi-receipt"
+                });
         }
 
         await _context.SaveChangesAsync();
@@ -622,29 +989,20 @@ public class StoreController : Controller
     // GET /Store/OpsProducts
     public async Task<IActionResult> OpsProducts()
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-        {
-            TempData["Error"] = "You are not authorised to manage store products.";
-            return RedirectToAction(nameof(OperationsHub));
-        }
+        var gate = await EnforceOpsAccessAsync(
+            forbiddenMessage: "You are not authorised to manage store products.");
+        if (gate != null) return gate;
 
-        var products = await _context.StoreProducts
-            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
-            .ToListAsync();
-        return View(products);
+        return View(await _productAdmin.ListAsync());
     }
 
     // GET /Store/OpsProductCreate
     public async Task<IActionResult> OpsProductCreate()
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-            return RedirectToAction(nameof(OperationsHub));
+        var gate = await EnforceOpsAccessAsync();
+        if (gate != null) return gate;
 
-        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(new StoreProduct());
     }
 
@@ -656,67 +1014,30 @@ public class StoreController : Controller
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
         if (!ModelState.IsValid)
         {
-            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             return View(product);
         }
 
-        if (!product.HasPrice) product.Price = null;
-        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        product.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
-        product.ImagePath  = await SaveStoreImageAsync(imageFile, null);
-        product.CreatedDate = DateTime.UtcNow;
-        _context.StoreProducts.Add(product);
-        await _context.SaveChangesAsync();
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = 100;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await SaveStoreImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new StoreProductImage
-                    {
-                        StoreProductId = product.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-            await _context.SaveChangesAsync();
-        }
-
-        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        var created = await _productAdmin.CreateAsync(product, imageFile, galleryFiles, galleryTags);
+        TempData["Success"] = $"Product \"{created.Name}\" created.";
         return RedirectToAction(nameof(OpsProducts));
     }
 
     // GET /Store/OpsProductEdit/{id}
     public async Task<IActionResult> OpsProductEdit(int id)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id))
-            return RedirectToAction(nameof(OperationsHub));
+        var gate = await EnforceOpsAccessAsync();
+        if (gate != null) return gate;
 
-        var product = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _productAdmin.GetWithImagesAsync(id);
         if (product == null) return NotFound();
 
-        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(product);
     }
 
@@ -728,17 +1049,30 @@ public class StoreController : Controller
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        string? galleryMetaJson,
+        Dictionary<string, string>? imageTags,
+        Dictionary<string, string>? imageAlts,
+        Dictionary<string, string>? imageOrders,
         bool clearImage = false)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
         if (id != product.Id) return BadRequest();
 
         if (!ModelState.IsValid)
         {
-            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            // Mirror the Settings flow's diagnostic dump so we can correlate
+            // a parse error in the UI with its server-side (key, value).
+            foreach (var kvp in ModelState)
+            {
+                foreach (var err in kvp.Value.Errors)
+                {
+                    var attempted = kvp.Value.AttemptedValue ?? "(null)";
+                    Console.WriteLine(
+                        $"[ModelState] {kvp.Key}: '{attempted}' - {err.ErrorMessage}");
+                }
+            }
+
+            ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             // Reload image data from DB so the view renders existing images correctly.
             var dbSnap = await _context.StoreProducts.Include(p => p.Images).AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == id);
@@ -746,213 +1080,98 @@ public class StoreController : Controller
             return View(product);
         }
 
-        var existing = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
-        if (existing == null) return NotFound();
+        var ok = await _productAdmin.UpdateAsync(
+            id, product, imageFile, galleryFiles, galleryTags,
+            imageTags, imageAlts, imageOrders, clearImage);
+        if (!ok) return NotFound();
 
-        existing.Name             = product.Name;
-        existing.Description      = product.Description;
-        existing.Category         = product.Category;
-        existing.UnitOfMeasure    = product.UnitOfMeasure;
-        existing.IsActive         = product.IsActive;
-        existing.SortOrder        = product.SortOrder;
-        existing.HasSizes         = product.HasSizes;
-        existing.HasGenderOption  = product.HasGenderOption;
-        existing.HasColorOptions  = product.HasColorOptions;
-        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes)   ? null : product.AvailableSizes.Trim();
-        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors)  ? null : product.AvailableColors.Trim();
-        existing.HasPrice          = product.HasPrice;
-        existing.Price             = product.HasPrice ? product.Price : null;
-        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
-        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        existing.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
-
-        if (clearImage) { DeleteStoreImage(existing.ImagePath); existing.ImagePath = null; }
-        else existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
-
-        // Apply per-image tag / alt / sort updates from serialised JSON.
-        if (!string.IsNullOrWhiteSpace(galleryMetaJson))
-        {
-            try
-            {
-                var metas = System.Text.Json.JsonSerializer.Deserialize<List<GalleryImageMeta>>(galleryMetaJson);
-                if (metas != null)
-                {
-                    foreach (var meta in metas)
-                    {
-                        var img = existing.Images.FirstOrDefault(i => i.Id == meta.Id);
-                        if (img == null) continue;
-                        img.VariantTag = string.IsNullOrWhiteSpace(meta.Tag) ? null : meta.Tag.Trim();
-                        img.Alt        = string.IsNullOrWhiteSpace(meta.Alt) ? null : meta.Alt.Trim();
-                        img.SortOrder  = Math.Clamp(meta.Sort, 0, 9999);
-                    }
-                }
-            }
-            catch { /* malformed JSON — skip */ }
-        }
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await SaveStoreImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new StoreProductImage
-                    {
-                        StoreProductId = existing.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
-        return RedirectToAction(nameof(OpsProductEdit), new { id = existing.Id });
+        TempData["Success"] = $"Product \"{product.Name}\" updated.";
+        return RedirectToAction(nameof(OpsProductEdit), new { id });
     }
 
     // POST /Store/OpsProductImageDelete
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsProductImageDelete(int imageId)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        var img = await _context.StoreProductImages.FindAsync(imageId);
-        if (img == null) return NotFound();
-
-        DeleteStoreImage(img.ImagePath);
-        var productId = img.StoreProductId;
-        _context.StoreProductImages.Remove(img);
-        await _context.SaveChangesAsync();
+        var productId = await _productAdmin.DeleteImageAsync(imageId);
+        if (productId == null) return NotFound();
         TempData["Success"] = "Image removed.";
-        return RedirectToAction(nameof(OpsProductEdit), new { id = productId });
+        return RedirectToAction(nameof(OpsProductEdit), new { id = productId.Value });
     }
 
     // POST /Store/OpsProductDelete/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsProductDelete(int id)
     {
-        var user = await GetCurrentPortalUserAsync();
-        if (user == null) return RedirectToAction("Login", "Account");
-        if (!await CanAccessOpsHubAsync(user.Id)) return Forbid();
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        var product = await _context.StoreProducts.FindAsync(id);
-        if (product == null) return NotFound();
+        var (found, deactivated, name) = await _productAdmin.DeleteOrDeactivateAsync(id);
+        if (!found) return NotFound();
 
-        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
-        if (hasOrders)
-        {
-            product.IsActive = false;
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
-        }
-        else
-        {
-            DeleteStoreImage(product.ImagePath);
-            _context.StoreProducts.Remove(product);
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
-        }
-
+        TempData["Success"] = deactivated
+            ? $"Product \"{name}\" deactivated (it has existing orders)."
+            : $"Product \"{name}\" deleted.";
         return RedirectToAction(nameof(OpsProducts));
     }
 
-    // ── Shared image / category helpers ───────────────────────────────────────
-
-    private sealed record GalleryImageMeta(int Id, string? Tag, string? Alt, int Sort);
-
-    private const int StoreImageMaxPx = 800;
-
-    private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)
+    // POST /Store/OpsProductDuplicate/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsProductDuplicate(int id)
     {
-        if (file == null || file.Length == 0) return existing;
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!allowed.Contains(ext)) return existing;
+        var copy = await _productAdmin.DuplicateAsync(id);
+        if (copy == null) return NotFound();
 
-        var dir = Path.Combine(_env.WebRootPath, "images", "store");
-        Directory.CreateDirectory(dir);
+        TempData["Success"] = $"Duplicated as \"{copy.Name}\". Review and activate when ready.";
+        return RedirectToAction(nameof(OpsProductEdit), new { id = copy.Id });
+    }
 
-        var saveExt  = ext == ".png" ? ".png" : ".jpg";
-        var fileName = $"{Guid.NewGuid()}{saveExt}";
-        var path     = Path.Combine(dir, fileName);
+    // POST /Store/OpsProductBulkSetActive
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpsProductBulkSetActive(List<int> ids, bool isActive)
+    {
+        var gate = await EnforceOpsAccessAsync(returnForbidOnPost: true);
+        if (gate != null) return gate;
 
-        try
+        if (ids == null || ids.Count == 0)
         {
-            using var img = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
-            if (img.Width > StoreImageMaxPx || img.Height > StoreImageMaxPx)
-            {
-                img.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
-                {
-                    Size = new SixLabors.ImageSharp.Size(StoreImageMaxPx, StoreImageMaxPx),
-                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max
-                }));
-            }
-            if (saveExt == ".png")
-                await img.SaveAsPngAsync(path);
-            else
-                await img.SaveAsJpegAsync(path, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
-        }
-        catch
-        {
-            using var stream = new FileStream(path, FileMode.Create);
-            await file.CopyToAsync(stream);
+            TempData["Error"] = "Select at least one product first.";
+            return RedirectToAction(nameof(OpsProducts));
         }
 
-        if (!string.IsNullOrEmpty(existing))
-            DeleteStoreImage(existing);
-
-        return $"/images/store/{fileName}";
+        var changed = await _productAdmin.BulkSetActiveAsync(ids, isActive);
+        var verb = isActive ? "activated" : "deactivated";
+        TempData["Success"] = changed == 0
+            ? $"No changes — selected product(s) were already {verb}."
+            : $"{changed} product(s) {verb}.";
+        return RedirectToAction(nameof(OpsProducts));
     }
 
-    private void DeleteStoreImage(string? relativePath)
+    /// <summary>
+    /// Enforces the OpsHub auth gate. Returns null when the current portal user
+    /// passes — otherwise returns the redirect / Forbid result the caller should
+    /// short-circuit with.
+    /// </summary>
+    private async Task<IActionResult?> EnforceOpsAccessAsync(
+        string? forbiddenMessage = null, bool returnForbidOnPost = false)
     {
-        if (string.IsNullOrEmpty(relativePath)) return;
-        var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
-        if (System.IO.File.Exists(full)) System.IO.File.Delete(full);
-    }
-
-    private async Task<List<string>> GetExistingCategoriesAsync()
-    {
-        return await _context.StoreProducts
-            .Where(p => p.Category != null && p.Category != "")
-            .Select(p => p.Category!)
-            .Distinct().OrderBy(c => c).ToListAsync();
-    }
-
-    private static string? NormalizeCustomOptionsJson(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+        if (!await CanAccessOpsHubAsync(user.Id))
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
-            var keep = new List<object>();
-            foreach (var el in doc.RootElement.EnumerateArray())
-            {
-                var label    = el.TryGetProperty("label",    out var l) ? l.GetString() : null;
-                var values   = el.TryGetProperty("values",   out var v) ? v.GetString() : null;
-                var required = el.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
-                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(values)) continue;
-                keep.Add(new { label = label!.Trim(), values = values!.Trim(), required });
-            }
-            return keep.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(keep);
+            if (returnForbidOnPost) return Forbid();
+            if (forbiddenMessage != null) TempData["Error"] = forbiddenMessage;
+            return RedirectToAction(nameof(OperationsHub));
         }
-        catch { return null; }
+        return null;
     }
+
 
     // Cart line item posted as part of the JSON payload from the catalog page
     private class CartLineInput

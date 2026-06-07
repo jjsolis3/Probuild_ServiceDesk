@@ -28,10 +28,12 @@ public class SettingsController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly GoogleWorkspaceService _googleWorkspace;
     private readonly OllamaService _ollama;
+    private readonly StoreProductAdminService _productAdmin;
 
     public SettingsController(ServiceDeskDbContext context, GmailApiService gmailApiService,
         EmailNotificationService emailService, IMemoryCache cache, IWebHostEnvironment env,
-        GoogleWorkspaceService googleWorkspace, OllamaService ollama)
+        GoogleWorkspaceService googleWorkspace, OllamaService ollama,
+        StoreProductAdminService productAdmin)
     {
         _context          = context;
         _gmailApiService  = gmailApiService;
@@ -40,6 +42,7 @@ public class SettingsController : Controller
         _env              = env;
         _googleWorkspace  = googleWorkspace;
         _ollama           = ollama;
+        _productAdmin     = productAdmin;
     }
 
     // GET: Settings - Landing page with all settings sections
@@ -838,6 +841,12 @@ public class SettingsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateEmailConfig(EmailConfiguration config)
     {
+        // Trim whitespace from copy/pasted OAuth credentials. A leading or
+        // trailing space (URL-encoded as "+") makes Google return
+        // invalid_client at the authorize step, which is what triggered the
+        // OAuth flow rejection on this org.
+        TrimGmailCredentials(config);
+
         if (ModelState.IsValid)
         {
             _context.EmailConfigurations.Add(config);
@@ -865,6 +874,11 @@ public class SettingsController : Controller
     public async Task<IActionResult> EditEmailConfig(int id, EmailConfiguration config)
     {
         if (id != config.Id) return NotFound();
+
+        // Trim whitespace from copy/pasted OAuth credentials before validation
+        // or persistence. See CreateEmailConfig for why.
+        TrimGmailCredentials(config);
+
         if (ModelState.IsValid)
         {
             var existing = await _context.EmailConfigurations.FindAsync(id);
@@ -910,6 +924,21 @@ public class SettingsController : Controller
             TempData["Success"] = "Email configuration deleted.";
         }
         return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    /// <summary>
+    /// Trims whitespace from the OAuth credentials. A leading/trailing space
+    /// in the Client ID is the most common copy/paste error and produces a
+    /// Google "invalid_client" 401 at the authorize step that's hard to
+    /// diagnose from the URL alone (the space URL-encodes as "+"). Empty
+    /// strings are normalised to null so the EmailConfiguration filters
+    /// (which check for non-null GmailRefreshToken) don't get confused.
+    /// </summary>
+    private static void TrimGmailCredentials(EmailConfiguration config)
+    {
+        config.GmailClientId     = string.IsNullOrWhiteSpace(config.GmailClientId)     ? null : config.GmailClientId.Trim();
+        config.GmailClientSecret = string.IsNullOrWhiteSpace(config.GmailClientSecret) ? null : config.GmailClientSecret.Trim();
+        config.EmailAddress      = config.EmailAddress?.Trim() ?? string.Empty;
     }
 
     // GET: Settings/GmailAuthorize/5
@@ -1013,6 +1042,18 @@ public class SettingsController : Controller
             TempData["Success"] = "Connection test initiated. The configuration is authorized and ready to poll.";
         }
         return RedirectToAction(nameof(EmailIntegration));
+    }
+
+    // POST: Settings/PollGmailNow/{id} — runs a single poll cycle synchronously
+    // and returns a structured JSON report so the admin UI can render it in a
+    // modal. Lets ops staff debug "is the integration working RIGHT NOW?"
+    // without tailing logs.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PollGmailNow(int id, [FromServices] GmailApiService gmail)
+    {
+        var report = await gmail.PollOnceAsync(id);
+        return Json(report);
     }
 
     // ==================== ASSIGNMENT RULES ====================
@@ -2122,6 +2163,86 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(Csat));
     }
 
+    // ==================== COMPANY HOLIDAYS ====================
+
+    // GET: Settings/Holidays
+    public async Task<IActionResult> Holidays()
+    {
+        var holidays = await _context.CompanyHolidays
+            .OrderBy(h => h.IsRecurringYearly)
+            .ThenBy(h => h.Date.Month)
+            .ThenBy(h => h.Date.Day)
+            .ThenBy(h => h.Date.Year)
+            .ToListAsync();
+        return View(holidays);
+    }
+
+    // GET: Settings/CreateHoliday
+    public IActionResult CreateHoliday()
+    {
+        return View(new CompanyHoliday { Date = DateTime.Today });
+    }
+
+    // POST: Settings/CreateHoliday
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateHoliday(CompanyHoliday holiday)
+    {
+        if (ModelState.IsValid)
+        {
+            holiday.CreatedDate = DateTime.UtcNow;
+            _context.CompanyHolidays.Add(holiday);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" added.";
+            return RedirectToAction(nameof(Holidays));
+        }
+        return View(holiday);
+    }
+
+    // GET: Settings/EditHoliday/5
+    public async Task<IActionResult> EditHoliday(int? id)
+    {
+        if (id == null) return NotFound();
+        var holiday = await _context.CompanyHolidays.FindAsync(id);
+        if (holiday == null) return NotFound();
+        return View(holiday);
+    }
+
+    // POST: Settings/EditHoliday/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditHoliday(int id, CompanyHoliday holiday)
+    {
+        if (id != holiday.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            var existing = await _context.CompanyHolidays.FindAsync(id);
+            if (existing == null) return NotFound();
+            existing.Date              = holiday.Date;
+            existing.Name              = holiday.Name;
+            existing.IsRecurringYearly = holiday.IsRecurringYearly;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" updated.";
+            return RedirectToAction(nameof(Holidays));
+        }
+        return View(holiday);
+    }
+
+    // POST: Settings/DeleteHoliday/5
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteHoliday(int id)
+    {
+        var holiday = await _context.CompanyHolidays.FindAsync(id);
+        if (holiday != null)
+        {
+            _context.CompanyHolidays.Remove(holiday);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Holiday \"{holiday.Name}\" removed.";
+        }
+        return RedirectToAction(nameof(Holidays));
+    }
+
     // ==================== QUARTERLY STORE ====================
 
     // GET: Settings/StoreSettings
@@ -2158,17 +2279,12 @@ public class SettingsController : Controller
 
     // GET: Settings/StoreProducts
     public async Task<IActionResult> StoreProducts()
-    {
-        var products = await _context.StoreProducts
-            .OrderBy(p => p.SortOrder).ThenBy(p => p.Name)
-            .ToListAsync();
-        return View(products);
-    }
+        => View(await _productAdmin.ListAsync());
 
     // GET: Settings/StoreProductCreate
     public async Task<IActionResult> StoreProductCreate()
     {
-        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(new ServiceDesk.Core.Models.StoreProduct());
     }
 
@@ -2182,58 +2298,21 @@ public class SettingsController : Controller
     {
         if (!ModelState.IsValid)
         {
-            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             return View(product);
         }
 
-        // Normalize new fields
-        if (!product.HasPrice) product.Price = null;
-        product.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        product.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
-
-        product.ImagePath = await SaveStoreImageAsync(imageFile, null);
-        product.CreatedDate = DateTime.UtcNow;
-        _context.StoreProducts.Add(product);
-        await _context.SaveChangesAsync();
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = 100;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await SaveStoreImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count
-                        ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
-                    {
-                        StoreProductId = product.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-            await _context.SaveChangesAsync();
-        }
-
-        TempData["Success"] = $"Product \"{product.Name}\" created.";
+        var created = await _productAdmin.CreateAsync(product, imageFile, galleryFiles, galleryTags);
+        TempData["Success"] = $"Product \"{created.Name}\" created.";
         return RedirectToAction(nameof(StoreProducts));
     }
 
     // GET: Settings/StoreProductEdit/{id}
     public async Task<IActionResult> StoreProductEdit(int id)
     {
-        var product = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _productAdmin.GetWithImagesAsync(id);
         if (product == null) return NotFound();
-        ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+        ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
         return View(product);
     }
 
@@ -2244,134 +2323,91 @@ public class SettingsController : Controller
         IFormFile? imageFile,
         List<IFormFile>? galleryFiles,
         List<string>? galleryTags,
-        Dictionary<int, string>? imageTags,
-        Dictionary<int, string>? imageAlts,
-        Dictionary<int, int>? imageOrders,
+        Dictionary<string, string>? imageTags,
+        Dictionary<string, string>? imageAlts,
+        Dictionary<string, string>? imageOrders,
         bool clearImage = false)
     {
         if (id != product.Id) return BadRequest();
         if (!ModelState.IsValid)
         {
-            ViewBag.ExistingCategories = await GetExistingCategoriesAsync();
+            // Dump the model-state failures to the console so anyone looking
+            // at parse errors in the UI can correlate them with the exact
+            // (key, attempted-value, error) on the server. Format:
+            //   [ModelState] <key>: '<attempted-value>' - <error message>
+            foreach (var kvp in ModelState)
+            {
+                foreach (var err in kvp.Value.Errors)
+                {
+                    var attempted = kvp.Value.AttemptedValue ?? "(null)";
+                    Console.WriteLine(
+                        $"[ModelState] {kvp.Key}: '{attempted}' - {err.ErrorMessage}");
+                }
+            }
+
+            ViewBag.ExistingCategories = await _productAdmin.GetExistingCategoriesAsync();
             return View(product);
         }
 
-        var existing = await _context.StoreProducts
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id);
-        if (existing == null) return NotFound();
+        var ok = await _productAdmin.UpdateAsync(
+            id, product, imageFile, galleryFiles, galleryTags,
+            imageTags, imageAlts, imageOrders, clearImage);
+        if (!ok) return NotFound();
 
-        existing.Name             = product.Name;
-        existing.Description      = product.Description;
-        existing.Category         = product.Category;
-        existing.UnitOfMeasure    = product.UnitOfMeasure;
-        existing.IsActive         = product.IsActive;
-        existing.SortOrder        = product.SortOrder;
-        existing.HasSizes         = product.HasSizes;
-        existing.HasGenderOption  = product.HasGenderOption;
-        existing.HasColorOptions  = product.HasColorOptions;
-        existing.AvailableSizes   = string.IsNullOrWhiteSpace(product.AvailableSizes) ? null : product.AvailableSizes.Trim();
-        existing.AvailableColors  = string.IsNullOrWhiteSpace(product.AvailableColors) ? null : product.AvailableColors.Trim();
-
-        // New flexibility fields
-        existing.HasPrice          = product.HasPrice;
-        existing.Price             = product.HasPrice ? product.Price : null;
-        existing.MaxQtyPerOrder    = product.MaxQtyPerOrder;
-        existing.Tags = string.IsNullOrWhiteSpace(product.Tags)
-            ? null
-            : string.Join(",", product.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        existing.CustomOptionsJson = NormalizeCustomOptionsJson(product.CustomOptionsJson);
-
-        if (clearImage)
-        {
-            DeleteStoreImage(existing.ImagePath);
-            existing.ImagePath = null;
-        }
-        else
-        {
-            existing.ImagePath = await SaveStoreImageAsync(imageFile, existing.ImagePath);
-        }
-
-        // Update tag / alt text / sort order on existing gallery images
-        foreach (var img in existing.Images)
-        {
-            if (imageTags != null && imageTags.TryGetValue(img.Id, out var tag))
-                img.VariantTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
-
-            if (imageAlts != null && imageAlts.TryGetValue(img.Id, out var alt))
-                img.Alt = string.IsNullOrWhiteSpace(alt) ? null : alt.Trim();
-
-            if (imageOrders != null && imageOrders.TryGetValue(img.Id, out var order))
-                img.SortOrder = Math.Clamp(order, 0, 9999);
-        }
-
-        if (galleryFiles != null && galleryFiles.Count > 0)
-        {
-            var sort = (existing.Images.Any() ? existing.Images.Max(i => i.SortOrder) : 100) + 10;
-            for (var i = 0; i < galleryFiles.Count; i++)
-            {
-                var path = await SaveStoreImageAsync(galleryFiles[i], null);
-                if (!string.IsNullOrEmpty(path))
-                {
-                    var tag = galleryTags != null && i < galleryTags.Count
-                        ? galleryTags[i]?.Trim() : null;
-                    _context.StoreProductImages.Add(new ServiceDesk.Core.Models.StoreProductImage
-                    {
-                        StoreProductId = existing.Id,
-                        ImagePath      = path,
-                        VariantTag     = string.IsNullOrWhiteSpace(tag) ? null : tag,
-                        SortOrder      = sort,
-                        CreatedDate    = DateTime.UtcNow
-                    });
-                    sort += 10;
-                }
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["Success"] = $"Product \"{existing.Name}\" updated.";
-        return RedirectToAction(nameof(StoreProductEdit), new { id = existing.Id });
+        TempData["Success"] = $"Product \"{product.Name}\" updated.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id });
     }
 
     // POST: Settings/StoreProductImageDelete
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductImageDelete(int imageId)
     {
-        var img = await _context.StoreProductImages.FindAsync(imageId);
-        if (img == null) return NotFound();
-
-        DeleteStoreImage(img.ImagePath);
-        var productId = img.StoreProductId;
-        _context.StoreProductImages.Remove(img);
-        await _context.SaveChangesAsync();
+        var productId = await _productAdmin.DeleteImageAsync(imageId);
+        if (productId == null) return NotFound();
 
         TempData["Success"] = "Image removed.";
-        return RedirectToAction(nameof(StoreProductEdit), new { id = productId });
+        return RedirectToAction(nameof(StoreProductEdit), new { id = productId.Value });
+    }
+
+    // POST: Settings/StoreProductDuplicate/{id}
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductDuplicate(int id)
+    {
+        var copy = await _productAdmin.DuplicateAsync(id);
+        if (copy == null) return NotFound();
+
+        TempData["Success"] = $"Duplicated as \"{copy.Name}\". Review and activate when ready.";
+        return RedirectToAction(nameof(StoreProductEdit), new { id = copy.Id });
+    }
+
+    // POST: Settings/StoreProductBulkSetActive
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> StoreProductBulkSetActive(List<int> ids, bool isActive)
+    {
+        if (ids == null || ids.Count == 0)
+        {
+            TempData["Error"] = "Select at least one product first.";
+            return RedirectToAction(nameof(StoreProducts));
+        }
+
+        var changed = await _productAdmin.BulkSetActiveAsync(ids, isActive);
+        var verb = isActive ? "activated" : "deactivated";
+        TempData["Success"] = changed == 0
+            ? $"No changes — selected product(s) were already {verb}."
+            : $"{changed} product(s) {verb}.";
+        return RedirectToAction(nameof(StoreProducts));
     }
 
     // POST: Settings/StoreProductDelete/{id}
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> StoreProductDelete(int id)
     {
-        var product = await _context.StoreProducts.FindAsync(id);
-        if (product == null) return NotFound();
+        var (found, deactivated, name) = await _productAdmin.DeleteOrDeactivateAsync(id);
+        if (!found) return NotFound();
 
-        // Only deactivate if the product has been ordered; hard-delete if it has not
-        bool hasOrders = await _context.StoreOrderItems.AnyAsync(i => i.StoreProductId == id);
-        if (hasOrders)
-        {
-            product.IsActive = false;
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deactivated (it has existing orders).";
-        }
-        else
-        {
-            DeleteStoreImage(product.ImagePath);
-            _context.StoreProducts.Remove(product);
-            await _context.SaveChangesAsync();
-            TempData["Success"] = $"Product \"{product.Name}\" deleted.";
-        }
-
+        TempData["Success"] = deactivated
+            ? $"Product \"{name}\" deactivated (it has existing orders)."
+            : $"Product \"{name}\" deleted.";
         return RedirectToAction(nameof(StoreProducts));
     }
 
@@ -2501,100 +2537,6 @@ public class SettingsController : Controller
 
         TempData["Success"] = "Operations Hub access revoked.";
         return RedirectToAction(nameof(StoreOperationsAccess));
-    }
-
-    // ── Store image helpers ───────────────────────────────────────────────────
-
-    private const int StoreImageMaxPx = 800;
-
-    private async Task<string?> SaveStoreImageAsync(IFormFile? file, string? existing)
-    {
-        if (file == null || file.Length == 0) return existing;
-
-        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!allowed.Contains(ext)) return existing;
-
-        var dir = Path.Combine(_env.WebRootPath, "images", "store");
-        Directory.CreateDirectory(dir);
-
-        // Always save as .jpg for resized output (except .png → keep as .png to preserve transparency)
-        var saveExt = ext == ".png" ? ".png" : ".jpg";
-        var fileName = $"{Guid.NewGuid()}{saveExt}";
-        var path = Path.Combine(dir, fileName);
-
-        try
-        {
-            using var img = await SixLabors.ImageSharp.Image.LoadAsync(file.OpenReadStream());
-            if (img.Width > StoreImageMaxPx || img.Height > StoreImageMaxPx)
-            {
-                img.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
-                {
-                    Size = new SixLabors.ImageSharp.Size(StoreImageMaxPx, StoreImageMaxPx),
-                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max
-                }));
-            }
-
-            if (saveExt == ".png")
-                await img.SaveAsPngAsync(path);
-            else
-                await img.SaveAsJpegAsync(path, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
-        }
-        catch
-        {
-            // Fallback: save original if ImageSharp fails
-            using var stream = new FileStream(path, FileMode.Create);
-            await file.CopyToAsync(stream);
-        }
-
-        if (!string.IsNullOrEmpty(existing))
-            DeleteStoreImage(existing);
-
-        return $"/images/store/{fileName}";
-    }
-
-    private void DeleteStoreImage(string? relativePath)
-    {
-        if (string.IsNullOrEmpty(relativePath)) return;
-        var full = Path.Combine(_env.WebRootPath, relativePath.TrimStart('/'));
-        if (System.IO.File.Exists(full))
-            System.IO.File.Delete(full);
-    }
-
-    private async Task<List<string>> GetExistingCategoriesAsync()
-    {
-        return await _context.StoreProducts
-            .Where(p => p.Category != null && p.Category != "")
-            .Select(p => p.Category!)
-            .Distinct()
-            .OrderBy(c => c)
-            .ToListAsync();
-    }
-
-    // Validates the JSON payload from the Custom Options builder. Returns null
-    // for empty or malformed input so the DB stays clean.
-    private static string? NormalizeCustomOptionsJson(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
-            var keep = new List<object>();
-            foreach (var el in doc.RootElement.EnumerateArray())
-            {
-                var label = el.TryGetProperty("label", out var l) ? l.GetString() : null;
-                var values = el.TryGetProperty("values", out var v) ? v.GetString() : null;
-                var required = el.TryGetProperty("required", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
-                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(values)) continue;
-                keep.Add(new { label = label!.Trim(), values = values!.Trim(), required });
-            }
-            return keep.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(keep);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     // ── Automation Workflow Rules ─────────────────────────────────────────────
@@ -2763,8 +2705,51 @@ public class SettingsController : Controller
         ViewBag.PageSize        = pageSize;
         ViewBag.TotalCount      = total;
         ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
-        ViewBag.NotificationTypes = new[] { "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded", "PasswordReset" };
+        // Curated list of well-known types. The dropdown also accepts free-form
+        // values via the URL ?type= for less-common entries (e.g. Test:* sends).
+        ViewBag.NotificationTypes = new[]
+        {
+            "TicketCreated", "TicketAssigned", "TicketUpdated", "NoteAdded",
+            "PasswordReset",
+            "StoreOrderConfirmation", "StoreOrderOpsAlert", "StoreOrderStatusUpdate",
+            "PayrollSubmitted", "PayrollApproved", "PayrollRejected", "PayrollPaid"
+        };
         ViewData["Title"]       = "Email Activity Log";
+        return View(entries);
+    }
+
+    // GET: Settings/InboundEmailLog — audit trail of inbound Gmail messages
+    // the poller saw, with the outcome (TicketCreated / NoteAppended /
+    // Skipped:X / Failed). Counterpart to EmailActivity which only logs
+    // outbound sends.
+    public async Task<IActionResult> InboundEmailLog(string? action, string? recipient, int page = 1)
+    {
+        const int pageSize = 50;
+
+        var query = _context.InboundEmailLogs.AsQueryable();
+
+        if (!string.IsNullOrEmpty(action))
+            query = query.Where(l => l.Action == action);
+        if (!string.IsNullOrEmpty(recipient))
+            query = query.Where(l =>
+                (l.FromAddress != null && l.FromAddress.Contains(recipient))
+                || (l.Subject != null && l.Subject.Contains(recipient)));
+
+        var total   = await query.CountAsync();
+        var entries = await query
+            .OrderByDescending(l => l.ProcessedDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        ViewBag.FilterAction    = action;
+        ViewBag.FilterRecipient = recipient;
+        ViewBag.Page            = page;
+        ViewBag.PageSize        = pageSize;
+        ViewBag.TotalCount      = total;
+        ViewBag.TotalPages      = (int)Math.Ceiling(total / (double)pageSize);
+        ViewBag.Actions         = Enum.GetNames(typeof(ServiceDesk.Core.Models.InboundAction));
+        ViewData["Title"]       = "Inbound Email Log";
         return View(entries);
     }
 }

@@ -93,6 +93,29 @@
                         <span class="badge bg-warning text-dark">IT Staff</span>
                     </li>
                 }
+                <li class="nav-item dropdown" id="portalNotificationBell">
+                    <a class="nav-link position-relative" href="#" role="button"
+                       data-bs-toggle="dropdown" aria-expanded="false"
+                       title="Notifications">
+                        <i class="bi bi-bell fs-5"></i>
+                        <span id="portalNotifBadge"
+                              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
+                              style="font-size:.65rem;">0</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end shadow"
+                         style="width: 360px; max-width: 92vw; padding: 0;">
+                        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                            <strong class="small text-uppercase text-muted">Notifications</strong>
+                            <button type="button" id="portalNotifMarkAll"
+                                    class="btn btn-link btn-sm p-0 text-decoration-none d-none">
+                                Mark all read
+                            </button>
+                        </div>
+                        <div id="portalNotifList" style="max-height: 420px; overflow-y: auto;">
+                            <div class="text-center text-muted small py-4">Loading&hellip;</div>
+                        </div>
+                    </div>
+                </li>
                 <li class="nav-item">
                     <span class="text-muted small">
                         <i class="bi bi-person-circle me-1"></i>@User.Identity?.Name
@@ -156,6 +179,116 @@
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+@Html.AntiForgeryToken()
+<script>
+(function () {
+    var bell = document.getElementById('portalNotificationBell');
+    if (!bell) return;
+
+    var badge   = document.getElementById('portalNotifBadge');
+    var list    = document.getElementById('portalNotifList');
+    var markAll = document.getElementById('portalNotifMarkAll');
+
+    function tokenHeader() {
+        var t = document.querySelector('input[name="__RequestVerificationToken"]');
+        return t ? { 'RequestVerificationToken': t.value } : {};
+    }
+
+    function timeAgo(iso) {
+        var d = new Date(iso);
+        var s = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+        if (s < 60)   return s + 's ago';
+        if (s < 3600) return Math.floor(s / 60) + 'm ago';
+        if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+        if (s < 604800) return Math.floor(s / 86400) + 'd ago';
+        return d.toLocaleDateString();
+    }
+
+    function escapeHtml(s) {
+        return (s == null ? '' : String(s))
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderItems(items) {
+        if (!items || items.length === 0) {
+            list.innerHTML = '<div class="text-center text-muted small py-4">' +
+                '<i class="bi bi-bell-slash d-block mb-2" style="font-size:1.8rem;opacity:.4;"></i>' +
+                'You\'re all caught up.</div>';
+            return;
+        }
+        var html = '';
+        items.forEach(function (n) {
+            var icon  = n.icon || 'bi-info-circle';
+            var bg    = n.isRead ? '' : 'background:#f1f7ff;';
+            var fw    = n.isRead ? '' : 'font-weight:600;';
+            var msg   = n.message ? '<div class="small text-muted">' + escapeHtml(n.message) + '</div>' : '';
+            var href  = n.linkUrl || '#';
+            html += '<a href="' + escapeHtml(href) + '" data-notif-id="' + n.id +
+                    '" class="d-block px-3 py-2 text-decoration-none text-dark border-bottom portal-notif-item" style="' + bg + '">' +
+                    '<div class="d-flex gap-2">' +
+                    '<i class="bi ' + escapeHtml(icon) + ' text-primary mt-1"></i>' +
+                    '<div class="flex-grow-1" style="min-width:0;">' +
+                        '<div class="small text-truncate" style="' + fw + '">' + escapeHtml(n.title) + '</div>' +
+                        msg +
+                        '<div class="text-muted" style="font-size:.7rem;">' + timeAgo(n.createdAt) + '</div>' +
+                    '</div></div></a>';
+        });
+        list.innerHTML = html;
+    }
+
+    function load() {
+        fetch('/PortalNotifications/Feed', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data) {
+                    list.innerHTML = '<div class="text-center text-muted small py-4">' +
+                                     'Unable to load notifications.</div>';
+                    return;
+                }
+                if (data.unread > 0) {
+                    badge.textContent = data.unread > 99 ? '99+' : data.unread;
+                    badge.classList.remove('d-none');
+                    markAll.classList.remove('d-none');
+                } else {
+                    badge.classList.add('d-none');
+                    markAll.classList.add('d-none');
+                }
+                renderItems(data.items);
+            })
+            .catch(function () {
+                list.innerHTML = '<div class="text-center text-muted small py-4">' +
+                                 'Unable to load notifications.</div>';
+            });
+    }
+
+    // Mark a single notification read when clicked (server-side; navigation continues).
+    list.addEventListener('click', function (e) {
+        var a = e.target.closest('.portal-notif-item');
+        if (!a) return;
+        var id = a.getAttribute('data-notif-id');
+        if (!id) return;
+        var headers = Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, tokenHeader());
+        fetch('/PortalNotifications/MarkRead/' + id, {
+            method: 'POST', credentials: 'same-origin', headers: headers
+        }).catch(function () { /* ignore */ });
+    });
+
+    markAll.addEventListener('click', function (e) {
+        e.preventDefault();
+        var headers = Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, tokenHeader());
+        fetch('/PortalNotifications/MarkAllRead', {
+            method: 'POST', credentials: 'same-origin', headers: headers
+        }).then(load).catch(function () { /* ignore */ });
+    });
+
+    // Initial load + refresh every 60 seconds.
+    load();
+    setInterval(load, 60000);
+})();
+</script>
+
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

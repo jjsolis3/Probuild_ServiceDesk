@@ -101,6 +101,17 @@ public class Ticket
     [Display(Name = "Due Date")]
     public DateTime? DueDate { get; set; }
 
+    /// <summary>
+    /// The original SLA due date snapshot captured at ticket creation.
+    /// Never changes after first set, even when an admin extends
+    /// <see cref="DueDate"/> via the override flow. Lets reports answer
+    /// both "did this ticket meet its current SLA?" (DueDate) AND "would
+    /// it have breached the original SLA?" (OriginalDueDate) for a
+    /// transparent leadership view.
+    /// </summary>
+    [Display(Name = "Original Due Date")]
+    public DateTime? OriginalDueDate { get; set; }
+
     // Threading navigation
     public ICollection<TicketNote> Notes { get; set; } = new List<TicketNote>();
     public ICollection<TicketEmail> Emails { get; set; } = new List<TicketEmail>();

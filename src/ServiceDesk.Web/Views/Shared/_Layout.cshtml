@@ -25,6 +25,44 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" />
     <!-- ServiceSphere Overrides -->
     <link rel="stylesheet" href="~/css/servicesphere.css" />
+    <style>
+        /* ── Theme-aware topbar + sidebar fixes ────────────────────────
+           The Jobick template assumes a dark navbar; several inline
+           styles bake white text in. In light mode that produces the
+           white-on-white invisibility the user reported. These rules
+           re-color the offending elements when the theme is light, and
+           let the existing styles win when it's dark. */
+
+        /* Command palette trigger pill in the topbar */
+        #cmdPaletteBtn {
+            background: rgba(0, 0, 0, 0.04) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            color: #4b5563 !important;
+        }
+        #cmdPaletteBtn kbd {
+            background: rgba(0, 0, 0, 0.07) !important;
+            color: #6b7280 !important;
+        }
+        [data-theme-version="dark"] #cmdPaletteBtn {
+            background: rgba(255, 255, 255, 0.12) !important;
+            border-color: rgba(255, 255, 255, 0.22) !important;
+            color: rgba(255, 255, 255, 0.85) !important;
+        }
+        [data-theme-version="dark"] #cmdPaletteBtn kbd {
+            background: rgba(255, 255, 255, 0.15) !important;
+            color: rgba(255, 255, 255, 0.75) !important;
+        }
+
+        /* Sidebar section headers (MAIN / MANAGEMENT / ANALYTICS / ADMIN) */
+        .dlabnav .metismenu > li.menu-title,
+        .dlabnav .metismenu > li.menu-title > span {
+            color: #6b7280 !important;
+        }
+        [data-theme-version="dark"] .dlabnav .metismenu > li.menu-title,
+        [data-theme-version="dark"] .dlabnav .metismenu > li.menu-title > span {
+            color: rgba(255, 255, 255, 0.55) !important;
+        }
+    </style>
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body data-sidebar-style="full" data-layout="vertical" data-nav-headerbg="color_1" data-headerbg="color_1" data-sibebarbg="color_1">
@@ -85,10 +123,10 @@
                             <li class="nav-item d-none d-md-flex align-items-center me-2">
                                 <button type="button" id="cmdPaletteBtn" onclick="openCmdPalette()"
                                         class="btn btn-sm d-flex align-items-center gap-2"
-                                        style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);border-radius:8px;padding:5px 12px;">
+                                        style="border-radius:8px;padding:5px 12px;">
                                     <i class="bi bi-search" style="font-size:13px;"></i>
                                     <span style="font-size:12px;">Search…</span>
-                                    <kbd style="font-size:10px;background:rgba(255,255,255,0.15);border:none;border-radius:4px;padding:1px 5px;color:rgba(255,255,255,0.75);">⌘K</kbd>
+                                    <kbd style="font-size:10px;border:none;border-radius:4px;padding:1px 5px;">⌘K</kbd>
                                 </button>
                             </li>
                             <!-- Dark/Light Mode Toggle -->
@@ -98,6 +136,37 @@
                                     <i id="icon-dark" class="fas fa-moon"></i>
                                 </a>
                             </li>
+                            @* Bell notification center — same backend the portal bell uses.
+                               Anonymized + role-agnostic; surfaces ticket updates, payroll
+                               lifecycle events, store activity, @mentions, etc. *@
+                            @if (User.Identity?.IsAuthenticated == true)
+                            {
+                                <li class="nav-item dropdown" id="staffNotificationBell">
+                                    @* Inherits the navbar foreground color so it tracks
+                                       dark/light theme without needing its own override. *@
+                                    <a class="nav-link position-relative px-2" href="javascript:void(0);" role="button"
+                                       data-bs-toggle="dropdown" aria-expanded="false"
+                                       title="Notifications">
+                                        <i class="bi bi-bell" style="font-size:1.15rem;"></i>
+                                        <span id="staffNotifBadge"
+                                              class="position-absolute translate-middle badge rounded-pill bg-danger d-none"
+                                              style="top:6px;left:75%;font-size:.6rem;padding:3px 5px;">0</span>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end shadow"
+                                         style="width: 380px; max-width: 92vw; padding: 0;">
+                                        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                                            <strong class="small text-uppercase text-muted">Notifications</strong>
+                                            <button type="button" id="staffNotifMarkAll"
+                                                    class="btn btn-link btn-sm p-0 text-decoration-none d-none">
+                                                Mark all read
+                                            </button>
+                                        </div>
+                                        <div id="staffNotifList" style="max-height: 460px; overflow-y: auto;">
+                                            <div class="text-center text-muted small py-4">Loading&hellip;</div>
+                                        </div>
+                                    </div>
+                                </li>
+                            }
                             <!-- Profile Dropdown -->
                             <li class="nav-item dropdown header-profile">
                                 <a class="nav-link" href="javascript:void(0);" role="button" data-bs-toggle="dropdown">
@@ -232,10 +301,14 @@
                             <span class="nav-text">Reports</span>
                         </a>
                         <ul aria-expanded="@(currentController == "Reports" ? "true" : "false")">
+                            <li class="@NavClass("Reports","Executive")"><a asp-controller="Reports" asp-action="Executive">Executive Dashboard</a></li>
                             <li class="@NavClass("Reports","Tickets")"><a asp-controller="Reports" asp-action="Tickets">Ticket Reports</a></li>
                             <li class="@NavClass("Reports","Assets")"><a asp-controller="Reports" asp-action="Assets">Asset Reports</a></li>
                             <li class="@NavClass("Reports","Users")"><a asp-controller="Reports" asp-action="Users">User Reports</a></li>
+                            <li class="@NavClass("Reports","Agents")"><a asp-controller="Reports" asp-action="Agents">Agent Performance</a></li>
+                            <li class="@NavClass("Reports","Csat")"><a asp-controller="Reports" asp-action="Csat">CSAT Trends</a></li>
                             <li class="@NavClass("Reports","StoreOrders")"><a asp-controller="Reports" asp-action="StoreOrders">Store Orders</a></li>
+                            <li class="@NavClass("Reports","Payroll")"><a asp-controller="Reports" asp-action="Payroll">Contractor Payroll</a></li>
                         </ul>
                     </li>
 
@@ -647,6 +720,239 @@
         function escHtml(s) {
             return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
+    })();
+    </script>
+
+    @* ── Bell Notification Center ───────────────────────────────────────
+       Polls /PortalNotifications/Feed every 60s, renders unread badge,
+       supports mark-as-read on click and mark-all-read. Shared backend
+       with the portal bell so we don't have two notification stacks.
+       ─────────────────────────────────────────────────────────────── *@
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        @Html.AntiForgeryToken()
+        <script>
+        (function () {
+            var bell = document.getElementById('staffNotificationBell');
+            if (!bell) return;
+
+            var badge   = document.getElementById('staffNotifBadge');
+            var list    = document.getElementById('staffNotifList');
+            var markAll = document.getElementById('staffNotifMarkAll');
+
+            function tokenHeader() {
+                var t = document.querySelector('input[name="__RequestVerificationToken"]');
+                return t ? { 'RequestVerificationToken': t.value } : {};
+            }
+
+            function timeAgo(iso) {
+                var d = new Date(iso);
+                var s = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+                if (s < 60)    return s + 's ago';
+                if (s < 3600)  return Math.floor(s / 60)   + 'm ago';
+                if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+                if (s < 604800) return Math.floor(s / 86400) + 'd ago';
+                return d.toLocaleDateString();
+            }
+
+            function escapeHtml(s) {
+                return (s == null ? '' : String(s))
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            function renderItems(items) {
+                if (!items || items.length === 0) {
+                    list.innerHTML = '<div class="text-center text-muted small py-4">' +
+                        '<i class="bi bi-bell-slash d-block mb-2" style="font-size:1.8rem;opacity:.4;"></i>' +
+                        "You're all caught up.</div>";
+                    return;
+                }
+                var html = '';
+                items.forEach(function (n) {
+                    var icon = n.icon || 'bi-info-circle';
+                    var bg   = n.isRead ? '' : 'background:#eef4ff;';
+                    var fw   = n.isRead ? '' : 'font-weight:600;';
+                    var msg  = n.message ? '<div class="small text-muted">' + escapeHtml(n.message) + '</div>' : '';
+                    var href = n.linkUrl || '#';
+                    html += '<a href="' + escapeHtml(href) + '" data-notif-id="' + n.id +
+                            '" class="d-block px-3 py-2 text-decoration-none text-dark border-bottom staff-notif-item" style="' + bg + '">' +
+                            '<div class="d-flex gap-2">' +
+                            '<i class="bi ' + escapeHtml(icon) + ' text-primary mt-1"></i>' +
+                            '<div class="flex-grow-1" style="min-width:0;">' +
+                                '<div class="small text-truncate" style="' + fw + '">' + escapeHtml(n.title) + '</div>' +
+                                msg +
+                                '<div class="text-muted" style="font-size:.7rem;">' + timeAgo(n.createdAt) + '</div>' +
+                            '</div></div></a>';
+                });
+                list.innerHTML = html;
+            }
+
+            function load() {
+                fetch('/PortalNotifications/Feed', { credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data) {
+                            list.innerHTML = '<div class="text-center text-muted small py-4">Unable to load notifications.</div>';
+                            return;
+                        }
+                        if (data.unread > 0) {
+                            badge.textContent = data.unread > 99 ? '99+' : data.unread;
+                            badge.classList.remove('d-none');
+                            markAll.classList.remove('d-none');
+                        } else {
+                            badge.classList.add('d-none');
+                            markAll.classList.add('d-none');
+                        }
+                        renderItems(data.items);
+                    })
+                    .catch(function () {
+                        list.innerHTML = '<div class="text-center text-muted small py-4">Unable to load notifications.</div>';
+                    });
+            }
+
+            list.addEventListener('click', function (e) {
+                var a = e.target.closest('.staff-notif-item');
+                if (!a) return;
+                var id = a.getAttribute('data-notif-id');
+                if (!id) return;
+                var headers = Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, tokenHeader());
+                fetch('/PortalNotifications/MarkRead/' + id, {
+                    method: 'POST', credentials: 'same-origin', headers: headers
+                }).catch(function () { /* ignore */ });
+            });
+
+            markAll.addEventListener('click', function (e) {
+                e.preventDefault();
+                var headers = Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, tokenHeader());
+                fetch('/PortalNotifications/MarkAllRead', {
+                    method: 'POST', credentials: 'same-origin', headers: headers
+                }).then(load).catch(function () { /* ignore */ });
+            });
+
+            load();
+            setInterval(load, 60000);
+        })();
+        </script>
+    }
+
+    @* ── Auto-save drafts ─────────────────────────────────────────────
+       Any <textarea data-autosave="someKey"> (or <input> on the same
+       attribute) is kept in sync with localStorage. Restored on page
+       load with a discreet banner so the user can choose to discard.
+       Cleared automatically when the surrounding form is submitted. *@
+    <script>
+    (function () {
+        var STORAGE_PREFIX = 'ss-draft:';
+        var DEBOUNCE_MS    = 500;
+
+        function debounce(fn, ms) {
+            var t; return function () {
+                clearTimeout(t);
+                t = setTimeout(fn, ms);
+            };
+        }
+
+        function bannerFor(el, savedAt) {
+            // Inject a small "Draft restored" notice right above the field.
+            if (el.dataset.autosaveBannered) return;
+            el.dataset.autosaveBannered = '1';
+            var when = '';
+            try {
+                var d = new Date(savedAt);
+                when = d.toLocaleString();
+            } catch (e) { when = ''; }
+            var banner = document.createElement('div');
+            banner.className = 'small text-muted mb-1';
+            banner.style.cssText = 'display:flex;justify-content:space-between;gap:8px;align-items:center;';
+            banner.innerHTML =
+                '<span><i class="bi bi-arrow-counterclockwise me-1 text-info"></i>Draft restored' +
+                (when ? ' from ' + escAttr(when) : '') + '.</span>' +
+                '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-discard>' +
+                'Discard draft</button>';
+            el.parentNode && el.parentNode.insertBefore(banner, el);
+            banner.querySelector('[data-discard]').addEventListener('click', function () {
+                el.value = '';
+                localStorage.removeItem(storageKey(el));
+                banner.remove();
+                el.dataset.autosaveBannered = '';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        }
+
+        function escAttr(s) {
+            return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        function storageKey(el) {
+            return STORAGE_PREFIX + el.getAttribute('data-autosave');
+        }
+
+        function restore(el) {
+            var raw = localStorage.getItem(storageKey(el));
+            if (!raw) return;
+            try {
+                var p = JSON.parse(raw);
+                if (p && typeof p.value === 'string' && p.value !== '' && el.value === '') {
+                    el.value = p.value;
+                    bannerFor(el, p.at);
+                }
+            } catch (e) {
+                // Legacy plain-string draft — promote then load.
+                if (typeof raw === 'string' && raw !== '' && el.value === '') {
+                    el.value = raw;
+                    bannerFor(el, null);
+                }
+            }
+        }
+
+        function save(el) {
+            var v = el.value || '';
+            if (!v.trim()) {
+                localStorage.removeItem(storageKey(el));
+                return;
+            }
+            try {
+                localStorage.setItem(storageKey(el), JSON.stringify({
+                    value: v,
+                    at:    new Date().toISOString()
+                }));
+            } catch (e) { /* quota / private mode */ }
+        }
+
+        function wire(el) {
+            if (el.dataset.autosaveWired) return;
+            el.dataset.autosaveWired = '1';
+            restore(el);
+            el.addEventListener('input',
+                debounce(function () { save(el); }, DEBOUNCE_MS));
+            // Clear on successful form submit — assume the server accepted
+            // it; if it didn't, the user will reopen the form and reload
+            // the draft from typing again.
+            var form = el.closest('form');
+            if (form && !form.dataset.autosaveClearWired) {
+                form.dataset.autosaveClearWired = '1';
+                form.addEventListener('submit', function () {
+                    form.querySelectorAll('[data-autosave]').forEach(function (e) {
+                        localStorage.removeItem(storageKey(e));
+                    });
+                });
+            }
+        }
+
+        function scan() {
+            document.querySelectorAll('[data-autosave]').forEach(wire);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', scan);
+        } else {
+            scan();
+        }
+        // Re-scan on dynamic insertions (modals etc.). Cheap MutationObserver.
+        try {
+            new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+        } catch (e) { /* older browsers — initial scan is enough */ }
     })();
     </script>
 </body>

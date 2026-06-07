@@ -453,7 +453,8 @@
                         <div class="flex-grow-1">
                             <div class="border rounded">
                                 <textarea id="newCommentText" class="form-control border-0 rounded-top"
-                                          rows="4" placeholder="Type your comment here..."></textarea>
+                                          rows="4" placeholder="Type your comment here..."
+                                          data-autosave="ticket-@Model.Id-comment"></textarea>
                                 <div class="d-flex align-items-center justify-content-between px-2 py-1 bg-light border-top rounded-bottom">
                                     <div class="form-check form-switch mb-0">
                                         <input class="form-check-input" type="checkbox" id="internalToggle">
@@ -531,14 +532,44 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                @{
+                                    var isAdmin = User.IsInRole("Admin");
+                                    var isExtended = Model.OriginalDueDate.HasValue
+                                                  && Model.DueDate.HasValue
+                                                  && Model.OriginalDueDate.Value != Model.DueDate.Value;
+                                }
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <label class="form-label fw-semibold mb-0">Due Date <span class="text-muted fw-normal">(SLA)</span></label>
+                                    @if (isAdmin)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                                data-bs-toggle="modal" data-bs-target="#extendSlaModal"
+                                                title="Extend / adjust the SLA due date (admin only)">
+                                            <i class="bi bi-clock-history me-1"></i>Adjust SLA
+                                        </button>
+                                    }
+                                </div>
                                 <input type="datetime-local" id="dueDatePicker"
-                                       class="form-control @(Model.IsOverdue ? "border-danger" : "")"
+                                       class="form-control @(Model.IsOverdue ? "border-danger" : "") @(isAdmin ? "" : "bg-light")"
                                        value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
-                                       onchange="document.getElementById('dueDateHidden').value = this.value;" />
+                                       onchange="document.getElementById('dueDateHidden').value = this.value;"
+                                       @(isAdmin ? "" : "readonly") />
                                 @if (Model.IsOverdue)
                                 {
                                     <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Overdue since @Model.DueDate!.Value.ToString("MMM dd, yyyy")</div>
+                                }
+                                @if (isExtended)
+                                {
+                                    <div class="alert alert-warning py-2 px-3 small mt-2 mb-0 d-flex align-items-start gap-2"
+                                         style="border-left:4px solid #f59e0b;">
+                                        <i class="bi bi-info-circle mt-1"></i>
+                                        <div>
+                                            <strong>SLA extended.</strong>
+                                            Original due date was
+                                            <strong>@Model.OriginalDueDate!.Value.ToString("MMM d, yyyy h:mm tt")</strong>.
+                                            See Audit Trail for the reason.
+                                        </div>
+                                    </div>
                                 }
                             </div>
                             @if (Model.ResolvedDate.HasValue)
@@ -744,6 +775,13 @@
                                         <i class="bi bi-arrow-right mx-1 text-muted"></i>
                                         <span class="fw-semibold">@(hist.NewValue ?? "—")</span>
                                     </div>
+                                    @if (!string.IsNullOrWhiteSpace(hist.Reason))
+                                    {
+                                        <div class="small mt-1" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:3px;">
+                                            <strong class="text-warning-emphasis">Reason:</strong>
+                                            <span>@hist.Reason</span>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         }
@@ -786,6 +824,16 @@
 
 <!-- Toast for comment post feedback -->
 <!-- ── Log Time Modal ──────────────────────────────────────────── -->
+@{
+    // Hoisted so both the AddTimeEntry form AND the sibling EditEntry panel
+    // can see it — the original @{ } block lives inside <form>/modal-body so
+    // its scope doesn't reach the edit panel below.
+    var modalShowRateType = ViewBag.LoggerHasEmergencyRate is bool mShowRate && mShowRate;
+    var modalTimeEntries  = Model.TimeEntries?.OrderByDescending(e => e.WorkDate).ToList()
+                            ?? new List<ServiceDesk.Core.Models.TicketTimeEntry>();
+    var modalTotalHours    = (decimal)(ViewBag.TimeTotalHours ?? 0m);
+    var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
+}
 <div class="modal fade" id="timeTrackingModal" tabindex="-1" aria-labelledby="timeTrackingModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -798,35 +846,49 @@
             <form asp-action="AddTimeEntry" asp-route-id="@Model.Id" method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="returnAction" value="Edit" />
+                @if (modalShowRateType)
+                {
+                    <input type="hidden" name="rateTypePosted" value="true" />
+                }
                 <div class="modal-body">
-                    @{
-                        var modalTimeEntries   = Model.TimeEntries?.OrderByDescending(e => e.WorkDate).ToList()
-                                                ?? new List<ServiceDesk.Core.Models.TicketTimeEntry>();
-                        var modalTotalHours    = (decimal)(ViewBag.TimeTotalHours ?? 0m);
-                        var modalBillableHours = (decimal)(ViewBag.TimeBillableHours ?? 0m);
-                    }
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-3">
-                            <label class="form-label small fw-semibold">Date</label>
-                            <input type="date" name="workDate" class="form-control"
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold mb-1">Date</label>
+                            <input type="date" name="workDate" id="modalWorkDate" class="form-control form-control-sm"
                                    value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small fw-semibold">Hours</label>
-                            <input type="number" name="hours" step="0.25" min="0.25" max="999"
-                                   class="form-control" placeholder="0.00" required />
+                            <label class="form-label small fw-semibold mb-1">Hours</label>
+                            <input type="number" name="hours" id="modalHours" step="0.25" min="0.25" max="999"
+                                   class="form-control form-control-sm" placeholder="0.00" required />
                         </div>
-                        <div class="col-md-5">
-                            <label class="form-label small fw-semibold">Description</label>
-                            <input type="text" name="description" class="form-control"
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold mb-1">Clock In / Out <span class="text-muted small">opt.</span></label>
+                            <div class="d-flex gap-1">
+                                <input type="time" name="startTime" id="modalStartTime" class="form-control form-control-sm" />
+                                <input type="time" name="endTime"   id="modalEndTime"   class="form-control form-control-sm" />
+                            </div>
+                            <small id="modalClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold mb-1">Description</label>
+                            <input type="text" name="description" class="form-control form-control-sm"
                                    maxlength="1000" placeholder="What did you work on?" />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small fw-semibold d-block">&nbsp;</label>
-                            <div class="form-check mt-2">
+                            <label class="form-label small fw-semibold d-block mb-1">&nbsp;</label>
+                            <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="modalBillableChk" />
-                                <label class="form-check-label" for="modalBillableChk">Billable</label>
+                                <label class="form-check-label small" for="modalBillableChk">Billable</label>
                             </div>
+                            @if (modalShowRateType)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="modalIsEmergency" />
+                                    <label class="form-check-label small text-danger" for="modalIsEmergency">Emergency</label>
+                                </div>
+                                <small id="modalRateTypeHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                            }
                         </div>
                     </div>
 
@@ -846,6 +908,7 @@
                                     <tr>
                                         <th>Date</th>
                                         <th>Hours</th>
+                                        @if (modalShowRateType) { <th>Rate</th> }
                                         <th>Description</th>
                                         <th>Billable</th>
                                         <th>By</th>
@@ -856,10 +919,44 @@
                                     @foreach (var e in modalTimeEntries)
                                     {
                                         var claimed = e.PayrollReceiptId != null;
+                                        var clockStr = (e.StartTime.HasValue && e.EndTime.HasValue)
+                                            ? (e.StartTime.Value.ToString("h:mm tt") + "–" + e.EndTime.Value.ToString("h:mm tt"))
+                                            : "";
+                                        var startStr = e.StartTime?.ToString("HH:mm") ?? "";
+                                        var endStr   = e.EndTime?.ToString("HH:mm")   ?? "";
+                                        var modTooltip = e.ModifiedDate.HasValue
+                                            ? $"Last edited {e.ModifiedDate.Value:MMM d, yyyy h:mm tt} by {e.ModifiedByEmail} · {e.ModificationReason}"
+                                            : "";
                                         <tr>
-                                            <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
+                                            <td class="small text-nowrap">
+                                                @e.WorkDate.ToString("MMM d, yyyy")
+                                                @if (!string.IsNullOrEmpty(clockStr))
+                                                {
+                                                    <div class="text-muted" style="font-size:.7rem;"><i class="bi bi-clock"></i> @clockStr</div>
+                                                }
+                                            </td>
                                             <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
-                                            <td class="small">@e.Description</td>
+                                            @if (modalShowRateType)
+                                            {
+                                                <td>
+                                                    @if (e.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency)
+                                                    {
+                                                        <span class="badge bg-danger" title="Emergency / weekend / after-hours">Emergency</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Standard</span>
+                                                    }
+                                                </td>
+                                            }
+                                            <td class="small">
+                                                @e.Description
+                                                @if (e.ModificationCount > 0)
+                                                {
+                                                    <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;cursor:help;"
+                                                          data-bs-toggle="tooltip" title="@modTooltip">edited</span>
+                                                }
+                                            </td>
                                             <td>
                                                 @if (e.IsBillable)
                                                 { <span class="badge bg-success">Billable</span> }
@@ -872,7 +969,7 @@
                                                 {
                                                     <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1"
                                                             title="Edit entry"
-                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"))">
+                                                            onclick="fillEditEntry(@e.Id,'@e.WorkDate.ToString("yyyy-MM-dd")',@e.Hours.ToString("0.##"),'@Html.Raw((e.Description ?? "").Replace("'","\\'" ).Replace("\r","").Replace("\n","\\n"))',@(e.IsBillable ? "true" : "false"),'@e.RateType','@startStr','@endStr')">
                                                         <i class="bi bi-pencil" style="font-size:.7rem;"></i>
                                                     </button>
                                                 }
@@ -906,27 +1003,51 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="entryId" id="editEntryId" />
                     <input type="hidden" name="returnAction" value="Edit" />
+                    @if (modalShowRateType)
+                    {
+                        <input type="hidden" name="rateTypePosted" value="true" />
+                    }
                     <div class="fw-semibold small mb-2 text-primary"><i class="bi bi-pencil me-1"></i>Edit Entry</div>
                     <div class="row g-2">
-                        <div class="col-md-3">
-                            <label class="form-label small">Date</label>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Date</label>
                             <input type="date" name="workDate" id="editWorkDate" class="form-control form-control-sm" required />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small">Hours</label>
+                            <label class="form-label small mb-1">Hours</label>
                             <input type="number" name="hours" id="editHours" step="0.25" min="0.25" max="999" class="form-control form-control-sm" required />
                         </div>
-                        <div class="col-md-5">
-                            <label class="form-label small">Description</label>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Clock In / Out <span class="text-muted small">opt.</span></label>
+                            <div class="d-flex gap-1">
+                                <input type="time" name="startTime" id="editStartTime" class="form-control form-control-sm" />
+                                <input type="time" name="endTime"   id="editEndTime"   class="form-control form-control-sm" />
+                            </div>
+                            <small id="editClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Description</label>
                             <input type="text" name="description" id="editDescription" class="form-control form-control-sm" maxlength="1000" />
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small d-block">&nbsp;</label>
+                            <label class="form-label small d-block mb-1">&nbsp;</label>
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="editBillable" />
                                 <label class="form-check-label small" for="editBillable">Billable</label>
                             </div>
+                            @if (modalShowRateType)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="editIsEmergency" />
+                                    <label class="form-check-label small text-danger" for="editIsEmergency">Emergency</label>
+                                </div>
+                            }
                         </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small mb-1">Reason for edit <span class="text-danger">*</span></label>
+                        <input type="text" name="modificationReason" id="editModReason" class="form-control form-control-sm"
+                               maxlength="500" required placeholder="Why is this being changed? (audit trail)" />
                     </div>
                     <div class="d-flex gap-2 mt-2">
                         <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
@@ -938,13 +1059,166 @@
     </div>
 </div>
 
+@* Server-side data context for canned-response variable substitution.
+   Mirrors the variables documented on the Create/Edit canned response
+   pages — keep both in sync when adding a token. *@
+<script type="application/json" id="__ssTicketTemplateCtx">
+@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    Ticket = new {
+        Id       = Model.Id,
+        Title    = Model.Title,
+        Status   = Model.Status.ToString(),
+        Priority = Model.Priority.ToString(),
+        // Ticket.Category is stored as an int — cast back to the enum so
+        // the template sees "HardwareIssue" rather than a raw "2".
+        Category = ((ServiceDesk.Core.Enums.TicketCategory)Model.Category).ToString()
+    },
+    Requester = new {
+        FirstName = Model.SubmittedBy?.FirstName,
+        LastName  = Model.SubmittedBy?.LastName,
+        FullName  = Model.SubmittedBy?.FullName,
+        Email     = Model.SubmittedBy?.Email,
+        Branch    = Model.SubmittedBy?.Branch?.Name
+    },
+    Assignee = new {
+        FirstName = Model.AssignedTo?.FirstName,
+        FullName  = Model.AssignedTo?.FullName,
+        Email     = Model.AssignedTo?.Email
+    },
+    Agent = new {
+        FirstName = (User.Identity?.Name ?? "").Split(' ').FirstOrDefault(),
+        FullName  = User.Identity?.Name
+    },
+    Company = new {
+        Name = (string)(ViewBag.CompanyName ?? "ServiceSphere")
+    },
+    Today = DateTime.Now.ToString("MMMM d, yyyy"),
+    Now   = DateTime.Now.ToString("MMM d, yyyy h:mm tt")
+}))
+</script>
+<script type="application/json" id="holidayInfoData">@Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}")</script>
 <script>
-function fillEditEntry(id, date, hours, desc, billable) {
-    document.getElementById('editEntryId').value   = id;
-    document.getElementById('editWorkDate').value  = date;
-    document.getElementById('editHours').value     = hours;
+// Holiday list serialized server-side. Used to suggest the Emergency rate
+// when the contractor logs time on a Saturday/Sunday OR a configured holiday.
+// Embedded as a JSON <script> block so the VS JS/TS linter doesn't flag
+// a Razor expression sitting bare inside JavaScript syntax.
+window.__holidayInfo = JSON.parse(document.getElementById('holidayInfoData').textContent || '{"recurring":[],"oneTime":[]}');
+
+function isEmergencyDate(yyyyMmDd) {
+    if (!yyyyMmDd) return { is: false, label: '' };
+    // Parse as local date (avoid timezone shift from new Date('YYYY-MM-DD'))
+    var parts = yyyyMmDd.split('-');
+    if (parts.length !== 3) return { is: false, label: '' };
+    var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    var dow = d.getDay(); // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6) {
+        return { is: true, label: dow === 0 ? 'Sunday (weekend)' : 'Saturday (weekend)' };
+    }
+    var info = window.__holidayInfo || { recurring: [], oneTime: [] };
+    var mmdd = (parts[1] + '-' + parts[2]);
+    if ((info.recurring || []).indexOf(mmdd) !== -1) {
+        return { is: true, label: 'Company holiday' };
+    }
+    if ((info.oneTime || []).indexOf(yyyyMmDd) !== -1) {
+        return { is: true, label: 'Company holiday' };
+    }
+    return { is: false, label: '' };
+}
+
+// Auto-suggest Emergency when the date changes — only if the picker hasn't
+// been manually overridden. We track manual override via a data attribute.
+function wireRateAutoDetect(dateInputId, rateCheckboxId, hintId) {
+    var dateEl = document.getElementById(dateInputId);
+    var rateEl = document.getElementById(rateCheckboxId);
+    if (!dateEl || !rateEl) return;
+    rateEl.addEventListener('change', function () { rateEl.dataset.manual = '1'; });
+    function apply() {
+        var hint = hintId ? document.getElementById(hintId) : null;
+        var r = isEmergencyDate(dateEl.value);
+        if (rateEl.dataset.manual === '1') {
+            if (hint) hint.textContent = '';
+            return;
+        }
+        rateEl.checked = r.is;
+        if (hint) hint.textContent = r.is ? ('Auto · ' + r.label) : '';
+    }
+    dateEl.addEventListener('change', apply);
+    apply();
+}
+
+// Auto-compute Hours when both Start and End times are entered. Once the user
+// types a clock interval, we stop letting them override the computed hours.
+// Clearing either time field releases the lock.
+function wireClockAutoCompute(startId, endId, hoursId, hintId) {
+    var startEl = document.getElementById(startId);
+    var endEl   = document.getElementById(endId);
+    var hoursEl = document.getElementById(hoursId);
+    var hintEl  = hintId ? document.getElementById(hintId) : null;
+    if (!startEl || !endEl || !hoursEl) return;
+
+    function compute() {
+        if (!startEl.value || !endEl.value) {
+            hoursEl.readOnly = false;
+            if (hintEl) hintEl.textContent = '';
+            return;
+        }
+        var sp = startEl.value.split(':'); var ep = endEl.value.split(':');
+        if (sp.length !== 2 || ep.length !== 2) return;
+        var sMin = (+sp[0]) * 60 + (+sp[1]);
+        var eMin = (+ep[0]) * 60 + (+ep[1]);
+        if (eMin <= sMin) eMin += 24 * 60;  // overnight roll
+        var diff = (eMin - sMin) / 60;
+        if (diff <= 0 || diff > 24) {
+            if (hintEl) hintEl.textContent = 'Interval out of range';
+            return;
+        }
+        // Snap to nearest quarter-hour
+        var quartered = Math.round(diff * 4) / 4;
+        hoursEl.value = quartered.toFixed(2);
+        hoursEl.readOnly = true;
+        if (hintEl) hintEl.textContent = '= ' + quartered + 'h (auto)';
+    }
+    startEl.addEventListener('change', compute);
+    endEl.addEventListener('change', compute);
+    compute();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    wireRateAutoDetect('modalWorkDate', 'modalIsEmergency', 'modalRateTypeHint');
+    wireRateAutoDetect('editWorkDate',  'editIsEmergency',  null);
+    wireClockAutoCompute('modalStartTime', 'modalEndTime', 'modalHours', 'modalClockHint');
+    wireClockAutoCompute('editStartTime',  'editEndTime',  'editHours',  'editClockHint');
+
+    // Enable Bootstrap tooltips for "edited" pills in the entries list
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (el) { new bootstrap.Tooltip(el); });
+});
+
+function fillEditEntry(id, date, hours, desc, billable, rateType, startTime, endTime) {
+    document.getElementById('editEntryId').value     = id;
+    document.getElementById('editWorkDate').value    = date;
+    document.getElementById('editHours').value       = hours;
     document.getElementById('editDescription').value = desc;
-    document.getElementById('editBillable').checked = billable;
+    document.getElementById('editBillable').checked  = billable;
+
+    var rateEl = document.getElementById('editIsEmergency');
+    if (rateEl) {
+        rateEl.checked = (rateType === 'Emergency');
+        // Mark as manual so the date-change auto-detect won't overwrite the
+        // existing entry's rate while the user is editing it.
+        rateEl.dataset.manual = '1';
+    }
+
+    var startEl = document.getElementById('editStartTime');
+    var endEl   = document.getElementById('editEndTime');
+    if (startEl) startEl.value = startTime || '';
+    if (endEl)   endEl.value   = endTime   || '';
+    var hoursEl = document.getElementById('editHours');
+    if (hoursEl) hoursEl.readOnly = !!(startTime && endTime);
+
+    var reasonEl = document.getElementById('editModReason');
+    if (reasonEl) reasonEl.value = '';
+
     document.getElementById('editEntryPanel').style.display = 'block';
     document.getElementById('editEntryPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1051,6 +1325,98 @@ function fillEditEntry(id, date, hours, desc, billable) {
 </div>
 
 </div> @* /.ticket-edit-page *@
+
+@if (User.IsInRole("Admin"))
+{
+    @* SLA extension modal — Admin only. Posts via fetch to
+       /Tickets/ExtendDueDate so the page can update inline without a
+       full reload. The reason field is required; the back end also
+       enforces it. *@
+    <div class="modal fade" id="extendSlaModal" tabindex="-1" aria-labelledby="extendSlaModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#f59e0b;color:#fff;">
+                    <h5 class="modal-title" id="extendSlaModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Adjust SLA Due Date
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Changing the due date updates this ticket's SLA target.
+                        @if (Model.OriginalDueDate.HasValue)
+                        {
+                            <span>The <strong>original SLA</strong> (<strong>@Model.OriginalDueDate.Value.ToString("MMM d, yyyy h:mm tt")</strong>) stays on record for leadership reports.</span>
+                        }
+                        A reason is required so the audit trail captures the why.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">New due date <span class="text-danger">*</span></label>
+                        <input type="datetime-local" id="extendNewDueDate" class="form-control"
+                               value="@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("yyyy-MM-ddTHH:mm") : "")" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
+                        <textarea id="extendReason" class="form-control" rows="3" maxlength="500"
+                                  placeholder="e.g. Customer's site unreachable until Monday; parts on order; coordinated extension with requester."></textarea>
+                        <div class="form-text">Shows on the ticket history. Cannot be left blank.</div>
+                    </div>
+                    <div id="extendSlaError" class="alert alert-danger py-2 small mb-0 d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="extendSlaSubmit" class="btn btn-warning">
+                        <i class="bi bi-check2 me-1"></i>Save Adjustment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var ticketId = @Model.Id;
+        var token    = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+        var btn      = document.getElementById('extendSlaSubmit');
+        var dateInp  = document.getElementById('extendNewDueDate');
+        var reasonEl = document.getElementById('extendReason');
+        var errEl    = document.getElementById('extendSlaError');
+        if (!btn || !dateInp || !reasonEl) return;
+
+        btn.addEventListener('click', function () {
+            errEl.classList.add('d-none');
+            var newDue = dateInp.value;
+            var reason = (reasonEl.value || '').trim();
+            if (!newDue) { errEl.textContent = 'Pick a new due date.'; errEl.classList.remove('d-none'); return; }
+            if (!reason) { errEl.textContent = 'Reason is required.'; errEl.classList.remove('d-none'); return; }
+
+            btn.disabled = true;
+            var fd = new FormData();
+            fd.append('id', ticketId);
+            fd.append('newDueDate', newDue);
+            fd.append('reason', reason);
+            if (token) fd.append('__RequestVerificationToken', token);
+
+            fetch('/Tickets/ExtendDueDate', { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) {
+                    if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || 'Save failed (' + r.status + ')'); });
+                    return r.json();
+                })
+                .then(function () {
+                    // Simplest correctness path: reload so the banner +
+                    // history entry render with fresh server data.
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    btn.disabled = false;
+                    errEl.textContent = err.message || 'Save failed.';
+                    errEl.classList.remove('d-none');
+                });
+        });
+    })();
+    </script>
+}
 
 @section Scripts {
 @{ var ollamaOn = (bool)(ViewBag.OllamaEnabled ?? false); }
@@ -1202,6 +1568,36 @@ function filterSelectOptions(input) {
         const ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
         let loaded = false;
 
+        // Template variable context — populated from the server-side model so
+        // every {{Token}} resolves against the live record without a round-
+        // trip. Tokens that can't resolve (e.g. {{Assignee.FirstName}} on an
+        // unassigned ticket) are left as-is so the agent sees what to fill in.
+        var ctx = (function () {
+            try {
+                var raw = document.getElementById('__ssTicketTemplateCtx');
+                return raw ? JSON.parse(raw.textContent) : {};
+            } catch (e) { return {}; }
+        })();
+
+        function lookup(path) {
+            var parts = path.split('.');
+            var cur = ctx;
+            for (var i = 0; i < parts.length; i++) {
+                if (cur == null) return null;
+                cur = cur[parts[i]];
+            }
+            return (cur == null || cur === '') ? null : String(cur);
+        }
+
+        function expand(content) {
+            if (!content) return content;
+            return content.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)\s*\}\}/g,
+                function (whole, path) {
+                    var v = lookup(path);
+                    return v == null ? whole : v;
+                });
+        }
+
         function buildItem(t) {
             const li = document.createElement('li');
             const a  = document.createElement('a');
@@ -1218,12 +1614,17 @@ function filterSelectOptions(input) {
             const span = document.createElement('span');
             span.textContent = t.title;
             a.appendChild(span);
-            a.title = t.content.substring(0, 120);
+            // Preview shows the EXPANDED text so the agent sees variable
+            // substitution before committing.
+            a.title = expand(t.content).substring(0, 120);
             a.addEventListener('click', function (e) {
                 e.preventDefault();
                 const ta = document.getElementById('newCommentText');
                 if (ta) {
-                    ta.value = ta.value ? ta.value + '\n\n' + t.content : t.content;
+                    var resolved = expand(t.content);
+                    ta.value = ta.value ? ta.value + '\n\n' + resolved : resolved;
+                    // Notify autosave + any other input listeners.
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
                     ta.focus();
                 }
             });
@@ -1300,6 +1701,11 @@ function filterSelectOptions(input) {
             .then(data => {
                 if (data.success) {
                     textarea.value = '';
+                    // Signal to the autosave layer that the draft is gone —
+                    // setting .value directly skips the input event, which
+                    // would otherwise leave a stale draft in localStorage
+                    // to be restored on the next page load.
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
                     document.getElementById('noCommentsMsg')?.remove();
                     appendComment(data);
                     toastMsg.textContent = 'Comment posted successfully.';

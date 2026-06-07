@@ -153,13 +153,14 @@
 @* ── Table ───────────────────────────────────────────────────────────────── *@
 @if (!Model.Any())
 {
-    <div class="lic-card">
-        <div class="lic-card-body text-center text-muted py-5">
-            <i class="bi bi-box-seam fs-1 opacity-25 d-block mb-3"></i>
-            <p class="mb-3">No software licenses found.</p>
-            <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add License</a>
-        </div>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon       = "bi-box-seam",
+        Title      = "No software licenses tracked",
+        Message    = "Catalogue perpetual or volume licenses (Office, Adobe, AutoCAD, etc.) and assign individual seats to employees. Seat-level tracking shows utilization vs. paid count so renewals don't catch you off guard.",
+        ActionLink = Url.Action("Create"),
+        ActionText = "Add First License",
+        ActionIcon = "bi-plus-lg"
+    })
 }
 else
 {

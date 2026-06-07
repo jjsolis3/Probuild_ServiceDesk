@@ -163,7 +163,7 @@
                 var allTasks   = ViewBag.EmployeeTasks as List<EmployeeTask> ?? new List<EmployeeTask>();
                 var onBadge    = allTasks.Count(t => t.TaskType == EmployeeTaskType.Onboarding && t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
             }
-            @if (onBadge > 0) { <span class="badge bg-success ms-1">@onBadge</span> }
+            <span id="tab-badge-Onboarding" class="badge bg-success ms-1 @(onBadge > 0 ? "" : "d-none")">@onBadge</span>
         </a>
     </li>
     <li class="nav-item">
@@ -172,7 +172,7 @@
             @{
                 var offBadge = allTasks.Count(t => t.TaskType == EmployeeTaskType.Offboarding && t.Status != EmployeeTaskStatus.Completed && t.Status != EmployeeTaskStatus.Skipped);
             }
-            @if (offBadge > 0) { <span class="badge bg-warning text-dark ms-1">@offBadge</span> }
+            <span id="tab-badge-Offboarding" class="badge bg-warning text-dark ms-1 @(offBadge > 0 ? "" : "d-none")">@offBadge</span>
         </a>
     </li>
 </ul>
@@ -980,7 +980,7 @@
     accent   = CSS hex for the folder icon color
 *@
 @{
-    async Task RenderCategoryChecklist(List<EmployeeTask> allTasks, string prefix, string accent)
+    async Task RenderCategoryChecklist(List<EmployeeTask> allTasks, string prefix, string accent, EmployeeTaskType taskType)
     {
         if (!allTasks.Any())
         {
@@ -1008,7 +1008,9 @@
             string cid   = prefix + "_" + new string(grp.Name.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
 
             <div class="col">
-            <div class="card h-100 @(allDone ? "border-success border-opacity-25" : "border-0 shadow-sm")">
+            <div class="card h-100 cat-card @(allDone ? "border-success border-opacity-25 cat-card-done" : "border-0 shadow-sm")"
+                 data-tasktype="@taskType"
+                 data-category="@grp.Name">
                 <div class="card-header d-flex justify-content-between align-items-center py-2 px-3"
                      style="cursor:pointer; background:@(allDone ? "#f0faf4" : "#f8f9fb"); color:#212529; user-select:none;"
                      data-bs-toggle="collapse" data-bs-target="#@cid"
@@ -1021,63 +1023,70 @@
                         <span class="fw-semibold" style="font-size:.9rem; color:#212529;">@grp.Name</span>
                         <span style="font-size:.75rem; color:#6c757d;">· @grp.Tasks.Count @(grp.Tasks.Count == 1 ? "task" : "tasks")</span>
                     </div>
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 cat-card-badges">
                         @if (allDone)
                         {
-                            <span class="badge text-bg-success"><i class="bi bi-check-circle-fill me-1"></i>Complete</span>
+                            <span class="badge text-bg-success cat-badge-complete"><i class="bi bi-check-circle-fill me-1"></i>Complete</span>
                         }
                         else
                         {
-                            <span class="badge text-bg-danger">@pending pending</span>
-                            if (done > 0)    { <span class="badge text-bg-success">@done done</span> }
-                            if (skipped > 0) { <span class="badge text-bg-secondary">@skipped skipped</span> }
+                            <span class="badge text-bg-danger cat-badge-pending">@pending pending</span>
+                            <span class="badge text-bg-success cat-badge-done @(done > 0 ? "" : "d-none")">@done done</span>
+                            <span class="badge text-bg-secondary cat-badge-skipped @(skipped > 0 ? "" : "d-none")">@skipped skipped</span>
                         }
                         <i class="bi @(!allDone ? "bi-chevron-up" : "bi-chevron-down")" style="font-size:.72rem; color:#6c757d;"></i>
                     </div>
                 </div>
                 <div class="collapse @(!allDone ? "show" : "")" id="@cid">
-                    <ul class="list-group list-group-flush">
+                    <ul class="list-group list-group-flush cat-task-list">
                         @foreach (var task in grp.Tasks)
                         {
                             bool isDone    = task.Status == EmployeeTaskStatus.Completed;
                             bool isSkipped = task.Status == EmployeeTaskStatus.Skipped;
-                            <li class="list-group-item px-3 py-2 @(isDone ? "bg-light" : "")">
+                            <li class="list-group-item px-3 py-2 task-row @(isDone ? "bg-light" : "")"
+                                id="task-row-@task.Id"
+                                data-task-id="@task.Id"
+                                data-tasktype="@task.TaskType"
+                                data-category="@(string.IsNullOrWhiteSpace(task.Category) ? "General" : task.Category)">
                                 <div class="d-flex align-items-start gap-2">
-                                    <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post" class="mt-1 flex-shrink-0">
+                                    <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post" class="mt-1 flex-shrink-0 js-task-toggle">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="taskId" value="@task.Id" />
                                         <input type="hidden" name="status" value="@(isDone ? EmployeeTaskStatus.Pending : EmployeeTaskStatus.Completed)" />
                                         <button type="submit" class="btn btn-link p-0 border-0" title="@(isDone ? "Mark as pending" : "Mark as done")">
-                                            @if (isDone)    { <i class="bi bi-check-square-fill text-success fs-5"></i> }
-                                            else if (isSkipped) { <i class="bi bi-dash-square text-secondary fs-5"></i> }
-                                            else            { <i class="bi bi-square fs-5 text-muted"></i> }
+                                            <i class="bi task-checkbox @(isDone ? "bi-check-square-fill text-success" : isSkipped ? "bi-dash-square text-secondary" : "bi-square text-muted") fs-5"></i>
                                         </button>
                                     </form>
                                     <div class="flex-grow-1">
-                                        <div class="@(isDone || isSkipped ? "text-decoration-line-through text-muted" : "fw-semibold")">
+                                        <div class="task-title @(isDone || isSkipped ? "text-decoration-line-through text-muted" : "fw-semibold")">
                                             @task.Title
-                                            @if (isSkipped) { <span class="badge bg-secondary ms-1" style="font-size:.65rem;">Skipped</span> }
-                                            else if (task.IsOverdue && !isDone) { <span class="badge bg-danger ms-1" style="font-size:.65rem;">Overdue</span> }
+                                            <span class="badge bg-secondary ms-1 task-skipped-badge @(isSkipped ? "" : "d-none")" style="font-size:.65rem;">Skipped</span>
+                                            @if (task.IsOverdue && !isDone && !isSkipped) { <span class="badge bg-danger ms-1" style="font-size:.65rem;">Overdue</span> }
                                         </div>
                                         @if (!string.IsNullOrEmpty(task.Description))
                                         { <div class="small text-muted mt-1">@task.Description</div> }
                                         <div class="small text-muted d-flex flex-wrap gap-3 mt-1">
                                             @if (!string.IsNullOrEmpty(task.AssignedToEmail)) { <span><i class="bi bi-person me-1"></i>@task.AssignedToEmail</span> }
                                             @if (task.DueDate.HasValue) { <span><i class="bi bi-calendar me-1"></i>Due @task.DueDate.Value.ToString("MMM d, yyyy")</span> }
-                                            @if (task.CompletedDate.HasValue) { <span class="text-success"><i class="bi bi-check-circle me-1"></i>Done @task.CompletedDate.Value.ToString("MMM d") @(string.IsNullOrEmpty(task.CompletedByEmail) ? "" : "· " + task.CompletedByEmail)</span> }
+                                            <span class="text-success task-done-stamp @(task.CompletedDate.HasValue ? "" : "d-none")">
+                                                <i class="bi bi-check-circle me-1"></i>Done
+                                                <span class="task-done-date">@(task.CompletedDate?.ToString("MMM d") ?? "")</span>
+                                                @if (!string.IsNullOrEmpty(task.CompletedByEmail))
+                                                { <span>· <span class="task-done-by">@task.CompletedByEmail</span></span> }
+                                                else
+                                                { <span>· <span class="task-done-by"></span></span> }
+                                            </span>
                                         </div>
                                     </div>
                                     <div class="d-flex gap-1 flex-shrink-0">
-                                        @if (!isSkipped && !isDone)
-                                        {
-                                            <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post">
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="taskId" value="@task.Id" />
-                                                <input type="hidden" name="status" value="@EmployeeTaskStatus.Skipped" />
-                                                <button type="submit" class="btn btn-link btn-sm p-0 text-muted" title="Skip this task"><i class="bi bi-dash-circle"></i></button>
-                                            </form>
-                                        }
-                                        <form asp-controller="EmployeeTasks" asp-action="DeleteTask" method="post" onsubmit="return confirm('Delete this task?');">
+                                        <form asp-controller="EmployeeTasks" asp-action="UpdateTaskStatus" method="post"
+                                              class="js-task-skip @((!isSkipped && !isDone) ? "" : "d-none")">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="taskId" value="@task.Id" />
+                                            <input type="hidden" name="status" value="@EmployeeTaskStatus.Skipped" />
+                                            <button type="submit" class="btn btn-link btn-sm p-0 text-muted" title="Skip this task"><i class="bi bi-dash-circle"></i></button>
+                                        </form>
+                                        <form asp-controller="EmployeeTasks" asp-action="DeleteTask" method="post" class="js-task-delete">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="taskId" value="@task.Id" />
                                             <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete task"><i class="bi bi-trash"></i></button>
@@ -1165,7 +1174,7 @@
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-header fw-semibold small bg-success bg-opacity-10 d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-bar-chart-steps me-2 text-success"></i>Overall Progress</span>
-                        <span class="badge text-bg-success">@obDone / @obTasks.Count complete</span>
+                        <span class="badge text-bg-success" id="overall-done-Onboarding">@obDone / @obTasks.Count complete</span>
                     </div>
                     <div class="card-body">
                         @if (obTasks.Any())
@@ -1180,12 +1189,13 @@
                                 })
                                 .OrderBy(g => g.MinSort).ToList();
                             <div class="progress mb-3" style="height:10px; border-radius:6px;">
-                                <div class="progress-bar bg-success" style="width:@obPct%; border-radius:6px;"></div>
+                                <div class="progress-bar bg-success" id="overall-bar-Onboarding" style="width:@obPct%; border-radius:6px;"></div>
                             </div>
-                            <div class="d-flex flex-wrap gap-2 mt-2">
+                            <div class="d-flex flex-wrap gap-2 mt-2" id="overall-cats-Onboarding">
                                 @foreach (var s in obSummary)
                                 {
-                                    <span class="badge @(s.Pending == 0 ? "text-bg-success" : "text-bg-warning")"
+                                    <span class="badge @(s.Pending == 0 ? "text-bg-success" : "text-bg-warning") overall-cat-badge"
+                                          data-category="@s.Name"
                                           style="font-weight:500; font-size:.72rem;">
                                         @s.Name:
                                         @if (s.Pending == 0) { <text>✓</text> }
@@ -1204,7 +1214,7 @@
         </div>
 
         @* ── Category-grouped checklist cards ─────────────────────────────── *@
-        @{ await RenderCategoryChecklist(obTasks, "ob", "#198754"); }
+        @{ await RenderCategoryChecklist(obTasks, "ob", "#198754", EmployeeTaskType.Onboarding); }
 
         @* ── Add custom task ──────────────────────────────────────────────── *@
         <details class="mt-3">
@@ -1334,7 +1344,7 @@
                     <div class="card-header fw-semibold small bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-bar-chart-steps me-2 text-danger"></i>Overall Progress</span>
                         <div class="d-flex gap-2 align-items-center">
-                            <span class="badge text-bg-warning">@offDone / @offTasks.Count complete</span>
+                            <span class="badge text-bg-warning" id="overall-done-Offboarding">@offDone / @offTasks.Count complete</span>
                             <form asp-controller="EmployeeTasks" asp-action="ApplyTemplate" method="post" class="d-inline">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="employeeId" value="@Model.Id" />
@@ -1364,12 +1374,13 @@
                                 })
                                 .OrderBy(g => g.MinSort).ToList();
                             <div class="progress mb-3" style="height:10px; border-radius:6px;">
-                                <div class="progress-bar bg-warning" style="width:@offPct%; border-radius:6px;"></div>
+                                <div class="progress-bar bg-warning" id="overall-bar-Offboarding" style="width:@offPct%; border-radius:6px;"></div>
                             </div>
-                            <div class="d-flex flex-wrap gap-2 mt-2">
+                            <div class="d-flex flex-wrap gap-2 mt-2" id="overall-cats-Offboarding">
                                 @foreach (var s in offSummary)
                                 {
-                                    <span class="badge @(s.Pending == 0 ? "text-bg-success" : "text-bg-warning")"
+                                    <span class="badge @(s.Pending == 0 ? "text-bg-success" : "text-bg-warning") overall-cat-badge"
+                                          data-category="@s.Name"
                                           style="font-weight:500; font-size:.72rem;">
                                         @s.Name:
                                         @if (s.Pending == 0) { <text>✓</text> }
@@ -1388,7 +1399,7 @@
         </div>
 
         @* ── Category-grouped checklist cards ─────────────────────────────── *@
-        @{ await RenderCategoryChecklist(offTasks, "off", "#dc3545"); }
+        @{ await RenderCategoryChecklist(offTasks, "off", "#dc3545", EmployeeTaskType.Offboarding); }
 
         @* ── Add custom task ──────────────────────────────────────────────── *@
         <details class="mt-3">
@@ -2264,6 +2275,230 @@ var empTickets = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
             var filtered = empTickets.filter(function(t) { return t.category === catId; });
             showTicketModal(catName + ' (' + filtered.length + ')', filtered);
         });
+    });
+})();
+
+// ── Onboarding / Offboarding checklist — AJAX updates ─────────────────────
+// Each task row used to do a full-page POST + redirect on checkbox toggle,
+// which (a) lost the active tab in the URL and blanked the page, and (b)
+// reloaded a 92-task checklist every click. We now intercept the three
+// per-task forms (mark done/undo, skip, delete) and PATCH the DOM in place.
+(function () {
+    'use strict';
+
+    function tokenFromForm(form) {
+        var el = form.querySelector('input[name="__RequestVerificationToken"]');
+        return el ? el.value : '';
+    }
+
+    function buildFormData(form, extras) {
+        var fd = new FormData(form);
+        if (extras) Object.keys(extras).forEach(function (k) { fd.set(k, extras[k]); });
+        return fd;
+    }
+
+    function postJson(url, fd) {
+        return fetch(url, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        });
+    }
+
+    // Update everything outside the task row: per-category card header badges,
+    // the category card "Complete" border, the Overall Progress per-category
+    // chips, the "x / y complete" header pill, and the tab counter.
+    function applyCounts(data) {
+        if (!data || !data.taskType || !Array.isArray(data.categoryCounts)) return;
+        var taskType = data.taskType;
+
+        // 1) Per-category card header badges.
+        data.categoryCounts.forEach(function (cc) {
+            var card = document.querySelector(
+                '.cat-card[data-tasktype="' + taskType + '"][data-category="' + cssEscape(cc.category) + '"]');
+            if (!card) return;
+            var allDone = cc.pending === 0;
+            card.classList.toggle('cat-card-done', allDone);
+            card.classList.toggle('border-success', allDone);
+            card.classList.toggle('border-opacity-25', allDone);
+            card.classList.toggle('border-0', !allDone);
+            card.classList.toggle('shadow-sm', !allDone);
+
+            var badgeWrap = card.querySelector('.cat-card-badges');
+            if (!badgeWrap) return;
+            // The chevron icon is the last child; preserve it.
+            var chev = badgeWrap.querySelector('.bi-chevron-up, .bi-chevron-down');
+            badgeWrap.innerHTML = '';
+            if (allDone) {
+                badgeWrap.insertAdjacentHTML('beforeend',
+                    '<span class="badge text-bg-success cat-badge-complete">' +
+                    '<i class="bi bi-check-circle-fill me-1"></i>Complete</span>');
+            } else {
+                badgeWrap.insertAdjacentHTML('beforeend',
+                    '<span class="badge text-bg-danger cat-badge-pending">' + cc.pending + ' pending</span>');
+                if (cc.done > 0) {
+                    badgeWrap.insertAdjacentHTML('beforeend',
+                        '<span class="badge text-bg-success cat-badge-done">' + cc.done + ' done</span>');
+                }
+                if (cc.skipped > 0) {
+                    badgeWrap.insertAdjacentHTML('beforeend',
+                        '<span class="badge text-bg-secondary cat-badge-skipped">' + cc.skipped + ' skipped</span>');
+                }
+            }
+            // Re-append the chevron (or create a fresh one).
+            var newChev = document.createElement('i');
+            newChev.className = 'bi ' + (allDone ? 'bi-chevron-down' : 'bi-chevron-up');
+            newChev.style.fontSize = '.72rem';
+            newChev.style.color = '#6c757d';
+            badgeWrap.appendChild(newChev);
+        });
+
+        // 2) Overall Progress per-category chips.
+        var catWrap = document.getElementById('overall-cats-' + taskType);
+        if (catWrap) {
+            // Preserve display order: keep the original DOM order and just
+            // update text/colour for existing chips. We don't add brand new
+            // chips here because the data set is constant for an employee.
+            var map = {};
+            data.categoryCounts.forEach(function (cc) { map[cc.category] = cc; });
+            catWrap.querySelectorAll('.overall-cat-badge').forEach(function (chip) {
+                var cat = chip.getAttribute('data-category');
+                var cc  = map[cat];
+                if (!cc) return;
+                chip.classList.toggle('text-bg-success', cc.pending === 0);
+                chip.classList.toggle('text-bg-warning', cc.pending !== 0);
+                chip.textContent = cat + ': ' + (cc.pending === 0 ? '✓' : (cc.pending + ' pending'));
+            });
+        }
+
+        // 3) Overall "x / y complete" pill + progress bar.
+        var pill = document.getElementById('overall-done-' + taskType);
+        if (pill && data.overall) {
+            pill.textContent = data.overall.done + ' / ' + data.overall.total + ' complete';
+        }
+        var bar = document.getElementById('overall-bar-' + taskType);
+        if (bar && data.overall && data.overall.total > 0) {
+            var pct = Math.round(data.overall.done * 100 / data.overall.total);
+            bar.style.width = pct + '%';
+        }
+
+        // 4) Tab counter at the top of the page.
+        var tabBadge = document.getElementById('tab-badge-' + taskType);
+        if (tabBadge && data.overall) {
+            var notDoneNotSkipped = 0;
+            data.categoryCounts.forEach(function (cc) { notDoneNotSkipped += cc.pending; });
+            tabBadge.textContent = notDoneNotSkipped;
+            tabBadge.classList.toggle('d-none', notDoneNotSkipped === 0);
+        }
+    }
+
+    // Update a single task row to reflect the server-confirmed status.
+    function applyTaskState(row, task) {
+        if (!row || !task) return;
+        var isDone    = task.status === 'Completed';
+        var isSkipped = task.status === 'Skipped';
+
+        // Checkbox icon
+        var cb = row.querySelector('.task-checkbox');
+        if (cb) {
+            cb.classList.remove('bi-check-square-fill', 'bi-dash-square', 'bi-square',
+                                'text-success', 'text-secondary', 'text-muted');
+            if (isDone)         cb.classList.add('bi-check-square-fill', 'text-success');
+            else if (isSkipped) cb.classList.add('bi-dash-square', 'text-secondary');
+            else                cb.classList.add('bi-square', 'text-muted');
+        }
+        // Row background
+        row.classList.toggle('bg-light', isDone);
+
+        // Title strike-through
+        var title = row.querySelector('.task-title');
+        if (title) {
+            var strike = isDone || isSkipped;
+            title.classList.toggle('text-decoration-line-through', strike);
+            title.classList.toggle('text-muted',                  strike);
+            title.classList.toggle('fw-semibold',                 !strike);
+        }
+        // Skipped pill
+        var skipBadge = row.querySelector('.task-skipped-badge');
+        if (skipBadge) skipBadge.classList.toggle('d-none', !isSkipped);
+
+        // "Done by ... on ..." stamp
+        var doneStamp = row.querySelector('.task-done-stamp');
+        if (doneStamp) {
+            doneStamp.classList.toggle('d-none', !task.completedDate);
+            if (task.completedDate) {
+                var d = new Date(task.completedDate);
+                var monthShort = d.toLocaleString(undefined, { month: 'short' });
+                doneStamp.querySelector('.task-done-date').textContent = monthShort + ' ' + d.getDate();
+                var by = doneStamp.querySelector('.task-done-by');
+                if (by) by.textContent = task.completedByEmail || '';
+            }
+        }
+
+        // Flip the toggle form's hidden "status" so the next click does the inverse,
+        // and update its tooltip.
+        var toggleForm = row.querySelector('.js-task-toggle');
+        if (toggleForm) {
+            var st = toggleForm.querySelector('input[name="status"]');
+            if (st) st.value = isDone ? 'Pending' : 'Completed';
+            var btn = toggleForm.querySelector('button[type="submit"]');
+            if (btn) btn.title = isDone ? 'Mark as pending' : 'Mark as done';
+        }
+
+        // Hide the Skip button once the task is no longer pending.
+        var skipForm = row.querySelector('.js-task-skip');
+        if (skipForm) skipForm.classList.toggle('d-none', isDone || isSkipped);
+    }
+
+    // Minimal css escape — only needed for category names that might contain
+    // quotes, slashes, etc. when used inside an attribute selector.
+    function cssEscape(s) {
+        return String(s).replace(/(["\\\]\[])/g, '\\$1');
+    }
+
+    // Intercept the three forms on every checklist row. Delegated so it works
+    // for tasks added via the (currently still-redirecting) AddTask form too,
+    // after the page reload that path triggers.
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        var isToggle = form.classList.contains('js-task-toggle');
+        var isSkip   = form.classList.contains('js-task-skip');
+        var isDelete = form.classList.contains('js-task-delete');
+        if (!isToggle && !isSkip && !isDelete) return;
+
+        e.preventDefault();
+
+        if (isDelete && !confirm('Delete this task?')) return;
+
+        var row    = form.closest('.task-row');
+        var taskId = row ? row.getAttribute('data-task-id') : null;
+        var fd     = buildFormData(form);
+
+        // Disable the form's controls briefly to prevent double-clicks.
+        var ctrls = form.querySelectorAll('button, input[type=submit]');
+        ctrls.forEach(function (c) { c.disabled = true; });
+
+        postJson(form.action, fd)
+            .then(function (data) {
+                if (isDelete) {
+                    if (row) row.remove();
+                } else if (data.task) {
+                    applyTaskState(row, data.task);
+                }
+                applyCounts(data);
+            })
+            .catch(function () {
+                alert('Could not update task. Please try again.');
+            })
+            .finally(function () {
+                ctrls.forEach(function (c) { c.disabled = false; });
+            });
     });
 })();
 </script>

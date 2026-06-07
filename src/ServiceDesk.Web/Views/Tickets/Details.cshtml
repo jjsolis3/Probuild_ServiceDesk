@@ -375,29 +375,48 @@
         </span>
     </div>
     <div class="card-body">
+        @{
+            var showRateType = ViewBag.LoggerHasEmergencyRate is bool b && b;
+        }
         <form asp-action="AddTimeEntry" asp-route-id="@Model.Id" method="post" class="row g-2 align-items-end mb-3">
             @Html.AntiForgeryToken()
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label small mb-1">Date</label>
-                <input type="date" name="workDate" class="form-control form-control-sm"
+                <input type="date" name="workDate" id="detailsWorkDate" class="form-control form-control-sm"
                        value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Hours</label>
-                <input type="number" name="hours" step="0.25" min="0.25" max="999"
+                <input type="number" name="hours" id="detailsHours" step="0.25" min="0.25" max="999"
                        class="form-control form-control-sm" placeholder="0.00" required />
             </div>
-            <div class="col-md-5">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Clock In / Out <span class="text-muted small">opt.</span></label>
+                <div class="d-flex gap-1">
+                    <input type="time" name="startTime" id="detailsStartTime" class="form-control form-control-sm" />
+                    <input type="time" name="endTime"   id="detailsEndTime"   class="form-control form-control-sm" />
+                </div>
+                <small id="detailsClockHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+            </div>
+            <div class="col-md-3">
                 <label class="form-label small mb-1">Description</label>
                 <input type="text" name="description" class="form-control form-control-sm"
                        maxlength="1000" placeholder="What did you work on?" />
             </div>
             <div class="col-md-2">
-                <div class="form-check mb-2">
+                <div class="form-check mb-1">
                     <input class="form-check-input" type="checkbox" name="isBillable" value="true" id="billableChk" />
                     <label class="form-check-label small" for="billableChk">Billable</label>
                 </div>
-                <button type="submit" class="btn btn-primary btn-sm w-100">
+                @if (showRateType)
+                {
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="isEmergency" value="true" id="detailsIsEmergency" />
+                        <label class="form-check-label small text-danger" for="detailsIsEmergency">Emergency</label>
+                    </div>
+                    <small id="detailsRateHint" class="text-muted d-block" style="font-size:.68rem;line-height:1.1;"></small>
+                }
+                <button type="submit" class="btn btn-primary btn-sm w-100 mt-1">
                     <i class="bi bi-plus-lg"></i> Log
                 </button>
             </div>
@@ -411,6 +430,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Hours</th>
+                            <th>Rate</th>
                             <th>Description</th>
                             <th>Billable</th>
                             <th>By</th>
@@ -420,10 +440,39 @@
                     <tbody>
                         @foreach (var e in timeEntries)
                         {
+                            var clockStr = (e.StartTime.HasValue && e.EndTime.HasValue)
+                                ? (e.StartTime.Value.ToString("h:mm tt") + "–" + e.EndTime.Value.ToString("h:mm tt"))
+                                : "";
+                            var modTooltip = e.ModifiedDate.HasValue
+                                ? $"Last edited {e.ModifiedDate.Value:MMM d, yyyy h:mm tt} by {e.ModifiedByEmail} · {e.ModificationReason}"
+                                : "";
                             <tr>
-                                <td class="small text-nowrap">@e.WorkDate.ToString("MMM d, yyyy")</td>
+                                <td class="small text-nowrap">
+                                    @e.WorkDate.ToString("MMM d, yyyy")
+                                    @if (!string.IsNullOrEmpty(clockStr))
+                                    {
+                                        <div class="text-muted" style="font-size:.7rem;"><i class="bi bi-clock"></i> @clockStr</div>
+                                    }
+                                </td>
                                 <td class="fw-semibold">@e.Hours.ToString("0.##")h</td>
-                                <td class="small">@e.Description</td>
+                                <td>
+                                    @if (e.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency)
+                                    {
+                                        <span class="badge bg-danger" title="Emergency / weekend / after-hours">Emergency</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Standard</span>
+                                    }
+                                </td>
+                                <td class="small">
+                                    @e.Description
+                                    @if (e.ModificationCount > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;cursor:help;"
+                                              data-bs-toggle="tooltip" title="@modTooltip">edited</span>
+                                    }
+                                </td>
                                 <td>
                                     @if (e.IsBillable)
                                     { <span class="badge bg-success">Billable</span> }
@@ -457,6 +506,84 @@
 </div> @* /.ticket-details *@
 
 @section Scripts {
+<script>
+(function () {
+    // Auto-compute Hours from Start/End times
+    var startEl = document.getElementById('detailsStartTime');
+    var endEl   = document.getElementById('detailsEndTime');
+    var hoursEl = document.getElementById('detailsHours');
+    var hintEl  = document.getElementById('detailsClockHint');
+    if (!startEl || !endEl || !hoursEl) return;
+    function compute() {
+        if (!startEl.value || !endEl.value) {
+            hoursEl.readOnly = false;
+            if (hintEl) hintEl.textContent = '';
+            return;
+        }
+        var sp = startEl.value.split(':'); var ep = endEl.value.split(':');
+        var sMin = (+sp[0]) * 60 + (+sp[1]);
+        var eMin = (+ep[0]) * 60 + (+ep[1]);
+        if (eMin <= sMin) eMin += 24 * 60;
+        var diff = (eMin - sMin) / 60;
+        if (diff <= 0 || diff > 24) {
+            if (hintEl) hintEl.textContent = 'Interval out of range';
+            return;
+        }
+        var q = Math.round(diff * 4) / 4;
+        hoursEl.value = q.toFixed(2);
+        hoursEl.readOnly = true;
+        if (hintEl) hintEl.textContent = '= ' + q + 'h (auto)';
+    }
+    startEl.addEventListener('change', compute);
+    endEl.addEventListener('change', compute);
+})();
+
+// Enable Bootstrap tooltips for "edited" pills
+document.addEventListener('DOMContentLoaded', function () {
+    var els = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    els.forEach(function (el) { try { new bootstrap.Tooltip(el); } catch (e) {} });
+});
+</script>
+@if (showRateType)
+{
+    <script type="application/json" id="detailsHolidayInfoData">@Html.Raw(ViewBag.HolidayJson ?? "{\"recurring\":[],\"oneTime\":[]}")</script>
+    <script>
+    (function () {
+        var holidayInfo = JSON.parse(document.getElementById('detailsHolidayInfoData').textContent || '{"recurring":[],"oneTime":[]}');
+        var dateEl = document.getElementById('detailsWorkDate');
+        var rateEl = document.getElementById('detailsIsEmergency');
+        var hintEl = document.getElementById('detailsRateHint');
+        if (!dateEl || !rateEl) return;
+
+        rateEl.addEventListener('change', function () { rateEl.dataset.manual = '1'; });
+
+        function check(yyyyMmDd) {
+            var parts = (yyyyMmDd || '').split('-');
+            if (parts.length !== 3) return { is: false, label: '' };
+            var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            var dow = d.getDay();
+            if (dow === 0) return { is: true, label: 'Sunday (weekend)' };
+            if (dow === 6) return { is: true, label: 'Saturday (weekend)' };
+            var mmdd = parts[1] + '-' + parts[2];
+            if ((holidayInfo.recurring || []).indexOf(mmdd) !== -1) return { is: true, label: 'Company holiday' };
+            if ((holidayInfo.oneTime || []).indexOf(yyyyMmDd) !== -1) return { is: true, label: 'Company holiday' };
+            return { is: false, label: '' };
+        }
+
+        function apply() {
+            var r = check(dateEl.value);
+            if (rateEl.dataset.manual === '1') {
+                if (hintEl) hintEl.textContent = '';
+                return;
+            }
+            rateEl.checked = r.is;
+            if (hintEl) hintEl.textContent = r.is ? ('Auto · ' + r.label) : '';
+        }
+        dateEl.addEventListener('change', apply);
+        apply();
+    })();
+    </script>
+}
 @if (!string.IsNullOrEmpty(Model.DescriptionHtml))
 {
     <script>

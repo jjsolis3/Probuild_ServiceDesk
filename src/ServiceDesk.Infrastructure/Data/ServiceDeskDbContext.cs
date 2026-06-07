@@ -89,9 +89,22 @@ public class ServiceDeskDbContext : DbContext
 
     // Contractor payroll receipts
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
+    public DbSet<PayrollReceiptComment> PayrollReceiptComments => Set<PayrollReceiptComment>();
+    public DbSet<PayrollNotificationRecipient> PayrollNotificationRecipients => Set<PayrollNotificationRecipient>();
+    public DbSet<RecurringChargeTemplate> RecurringChargeTemplates => Set<RecurringChargeTemplate>();
+    public DbSet<PayrollReceiptCharge> PayrollReceiptCharges => Set<PayrollReceiptCharge>();
 
-    // Notification / email activity log
+    // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
+    public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
+
+    // Notification / email activity log (outbound sends)
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
+    // Inbound Gmail messages the poller saw and what it did with them
+    public DbSet<InboundEmailLog> InboundEmailLogs => Set<InboundEmailLog>();
+
+    // In-app portal notifications (notification bell)
+    public DbSet<PortalNotification> PortalNotifications => Set<PortalNotification>();
 
     // Software license seat assignments
     public DbSet<LicenseSeat> LicenseSeats => Set<LicenseSeat>();
@@ -107,6 +120,8 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<StoreAccessList> StoreAccessList => Set<StoreAccessList>();
     public DbSet<StoreOperationsAccess> StoreOperationsAccess => Set<StoreOperationsAccess>();
     public DbSet<StoreProductImage> StoreProductImages => Set<StoreProductImage>();
+    public DbSet<StoreCartItem> StoreCartItems => Set<StoreCartItem>();
+    public DbSet<StoreProductFavorite> StoreProductFavorites => Set<StoreProductFavorite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -354,6 +369,18 @@ public class ServiceDeskDbContext : DbContext
         // Decimal precision for contractor hourly rate
         modelBuilder.Entity<Employee>()
             .Property(e => e.HourlyRate)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.EmergencyHourlyRate)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.MonthlyRetainerAmount)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Employee>()
+            .Property(e => e.MonthlyRetainerHoursIncluded)
             .HasPrecision(10, 2);
 
         // Ticket -> Branch relationship (location snapshot)
@@ -611,7 +638,116 @@ public class ServiceDeskDbContext : DbContext
             .HasPrecision(12, 2);
 
         modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalStandardHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalEmergencyHours)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRetainerHoursApplied)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRetainerAmountApplied)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRecurringChargesAmount)
+            .HasPrecision(12, 2);
+
+        // RecurringChargeTemplate -> Contractor (Employee) — cascade so
+        // deleting an employee removes their templates. Snapshots on
+        // historical receipts persist via PayrollReceiptCharge (TemplateId
+        // SET NULL), so history isn't lost.
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .HasOne(t => t.Contractor)
+            .WithMany(e => e.RecurringCharges)
+            .HasForeignKey(t => t.ContractorId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .Property(t => t.UnitAmount)
+            .HasPrecision(12, 4);
+
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .HasIndex(t => new { t.ContractorId, t.IsActive });
+
+        // PayrollReceiptCharge -> Receipt (cascade with parent)
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .HasOne(c => c.Receipt)
+            .WithMany(r => r.Charges)
+            .HasForeignKey(c => c.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // PayrollReceiptCharge -> Template (SET NULL — snapshot wins if
+        // the template is deleted later).
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .HasOne(c => c.Template)
+            .WithMany()
+            .HasForeignKey(c => c.TemplateId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .Property(c => c.UnitAmountSnapshot)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .Property(c => c.TotalAmount)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.EmergencyRateSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.MonthlyRetainerAmountSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.MonthlyRetainerHoursSnapshot)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
             .HasIndex(r => new { r.ContractorId, r.Status });
+
+        // Receipt activity / discussion thread — cascade-delete with the
+        // parent receipt; restrict-delete on the author FKs so we keep
+        // the audit row when a person is deleted.
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.Receipt)
+            .WithMany(r => r.Comments)
+            .HasForeignKey(c => c.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.AuthorPortalUser)
+            .WithMany()
+            .HasForeignKey(c => c.AuthorPortalUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasOne(c => c.AuthorEmployee)
+            .WithMany()
+            .HasForeignKey(c => c.AuthorEmployeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptComment>()
+            .HasIndex(c => new { c.PayrollReceiptId, c.CreatedDate });
+
+        // Payroll notification recipients — explicit subscribers for the
+        // "receipt submitted" alert. SetNull on portal-user delete so a
+        // deactivated user leaves the row in place (the email field still
+        // resolves) rather than silently dropping a recipient.
+        modelBuilder.Entity<PayrollNotificationRecipient>()
+            .HasOne(r => r.PortalUser)
+            .WithMany()
+            .HasForeignKey(r => r.PortalUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollNotificationRecipient>()
+            .HasIndex(r => r.Email);
 
         // LicenseSeat -> SoftwareLicense (cascade)
         modelBuilder.Entity<LicenseSeat>()

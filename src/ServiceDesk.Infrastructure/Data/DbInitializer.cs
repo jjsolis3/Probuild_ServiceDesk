@@ -1581,6 +1581,304 @@ public static class DbInitializer
                         CREATE INDEX IX_PayrollReceipts_ContractorId ON dbo.PayrollReceipts (ContractorId);
                 END");
 
+            // 55. In-app portal notifications (notification bell). One row per recipient.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PortalNotifications')
+                BEGIN
+                    CREATE TABLE dbo.PortalNotifications (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId    INT             NOT NULL
+                            CONSTRAINT FK_PortalNotifications_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        [Type]          NVARCHAR(60)    NOT NULL,
+                        Title           NVARCHAR(200)   NOT NULL,
+                        Message         NVARCHAR(1000)  NULL,
+                        LinkUrl         NVARCHAR(500)   NULL,
+                        Icon            NVARCHAR(60)    NULL,
+                        IsRead          BIT             NOT NULL DEFAULT 0,
+                        CreatedDate     DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        ReadDate        DATETIME        NULL
+                    );
+
+                    CREATE INDEX IX_PortalNotifications_User_Unread
+                        ON dbo.PortalNotifications (PortalUserId, IsRead, CreatedDate DESC);
+                END");
+
+            // 58. Per-user store favorites. (user, product) is unique.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreProductFavorites')
+                BEGIN
+                    CREATE TABLE dbo.StoreProductFavorites (
+                        Id              INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId    INT             NOT NULL
+                            CONSTRAINT FK_StoreProductFavorites_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        StoreProductId  INT             NOT NULL
+                            CONSTRAINT FK_StoreProductFavorites_Product
+                            REFERENCES dbo.StoreProducts(Id)
+                            ON DELETE CASCADE,
+                        AddedDate       DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        CONSTRAINT UQ_StoreProductFavorites_User_Product
+                            UNIQUE (PortalUserId, StoreProductId)
+                    );
+                END");
+
+            // 59. Saved size / gender / color preference on PortalUsers. Used to
+            //     pre-select variants in the catalog modal next visit so users
+            //     don't have to re-pick their size every quarter.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PortalUsers')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreSize')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreSize   NVARCHAR(50) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreGender')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreGender NVARCHAR(50) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PortalUsers') AND name = 'PreferredStoreColor')
+                        ALTER TABLE dbo.PortalUsers ADD PreferredStoreColor  NVARCHAR(50) NULL;
+                END");
+
+            // 57. Persistent shopping cart for the Company Store. One row per
+            //     cart line per user. Cleared on order placement.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreCartItems')
+                BEGIN
+                    CREATE TABLE dbo.StoreCartItems (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        PortalUserId            INT             NOT NULL
+                            CONSTRAINT FK_StoreCartItems_User
+                            REFERENCES dbo.PortalUsers(Id)
+                            ON DELETE CASCADE,
+                        StoreProductId          INT             NOT NULL
+                            CONSTRAINT FK_StoreCartItems_Product
+                            REFERENCES dbo.StoreProducts(Id),
+                        Quantity                INT             NOT NULL DEFAULT 1,
+                        SelectedSize            NVARCHAR(50)    NULL,
+                        SelectedGender          NVARCHAR(50)    NULL,
+                        SelectedColor           NVARCHAR(50)    NULL,
+                        CustomSelectionsJson    NVARCHAR(MAX)   NULL,
+                        AddedDate               DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_StoreCartItems_User
+                        ON dbo.StoreCartItems (PortalUserId, AddedDate DESC);
+                END");
+
+            // 56. Track when a store order's status last changed (for the order timeline stepper).
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrders')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StoreOrders') AND name = 'LastStatusChangedDate')
+                BEGIN
+                    ALTER TABLE dbo.StoreOrders ADD LastStatusChangedDate DATETIME NULL;
+                END");
+
+            // 60. Inbound email log — one row per Gmail message the poller saw,
+            //     with the outcome (TicketCreated / NoteAppended / Skipped:X /
+            //     Failed). Diagnostic counterpart to NotificationLogs so admins
+            //     can see WHY an incoming message did or didn't become a ticket.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InboundEmailLogs')
+                BEGIN
+                    CREATE TABLE dbo.InboundEmailLogs (
+                        Id                      INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        EmailConfigurationId    INT             NULL,
+                        GmailMessageId          NVARCHAR(100)   NOT NULL,
+                        MessageId               NVARCHAR(500)   NULL,
+                        Subject                 NVARCHAR(500)   NULL,
+                        FromAddress             NVARCHAR(200)   NULL,
+                        ReceivedDate            DATETIME        NULL,
+                        ProcessedDate           DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                        Action                  NVARCHAR(50)    NOT NULL DEFAULT 'Unknown',
+                        ActionDetail            NVARCHAR(500)   NULL,
+                        ErrorMessage            NVARCHAR(2000)  NULL
+                    );
+
+                    CREATE INDEX IX_InboundEmailLogs_ProcessedDate
+                        ON dbo.InboundEmailLogs (ProcessedDate DESC);
+                    CREATE INDEX IX_InboundEmailLogs_Action
+                        ON dbo.InboundEmailLogs (Action, ProcessedDate DESC);
+                    CREATE INDEX IX_InboundEmailLogs_GmailMessageId
+                        ON dbo.InboundEmailLogs (GmailMessageId);
+                END");
+
+            // 61. LastSuccessfulPollDate on EmailConfigurations — the existing
+            //     LastPolledDate advances on failures too, which makes it
+            //     useless for the diagnostic card's "Last successful poll"
+            //     readout. This new column is only stamped after a clean cycle.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailConfigurations')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.EmailConfigurations')
+                                     AND name = 'LastSuccessfulPollDate')
+                BEGIN
+                    ALTER TABLE dbo.EmailConfigurations
+                        ADD LastSuccessfulPollDate DATETIME NULL;
+                END");
+
+            // 62. Hot-path indexes for tables that EF Core's HasIndex
+            //     declarations cover but the raw-SQL DbInitializer path may not.
+            //     Each statement is idempotent so re-running on an already-
+            //     indexed DB is a no-op. Covers:
+            //       - TicketEmails: anti-duplicate + threading lookups on
+            //         every inbound Gmail message
+            //       - StoreOrderItems: the "any order references this product?"
+            //         check used by product deactivate / delete, plus the Ops
+            //         Hub product-totals aggregation
+            //       - TicketNotes: ticket detail page loads all notes for a ticket
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketEmails')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_GmailMessageId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE UNIQUE INDEX IX_TicketEmails_GmailMessageId
+                            ON dbo.TicketEmails (GmailMessageId)
+                            WHERE GmailMessageId IS NOT NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_MessageId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE INDEX IX_TicketEmails_MessageId
+                            ON dbo.TicketEmails (MessageId);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketEmails_TicketId'
+                                     AND object_id = OBJECT_ID('dbo.TicketEmails'))
+                        CREATE INDEX IX_TicketEmails_TicketId
+                            ON dbo.TicketEmails (TicketId);
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'StoreOrderItems')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_StoreOrderItems_StoreProductId'
+                                     AND object_id = OBJECT_ID('dbo.StoreOrderItems'))
+                        CREATE INDEX IX_StoreOrderItems_StoreProductId
+                            ON dbo.StoreOrderItems (StoreProductId);
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketNotes')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                                   WHERE name = 'IX_TicketNotes_TicketId'
+                                     AND object_id = OBJECT_ID('dbo.TicketNotes'))
+                        CREATE INDEX IX_TicketNotes_TicketId
+                            ON dbo.TicketNotes (TicketId, CreatedDate DESC);
+                END
+            ");
+
+            // 63. Contractor payroll — second rate + monthly retainer columns
+            //     on Employees, RateType on TicketTimeEntries, and snapshot
+            //     columns on PayrollReceipts for the burn-down retainer model.
+            //     All nullable / defaulted so existing receipts continue to
+            //     load cleanly.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Employees')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'EmergencyHourlyRate')
+                        ALTER TABLE dbo.Employees ADD EmergencyHourlyRate DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'MonthlyRetainerAmount')
+                        ALTER TABLE dbo.Employees ADD MonthlyRetainerAmount DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.Employees') AND name = 'MonthlyRetainerHoursIncluded')
+                        ALTER TABLE dbo.Employees ADD MonthlyRetainerHoursIncluded DECIMAL(6,2) NULL;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'RateType')
+                BEGIN
+                    ALTER TABLE dbo.TicketTimeEntries
+                        ADD RateType TINYINT NOT NULL CONSTRAINT DF_TicketTimeEntries_RateType DEFAULT 0;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'EmergencyRateSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD EmergencyRateSnapshot DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalStandardHours')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalStandardHours DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalStandardHours DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalEmergencyHours')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalEmergencyHours DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalEmergencyHours DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'MonthlyRetainerAmountSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD MonthlyRetainerAmountSnapshot DECIMAL(10,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'MonthlyRetainerHoursSnapshot')
+                        ALTER TABLE dbo.PayrollReceipts ADD MonthlyRetainerHoursSnapshot DECIMAL(6,2) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalRetainerHoursApplied')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalRetainerHoursApplied DECIMAL(10,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalRetainerHoursApplied DEFAULT 0;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'TotalRetainerAmountApplied')
+                        ALTER TABLE dbo.PayrollReceipts ADD TotalRetainerAmountApplied DECIMAL(12,2) NOT NULL CONSTRAINT DF_PayrollReceipts_TotalRetainerAmountApplied DEFAULT 0;
+                END");
+
+            // 64. Time-entry clock-in/out + modification audit + payroll
+            //     receipt ApprovalNote + CompanyHolidays admin table. All
+            //     additions are idempotent ALTER TABLE / CREATE TABLE checks.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTimeEntries')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'StartTime')
+                        ALTER TABLE dbo.TicketTimeEntries ADD StartTime DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'EndTime')
+                        ALTER TABLE dbo.TicketTimeEntries ADD EndTime DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModifiedDate')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModifiedDate DATETIME NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModifiedByEmail')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModifiedByEmail NVARCHAR(200) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModificationReason')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModificationReason NVARCHAR(500) NULL;
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.TicketTimeEntries') AND name = 'ModificationCount')
+                        ALTER TABLE dbo.TicketTimeEntries ADD ModificationCount INT NOT NULL CONSTRAINT DF_TicketTimeEntries_ModificationCount DEFAULT 0;
+                END
+
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                                   WHERE object_id = OBJECT_ID('dbo.PayrollReceipts') AND name = 'ApprovalNote')
+                BEGIN
+                    ALTER TABLE dbo.PayrollReceipts ADD ApprovalNote NVARCHAR(1000) NULL;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CompanyHolidays')
+                BEGIN
+                    CREATE TABLE dbo.CompanyHolidays (
+                        Id                  INT             NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                        Date                DATE            NOT NULL,
+                        Name                NVARCHAR(120)   NOT NULL,
+                        IsRecurringYearly   BIT             NOT NULL DEFAULT 0,
+                        CreatedDate         DATETIME        NOT NULL DEFAULT GETUTCDATE()
+                    );
+
+                    CREATE INDEX IX_CompanyHolidays_Date ON dbo.CompanyHolidays (Date);
+                END");
+
             // Create WorkflowRules table (automation engine)
             context.Database.ExecuteSqlRaw(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WorkflowRules')
@@ -1604,12 +1902,213 @@ public static class DbInitializer
                         ON dbo.WorkflowRules (IsActive, [Trigger], SortOrder);
                 END");
 
+            // 66. Payroll notification recipients — curated list of who gets
+            //     the "receipt submitted" / payment-confirmed alerts. When
+            //     empty the notifier falls back to "all active admins."
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollNotificationRecipients')
+                BEGIN
+                    CREATE TABLE dbo.PayrollNotificationRecipients (
+                        Id                      INT             IDENTITY(1,1) NOT NULL,
+                        PortalUserId            INT             NULL,
+                        DisplayName             NVARCHAR(200)   NULL,
+                        Email                   NVARCHAR(200)   NOT NULL,
+                        IsActive                BIT             NOT NULL DEFAULT 1,
+                        CreatedDate             DATETIME2(7)    NOT NULL DEFAULT SYSUTCDATETIME(),
+                        AddedByPortalUserId     INT             NULL,
+                        CONSTRAINT PK_PayrollNotificationRecipients PRIMARY KEY CLUSTERED (Id),
+                        CONSTRAINT FK_PayrollNotificationRecipients_PortalUser
+                            FOREIGN KEY (PortalUserId) REFERENCES dbo.PortalUsers (Id)
+                            ON DELETE SET NULL
+                    );
+
+                    CREATE INDEX IX_PayrollNotificationRecipients_Email
+                        ON dbo.PayrollNotificationRecipients (Email);
+                END");
+
+            // 67. Payroll lifecycle — payment method/reference, contractor's
+            //     confirm-received attestation, and the stale-reminder
+            //     throttle timestamp. All nullable so existing rows are
+            //     untouched.
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+                BEGIN
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentMethod') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentMethod NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentReference') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentReference NVARCHAR(200) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentConfirmedDate') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentConfirmedDate DATETIME2(7) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'PaymentConfirmedNote') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD PaymentConfirmedNote NVARCHAR(500) NULL;
+                    IF COL_LENGTH('dbo.PayrollReceipts', 'LastReminderSentUtc') IS NULL
+                        ALTER TABLE dbo.PayrollReceipts ADD LastReminderSentUtc DATETIME2(7) NULL;
+                END");
+
+            // 68. Payroll receipt activity / discussion thread — shared by
+            //     human comments (admin <-> contractor) and system-
+            //     generated audit entries. Cascade-delete with the parent
+            //     receipt; SetNull on author deletion so the audit row
+            //     survives.
+            context.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptComments')
+                BEGIN
+                    CREATE TABLE dbo.PayrollReceiptComments (
+                        Id                      INT             IDENTITY(1,1) NOT NULL,
+                        PayrollReceiptId        INT             NOT NULL,
+                        AuthorPortalUserId      INT             NULL,
+                        AuthorEmployeeId        INT             NULL,
+                        AuthorName              NVARCHAR(200)   NOT NULL,
+                        AuthorRole              NVARCHAR(20)    NOT NULL DEFAULT N'System',
+                        Body                    NVARCHAR(2000)  NOT NULL,
+                        CreatedDate             DATETIME2(7)    NOT NULL DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT PK_PayrollReceiptComments PRIMARY KEY CLUSTERED (Id),
+                        CONSTRAINT FK_PayrollReceiptComments_Receipt
+                            FOREIGN KEY (PayrollReceiptId) REFERENCES dbo.PayrollReceipts (Id)
+                            ON DELETE CASCADE,
+                        CONSTRAINT FK_PayrollReceiptComments_PortalUser
+                            FOREIGN KEY (AuthorPortalUserId) REFERENCES dbo.PortalUsers (Id)
+                            ON DELETE SET NULL,
+                        CONSTRAINT FK_PayrollReceiptComments_Employee
+                            FOREIGN KEY (AuthorEmployeeId) REFERENCES dbo.Employees (Id)
+                            ON DELETE SET NULL
+                    );
+
+                    CREATE INDEX IX_PayrollReceiptComments_Receipt_Created
+                        ON dbo.PayrollReceiptComments (PayrollReceiptId, CreatedDate);
+                END");
+
+            // 69. Seed the reminder-cadence AppSettings — off by default so
+            //     a fresh install doesn't start emailing recipients before
+            //     the admin has reviewed the list. Delivery mode defaults
+            //     to "Individual" — privacy-safe for setups that include
+            //     external recipients (AP@vendor.com, payroll bureau).
+            context.Database.ExecuteSqlRaw(@"
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AppSettings')
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollReminderEnabled')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderEnabled', 'false');
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollReminderDays')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollReminderDays', '3');
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'PayrollNotificationDeliveryMode')
+                        INSERT INTO dbo.AppSettings ([Key], [Value]) VALUES ('PayrollNotificationDeliveryMode', 'Individual');
+                END");
+
         }
         catch (Exception ex)
         {
             // Log and continue — the app can still start even if upgrades fail
             // (tables may not exist yet on a fresh install)
             Console.WriteLine($"[DbInitializer] Schema upgrade warning: {ex.Message}");
+        }
+
+        // 70. Admin SLA override — Tickets.OriginalDueDate captures the SLA
+        //     target snapshot at creation so we still know what would have
+        //     been due even after an admin extends DueDate. TicketHistory.Reason
+        //     carries the admin's justification so the audit trail is
+        //     self-contained. Both columns are nullable / additive — existing
+        //     rows keep working unchanged.
+        //
+        //     These two blocks run in their own try/catch so a failure in
+        //     any earlier schema upgrade above doesn't skip them — the
+        //     Ticket model references OriginalDueDate and the dashboard
+        //     query breaks if the column is missing.
+        TryRunSchemaUpgrade(context, "AddOriginalDueDateColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Tickets')
+               AND COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NULL
+            BEGIN
+                ALTER TABLE dbo.Tickets ADD OriginalDueDate DATETIME2(7) NULL;
+            END");
+
+        // Backfill runs as a separate statement so the ALTER above can
+        // commit first — SQL Server otherwise refuses to reference a
+        // freshly-added column in the same batch.
+        TryRunSchemaUpgrade(context, "BackfillOriginalDueDate", @"
+            IF COL_LENGTH('dbo.Tickets', 'OriginalDueDate') IS NOT NULL
+            BEGIN
+                UPDATE dbo.Tickets
+                   SET OriginalDueDate = DueDate
+                 WHERE OriginalDueDate IS NULL AND DueDate IS NOT NULL;
+            END");
+
+        TryRunSchemaUpgrade(context, "AddTicketHistoryReasonColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketHistory')
+               AND COL_LENGTH('dbo.TicketHistory', 'Reason') IS NULL
+            BEGIN
+                ALTER TABLE dbo.TicketHistory ADD Reason NVARCHAR(500) NULL;
+            END");
+
+        // 71. Recurring payroll charges — reusable per-contractor templates
+        //     (e.g. "Daily Reports — $25 per weekday") that auto-suggest a
+        //     line item on every new payroll receipt. Each saved receipt
+        //     snapshots the rows it actually used into PayrollReceiptCharges
+        //     so later template edits don't retroactively change historical
+        //     totals. Three independent upgrades — each idempotent.
+        TryRunSchemaUpgrade(context, "AddTotalRecurringChargesAmountColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+               AND COL_LENGTH('dbo.PayrollReceipts', 'TotalRecurringChargesAmount') IS NULL
+            BEGIN
+                ALTER TABLE dbo.PayrollReceipts
+                    ADD TotalRecurringChargesAmount DECIMAL(12,2) NOT NULL
+                    CONSTRAINT DF_PayrollReceipts_TotalRecurringChargesAmount DEFAULT 0;
+            END");
+
+        TryRunSchemaUpgrade(context, "CreateRecurringChargeTemplatesTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'RecurringChargeTemplates')
+            BEGIN
+                CREATE TABLE dbo.RecurringChargeTemplates (
+                    Id           INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    ContractorId INT NOT NULL,
+                    Label        NVARCHAR(120) NOT NULL,
+                    Cadence      TINYINT NOT NULL DEFAULT 0,
+                    WeekdayMask  TINYINT NOT NULL DEFAULT 62,
+                    PricingMode  TINYINT NOT NULL DEFAULT 0,
+                    UnitAmount   DECIMAL(12,4) NOT NULL DEFAULT 0,
+                    StartDate    DATETIME2(7) NULL,
+                    EndDate      DATETIME2(7) NULL,
+                    IsActive     BIT NOT NULL DEFAULT 1,
+                    Notes        NVARCHAR(500) NULL,
+                    CreatedDate  DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_RecurringChargeTemplates_Employees_ContractorId
+                        FOREIGN KEY (ContractorId) REFERENCES dbo.Employees(Id) ON DELETE CASCADE
+                );
+                CREATE INDEX IX_RecurringChargeTemplates_Contractor_Active
+                    ON dbo.RecurringChargeTemplates (ContractorId, IsActive);
+            END");
+
+        TryRunSchemaUpgrade(context, "CreatePayrollReceiptChargesTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptCharges')
+            BEGIN
+                CREATE TABLE dbo.PayrollReceiptCharges (
+                    Id                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    PayrollReceiptId    INT NOT NULL,
+                    TemplateId          INT NULL,
+                    LabelSnapshot       NVARCHAR(120) NOT NULL,
+                    CadenceSnapshot     TINYINT NOT NULL DEFAULT 0,
+                    PricingModeSnapshot TINYINT NOT NULL DEFAULT 0,
+                    UnitAmountSnapshot  DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    OccurrenceCount     INT NOT NULL DEFAULT 0,
+                    TotalAmount         DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    CreatedDate         DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_PayrollReceiptCharges_PayrollReceipts
+                        FOREIGN KEY (PayrollReceiptId) REFERENCES dbo.PayrollReceipts(Id) ON DELETE CASCADE,
+                    CONSTRAINT FK_PayrollReceiptCharges_RecurringChargeTemplates
+                        FOREIGN KEY (TemplateId) REFERENCES dbo.RecurringChargeTemplates(Id) ON DELETE SET NULL
+                );
+                CREATE INDEX IX_PayrollReceiptCharges_Receipt
+                    ON dbo.PayrollReceiptCharges (PayrollReceiptId);
+            END");
+    }
+
+    private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)
+    {
+        try
+        {
+            context.Database.ExecuteSqlRaw(sql);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbInitializer] {label} skipped: {ex.Message}");
         }
     }
 

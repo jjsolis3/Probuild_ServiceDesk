@@ -30,6 +30,97 @@
     <span class="badge fs-6 @StatusBadge(Model.Status)">@Model.Status</span>
 </div>
 
+@{
+    // Build the order progression timeline. "Cancelled" is a terminal off-path
+    // state and is shown as its own stepper instead of mixed with the happy path.
+    var statusFlow = new[] { "Pending", "Confirmed", "Fulfilled" };
+    var isCancelled = Model.Status == "Cancelled";
+    int currentIdx  = Array.IndexOf(statusFlow, Model.Status);
+    if (isCancelled) currentIdx = -1;
+
+    string StepIconFor(string s) => s switch
+    {
+        "Pending"   => "bi-hourglass-split",
+        "Confirmed" => "bi-check2-circle",
+        "Fulfilled" => "bi-box-seam",
+        "Cancelled" => "bi-x-circle",
+        _           => "bi-circle"
+    };
+
+    string FormatTs(DateTime dt) =>
+        dt.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM d, yyyy 'at' h:mm tt");
+}
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body py-3">
+        @if (isCancelled)
+        {
+            <div class="d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-danger text-white d-flex align-items-center justify-content-center"
+                     style="width:42px;height:42px;flex-shrink:0;">
+                    <i class="bi bi-x-circle fs-5"></i>
+                </div>
+                <div>
+                    <div class="fw-semibold text-danger">Order Cancelled</div>
+                    <div class="text-muted small">
+                        @if (Model.LastStatusChangedDate.HasValue)
+                        {
+                            <span>Cancelled on @FormatTs(Model.LastStatusChangedDate.Value)</span>
+                        }
+                        else
+                        {
+                            <span>Contact your operations team if you have questions.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="order-timeline d-flex align-items-start justify-content-between position-relative px-2 px-md-4 py-2">
+                @for (int i = 0; i < statusFlow.Length; i++)
+                {
+                    var step       = statusFlow[i];
+                    var isComplete = i < currentIdx;
+                    var isCurrent  = i == currentIdx;
+                    var dotClass   = isComplete ? "bg-success text-white"
+                                   : isCurrent  ? "bg-primary text-white"
+                                                : "bg-light text-muted border";
+                    var lineClass  = i < currentIdx ? "bg-success" : "bg-light";
+                    var labelClass = isCurrent ? "fw-bold text-primary"
+                                   : isComplete ? "fw-semibold text-success"
+                                                : "text-muted";
+
+                    <div class="text-center position-relative flex-fill" style="z-index:1;">
+                        <div class="rounded-circle d-inline-flex align-items-center justify-content-center @dotClass"
+                             style="width:36px;height:36px;">
+                            <i class="bi @StepIconFor(step)"></i>
+                        </div>
+                        <div class="mt-2 small @labelClass">@step</div>
+                        @if (isCurrent && step == "Pending")
+                        {
+                            <div class="text-muted" style="font-size:.7rem;">@FormatTs(Model.OrderDate)</div>
+                        }
+                        else if (isCurrent && Model.LastStatusChangedDate.HasValue)
+                        {
+                            <div class="text-muted" style="font-size:.7rem;">@FormatTs(Model.LastStatusChangedDate.Value)</div>
+                        }
+                        else if (isComplete && step == "Pending")
+                        {
+                            <div class="text-muted" style="font-size:.7rem;">@FormatTs(Model.OrderDate)</div>
+                        }
+                    </div>
+
+                    @if (i < statusFlow.Length - 1)
+                    {
+                        <div class="flex-grow-1 @lineClass" style="height:3px;margin-top:18px;border-radius:2px;"></div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-5">
         <div class="card shadow-sm mb-3">

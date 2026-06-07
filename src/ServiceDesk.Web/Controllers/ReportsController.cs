@@ -209,6 +209,247 @@ public class ReportsController : Controller
         return View(model);
     }
 
+    /// <summary>
+    /// CSAT trend dashboard — score-over-time, distribution, slice-by-
+    /// category / assignee, and recent feedback. Range defaults to the
+    /// last 90 days. All charts are computed in-memory off a single
+    /// query so a 1-year range with a few thousand responses is still
+    /// snappy.
+    /// </summary>
+    public async Task<IActionResult> Csat(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+        var spanDays  = Math.Max(1, (rangeTo - rangeFrom).TotalDays);
+
+        // Pull surveys + needed nav data in one query. CsatSurveys is
+        // small (one row per surveyed ticket) so projecting in-memory
+        // is the simplest correct path here.
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.SentDate >= rangeFrom && s.SentDate <= rangeTo)
+            .ToListAsync();
+
+        var completed = surveys.Where(s => s.Score.HasValue && s.CompletedDate.HasValue).ToList();
+
+        // ── KPIs ───────────────────────────────────────────────────
+        var avgScore      = completed.Count > 0
+            ? Math.Round(completed.Average(s => (double)s.Score!.Value), 2)
+            : (double?)null;
+        var responseRate  = surveys.Count > 0
+            ? Math.Round((double)completed.Count / surveys.Count * 100, 1)
+            : (double?)null;
+        var promoters     = completed.Count(s => s.Score >= 4);
+        var neutrals      = completed.Count(s => s.Score == 3);
+        var detractors    = completed.Count(s => s.Score <= 2);
+
+        // Trend delta — compare to the immediately-prior period of the
+        // same length. Lets the dashboard show "↑ 0.3 vs prior 90 days."
+        var priorFrom = rangeFrom.AddDays(-spanDays);
+        var priorTo   = rangeFrom.AddTicks(-1);
+        var priorScores = await _context.CsatSurveys
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.SentDate >= priorFrom && s.SentDate <= priorTo)
+            .Select(s => s.Score!.Value)
+            .ToListAsync();
+        double? priorAvg = priorScores.Count > 0
+            ? Math.Round(priorScores.Average(s => (double)s), 2) : (double?)null;
+        double? delta = (avgScore.HasValue && priorAvg.HasValue)
+            ? Math.Round(avgScore.Value - priorAvg.Value, 2) : (double?)null;
+
+        // ── Score over time (monthly buckets) ──────────────────────
+        // Build the bucket spine up front so months with zero responses
+        // still appear on the chart as gaps rather than collapsing the
+        // x-axis.
+        var monthlyBuckets = new List<DateTime>();
+        var cursor = new DateTime(rangeFrom.Year, rangeFrom.Month, 1);
+        var endMonth = new DateTime(rangeTo.Year, rangeTo.Month, 1);
+        while (cursor <= endMonth)
+        {
+            monthlyBuckets.Add(cursor);
+            cursor = cursor.AddMonths(1);
+        }
+
+        var byMonth = completed
+            .GroupBy(s => new DateTime(s.CompletedDate!.Value.Year, s.CompletedDate.Value.Month, 1))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var trendLabels = monthlyBuckets.Select(m => m.ToString("MMM yyyy")).ToArray();
+        var trendAvg    = monthlyBuckets
+            .Select(m => byMonth.TryGetValue(m, out var bucket) && bucket.Count > 0
+                ? (object)Math.Round(bucket.Average(s => (double)s.Score!.Value), 2)
+                : null!)
+            .ToArray();
+        var trendCount = monthlyBuckets
+            .Select(m => byMonth.TryGetValue(m, out var bucket) ? bucket.Count : 0)
+            .ToArray();
+
+        // ── Score distribution (1..5) ──────────────────────────────
+        var distribution = new int[5];
+        foreach (var s in completed)
+            distribution[s.Score!.Value - 1]++;
+
+        // ── By assignee (top 10 with at least 3 responses) ─────────
+        var byAssignee = completed
+            .Where(s => s.Ticket?.AssignedTo != null)
+            .GroupBy(s => new { Id = s.Ticket!.AssignedToId!.Value, Name = s.Ticket!.AssignedTo!.FullName })
+            .Select(g => new {
+                AgentId  = g.Key.Id,
+                Name     = g.Key.Name,
+                Count    = g.Count(),
+                Avg      = Math.Round(g.Average(s => (double)s.Score!.Value), 2)
+            })
+            .Where(x => x.Count >= 3)
+            .OrderByDescending(x => x.Avg)
+            .ThenByDescending(x => x.Count)
+            .Take(10)
+            .ToList();
+
+        // ── By category ────────────────────────────────────────────
+        var byCategory = completed
+            .Where(s => s.Ticket != null)
+            .GroupBy(s => ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString())
+            .Select(g => new {
+                Name  = g.Key,
+                Count = g.Count(),
+                Avg   = Math.Round(g.Average(s => (double)s.Score!.Value), 2)
+            })
+            .OrderByDescending(x => x.Avg)
+            .ToList();
+
+        // ── Recent feedback (latest 20 completed surveys w/ a comment) ──
+        var recent = completed
+            .Where(s => !string.IsNullOrWhiteSpace(s.Feedback))
+            .OrderByDescending(s => s.CompletedDate)
+            .Take(20)
+            .Select(s => new {
+                s.Id, s.TicketId,
+                Score          = s.Score!.Value,
+                Feedback       = s.Feedback,
+                CompletedDate  = s.CompletedDate!.Value,
+                Assignee       = s.Ticket?.AssignedTo?.FullName ?? "—",
+                Category       = s.Ticket != null
+                    ? ((Core.Enums.TicketCategory)s.Ticket.Category).ToString()
+                    : "—",
+                TicketTitle    = s.Ticket?.Title
+            })
+            .ToList();
+
+        ViewBag.From            = rangeFrom;
+        ViewBag.To              = rangeTo;
+        ViewBag.AvgScore        = avgScore;
+        ViewBag.PriorAvg        = priorAvg;
+        ViewBag.Delta           = delta;
+        ViewBag.ResponseRate    = responseRate;
+        ViewBag.TotalSent       = surveys.Count;
+        ViewBag.TotalCompleted  = completed.Count;
+        ViewBag.Promoters       = promoters;
+        ViewBag.Neutrals        = neutrals;
+        ViewBag.Detractors      = detractors;
+        ViewBag.TrendLabels     = trendLabels;
+        ViewBag.TrendAvg        = trendAvg;
+        ViewBag.TrendCount      = trendCount;
+        ViewBag.Distribution    = distribution;
+        ViewBag.ByAssignee      = byAssignee;
+        ViewBag.ByCategory      = byCategory;
+        ViewBag.RecentFeedback  = recent;
+        ViewData["Title"]       = "CSAT Trends";
+        return View();
+    }
+
+    /// <summary>
+    /// Agent Performance leaderboard — for each active agent, surfaces
+    /// resolved-count, open-count, avg resolution hours, and avg CSAT
+    /// score across the configured date range. Defaults to last 30 days
+    /// so the page reflects "recent" performance without an admin having
+    /// to pick a range first.
+    /// </summary>
+    public async Task<IActionResult> Agents(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        // Two pulls: tickets assigned to an agent in range (for volume +
+        // MTTR) and CSAT surveys completed in the same range (for the
+        // satisfaction column). Both are bounded so a multi-year DB
+        // doesn't pull the world.
+        var ticketsInRange = await _context.Tickets
+            .Include(t => t.AssignedTo)
+            .Where(t => t.AssignedToId != null
+                     && t.CreatedDate <= rangeTo
+                     && (t.ResolvedDate == null || t.ResolvedDate >= rangeFrom))
+            .ToListAsync();
+
+        var resolvedSurveys = await _context.CsatSurveys
+            .Include(s => s.Ticket)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null && s.Ticket.AssignedToId != null)
+            .ToListAsync();
+
+        var perAgent = ticketsInRange
+            .GroupBy(t => new { t.AssignedToId, Name = t.AssignedTo!.FullName })
+            .Select(g =>
+            {
+                var resolved = g.Where(t =>
+                    (t.Status == Core.Enums.TicketStatus.Resolved || t.Status == Core.Enums.TicketStatus.Closed)
+                    && t.ResolvedDate.HasValue
+                    && t.ResolvedDate >= rangeFrom
+                    && t.ResolvedDate <= rangeTo).ToList();
+
+                var open = g.Where(t =>
+                    t.Status != Core.Enums.TicketStatus.Resolved
+                    && t.Status != Core.Enums.TicketStatus.Closed
+                    && t.Status != Core.Enums.TicketStatus.Cancelled).Count();
+
+                var mttrHours = resolved.Count > 0
+                    ? resolved.Average(t => (t.ResolvedDate!.Value - t.CreatedDate).TotalHours)
+                    : (double?)null;
+
+                var agentSurveys = resolvedSurveys
+                    .Where(s => s.Ticket!.AssignedToId == g.Key.AssignedToId)
+                    .ToList();
+                var csat = agentSurveys.Count > 0
+                    ? Math.Round(agentSurveys.Average(s => (double)s.Score!.Value), 2)
+                    : (double?)null;
+
+                return new
+                {
+                    AgentId      = g.Key.AssignedToId!.Value,
+                    Name         = g.Key.Name,
+                    Resolved     = resolved.Count,
+                    Open         = open,
+                    MttrHours    = mttrHours.HasValue ? Math.Round(mttrHours.Value, 1) : (double?)null,
+                    CsatAvg      = csat,
+                    CsatCount    = agentSurveys.Count
+                };
+            })
+            .OrderByDescending(x => x.Resolved)
+            .ThenByDescending(x => x.CsatAvg ?? 0)
+            .ToList();
+
+        // Headline KPIs across all agents in scope.
+        var totalResolved = perAgent.Sum(a => a.Resolved);
+        var totalOpen     = perAgent.Sum(a => a.Open);
+        var avgMttr       = perAgent.Where(a => a.MttrHours.HasValue).Select(a => a.MttrHours!.Value).ToList();
+        var fleetMttr     = avgMttr.Count > 0 ? Math.Round(avgMttr.Average(), 1) : (double?)null;
+        var fleetCsat     = perAgent.Where(a => a.CsatAvg.HasValue).Select(a => a.CsatAvg!.Value).ToList();
+        var fleetCsatAvg  = fleetCsat.Count > 0 ? Math.Round(fleetCsat.Average(), 2) : (double?)null;
+
+        ViewBag.From          = rangeFrom;
+        ViewBag.To            = rangeTo;
+        ViewBag.PerAgent      = perAgent;
+        ViewBag.TotalResolved = totalResolved;
+        ViewBag.TotalOpen     = totalOpen;
+        ViewBag.FleetMttr     = fleetMttr;
+        ViewBag.FleetCsat     = fleetCsatAvg;
+        ViewData["Title"]     = "Agent Performance";
+        return View();
+    }
+
     public async Task<IActionResult> Tickets()
     {
         var tickets = await _context.Tickets
@@ -411,6 +652,7 @@ public class ReportsController : Controller
         var userStats = employees.Select(e => {
             ticketStats.TryGetValue(e.Id, out var s);
             return new UserTicketStats {
+                EmployeeId       = e.Id,
                 EmployeeName     = e.FullName,
                 Department       = e.Department,
                 Branch           = e.BranchName,
@@ -559,6 +801,336 @@ public class ReportsController : Controller
             .ToList();
 
         return Json(filtered);
+    }
+
+    // ==================== Drill-down JSON endpoints for the new reports ====================
+    //
+    // Each endpoint returns a shape compatible with the matching profile
+    // in _DrillDownModal.cshtml (tickets / surveys). Range params mirror
+    // the parent report's filters so a click on a card opens exactly the
+    // slice that produced that number — no double-counting, no skew.
+
+    // GET /Reports/TicketsForAgent?agentId=12&scope=resolved&from=...&to=...
+    // scope: "resolved" → tickets the agent moved to Resolved/Closed in
+    //                     the window (matches the leaderboard Resolved cell)
+    //        "open"     → that agent's currently open tickets (live, not
+    //                     date-bounded — matches the Open cell)
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsForAgent(int agentId, string scope, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var query = _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.AssignedToId == agentId)
+            .AsQueryable();
+
+        if (string.Equals(scope, "resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t =>
+                (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+                && t.ResolvedDate.HasValue
+                && t.ResolvedDate >= rangeFrom
+                && t.ResolvedDate <= rangeTo);
+        }
+        else if (string.Equals(scope, "open", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t =>
+                t.Status != TicketStatus.Resolved
+                && t.Status != TicketStatus.Closed
+                && t.Status != TicketStatus.Cancelled);
+        }
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await query
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/SurveysForAgent?agentId=12&from=...&to=...
+    // Returns the surveys (completed, scored) for tickets the agent
+    // handled in the window. Powers the CSAT cell drill-down on the
+    // Agent leaderboard and the Top Performers row on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysForAgent(int agentId, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null
+                     && s.Ticket.AssignedToId == agentId)
+            .OrderByDescending(s => s.CompletedDate)
+            .ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString(),
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/SurveysByTone?tone=promoter|neutral|detractor&from=...&to=...
+    // Powers the Promoters / Detractors KPI cards on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysByTone(string tone, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+
+        var q = _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo);
+
+        q = (tone?.ToLowerInvariant()) switch
+        {
+            "promoter"  => q.Where(s => s.Score >= 4),
+            "neutral"   => q.Where(s => s.Score == 3),
+            "detractor" => q.Where(s => s.Score <= 2),
+            _           => q
+        };
+
+        var surveys = await q.OrderByDescending(s => s.CompletedDate).ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = s.Ticket != null ? ((Core.Enums.TicketCategory)s.Ticket.Category).ToString() : "—",
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/SurveysByCategory?category=HardwareIssue&from=...&to=...
+    // Drill-down for "Avg Score by Category" rows on the CSAT page.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> SurveysByCategory(string category, DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-90)).Date;
+
+        // Parse the category string back to its enum int for the WHERE.
+        if (!Enum.TryParse<Core.Enums.TicketCategory>(category, true, out var catEnum))
+            return Json(Array.Empty<object>());
+        var catInt = (int)catEnum;
+
+        var surveys = await _context.CsatSurveys
+            .Include(s => s.Ticket).ThenInclude(t => t!.AssignedTo)
+            .Where(s => s.Score.HasValue
+                     && s.CompletedDate.HasValue
+                     && s.CompletedDate >= rangeFrom
+                     && s.CompletedDate <= rangeTo
+                     && s.Ticket != null
+                     && s.Ticket.Category == catInt)
+            .OrderByDescending(s => s.CompletedDate)
+            .ToListAsync();
+
+        return Json(surveys.Select(s => new {
+            ticketId      = s.TicketId,
+            score         = s.Score!.Value,
+            feedback      = s.Feedback,
+            category      = ((Core.Enums.TicketCategory)s.Ticket!.Category).ToString(),
+            assignee      = s.Ticket?.AssignedTo?.FullName ?? "—",
+            title         = s.Ticket?.Title,
+            completedDate = s.CompletedDate!.Value.ToString("MMM d, yyyy")
+        }));
+    }
+
+    // GET /Reports/TicketsResolvedInRange?from=...&to=...
+    // Fleet-wide drill — powers the Resolved KPI tile on the Agent
+    // Performance page (all agents combined).
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsResolvedInRange(DateTime? from, DateTime? to)
+    {
+        var rangeTo   = (to ?? DateTime.UtcNow.Date).Date.AddDays(1).AddTicks(-1);
+        var rangeFrom = (from ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => (t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed)
+                     && t.ResolvedDate.HasValue
+                     && t.ResolvedDate >= rangeFrom
+                     && t.ResolvedDate <= rangeTo)
+            .OrderByDescending(t => t.ResolvedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/TicketsCurrentlyOpen
+    // Fleet-wide drill — powers the Open KPI tile on the Agent
+    // Performance page. Not date-bounded by design: "what's on the
+    // queue right now."
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsCurrentlyOpen()
+    {
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.Status != TicketStatus.Resolved
+                     && t.Status != TicketStatus.Closed
+                     && t.Status != TicketStatus.Cancelled)
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
+    }
+
+    // GET /Reports/AllAssets — flat list of every asset, for the Total
+    // Assets card on the Assets report. Filtered, sortable, paginated
+    // inside the drill modal via DataTables.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> AllAssets()
+    {
+        var raw = await _context.Assets
+            .Include(a => a.AssignedTo).ThenInclude(e => e!.Branch)
+            .OrderByDescending(a => a.PurchaseDate)
+            .Select(a => new {
+                a.Id, a.AssetTag, a.Name, a.AssetType, a.Status,
+                AssignedTo   = a.AssignedTo != null ? a.AssignedTo.FirstName + " " + a.AssignedTo.LastName : null,
+                Branch       = a.AssignedTo != null && a.AssignedTo.Branch != null ? a.AssignedTo.Branch.Name : null,
+                PurchaseDate = a.PurchaseDate
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(a => new {
+            id            = a.Id,
+            assetTag      = a.AssetTag,
+            name          = a.Name,
+            type          = a.AssetType.ToString(),
+            status        = a.Status.ToString(),
+            assignedTo    = a.AssignedTo,
+            branch        = a.Branch,
+            purchaseDate  = a.PurchaseDate?.ToString("MMM dd, yyyy")
+        }));
+    }
+
+    // GET /Reports/AssetsAssignedToEmployee?employeeId=N
+    // Powers the asset-drill cell on the User Reports table.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> AssetsAssignedToEmployee(int employeeId)
+    {
+        var raw = await _context.Assets
+            .Include(a => a.AssignedTo).ThenInclude(e => e!.Branch)
+            .Where(a => a.AssignedToId == employeeId)
+            .OrderByDescending(a => a.PurchaseDate)
+            .Select(a => new {
+                a.Id, a.AssetTag, a.Name, a.AssetType, a.Status,
+                AssignedTo   = a.AssignedTo != null ? a.AssignedTo.FirstName + " " + a.AssignedTo.LastName : null,
+                Branch       = a.AssignedTo != null && a.AssignedTo.Branch != null ? a.AssignedTo.Branch.Name : null,
+                PurchaseDate = a.PurchaseDate
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(a => new {
+            id            = a.Id,
+            assetTag      = a.AssetTag,
+            name          = a.Name,
+            type          = a.AssetType.ToString(),
+            status        = a.Status.ToString(),
+            assignedTo    = a.AssignedTo,
+            branch        = a.Branch,
+            purchaseDate  = a.PurchaseDate?.ToString("MMM dd, yyyy")
+        }));
+    }
+
+    // GET /Reports/TicketsForRequester?employeeId=N&scope=open|resolved|all
+    // Powers the ticket-drill cells on the User Reports table.
+    [HttpGet]
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketsForRequester(int employeeId, string? scope)
+    {
+        var query = _context.Tickets
+            .Include(t => t.SubmittedBy).Include(t => t.AssignedTo)
+            .Where(t => t.SubmittedById == employeeId);
+
+        if (string.Equals(scope, "open", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(t => t.Status != TicketStatus.Resolved
+                                  && t.Status != TicketStatus.Closed
+                                  && t.Status != TicketStatus.Cancelled);
+        else if (string.Equals(scope, "resolved", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+
+        var catLookup = await LoadCategoryLookupAsync();
+        var raw = await query
+            .OrderByDescending(t => t.CreatedDate)
+            .Select(t => new {
+                t.Id, t.Title, t.Category, t.Priority, t.Status,
+                SubmittedBy = t.SubmittedBy!.FirstName + " " + t.SubmittedBy.LastName,
+                AssignedTo  = t.AssignedTo != null ? t.AssignedTo.FirstName + " " + t.AssignedTo.LastName : "Unassigned",
+                Created     = t.CreatedDate.ToString("MMM dd, yyyy")
+            })
+            .ToListAsync();
+
+        return Json(raw.Select(t => new {
+            t.Id, t.Title,
+            Category = CategoryName(t.Category, catLookup),
+            Priority = t.Priority.GetDisplayName(),
+            Status   = t.Status.GetDisplayName(),
+            t.SubmittedBy, t.AssignedTo, t.Created
+        }));
     }
 
     // ==================== STORE ORDERS REPORT ====================
@@ -846,5 +1418,286 @@ public class ReportsController : Controller
         if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
             return $"\"{value.Replace("\"", "\"\"")}\"";
         return value;
+    }
+
+    // ──────────────────────────── Contractor Payroll Reports ────────────────────────────
+
+    /// <summary>
+    /// Payroll report dashboard. Filter receipts by date range, contractor,
+    /// rate-type composition, and status. Aggregates totals across the
+    /// matching receipts and shows a per-contractor roll-up so AP can see
+    /// at a glance who got paid what during the period.
+    /// </summary>
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> Payroll(DateTime? from, DateTime? to,
+        int? contractorId, string? rateType, string? status)
+    {
+        // Default window = current calendar month
+        var now = DateTime.UtcNow;
+        var defaultFrom = new DateTime(now.Year, now.Month, 1);
+        var defaultTo   = defaultFrom.AddMonths(1).AddDays(-1);
+        from ??= defaultFrom;
+        to   ??= defaultTo;
+        // Normalize the window endpoints to inclusive day boundaries: the
+        // user picks calendar dates, but PeriodStart/PeriodEnd carry full
+        // timestamps. Without this, a receipt with PeriodStart=May 31 09:00
+        // and `to`=May 31 00:00 silently drops out of the boundary day.
+        var fromBoundary = from.Value.Date;
+        var toBoundary   = to.Value.Date.AddDays(1).AddTicks(-1);
+
+        var query = _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.ApprovedBy)
+            .Where(r => r.PeriodStart <= toBoundary && r.PeriodEnd >= fromBoundary);
+
+        if (contractorId.HasValue)
+            query = query.Where(r => r.ContractorId == contractorId.Value);
+
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(r => r.Status == status);
+
+        var receipts = await query.OrderByDescending(r => r.PeriodStart).ToListAsync();
+
+        // Rate-type filter applied client-side (in-memory) so we can use the
+        // same enum-derived predicates as the AdminPayroll list.
+        if (!string.IsNullOrEmpty(rateType))
+        {
+            receipts = rateType switch
+            {
+                "StandardOnly" => receipts.Where(r => r.TotalEmergencyHours == 0).ToList(),
+                "HasEmergency" => receipts.Where(r => r.TotalEmergencyHours > 0).ToList(),
+                "HasRetainer"  => receipts.Where(r => r.TotalRetainerAmountApplied > 0).ToList(),
+                _              => receipts
+            };
+        }
+
+        // Aggregate metrics
+        ViewBag.TotalReceipts        = receipts.Count;
+        ViewBag.TotalContractors     = receipts.Select(r => r.ContractorId).Distinct().Count();
+        ViewBag.TotalStandardHours   = receipts.Sum(r => r.TotalStandardHours);
+        ViewBag.TotalEmergencyHours  = receipts.Sum(r => r.TotalEmergencyHours);
+        ViewBag.TotalRetainerHours   = receipts.Sum(r => r.TotalRetainerHoursApplied);
+        ViewBag.TotalRetainerAmount  = receipts.Sum(r => r.TotalRetainerAmountApplied);
+        ViewBag.TotalAmount          = receipts.Sum(r => r.TotalAmount);
+        ViewBag.PaidAmount           = receipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+        ViewBag.ApprovedAmount       = receipts.Where(r => r.Status == "Approved").Sum(r => r.TotalAmount);
+        ViewBag.PendingAmount        = receipts.Where(r => r.Status == "Submitted").Sum(r => r.TotalAmount);
+
+        // Per-contractor roll-up
+        var byContractor = receipts
+            .GroupBy(r => r.ContractorId)
+            .Select(g => new
+            {
+                ContractorId   = g.Key,
+                ContractorName = g.First().Contractor != null
+                    ? (g.First().Contractor!.FirstName + " " + g.First().Contractor!.LastName)
+                    : "(unknown)",
+                ReceiptCount    = g.Count(),
+                StandardHours   = g.Sum(r => r.TotalStandardHours),
+                EmergencyHours  = g.Sum(r => r.TotalEmergencyHours),
+                RetainerApplied = g.Sum(r => r.TotalRetainerAmountApplied),
+                TotalAmount     = g.Sum(r => r.TotalAmount),
+                PaidAmount      = g.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount)
+            })
+            .OrderByDescending(x => x.TotalAmount)
+            .ToList();
+        ViewBag.ByContractor = byContractor;
+
+        ViewBag.Contractors = await _context.Employees
+            .Where(e => e.IsContractor)
+            .OrderBy(e => e.LastName)
+            .ToListAsync();
+
+        ViewBag.FilterFrom         = from;
+        ViewBag.FilterTo           = to;
+        ViewBag.FilterContractorId = contractorId;
+        ViewBag.FilterRateType     = rateType;
+        ViewBag.FilterStatus       = status;
+
+        return View(receipts);
+    }
+
+    /// <summary>
+    /// Excel export of the same payroll report. Two sheets — Summary (one row
+    /// per contractor) and Receipts (one row per receipt with full breakdown).
+    /// </summary>
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> PayrollExport(DateTime? from, DateTime? to,
+        int? contractorId, string? rateType, string? status)
+    {
+        var now = DateTime.UtcNow;
+        var defaultFrom = new DateTime(now.Year, now.Month, 1);
+        var defaultTo   = defaultFrom.AddMonths(1).AddDays(-1);
+        from ??= defaultFrom;
+        to   ??= defaultTo;
+
+        var query = _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.ApprovedBy)
+            .Where(r => r.PeriodStart <= to && r.PeriodEnd >= from);
+
+        if (contractorId.HasValue)
+            query = query.Where(r => r.ContractorId == contractorId.Value);
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(r => r.Status == status);
+
+        var receipts = await query.OrderBy(r => r.PeriodStart).ToListAsync();
+
+        if (!string.IsNullOrEmpty(rateType))
+        {
+            receipts = rateType switch
+            {
+                "StandardOnly" => receipts.Where(r => r.TotalEmergencyHours == 0).ToList(),
+                "HasEmergency" => receipts.Where(r => r.TotalEmergencyHours > 0).ToList(),
+                "HasRetainer"  => receipts.Where(r => r.TotalRetainerAmountApplied > 0).ToList(),
+                _              => receipts
+            };
+        }
+
+        var companyName = (await _context.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ProBuild";
+
+        using var wb = new XLWorkbook();
+
+        // ── Sheet 1: Summary ──
+        var sum = wb.Worksheets.Add("Summary");
+        var brandBlue = XLColor.FromHtml("#0d6efd");
+        var headerGray = XLColor.FromHtml("#343a40");
+
+        sum.Cell(1, 1).Value = companyName;
+        sum.Cell(1, 1).Style.Font.Bold = true;
+        sum.Cell(1, 1).Style.Font.FontSize = 18;
+        sum.Cell(1, 1).Style.Font.FontColor = brandBlue;
+        sum.Range(1, 1, 1, 8).Merge();
+
+        sum.Cell(2, 1).Value = "Contractor Payroll Report";
+        sum.Cell(2, 1).Style.Font.Bold = true;
+        sum.Cell(2, 1).Style.Font.FontSize = 13;
+        sum.Range(2, 1, 2, 8).Merge();
+
+        sum.Cell(3, 1).Value = $"Period: {from:MMM d, yyyy} → {to:MMM d, yyyy}  |  Generated: {now:MMM d, yyyy 'at' h:mm tt} UTC";
+        sum.Cell(3, 1).Style.Font.FontSize = 9;
+        sum.Cell(3, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
+        sum.Range(3, 1, 3, 8).Merge();
+
+        var sumHeaders = new[] { "Contractor", "Receipts", "Standard Hrs", "Emergency Hrs", "Retainer Applied", "Total Amount", "Paid Amount" };
+        for (int c = 0; c < sumHeaders.Length; c++)
+        {
+            var cell = sum.Cell(5, c + 1);
+            cell.Value = sumHeaders[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = headerGray;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        int sRow = 6;
+        var byContractor = receipts
+            .GroupBy(r => r.ContractorId)
+            .Select(g => new
+            {
+                Name            = g.First().Contractor != null ? g.First().Contractor!.FirstName + " " + g.First().Contractor!.LastName : "(unknown)",
+                Count           = g.Count(),
+                StandardHours   = g.Sum(r => r.TotalStandardHours),
+                EmergencyHours  = g.Sum(r => r.TotalEmergencyHours),
+                RetainerApplied = g.Sum(r => r.TotalRetainerAmountApplied),
+                TotalAmount     = g.Sum(r => r.TotalAmount),
+                PaidAmount      = g.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount)
+            })
+            .OrderByDescending(x => x.TotalAmount)
+            .ToList();
+
+        foreach (var c in byContractor)
+        {
+            sum.Cell(sRow, 1).Value = c.Name;
+            sum.Cell(sRow, 2).Value = c.Count;
+            sum.Cell(sRow, 3).Value = c.StandardHours;
+            sum.Cell(sRow, 4).Value = c.EmergencyHours;
+            sum.Cell(sRow, 5).Value = c.RetainerApplied;
+            sum.Cell(sRow, 6).Value = c.TotalAmount;
+            sum.Cell(sRow, 7).Value = c.PaidAmount;
+            sum.Cell(sRow, 5).Style.NumberFormat.Format = "$#,##0.00";
+            sum.Cell(sRow, 6).Style.NumberFormat.Format = "$#,##0.00";
+            sum.Cell(sRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+            sRow++;
+        }
+
+        // Totals row
+        if (byContractor.Count > 0)
+        {
+            var totalsRow = sRow;
+            sum.Cell(totalsRow, 1).Value = "TOTAL";
+            sum.Cell(totalsRow, 2).Value = byContractor.Sum(x => x.Count);
+            sum.Cell(totalsRow, 3).Value = byContractor.Sum(x => x.StandardHours);
+            sum.Cell(totalsRow, 4).Value = byContractor.Sum(x => x.EmergencyHours);
+            sum.Cell(totalsRow, 5).Value = byContractor.Sum(x => x.RetainerApplied);
+            sum.Cell(totalsRow, 6).Value = byContractor.Sum(x => x.TotalAmount);
+            sum.Cell(totalsRow, 7).Value = byContractor.Sum(x => x.PaidAmount);
+            sum.Range(totalsRow, 1, totalsRow, 7).Style.Font.Bold = true;
+            sum.Range(totalsRow, 1, totalsRow, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#e9ecef");
+            sum.Range(totalsRow, 5, totalsRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+        }
+
+        sum.Columns().AdjustToContents();
+
+        // ── Sheet 2: Receipts ──
+        var det = wb.Worksheets.Add("Receipts");
+        det.Cell(1, 1).Value = "Contractor Payroll — Receipt Detail";
+        det.Cell(1, 1).Style.Font.Bold = true;
+        det.Cell(1, 1).Style.Font.FontSize = 13;
+        det.Range(1, 1, 1, 13).Merge();
+
+        var detHeaders = new[] {
+            "Receipt #", "Contractor", "Period Start", "Period End", "Status",
+            "Std Hrs", "Std Rate", "Emerg Hrs", "Emerg Rate",
+            "Retainer Hrs", "Retainer Applied", "Total Amount",
+            "Approved By"
+        };
+        for (int c = 0; c < detHeaders.Length; c++)
+        {
+            var cell = det.Cell(3, c + 1);
+            cell.Value = detHeaders[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = headerGray;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        int dRow = 4;
+        foreach (var r in receipts)
+        {
+            var contractorName = r.Contractor != null ? r.Contractor.FirstName + " " + r.Contractor.LastName : "(unknown)";
+            var approverName   = r.ApprovedBy != null ? r.ApprovedBy.FirstName + " " + r.ApprovedBy.LastName : "";
+            det.Cell(dRow, 1).Value  = r.Id;
+            det.Cell(dRow, 2).Value  = contractorName;
+            det.Cell(dRow, 3).Value  = r.PeriodStart;
+            det.Cell(dRow, 4).Value  = r.PeriodEnd;
+            det.Cell(dRow, 5).Value  = r.Status;
+            det.Cell(dRow, 6).Value  = r.TotalStandardHours;
+            det.Cell(dRow, 7).Value  = r.HourlyRateSnapshot;
+            det.Cell(dRow, 8).Value  = r.TotalEmergencyHours;
+            det.Cell(dRow, 9).Value  = r.EmergencyRateSnapshot ?? 0m;
+            det.Cell(dRow, 10).Value = r.TotalRetainerHoursApplied;
+            det.Cell(dRow, 11).Value = r.TotalRetainerAmountApplied;
+            det.Cell(dRow, 12).Value = r.TotalAmount;
+            det.Cell(dRow, 13).Value = approverName;
+            det.Cell(dRow, 3).Style.DateFormat.Format = "yyyy-mm-dd";
+            det.Cell(dRow, 4).Style.DateFormat.Format = "yyyy-mm-dd";
+            det.Cell(dRow, 7).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 9).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 11).Style.NumberFormat.Format = "$#,##0.00";
+            det.Cell(dRow, 12).Style.NumberFormat.Format = "$#,##0.00";
+            dRow++;
+        }
+        det.Columns().AdjustToContents();
+
+        using var ms = new System.IO.MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var fileName = $"Payroll_{from:yyyyMMdd}_to_{to:yyyyMMdd}.xlsx";
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
     }
 }

@@ -1,0 +1,97 @@
+@*
+    Renders the per-month payout summary card body for the New Receipt page.
+    Used both on initial page render and as the response body of the
+    /Contractor/RecalcReceiptPreview endpoint so the client can swap it in
+    when the entry-selection checkboxes change.
+*@
+@model ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation
+@{
+    var contractor  = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
+    var stdRate     = contractor?.HourlyRate ?? 0m;
+    var emerRate    = contractor?.EmergencyHourlyRate ?? 0m;
+}
+@if (Model != null)
+{
+    <table class="table table-sm align-middle mb-3">
+        <tbody>
+            <tr>
+                <td class="fw-semibold">Standard hours</td>
+                <td class="text-end">@Model.TotalStandardHours.ToString("0.##") h</td>
+                <td colspan="2"></td>
+            </tr>
+            @if (Model.TotalRetainerHoursApplied > 0)
+            {
+                <tr class="text-muted small">
+                    <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Covered by retainer</td>
+                    <td class="text-end">@Model.TotalRetainerHoursApplied.ToString("0.##") h</td>
+                    <td class="text-end">$0.00</td>
+                    <td class="text-end">$0.00</td>
+                </tr>
+            }
+            <tr class="small">
+                <td class="ps-4"><i class="fas fa-level-down-alt fa-rotate-90 me-1"></i>Billable at standard rate</td>
+                <td class="text-end">@Model.StandardBillableHours.ToString("0.##") h</td>
+                <td class="text-end">@stdRate.ToString("C2")</td>
+                <td class="text-end fw-semibold">@Model.StandardBillableAmount.ToString("C2")</td>
+            </tr>
+            @if (Model.TotalEmergencyHours > 0)
+            {
+                <tr>
+                    <td class="fw-semibold">Emergency hours</td>
+                    <td class="text-end">@Model.TotalEmergencyHours.ToString("0.##") h</td>
+                    <td class="text-end">@emerRate.ToString("C2")</td>
+                    <td class="text-end fw-semibold">@Model.EmergencyBillableAmount.ToString("C2")</td>
+                </tr>
+            }
+            @foreach (var m in Model.Months.Where(b => b.RetainerAmountThisReceipt > 0))
+            {
+                <tr>
+                    <td class="fw-semibold">
+                        Monthly retainer — @m.Label
+                        <span class="text-muted small">
+                            (covers up to @((contractor?.MonthlyRetainerHoursIncluded ?? 0m).ToString("0.##")) h)
+                        </span>
+                    </td>
+                    <td colspan="2"></td>
+                    <td class="text-end fw-semibold">@m.RetainerAmountThisReceipt.ToString("C2")</td>
+                </tr>
+            }
+            @foreach (var m in Model.Months.Where(b =>
+                !b.IsFirstReceiptOfMonth
+                && (contractor?.MonthlyRetainerAmount ?? 0m) > 0))
+            {
+                <tr class="text-muted small">
+                    <td>
+                        <i class="fas fa-info-circle me-1"></i>@m.Label retainer already applied to a prior receipt
+                        @if (m.RetainerHoursApplied > 0)
+                        { <text>(@m.RetainerHoursApplied.ToString("0.##") h absorbed from this receipt's pool)</text> }
+                    </td>
+                    <td colspan="3"></td>
+                </tr>
+            }
+            @foreach (var charge in Model.RecurringCharges)
+            {
+                <tr>
+                    <td class="fw-semibold">
+                        @charge.LabelSnapshot
+                        <span class="text-muted small">— @charge.OccurrenceCount × @charge.UnitAmountSnapshot.ToString("C2")</span>
+                    </td>
+                    <td colspan="2"></td>
+                    <td class="text-end fw-semibold">@charge.TotalAmount.ToString("C2")</td>
+                </tr>
+            }
+            <tr style="border-top:2px solid #333;">
+                <td class="fw-bold pt-2">Estimated total</td>
+                <td class="text-end pt-2">
+                    <span class="text-muted small">@Model.TotalHours.ToString("0.##") h logged</span>
+                </td>
+                <td></td>
+                <td class="text-end fw-bold pt-2" style="font-size:1.1rem; color:#0d6efd;">$@Model.TotalAmount.ToString("N2")</td>
+            </tr>
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted mb-0">Nothing selected — tick at least one time entry or recurring charge to preview a total.</p>
+}

@@ -27,6 +27,11 @@ public class StoreOrder
     [Display(Name = "Confirmation Sent")]
     public bool ConfirmationEmailSent { get; set; }
 
+    // Timestamp of the most recent status transition. Null for orders created
+    // before this column was added; the timeline view falls back to OrderDate.
+    [Display(Name = "Last Status Change")]
+    public DateTime? LastStatusChangedDate { get; set; }
+
     [StringLength(1000)]
     public string? Notes { get; set; }
 

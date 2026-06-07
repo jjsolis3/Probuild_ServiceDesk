@@ -19,13 +19,16 @@
 
             <div class="mb-3">
                 <label asp-for="Title" class="form-label"><span class="text-danger ms-1">*</span></label>
-                <input asp-for="Title" class="form-control" placeholder="Brief description of the issue" />
+                <input asp-for="Title" class="form-control" placeholder="Brief description of the issue"
+                       data-autosave="ticket-new-title" />
                 <span asp-validation-for="Title" class="text-danger"></span>
             </div>
 
             <div class="mb-3">
                 <label asp-for="Description" class="form-label"><span class="text-danger ms-1">*</span></label>
-                <textarea asp-for="Description" class="form-control" rows="5" placeholder="Provide detailed information about the issue"></textarea>
+                <textarea asp-for="Description" class="form-control" rows="5"
+                          placeholder="Provide detailed information about the issue"
+                          data-autosave="ticket-new-description"></textarea>
                 <span asp-validation-for="Description" class="text-danger"></span>
             </div>
 

@@ -1,4 +1,3 @@
-using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,11 +13,28 @@ public class ContractorController : Controller
 {
     private readonly ServiceDeskDbContext _context;
     private readonly EmailNotificationService _emailService;
+    private readonly PayrollCalculatorService _payroll;
+    private readonly PayrollReceiptAttachmentService _attachments;
+    private readonly PayrollActivityService _activity;
+    private readonly PortalNotificationService _bell;
+    private readonly MentionService _mentions;
 
-    public ContractorController(ServiceDeskDbContext context, EmailNotificationService emailService)
+    public ContractorController(
+        ServiceDeskDbContext context,
+        EmailNotificationService emailService,
+        PayrollCalculatorService payroll,
+        PayrollReceiptAttachmentService attachments,
+        PayrollActivityService activity,
+        PortalNotificationService bell,
+        MentionService mentions)
     {
         _context = context;
         _emailService = emailService;
+        _payroll = payroll;
+        _attachments = attachments;
+        _activity = activity;
+        _bell = bell;
+        _mentions = mentions;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -58,13 +74,130 @@ public class ContractorController : Controller
             .OrderByDescending(e => e.WorkDate)
             .ToListAsync();
 
+        // Estimated unclaimed amount uses per-entry rate (Standard or Emergency)
+        // so contractors with a mixed workload see a realistic figure on the
+        // dashboard, not a single-rate approximation.
+        var standardRateForDashboard  = contractor.HourlyRate ?? 0m;
+        var emergencyRateForDashboard = contractor.EmergencyHourlyRate ?? 0m;
+        var unclaimedAmount = unclaimed
+            .Where(e => e.IsBillable)
+            .Sum(e => e.Hours * (e.RateType == Core.Enums.PayRateType.Emergency
+                                    ? emergencyRateForDashboard
+                                    : standardRateForDashboard));
+
+        // YTD aggregates — split between Paid (cash actually in hand) and
+        // Submitted/Approved (in-flight). January 1 of the current year in
+        // the contractor's local time is good enough — payroll dates are
+        // tracked at day-precision so timezone drift around year-end is a
+        // non-issue here.
+        var ytdStart = new DateTime(DateTime.UtcNow.Year, 1, 1);
+        var ytdReceipts = receipts.Where(r => r.PeriodStart >= ytdStart || r.PeriodEnd >= ytdStart).ToList();
+
+        ViewBag.YtdPaidAmount     = ytdReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+        ViewBag.YtdPaidHours      = ytdReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalHours);
+        ViewBag.YtdPendingAmount  = ytdReceipts.Where(r => r.Status == "Submitted" || r.Status == "Approved").Sum(r => r.TotalAmount);
+        ViewBag.YtdPendingHours   = ytdReceipts.Where(r => r.Status == "Submitted" || r.Status == "Approved").Sum(r => r.TotalHours);
+        ViewBag.YtdReceiptCount   = ytdReceipts.Count(r => r.Status != "Draft");
+        ViewBag.YtdYear           = DateTime.UtcNow.Year;
+
         ViewBag.Contractor          = contractor;
         ViewBag.UnclaimedEntries    = unclaimed;
         ViewBag.UnclaimedBillableHrs = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours);
-        ViewBag.UnclaimedAmount     = unclaimed.Where(e => e.IsBillable).Sum(e => e.Hours)
-                                        * (contractor.HourlyRate ?? 0);
+        ViewBag.UnclaimedAmount      = unclaimedAmount;
         ViewData["Title"] = "Payroll";
         return View(receipts);
+    }
+
+    // POST /Contractor/EditUnclaimedEntry
+    //
+    // Lets a contractor correct an unclaimed time entry they own — rate-type
+    // mislabel (Standard ↔ Emergency), hours typo, description, billable flag.
+    // Only their own entries, only while still unclaimed (no PayrollReceiptId),
+    // and an audit row (ModifiedDate/By/Reason/Count) is always written.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditUnclaimedEntry(int entryId, decimal hours,
+        string? description, bool isBillable, bool isEmergency,
+        string? modificationReason)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId
+                                   && e.LoggedByEmployeeId == contractor.Id
+                                   && e.PayrollReceiptId == null);
+        if (entry == null)
+        {
+            TempData["Error"] = "Entry not found, claimed on a receipt, or not yours to edit.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        if (string.IsNullOrWhiteSpace(modificationReason))
+        {
+            TempData["Error"] = "A reason is required when editing a time entry.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        if (hours <= 0)
+        {
+            TempData["Error"] = "Hours must be greater than zero.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        var rateType = isEmergency
+            ? Core.Enums.PayRateType.Emergency
+            : Core.Enums.PayRateType.Standard;
+
+        // Emergency requires the contractor to actually have an emergency
+        // rate configured. Silently fall back to Standard otherwise so the
+        // entry doesn't end up billing against a null rate.
+        if (rateType == Core.Enums.PayRateType.Emergency
+            && (contractor.EmergencyHourlyRate == null || contractor.EmergencyHourlyRate <= 0))
+        {
+            rateType = Core.Enums.PayRateType.Standard;
+        }
+
+        entry.Hours              = hours;
+        entry.Description        = description;
+        entry.IsBillable         = isBillable;
+        entry.RateType           = rateType;
+        entry.ModifiedDate       = DateTime.UtcNow;
+        entry.ModifiedByEmail    = contractor.Email;
+        entry.ModificationReason = modificationReason.Trim();
+        entry.ModificationCount += 1;
+
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Entry on Ticket #{entry.TicketId} updated.";
+        return RedirectToAction(nameof(Payroll));
+    }
+
+    // POST /Contractor/DeleteUnclaimedEntry
+    //
+    // Same ownership and "still unclaimed" gate as EditUnclaimedEntry. Once
+    // an entry hits a receipt it can only be unstuck by deleting the receipt
+    // (existing path) — direct delete here is intentionally blocked.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteUnclaimedEntry(int entryId)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var entry = await _context.TicketTimeEntries
+            .FirstOrDefaultAsync(e => e.Id == entryId
+                                   && e.LoggedByEmployeeId == contractor.Id
+                                   && e.PayrollReceiptId == null);
+        if (entry == null)
+        {
+            TempData["Error"] = "Entry not found, claimed on a receipt, or not yours to delete.";
+            return RedirectToAction(nameof(Payroll));
+        }
+
+        _context.TicketTimeEntries.Remove(entry);
+        await _context.SaveChangesAsync();
+        TempData["Success"] = $"Entry on Ticket #{entry.TicketId} deleted.";
+        return RedirectToAction(nameof(Payroll));
     }
 
     // ── New Receipt ───────────────────────────────────────────────────────────
@@ -87,13 +220,27 @@ public class ContractorController : Controller
         ViewBag.PeriodEnd   = end.ToString("yyyy-MM-dd");
 
         var entries = await GetUnclaimedEntriesAsync(contractor.Id, start, end);
+
+        // Recurring-charge templates active and in-window for this period.
+        // Each renders as one pre-checked row on the receipt form with an
+        // editable Occurrences input.
+        var (templates, snapshots) = await BuildChargeCandidatesAsync(contractor, start, end);
+        ViewBag.ChargeTemplates = templates;
+        ViewBag.ChargeSnapshots = snapshots;
+
+        // Preview the same totals the POST handler will persist — keeps the
+        // user from being surprised by retainer / rate-type math on submit.
+        ViewBag.PayrollCalc = await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
+
         return View(entries);
     }
 
     // POST /Contractor/NewReceipt
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes)
+    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes,
+        int[]? selectedEntryIds,
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null)
@@ -105,31 +252,51 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        var entries = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
-
-        if (!entries.Any())
+        var hasEntries  = selectedEntryIds != null && selectedEntryIds.Length > 0;
+        var hasCharges  = selectedChargeTemplateIds != null && selectedChargeTemplateIds.Length > 0;
+        if (!hasEntries && !hasCharges)
         {
-            TempData["Warning"] = "No unclaimed billable time entries found for the selected period.";
+            TempData["Error"] = "Pick at least one entry or recurring charge to include on the receipt.";
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        var totalHours     = entries.Sum(e => e.Hours);
-        var billableHours  = entries.Where(e => e.IsBillable).Sum(e => e.Hours);
-        var rate           = contractor.HourlyRate ?? 0m;
-        var totalAmount    = billableHours * rate;
+        var available = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
+        var requestedSet = (selectedEntryIds ?? Array.Empty<int>()).ToHashSet();
+        var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
+
+        var snapshots = await BuildSelectedChargeSnapshotsAsync(
+            contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+
+        if (entries.Count == 0 && snapshots.Count == 0)
+        {
+            TempData["Warning"] = "The selected entries / charges are no longer available (they may have been claimed, deleted, or are out of the period).";
+            return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
+        }
+
+        var droppedCount = (selectedEntryIds?.Length ?? 0) - entries.Count;
+
+        var calc = await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
 
         var receipt = new PayrollReceipt
         {
-            ContractorId       = contractor.Id,
-            PeriodStart        = periodStart,
-            PeriodEnd          = periodEnd,
-            TotalHours         = totalHours,
-            TotalBillableHours = billableHours,
-            HourlyRateSnapshot = rate,
-            TotalAmount        = totalAmount,
-            Status             = "Draft",
-            Notes              = notes,
-            CreatedDate        = DateTime.UtcNow,
+            ContractorId                   = contractor.Id,
+            PeriodStart                    = periodStart,
+            PeriodEnd                      = periodEnd,
+            TotalHours                     = calc.TotalHours,
+            TotalBillableHours             = calc.TotalBillableHours,
+            HourlyRateSnapshot             = contractor.HourlyRate ?? 0m,
+            EmergencyRateSnapshot          = contractor.EmergencyHourlyRate,
+            TotalStandardHours             = calc.TotalStandardHours,
+            TotalEmergencyHours            = calc.TotalEmergencyHours,
+            MonthlyRetainerAmountSnapshot  = contractor.MonthlyRetainerAmount,
+            MonthlyRetainerHoursSnapshot   = contractor.MonthlyRetainerHoursIncluded,
+            TotalRetainerHoursApplied      = calc.TotalRetainerHoursApplied,
+            TotalRetainerAmountApplied     = calc.TotalRetainerAmountApplied,
+            TotalRecurringChargesAmount    = calc.TotalRecurringChargesAmount,
+            TotalAmount                    = calc.TotalAmount,
+            Status                         = "Draft",
+            Notes                          = notes,
+            CreatedDate                    = DateTime.UtcNow,
         };
 
         _context.PayrollReceipts.Add(receipt);
@@ -139,10 +306,50 @@ public class ContractorController : Controller
         foreach (var entry in entries)
             entry.PayrollReceiptId = receipt.Id;
 
+        // Attach the recurring-charge snapshots — assigning to the FK is
+        // enough (no need to set Receipt nav).
+        foreach (var snap in snapshots)
+        {
+            snap.PayrollReceiptId = receipt.Id;
+            _context.PayrollReceiptCharges.Add(snap);
+        }
+
         await _context.SaveChangesAsync();
 
-        TempData["Success"] = "Payroll receipt created as Draft.";
+        TempData["Success"] = droppedCount > 0
+            ? $"Payroll receipt created as Draft. ({droppedCount} selected entr{(droppedCount == 1 ? "y was" : "ies were")} no longer available and got skipped.)"
+            : "Payroll receipt created as Draft.";
         return RedirectToAction(nameof(ReceiptDetail), new { id = receipt.Id });
+    }
+
+    // POST /Contractor/RecalcReceiptPreview
+    // Re-renders the summary card body for the New Receipt page when the
+    // contractor ticks / unticks entries or charges, or changes a charge's
+    // occurrence override. Returns the partial as HTML so the client can
+    // swap it in directly.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecalcReceiptPreview(DateTime periodStart, DateTime periodEnd,
+        int[]? selectedEntryIds,
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return Forbid();
+
+        ViewBag.Contractor = contractor;
+
+        var available = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
+        var requestedSet = (selectedEntryIds ?? Array.Empty<int>()).ToHashSet();
+        var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
+
+        var snapshots = await BuildSelectedChargeSnapshotsAsync(
+            contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+
+        var calc = (entries.Count == 0 && snapshots.Count == 0)
+            ? null
+            : await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
+
+        return PartialView("_NewReceiptSummary", calc);
     }
 
     // ── Receipt Detail (printable) ────────────────────────────────────────────
@@ -150,23 +357,46 @@ public class ContractorController : Controller
     // GET /Contractor/ReceiptDetail/{id}
     public async Task<IActionResult> ReceiptDetail(int id)
     {
+        // Admins / IT Agents can view any receipt (needed for the AdminPayroll
+        // "View" link to work and for the activity thread to be visible to
+        // them); contractors can only see their own.
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("IT Agent");
         var contractor = await GetContractorEmployeeAsync();
-        if (contractor == null)
+        if (!isAdmin && contractor == null)
             return RedirectToAction(nameof(Payroll));
 
-        var receipt = await _context.PayrollReceipts
+        var query = _context.PayrollReceipts
             .Include(r => r.Contractor)
             .Include(r => r.ApprovedBy)
             .Include(r => r.TimeEntries)
                 .ThenInclude(e => e.Ticket)
-            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+            .Include(r => r.Charges)
+            .AsQueryable();
+
+        if (!isAdmin)
+            query = query.Where(r => r.ContractorId == contractor!.Id);
+
+        var receipt = await query.FirstOrDefaultAsync(r => r.Id == id);
 
         if (receipt == null) return NotFound();
 
         var companyName = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
 
+        // Rebuild the per-month breakdown for display. The receipt's own
+        // entries are excluded from the "already claimed" check so the
+        // retainer math reflects the moment this receipt was created.
+        // Passing the saved charges snapshot folds them back into TotalAmount.
+        ViewBag.PayrollCalc = await _payroll.CalculateAsync(
+            receipt.Contractor!, receipt.TimeEntries.ToList(),
+            receiptIdToIgnore: receipt.Id,
+            charges: receipt.Charges.ToList());
+
         ViewBag.CompanyName = companyName;
+        ViewBag.Comments = await _context.PayrollReceiptComments
+            .Where(c => c.PayrollReceiptId == receipt.Id)
+            .OrderBy(c => c.CreatedDate)
+            .ToListAsync();
         ViewData["Title"] = $"Receipt #{receipt.Id}";
         return View(receipt);
     }
@@ -192,17 +422,159 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(ReceiptDetail), new { id });
         }
 
+        // Detect resubmit vs initial submit by looking for a prior
+        // rejection. The timeline message differs so the admin sees that
+        // the contractor responded to feedback.
+        var isResubmit = !string.IsNullOrWhiteSpace(receipt.RejectionNote);
+        var priorRejectionNote = receipt.RejectionNote;
+
         receipt.Status        = "Submitted";
         receipt.SubmittedDate = DateTime.UtcNow;
         receipt.RejectionNote = null;  // clear any prior rejection note on resubmit
+        receipt.LastReminderSentUtc = null; // restart the reminder clock
         await _context.SaveChangesAsync();
+
+        await _activity.LogContractorAsync(receipt.Id, contractor,
+            isResubmit
+                ? $"Resubmitted after revision."
+                : "Submitted for review.");
 
         receipt.Contractor ??= contractor;
         try { await _emailService.NotifyReceiptSubmittedAsync(receipt); }
         catch (Exception) { /* email failure should not block UI flow */ }
 
-        TempData["Success"] = "Receipt submitted for review.";
+        // In-app bell: ping every active admin so the receipt shows up
+        // on their notification feed alongside the email. The
+        // configured-recipients table isn't relevant for the bell —
+        // payroll IS an admin-side task, so admins always see it.
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollSubmitted",
+            title:   $"Receipt #{receipt.Id} submitted by {contractor.FirstName} {contractor.LastName}",
+            message: $"{receipt.TotalHours:0.##} hrs · {receipt.TotalAmount:C}",
+            link:    Url.Action(nameof(ReceiptDetail), new { id = receipt.Id }),
+            icon:    "bi-file-earmark-check");
+
+        TempData["Success"] = isResubmit ? "Receipt resubmitted for review." : "Receipt submitted for review.";
         return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    // POST /Contractor/ConfirmPaymentReceived/{id}
+    //
+    // Closes the loop on a Paid receipt — contractor attests that the
+    // funds landed. We don't change Status (still "Paid") because Paid
+    // is the payer's claim; ConfirmedDate is the payee's attestation.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmPaymentReceived(int id, string? confirmationNote)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status != "Paid")
+        {
+            TempData["Error"] = "Only Paid receipts can be confirmed.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+        if (receipt.PaymentConfirmedDate.HasValue)
+        {
+            TempData["Warning"] = "Payment has already been confirmed for this receipt.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        receipt.PaymentConfirmedDate = DateTime.UtcNow;
+        receipt.PaymentConfirmedNote = string.IsNullOrWhiteSpace(confirmationNote) ? null : confirmationNote.Trim();
+        await _context.SaveChangesAsync();
+
+        var summary = string.IsNullOrWhiteSpace(receipt.PaymentConfirmedNote)
+            ? "Confirmed payment received."
+            : $"Confirmed payment received — {receipt.PaymentConfirmedNote}";
+        await _activity.LogContractorAsync(receipt.Id, contractor, summary);
+
+        try { await _emailService.NotifyReceiptPaymentConfirmedAsync(receipt); }
+        catch (Exception) { /* email failure should not block UI flow */ }
+
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollConfirmed",
+            title:   $"{contractor.FirstName} confirmed payment on #{receipt.Id}",
+            message: receipt.PaymentConfirmedNote ?? $"{receipt.TotalAmount:C} received",
+            link:    Url.Action(nameof(ReceiptDetail), new { id = receipt.Id }),
+            icon:    "bi-check2-all");
+
+        TempData["Success"] = "Thanks — payment confirmed.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    // POST /Contractor/PostReceiptComment/{id}
+    //
+    // Contractor-side write into the receipt activity thread. Allowed on
+    // any non-Draft receipt the contractor owns, so they can ask
+    // questions on a Submitted receipt or attach a note to a Paid one.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PostReceiptComment(int id, string body)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            TempData["Error"] = "Comment cannot be empty.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        await _activity.LogContractorAsync(receipt.Id, contractor, body.Trim());
+
+        var linkUrl = Url.Action(nameof(ReceiptDetail), "Contractor", new { id }) ?? "#";
+
+        // Bell admins on every contractor comment — the receipt
+        // belongs in their queue so they need to see the new note.
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollComment",
+            title:   $"New comment on receipt #{receipt.Id}",
+            message: body.Length > 140 ? body[..140] + "…" : body,
+            link:    linkUrl,
+            icon:    "bi-chat-square-text");
+
+        // @mention scan — anyone @-tagged gets a separate "you were
+        // mentioned" ping.
+        await _mentions.ProcessMentionsAsync(
+            body:              body,
+            authorDisplayName: $"{contractor.FirstName} {contractor.LastName}",
+            sourceLabel:       $"Receipt #{receipt.Id}",
+            linkUrl:           linkUrl,
+            notificationType:  "ReceiptMention");
+
+        TempData["Success"] = "Comment posted.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
+    /// <summary>
+    /// Broadcasts an in-app bell notification to every active Admin.
+    /// Mirrors the safety pattern used by EmailNotificationService — any
+    /// exception is logged and swallowed so a flaky NotifyAsync call
+    /// can't break the surrounding flow (submit, approve, etc.).
+    /// </summary>
+    private async Task NotifyAdminsOnBellAsync(string type, string title, string? message, string? link, string? icon)
+    {
+        try
+        {
+            var adminIds = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin")
+                .Select(u => u.Id)
+                .ToListAsync();
+            if (adminIds.Count == 0) return;
+            await _bell.NotifyManyAsync(adminIds, type, title, message, link, icon);
+        }
+        catch (Exception) { /* never block the flow */ }
     }
 
     // ── Delete Draft Receipt ──────────────────────────────────────────────────
@@ -255,106 +627,60 @@ public class ContractorController : Controller
 
         if (receipt == null) return NotFound();
 
-        var companyName = (await _context.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
-
-        using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("Payroll Receipt");
-
-        var brandBlue  = XLColor.FromHtml("#0d6efd");
-        var headerGray = XLColor.FromHtml("#343a40");
-        var altRow     = XLColor.FromHtml("#f8f9fa");
-
-        // Row 1: Company name
-        ws.Cell(1, 1).Value = companyName;
-        ws.Cell(1, 1).Style.Font.Bold      = true;
-        ws.Cell(1, 1).Style.Font.FontSize  = 18;
-        ws.Cell(1, 1).Style.Font.FontColor = brandBlue;
-        ws.Range(1, 1, 1, 7).Merge();
-
-        // Row 2: Document title
-        ws.Cell(2, 1).Value = "Contractor Payroll Receipt";
-        ws.Cell(2, 1).Style.Font.Bold     = true;
-        ws.Cell(2, 1).Style.Font.FontSize = 13;
-        ws.Range(2, 1, 2, 7).Merge();
-
-        // Row 3: Contractor
-        ws.Cell(3, 1).Value = $"Contractor: {receipt.Contractor?.FullName}";
-        ws.Cell(3, 1).Style.Font.FontSize = 11;
-        ws.Range(3, 1, 3, 7).Merge();
-
-        // Row 4: Period
-        ws.Cell(4, 1).Value = $"Period: {receipt.PeriodStart:MMMM dd, yyyy} – {receipt.PeriodEnd:MMMM dd, yyyy}";
-        ws.Cell(4, 1).Style.Font.FontSize = 11;
-        ws.Range(4, 1, 4, 7).Merge();
-
-        // Row 5: Status + generated
-        ws.Cell(5, 1).Value = $"Status: {receipt.Status}   |   Generated: {DateTime.UtcNow:MMM d, yyyy 'at' h:mm tt} UTC";
-        ws.Cell(5, 1).Style.Font.FontSize  = 9;
-        ws.Cell(5, 1).Style.Font.FontColor = XLColor.FromHtml("#6c757d");
-        ws.Range(5, 1, 5, 7).Merge();
-
-        ws.Row(6).Height = 6;
-
-        // Row 7: Column headers
-        var headers = new[] { "Work Date", "Ticket #", "Description", "Hours", "Billable", "Rate ($/hr)", "Amount" };
-        for (int col = 1; col <= headers.Length; col++)
-        {
-            var cell = ws.Cell(7, col);
-            cell.Value = headers[col - 1];
-            cell.Style.Font.Bold            = true;
-            cell.Style.Font.FontColor       = XLColor.White;
-            cell.Style.Fill.BackgroundColor = headerGray;
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        }
-
-        // Data rows
-        int row = 8;
-        bool alt = false;
-        foreach (var entry in receipt.TimeEntries.OrderBy(e => e.WorkDate))
-        {
-            var amount = entry.IsBillable ? entry.Hours * receipt.HourlyRateSnapshot : 0m;
-            if (alt)
-                ws.Range(row, 1, row, 7).Style.Fill.BackgroundColor = altRow;
-
-            ws.Cell(row, 1).Value = entry.WorkDate.ToString("yyyy-MM-dd");
-            ws.Cell(row, 2).Value = entry.Ticket?.Id.ToString() ?? "-";
-            ws.Cell(row, 3).Value = entry.Description ?? entry.Ticket?.Title ?? "-";
-            ws.Cell(row, 4).Value = (double)entry.Hours;
-            ws.Cell(row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 5).Value = entry.IsBillable ? "Yes" : "No";
-            ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 6).Value = entry.IsBillable ? (double)receipt.HourlyRateSnapshot : 0;
-            ws.Cell(row, 6).Style.NumberFormat.Format = "$#,##0.00";
-            ws.Cell(row, 7).Value = (double)amount;
-            ws.Cell(row, 7).Style.NumberFormat.Format = "$#,##0.00";
-
-            alt = !alt;
-            row++;
-        }
-
-        // Totals row
-        var totalsBg = XLColor.FromHtml("#e9ecef");
-        ws.Range(row, 1, row, 7).Style.Fill.BackgroundColor = totalsBg;
-        ws.Cell(row, 1).Value = "TOTAL";
-        ws.Cell(row, 1).Style.Font.Bold = true;
-        ws.Range(row, 1, row, 3).Merge();
-        ws.Cell(row, 4).Value = (double)receipt.TotalHours;
-        ws.Cell(row, 4).Style.Font.Bold = true;
-        ws.Cell(row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        ws.Cell(row, 7).Value = (double)receipt.TotalAmount;
-        ws.Cell(row, 7).Style.Font.Bold           = true;
-        ws.Cell(row, 7).Style.NumberFormat.Format = "$#,##0.00";
-
-        ws.Columns().AdjustToContents();
-
-        using var ms = new MemoryStream();
-        wb.SaveAs(ms);
-        ms.Position = 0;
-
+        var bytes = await _attachments.RenderXlsxAsync(receipt);
         var fileName = $"PayrollReceipt_{receipt.Id}_{receipt.PeriodStart:yyyyMMdd}-{receipt.PeriodEnd:yyyyMMdd}.xlsx";
-        return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
+
+    // POST /Contractor/ShareReceipt/{id}
+    //
+    // Emails a Submitted/Approved/Paid receipt to the recipient(s) the
+    // contractor supplies — typically Accounts Payable. Attaches the
+    // receipt as PDF, XLSX, or both based on the form selection. Draft
+    // receipts are intentionally blocked — sending a half-finished receipt
+    // to AP would be confusing.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ShareReceipt(int id, string toEmail, string? ccEmail,
+        string? subject, string? message, string format)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .Include(r => r.TimeEntries)
+                .ThenInclude(e => e.Ticket)
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status == "Draft")
+        {
+            TempData["Error"] = "Submit the receipt before sharing it. Draft receipts cannot be emailed.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+        if (string.IsNullOrWhiteSpace(toEmail))
+        {
+            TempData["Error"] = "Recipient email is required.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var attachments = await _attachments.BuildAsync(receipt, format);
+        if (attachments.Count == 0)
+        {
+            TempData["Error"] = "Invalid attachment format.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var senderDisplay = $"{contractor.FirstName} {contractor.LastName} ({contractor.Email})";
+        var ok = await _emailService.ShareReceiptAsync(receipt, toEmail, ccEmail, subject, message, attachments, senderDisplay);
+
+        TempData[ok ? "Success" : "Error"] = ok
+            ? $"Receipt #{receipt.Id} sent to {toEmail}."
+            : $"Email send failed. Check the Email Activity log for details.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
@@ -369,5 +695,98 @@ public class ContractorController : Controller
                 e.WorkDate <= end.Date)
             .OrderBy(e => e.WorkDate)
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Loads the contractor's active recurring-charge templates that overlap
+    /// the receipt period and builds a parallel list of (not-yet-saved)
+    /// PayrollReceiptCharge snapshots with auto-computed occurrence counts.
+    /// Used by the New Receipt GET to pre-render the charges table + summary.
+    /// </summary>
+    private async Task<(List<RecurringChargeTemplate> templates, List<PayrollReceiptCharge> snapshots)>
+        BuildChargeCandidatesAsync(Employee contractor, DateTime start, DateTime end)
+    {
+        var all = await _context.RecurringChargeTemplates
+            .Where(t => t.ContractorId == contractor.Id && t.IsActive)
+            .OrderBy(t => t.Label)
+            .ToListAsync();
+
+        // Date-window overlap done client-side (small list, comparisons are
+        // simpler than translating optional bounds to SQL).
+        var candidates = all.Where(t => RecurringChargeCalculator.CountOccurrences(t, start, end) > 0).ToList();
+
+        var snapshots = candidates
+            .Select(t => BuildChargeSnapshot(t, contractor, RecurringChargeCalculator.CountOccurrences(t, start, end)))
+            .ToList();
+
+        return (candidates, snapshots);
+    }
+
+    /// <summary>
+    /// Builds PayrollReceiptCharge snapshots from the form's selected template
+    /// ids + parallel occurrence-override array. Silently drops ids that
+    /// don't belong to this contractor, are inactive, or fall outside their
+    /// own date window. Override counts are clamped to [0, 2 × auto] to
+    /// stop a typo / tampering from producing a runaway number.
+    /// </summary>
+    private async Task<List<PayrollReceiptCharge>> BuildSelectedChargeSnapshotsAsync(
+        Employee contractor, DateTime periodStart, DateTime periodEnd,
+        int[]? selectedTemplateIds, int[]? occurrenceOverrides)
+    {
+        if (selectedTemplateIds == null || selectedTemplateIds.Length == 0)
+            return new List<PayrollReceiptCharge>();
+
+        var idSet = selectedTemplateIds.ToHashSet();
+        var templates = await _context.RecurringChargeTemplates
+            .Where(t => t.ContractorId == contractor.Id && t.IsActive && idSet.Contains(t.Id))
+            .ToListAsync();
+
+        // Pair selectedTemplateIds[i] with occurrenceOverrides[i] by position
+        // so the override goes with the right template even if templates come
+        // back from the DB in a different order.
+        var overrideByTemplateId = new Dictionary<int, int>();
+        for (int i = 0; i < selectedTemplateIds.Length; i++)
+        {
+            if (occurrenceOverrides != null && i < occurrenceOverrides.Length)
+                overrideByTemplateId[selectedTemplateIds[i]] = occurrenceOverrides[i];
+        }
+
+        var result = new List<PayrollReceiptCharge>();
+        foreach (var t in templates)
+        {
+            var auto = RecurringChargeCalculator.CountOccurrences(t, periodStart, periodEnd);
+            if (auto <= 0) continue; // out of window
+
+            var count = auto;
+            if (overrideByTemplateId.TryGetValue(t.Id, out var ovr))
+            {
+                if (ovr < 0) ovr = 0;
+                var ceiling = auto * 2;
+                if (ovr > ceiling) ovr = ceiling;
+                count = ovr;
+            }
+
+            if (count == 0) continue; // explicitly excluded
+            result.Add(BuildChargeSnapshot(t, contractor, count));
+        }
+
+        return result;
+    }
+
+    private static PayrollReceiptCharge BuildChargeSnapshot(
+        RecurringChargeTemplate template, Employee contractor, int occurrenceCount)
+    {
+        var unit = RecurringChargeCalculator.UnitDollars(template, contractor);
+        return new PayrollReceiptCharge
+        {
+            TemplateId          = template.Id,
+            LabelSnapshot       = template.Label,
+            CadenceSnapshot     = template.Cadence,
+            PricingModeSnapshot = template.PricingMode,
+            UnitAmountSnapshot  = unit,
+            OccurrenceCount     = occurrenceCount,
+            TotalAmount         = Math.Round(unit * occurrenceCount, 2, MidpointRounding.AwayFromZero),
+            CreatedDate         = DateTime.UtcNow,
+        };
     }
 }

@@ -27,6 +27,8 @@ public class TicketsController : Controller
     private readonly WorkflowEngineService _workflowEngine;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketsController> _logger;
+    private readonly PortalNotificationService _bell;
+    private readonly MentionService _mentions;
 
     public TicketsController(
         ServiceDeskDbContext context,
@@ -38,7 +40,9 @@ public class TicketsController : Controller
         SlaRiskService slaRisk,
         WorkflowEngineService workflowEngine,
         IServiceScopeFactory scopeFactory,
-        ILogger<TicketsController> logger)
+        ILogger<TicketsController> logger,
+        PortalNotificationService bell,
+        MentionService mentions)
     {
         _context            = context;
         _assignmentResolver = assignmentResolver;
@@ -50,6 +54,26 @@ public class TicketsController : Controller
         _workflowEngine     = workflowEngine;
         _scopeFactory       = scopeFactory;
         _logger             = logger;
+        _bell               = bell;
+        _mentions           = mentions;
+    }
+
+    /// <summary>
+    /// Fire-and-forget bell notification helper. Looks up the portal user
+    /// associated with an employee id and pings them; swallows any
+    /// exception so notification failures can't break the ticket action.
+    /// </summary>
+    private async Task NotifyEmployeeOnBellAsync(int employeeId, string type, string title, string? message, string? link, string? icon)
+    {
+        try
+        {
+            var portalUser = await _context.PortalUsers
+                .Where(u => u.EmployeeId == employeeId && u.IsActive)
+                .FirstOrDefaultAsync();
+            if (portalUser == null) return;
+            await _bell.NotifyAsync(portalUser.Id, type, title, message, link, icon);
+        }
+        catch (Exception) { /* never block the ticket flow */ }
     }
 
     /// <summary>
@@ -300,7 +324,31 @@ public class TicketsController : Controller
         ViewBag.ActiveViewId   = activeView?.Id;
         ViewBag.ActiveViewName = activeView?.Name;
 
-        // When serving only the table partial, skip dropdown data (saves 3 DB queries)
+        // Category names are needed by both full and partial renders — the
+        // table partial uses CategoriesById to print real names instead of
+        // the "Category N" fallback. Load this BEFORE the partial early-return
+        // so the AJAX-driven filter dropdown gets the right column values.
+        try
+        {
+            var cats = await _context.TicketCategories
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                .Select(c => new { c.Id, c.Name })
+                .ToListAsync();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+        catch
+        {
+            var cats = Enum.GetValues<TicketCategory>()
+                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
+            ViewBag.Categories     = cats;
+            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
+        }
+
+        // When serving only the table partial, skip dropdown data for the
+        // filter bar (saves 3 DB queries) — but the category dictionary above
+        // is now already loaded so the table still shows real names.
         if (partial)
             return PartialView("_TicketsTable", tickets);
 
@@ -334,25 +382,6 @@ public class TicketsController : Controller
             .OrderBy(e => e.LastName).ThenBy(e => e.FirstName)
             .Select(e => new { e.Id, Name = e.FirstName + " " + e.LastName })
             .ToListAsync();
-
-        // Load categories from DB for the filter dropdown
-        try
-        {
-            var cats = await _context.TicketCategories
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
-                .Select(c => new { c.Id, c.Name })
-                .ToListAsync();
-            ViewBag.Categories     = cats;
-            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
-        }
-        catch
-        {
-            var cats = Enum.GetValues<TicketCategory>()
-                .Select(c => new { Id = (int)c, Name = c.ToString() }).ToList();
-            ViewBag.Categories     = cats;
-            ViewBag.CategoriesById = cats.ToDictionary(c => c.Id, c => c.Name);
-        }
 
         ViewBag.Branches = await _context.Branches
             .Where(b => b.IsActive).OrderBy(b => b.Name)
@@ -445,16 +474,66 @@ public class TicketsController : Controller
         ViewBag.TimeTotalHours = ticket.TimeEntries.Sum(e => e.Hours);
         ViewBag.TimeBillableHours = ticket.TimeEntries.Where(e => e.IsBillable).Sum(e => e.Hours);
 
+        await PopulateTimeEntryViewBagAsync();
+
         return View(ticket);
+    }
+
+    // Shared between Details and Edit: drives the Rate Type picker visibility
+    // plus the JSON holiday list that the time-entry form JS uses to auto-
+    // suggest Emergency when a Saturday/Sunday/holiday is selected.
+    private async Task PopulateTimeEntryViewBagAsync()
+    {
+        var currentUserEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+        ViewBag.LoggerHasEmergencyRate = !string.IsNullOrWhiteSpace(currentUserEmail)
+            && await _context.Employees
+                .AsNoTracking()
+                .AnyAsync(e => e.Email == currentUserEmail
+                            && e.EmergencyHourlyRate != null
+                            && e.EmergencyHourlyRate > 0);
+
+        var holidays = await _context.CompanyHolidays.AsNoTracking().ToListAsync();
+        ViewBag.HolidayJson = JsonSerializer.Serialize(new
+        {
+            recurring = holidays.Where(h => h.IsRecurringYearly).Select(h => h.Date.ToString("MM-dd")).ToArray(),
+            oneTime   = holidays.Where(h => !h.IsRecurringYearly).Select(h => h.Date.ToString("yyyy-MM-dd")).ToArray()
+        });
     }
 
     // ──────────────────────────── Time Tracking ────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTimeEntry(int id, DateTime workDate, decimal hours,
-        string? description, bool isBillable, string? returnAction = null)
+        string? description, bool isBillable,
+        ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        bool isEmergency = false,
+        string? startTime = null, string? endTime = null,
+        string? returnAction = null)
     {
+        // The forms now post a single `isEmergency` checkbox instead of a
+        // rateType dropdown. The legacy rateType param remains for backward
+        // compat; the checkbox wins when ticked.
+        if (isEmergency) rateType = ServiceDesk.Core.Enums.PayRateType.Emergency;
+
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
+
+        // If clock-in / clock-out times were provided, prefer them over the
+        // flat-hours field. Both must be present and form a positive interval.
+        // The TimeOnly is combined with workDate to produce a full DateTime.
+        DateTime? startStamp = null;
+        DateTime? endStamp   = null;
+        if (TryBuildInterval(workDate, startTime, endTime, out var s, out var e, out var intervalHours, out var intervalError))
+        {
+            startStamp = s;
+            endStamp   = e;
+            hours      = intervalHours;
+        }
+        else if (intervalError != null)
+        {
+            TempData["Error"] = intervalError;
+            var ti = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(ti, new { id });
+        }
 
         if (hours <= 0)
         {
@@ -472,12 +551,34 @@ public class TicketsController : Controller
 
         var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
         int? empId = null;
+        Employee? logger = null;
         if (!string.IsNullOrWhiteSpace(userEmail))
         {
-            empId = await _context.Employees
-                .Where(e => e.Email == userEmail)
-                .Select(e => (int?)e.Id)
-                .FirstOrDefaultAsync();
+            logger = await _context.Employees
+                .FirstOrDefaultAsync(e => e.Email == userEmail);
+            empId = logger?.Id;
+        }
+
+        // Emergency rate requires the logging contractor to actually have an
+        // EmergencyHourlyRate configured. If the form somehow posts Emergency
+        // for a single-rate contractor, silently fall back to Standard so the
+        // entry isn't silently mis-rated.
+        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency
+            && (logger?.EmergencyHourlyRate == null || logger.EmergencyHourlyRate <= 0))
+        {
+            rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
+        }
+
+        // Overlap check: if the contractor posted a clock interval, refuse
+        // when it intersects another entry of theirs on the same workDate.
+        // Flat-hours-only entries don't have an interval to compare against,
+        // so they're not part of this check.
+        var overlapMsg = await FindOverlapMessageAsync(empId, userEmail, workDate.Date, startStamp, endStamp, excludeEntryId: null);
+        if (overlapMsg != null)
+        {
+            TempData["Error"] = overlapMsg;
+            var to = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(to, new { id });
         }
 
         var entry = new TicketTimeEntry
@@ -485,8 +586,11 @@ public class TicketsController : Controller
             TicketId = id,
             WorkDate = workDate.Date == default ? DateTime.UtcNow.Date : workDate.Date,
             Hours = hours,
+            StartTime = startStamp,
+            EndTime = endStamp,
             Description = description,
             IsBillable = isBillable,
+            RateType = rateType,
             LoggedByEmail = userEmail,
             LoggedByEmployeeId = empId,
             CreatedDate = DateTime.UtcNow
@@ -514,10 +618,114 @@ public class TicketsController : Controller
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    // Returns a human-readable conflict message when the proposed interval
+    // overlaps an existing entry for the same contractor on the same workDate.
+    // Returns null when no overlap (or no interval to check). Two intervals
+    // [a,b] and [c,d] overlap iff a < d && c < b — using strict `<` so a
+    // back-to-back entry (one ends exactly when the next starts) is allowed.
+    private async Task<string?> FindOverlapMessageAsync(
+        int? loggerEmployeeId, string? loggerEmail,
+        DateTime workDate, DateTime? startStamp, DateTime? endStamp,
+        int? excludeEntryId)
+    {
+        if (!startStamp.HasValue || !endStamp.HasValue) return null;
+        if (loggerEmployeeId == null && string.IsNullOrWhiteSpace(loggerEmail)) return null;
+
+        var dayStart = workDate.Date;
+        var dayEnd   = workDate.Date.AddDays(1);
+
+        var conflict = await _context.TicketTimeEntries
+            .AsNoTracking()
+            .Where(e => e.WorkDate >= dayStart && e.WorkDate < dayEnd)
+            .Where(e => e.StartTime != null && e.EndTime != null)
+            .Where(e => excludeEntryId == null || e.Id != excludeEntryId.Value)
+            .Where(e => (loggerEmployeeId != null && e.LoggedByEmployeeId == loggerEmployeeId)
+                     || (loggerEmail != null && e.LoggedByEmail == loggerEmail))
+            .Where(e => e.StartTime < endStamp && startStamp < e.EndTime)
+            .Select(e => new { e.Id, e.TicketId, e.StartTime, e.EndTime })
+            .FirstOrDefaultAsync();
+
+        if (conflict == null) return null;
+
+        var s = conflict.StartTime!.Value.ToString("h:mm tt");
+        var e2 = conflict.EndTime!.Value.ToString("h:mm tt");
+        return $"That interval overlaps an existing entry on Ticket #{conflict.TicketId} ({s}–{e2}). Adjust the times or edit the conflicting entry.";
+    }
+
+    // Builds DateTime stamps from an HH:mm start/end pair anchored on workDate.
+    // Returns true when both are valid and the interval is positive. Returns
+    // false (with intervalError=null) when neither was provided (caller should
+    // fall back to flat hours). Returns false with intervalError set when the
+    // pair is malformed or inverted.
+    private static bool TryBuildInterval(DateTime workDate, string? startTime, string? endTime,
+        out DateTime startStamp, out DateTime endStamp, out decimal intervalHours, out string? intervalError)
+    {
+        startStamp = default;
+        endStamp   = default;
+        intervalHours = 0;
+        intervalError = null;
+
+        var hasStart = !string.IsNullOrWhiteSpace(startTime);
+        var hasEnd   = !string.IsNullOrWhiteSpace(endTime);
+        if (!hasStart && !hasEnd) return false; // caller uses flat hours
+        if (hasStart != hasEnd)
+        {
+            intervalError = "Both Start and End times are required when using clock-in/clock-out.";
+            return false;
+        }
+
+        if (!TimeSpan.TryParse(startTime, out var sTs) || !TimeSpan.TryParse(endTime, out var eTs))
+        {
+            intervalError = "Start/End must be valid HH:mm times.";
+            return false;
+        }
+
+        var baseDate = workDate.Date == default ? DateTime.UtcNow.Date : workDate.Date;
+        startStamp = baseDate.Add(sTs);
+        endStamp   = baseDate.Add(eTs);
+
+        // Allow End to roll past midnight by treating it as next-day when
+        // strictly before Start. Equal start/end is rejected outright — that
+        // pattern is almost always a typo, not an intentional 0-second log.
+        if (endStamp == startStamp)
+        {
+            intervalError = "Start and End times cannot be identical.";
+            return false;
+        }
+        if (endStamp < startStamp)
+            endStamp = endStamp.AddDays(1);
+
+        var diff = endStamp - startStamp;
+        if (diff.TotalHours <= 0 || diff.TotalHours > 24)
+        {
+            intervalError = "Time interval must be between 0 and 24 hours.";
+            return false;
+        }
+
+        // Round to nearest quarter-hour for consistency with the flat-hours
+        // input which uses step=0.25. Floor to 0.25 so a positive-but-short
+        // interval (e.g. 7 minutes) doesn't collapse to zero and then fail
+        // the downstream `hours <= 0` guard with a misleading message.
+        intervalHours = Math.Round((decimal)diff.TotalHours * 4m, MidpointRounding.AwayFromZero) / 4m;
+        if (intervalHours < 0.25m) intervalHours = 0.25m;
+        return true;
+    }
+
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> EditTimeEntry(int id, int entryId, DateTime workDate, decimal hours,
-        string? description, bool isBillable, string? returnAction = null)
+        string? description, bool isBillable,
+        ServiceDesk.Core.Enums.PayRateType rateType = ServiceDesk.Core.Enums.PayRateType.Standard,
+        bool isEmergency = false,
+        // True when the form actually rendered the Emergency picker — only
+        // then should the controller treat the posted rate as authoritative.
+        // An editor who can't see the picker shouldn't silently downgrade
+        // someone else's Emergency entry to Standard.
+        bool rateTypePosted = false,
+        string? startTime = null, string? endTime = null,
+        string? modificationReason = null,
+        string? returnAction = null)
     {
+        if (isEmergency) rateType = ServiceDesk.Core.Enums.PayRateType.Emergency;
         var entry = await _context.TicketTimeEntries
             .FirstOrDefaultAsync(e => e.Id == entryId && e.TicketId == id);
         if (entry == null) return NotFound();
@@ -527,6 +735,32 @@ public class TicketsController : Controller
             TempData["Error"] = "This entry is claimed on a payroll receipt and cannot be edited.";
             var t0 = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
             return RedirectToAction(t0, new { id });
+        }
+
+        if (string.IsNullOrWhiteSpace(modificationReason))
+        {
+            TempData["Error"] = "A reason is required when editing a time entry.";
+            var tr = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(tr, new { id });
+        }
+
+        // Clock fields only get rewritten if the form posted a valid interval.
+        // When the form has no Start/End values (TryBuildInterval → false with
+        // no error), we preserve whatever was previously saved on the entry so
+        // an edit doesn't silently wipe historical clock-in/out data.
+        DateTime? startStamp = entry.StartTime;
+        DateTime? endStamp   = entry.EndTime;
+        if (TryBuildInterval(workDate, startTime, endTime, out var sIv, out var eIv, out var intervalHours, out var intervalError))
+        {
+            startStamp = sIv;
+            endStamp   = eIv;
+            hours      = intervalHours;
+        }
+        else if (intervalError != null)
+        {
+            TempData["Error"] = intervalError;
+            var ti = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(ti, new { id });
         }
 
         if (hours <= 0)
@@ -543,10 +777,54 @@ public class TicketsController : Controller
             return RedirectToAction(t2, new { id });
         }
 
-        entry.WorkDate    = workDate.Date;
-        entry.Hours       = hours;
-        entry.Description = description;
-        entry.IsBillable  = isBillable;
+        // Overlap check — exclude this entry's own id so editing the start
+        // or description without moving the interval doesn't self-conflict.
+        var overlapMsg = await FindOverlapMessageAsync(
+            entry.LoggedByEmployeeId, entry.LoggedByEmail,
+            workDate.Date, startStamp, endStamp, excludeEntryId: entry.Id);
+        if (overlapMsg != null)
+        {
+            TempData["Error"] = overlapMsg;
+            var to = returnAction == "Edit" ? nameof(Edit) : nameof(Details);
+            return RedirectToAction(to, new { id });
+        }
+
+        var editorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        // Emergency rate requires *some* contractor to actually have an
+        // EmergencyHourlyRate configured. Prefer the original logger, fall
+        // back to the editor — never skip the gate (an entry without
+        // LoggedByEmail used to slip through and silently accept Emergency).
+        if (rateType == ServiceDesk.Core.Enums.PayRateType.Emergency)
+        {
+            var rateOwnerEmail = !string.IsNullOrWhiteSpace(entry.LoggedByEmail)
+                ? entry.LoggedByEmail
+                : editorEmail;
+            var hasEmergencyRate = !string.IsNullOrWhiteSpace(rateOwnerEmail)
+                && await _context.Employees
+                    .AsNoTracking()
+                    .AnyAsync(e => e.Email == rateOwnerEmail
+                                && e.EmergencyHourlyRate != null
+                                && e.EmergencyHourlyRate > 0);
+            if (!hasEmergencyRate)
+                rateType = ServiceDesk.Core.Enums.PayRateType.Standard;
+        }
+
+        entry.WorkDate           = workDate.Date;
+        entry.Hours              = hours;
+        entry.StartTime          = startStamp;
+        entry.EndTime            = endStamp;
+        entry.Description        = description;
+        entry.IsBillable         = isBillable;
+        // Only overwrite RateType when the editor's form actually surfaced
+        // the picker. Otherwise (e.g. an admin without an EmergencyHourlyRate
+        // editing a contractor's existing Emergency entry) we preserve the
+        // entry's prior rate to avoid silent downgrades.
+        if (rateTypePosted) entry.RateType = rateType;
+        entry.ModifiedDate       = DateTime.UtcNow;
+        entry.ModifiedByEmail    = editorEmail;
+        entry.ModificationReason = modificationReason?.Trim();
+        entry.ModificationCount += 1;
         await _context.SaveChangesAsync();
 
         TempData["Success"] = $"Time entry updated ({hours:0.##}h).";
@@ -586,6 +864,10 @@ public class TicketsController : Controller
         {
             ticket.CreatedDate = DateTime.UtcNow;
             ticket.DueDate ??= SlaPolicy.CalculateDueDate(ticket.Priority, ticket.CreatedDate);
+            // Capture the snapshot once — extensions update DueDate but
+            // leave this immutable so leadership reports can still see
+            // the "would have breached the original SLA" answer.
+            ticket.OriginalDueDate ??= ticket.DueDate;
 
             // Auto-assign via assignment rules when no assignee was explicitly chosen.
             if (ticket.AssignedToId == null)
@@ -672,6 +954,7 @@ public class TicketsController : Controller
             .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
             .Include(t => t.Attachments)
             .Include(t => t.History.OrderBy(h => h.ChangedDate))
+            .Include(t => t.TimeEntries)
             .FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
 
@@ -695,6 +978,10 @@ public class TicketsController : Controller
         ViewBag.SlaRisk           = _slaRisk.GetRisk(ticket.Category, (int)ticket.Priority, ticket.CreatedDate);
         ViewBag.SlaThresholdLabel = _slaRisk.GetThresholdLabel(ticket.Category, (int)ticket.Priority);
         ViewBag.NoteCount         = ticket.Notes?.Count ?? 0;
+        ViewBag.TimeTotalHours    = ticket.TimeEntries?.Sum(e => e.Hours) ?? 0m;
+        ViewBag.TimeBillableHours = ticket.TimeEntries?.Where(e => e.IsBillable).Sum(e => e.Hours) ?? 0m;
+
+        await PopulateTimeEntryViewBagAsync();
 
         PopulateDropdowns(ticket);
         return View(ticket);
@@ -768,6 +1055,7 @@ public class TicketsController : Controller
             return RedirectToAction(nameof(Edit), new { id });
         }
         PopulateDropdowns(ticket);
+        await PopulateTimeEntryViewBagAsync();
         return View(ticket);
     }
 
@@ -857,6 +1145,7 @@ public class TicketsController : Controller
         }
 
         if (notifyAssignment)
+        {
             _ = Task.Run(async () =>
             {
                 try
@@ -866,6 +1155,18 @@ public class TicketsController : Controller
                 }
                 catch { }
             });
+
+            if (ticket.AssignedToId.HasValue)
+            {
+                await NotifyEmployeeOnBellAsync(
+                    ticket.AssignedToId.Value,
+                    type:    "TicketAssigned",
+                    title:   $"Ticket #{ticket.Id} assigned to you",
+                    message: ticket.Title?.Length > 140 ? ticket.Title[..140] + "…" : ticket.Title,
+                    link:    Url.Action("Details", "Tickets", new { id = ticket.Id }),
+                    icon:    "bi-person-plus");
+            }
+        }
 
         if (notifyStatusChange && ticket.SubmittedBy?.Email != null)
             _ = Task.Run(async () =>
@@ -881,6 +1182,68 @@ public class TicketsController : Controller
             });
 
         return Json(new { success = true, status = ticket.Status.ToString(), assigneeName });
+    }
+
+    // POST /Tickets/ExtendDueDate
+    //
+    // Admin-only override of a ticket's SLA due date. Captures the
+    // before/after pair + the admin's justification in TicketHistory
+    // so the audit trail is self-contained. The OriginalDueDate column
+    // stays frozen at the first-ever value so leadership reports can
+    // still answer "would this have breached the ORIGINAL SLA?" — the
+    // extension only relaxes the rolling metric.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ExtendDueDate(int id, DateTime newDueDate, string reason)
+    {
+        var ticket = await _context.Tickets.FindAsync(id);
+        if (ticket == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return BadRequest(new { error = "A reason is required for SLA changes." });
+        if (reason.Length > 500) reason = reason[..500];
+
+        // Backfill the snapshot if this ticket pre-dates the column.
+        ticket.OriginalDueDate ??= ticket.DueDate;
+        var oldDueDate = ticket.DueDate;
+        ticket.DueDate     = newDueDate;
+        ticket.UpdatedDate = DateTime.UtcNow;
+
+        var changedBy = User.Identity?.Name ?? "Admin";
+        _context.TicketHistory.Add(new TicketHistory
+        {
+            TicketId    = id,
+            ChangedBy   = changedBy,
+            FieldName   = "Due Date",
+            OldValue    = oldDueDate?.ToString("yyyy-MM-dd HH:mm 'UTC'") ?? "(none)",
+            NewValue    = newDueDate.ToString("yyyy-MM-dd HH:mm 'UTC'"),
+            Reason      = reason.Trim(),
+            ChangedDate = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync();
+
+        // Bell the assignee so they know the deadline moved without
+        // having to refresh the ticket.
+        if (ticket.AssignedToId.HasValue)
+        {
+            await NotifyEmployeeOnBellAsync(
+                ticket.AssignedToId.Value,
+                type:    "TicketSlaExtended",
+                title:   $"SLA extended on Ticket #{ticket.Id}",
+                message: $"New due date: {newDueDate:MMM d, yyyy h:mm tt}",
+                link:    Url.Action("Edit", "Tickets", new { id = ticket.Id }),
+                icon:    "bi-clock-history");
+        }
+
+        return Ok(new
+        {
+            success    = true,
+            newDueDate = newDueDate.ToString("yyyy-MM-dd HH:mm 'UTC'"),
+            isExtended = ticket.OriginalDueDate.HasValue && ticket.DueDate != ticket.OriginalDueDate,
+            original   = ticket.OriginalDueDate?.ToString("yyyy-MM-dd HH:mm 'UTC'")
+        });
     }
 
     [HttpPost]
@@ -905,6 +1268,42 @@ public class TicketsController : Controller
         _context.TicketNotes.Add(note);
         ticket.UpdatedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        // ── Bell notifications + @mentions ────────────────────────────
+        var ticketLink = Url.Action("Details", "Tickets", new { id = ticket.Id }) ?? "#";
+        var authorName = User.Identity?.Name ?? "Agent";
+        var preview    = content.Length > 140 ? content[..140] + "…" : content;
+
+        // Ping the assignee on every comment (internal AND public —
+        // they own the ticket either way). Skip if the comment author IS
+        // the assignee, which happens often as agents narrate progress.
+        if (ticket.AssignedToId.HasValue)
+        {
+            var actorEmpId = int.TryParse(User.FindFirstValue("EmployeeId"), out var ei) ? ei : 0;
+            if (ticket.AssignedToId.Value != actorEmpId)
+            {
+                await NotifyEmployeeOnBellAsync(
+                    ticket.AssignedToId.Value,
+                    type:    "TicketComment",
+                    title:   $"New comment on Ticket #{ticket.Id}",
+                    message: preview,
+                    link:    ticketLink,
+                    icon:    isInternal ? "bi-shield-lock" : "bi-chat-square-text");
+            }
+        }
+
+        // @mentions get a separate "you were mentioned" ping. Internal
+        // notes can't mention the requester (they don't see internal
+        // notes), so mention scanning is limited to public comments.
+        if (!isInternal)
+        {
+            await _mentions.ProcessMentionsAsync(
+                body:              content,
+                authorDisplayName: authorName,
+                sourceLabel:       $"Ticket #{ticket.Id}",
+                linkUrl:           ticketLink,
+                notificationType:  "TicketMention");
+        }
 
         // Fire escalation detection in background for public (non-internal) comments on active tickets
         if (!isInternal

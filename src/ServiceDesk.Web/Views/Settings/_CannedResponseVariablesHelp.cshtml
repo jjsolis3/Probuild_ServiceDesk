@@ -1,0 +1,57 @@
+@*
+    Variable reference panel for canned response editors. The list here is the
+    single source of truth — when adding a token, update three places:
+      1. This partial (so admins know the token exists).
+      2. The __ssTicketTemplateCtx <script> on the Ticket Edit page
+         (so the JS expander has the value to substitute).
+      3. The expand() regex stays the same as long as the token follows
+         the {{Group.Property}} convention.
+*@
+<div class="alert alert-info mt-2 mb-0" style="background:#f0f7ff;border-color:#cfe2ff;">
+    <div class="d-flex align-items-center mb-2 gap-2">
+        <i class="bi bi-braces fs-5 text-primary"></i>
+        <strong>Variables you can use</strong>
+        <span class="text-muted small">
+            — drop these into the response and they'll be replaced with live
+            data when an agent inserts the template.
+        </span>
+    </div>
+    <div class="row small g-2">
+        <div class="col-md-4">
+            <div class="text-uppercase text-muted fw-bold mb-1" style="font-size:.7rem;letter-spacing:.06em;">Ticket</div>
+            <code class="d-block">{{Ticket.Id}}</code>
+            <code class="d-block">{{Ticket.Title}}</code>
+            <code class="d-block">{{Ticket.Status}}</code>
+            <code class="d-block">{{Ticket.Priority}}</code>
+            <code class="d-block">{{Ticket.Category}}</code>
+        </div>
+        <div class="col-md-4">
+            <div class="text-uppercase text-muted fw-bold mb-1" style="font-size:.7rem;letter-spacing:.06em;">Requester</div>
+            <code class="d-block">{{Requester.FirstName}}</code>
+            <code class="d-block">{{Requester.LastName}}</code>
+            <code class="d-block">{{Requester.FullName}}</code>
+            <code class="d-block">{{Requester.Email}}</code>
+            <code class="d-block">{{Requester.Branch}}</code>
+        </div>
+        <div class="col-md-4">
+            <div class="text-uppercase text-muted fw-bold mb-1" style="font-size:.7rem;letter-spacing:.06em;">Assignee &amp; Agent</div>
+            <code class="d-block">{{Assignee.FirstName}}</code>
+            <code class="d-block">{{Assignee.FullName}}</code>
+            <code class="d-block">{{Assignee.Email}}</code>
+            <code class="d-block">{{Agent.FirstName}}</code>
+            <code class="d-block">{{Agent.FullName}}</code>
+        </div>
+        <div class="col-md-12 mt-2">
+            <div class="text-uppercase text-muted fw-bold mb-1" style="font-size:.7rem;letter-spacing:.06em;">Other</div>
+            <code class="me-3">{{Company.Name}}</code>
+            <code class="me-3">{{Today}}</code>
+            <code>{{Now}}</code>
+        </div>
+    </div>
+    <div class="text-muted small mt-2 mb-0">
+        <i class="bi bi-info-circle me-1"></i>
+        Tokens that can't be resolved (e.g. <code>{{Assignee.FirstName}}</code>
+        on an unassigned ticket) are left in place so the agent can fill them in
+        manually. Tokens are case-sensitive.
+    </div>
+</div>

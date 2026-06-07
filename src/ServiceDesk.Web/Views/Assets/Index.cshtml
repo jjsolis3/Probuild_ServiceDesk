@@ -351,12 +351,17 @@
 
 @if (!Model.Any())
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-inbox display-1"></i>
-        <p class="mt-3 mb-3">No assets found matching the current filters.</p>
-        <a asp-action="Create" class="btn btn-primary me-2"><i class="bi bi-plus-lg me-1"></i> Add Asset</a>
-        <a asp-action="Index" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear Filters</a>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon          = "bi-laptop",
+        Title         = "No assets to show",
+        Message       = "Catalogue laptops, monitors, phones, peripherals — anything you assign to an employee. Tracking assets here means easier audits, cleaner offboardings, and warranty visibility.",
+        ActionLink    = Url.Action("Create"),
+        ActionText    = "Add First Asset",
+        ActionIcon    = "bi-plus-lg",
+        SecondaryLink = Url.Action("Index"),
+        SecondaryText = "Clear Filters",
+        SecondaryIcon = "bi-x-circle"
+    })
 }
 </div><!-- /ss-export-target -->
 

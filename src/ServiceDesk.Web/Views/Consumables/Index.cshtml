@@ -134,13 +134,14 @@
 @* ── Table ───────────────────────────────────────────────────────────────── *@
 @if (!Model.Any())
 {
-    <div class="con-card">
-        <div class="con-card-body text-center text-muted py-5">
-            <i class="bi bi-stack fs-1 opacity-25 d-block mb-3"></i>
-            <p class="mb-3">No consumable items found.</p>
-            <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Item</a>
-        </div>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon       = "bi-stack",
+        Title      = "No consumables tracked yet",
+        Message    = "Consumables are things like printer toner, batteries, or cables — items you reorder regularly. Add one to start tracking stock levels and reorder thresholds.",
+        ActionLink = Url.Action("Create"),
+        ActionText = "Add First Item",
+        ActionIcon = "bi-plus-lg"
+    })
 }
 else
 {

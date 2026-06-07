@@ -40,8 +40,10 @@
 
                     <div class="mb-3">
                         <label asp-for="Content" class="form-label fw-semibold"></label>
-                        <textarea asp-for="Content" class="form-control" rows="8"></textarea>
+                        <textarea asp-for="Content" class="form-control" rows="8"
+                                  placeholder="Use {{Variables}} to personalize — see reference below."></textarea>
                         <span asp-validation-for="Content" class="text-danger small"></span>
+                        @await Html.PartialAsync("_CannedResponseVariablesHelp")
                     </div>
 
                     <div class="mb-4">

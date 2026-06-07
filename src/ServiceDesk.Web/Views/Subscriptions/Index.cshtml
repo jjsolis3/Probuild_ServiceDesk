@@ -168,13 +168,14 @@
 @* ── Table ───────────────────────────────────────────────────────────────── *@
 @if (!Model.Any())
 {
-    <div class="sub-card">
-        <div class="sub-card-body text-center text-muted py-5">
-            <i class="bi bi-credit-card fs-1 opacity-25 d-block mb-3"></i>
-            <p class="mb-3">No subscriptions found matching the current filters.</p>
-            <a asp-action="Create" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Subscription</a>
-        </div>
-    </div>
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon       = "bi-credit-card",
+        Title      = "No subscriptions to show",
+        Message    = "Track SaaS subscriptions (Microsoft 365, Adobe, Zoom, etc.) here to see seat counts, renewal dates, and monthly spend at a glance. If you're seeing this with filters applied, try clearing them first.",
+        ActionLink = Url.Action("Create"),
+        ActionText = "Add Subscription",
+        ActionIcon = "bi-plus-lg"
+    })
 }
 else
 {

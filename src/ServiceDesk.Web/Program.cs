@@ -52,6 +52,24 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GmailApiService>()
 // Register notification service (scoped, uses GmailApiService for sending)
 builder.Services.AddScoped<EmailNotificationService>();
 
+// Register in-app portal notification service (scoped, drives the notification bell)
+builder.Services.AddScoped<PortalNotificationService>();
+builder.Services.AddScoped<MentionService>();
+
+// Persistent store cart service (scoped)
+builder.Services.AddScoped<StoreCartService>();
+
+// Shared store-product admin service consumed by both SettingsController and
+// StoreController (Ops Hub) so the two flows can't drift again.
+builder.Services.AddScoped<StoreProductAdminService>();
+
+// Computes per-receipt payroll totals (second rate + monthly retainer burn-down)
+builder.Services.AddScoped<PayrollCalculatorService>();
+builder.Services.AddScoped<PayrollReceiptPdfService>();
+builder.Services.AddScoped<PayrollReceiptAttachmentService>();
+builder.Services.AddScoped<PayrollActivityService>();
+builder.Services.AddScoped<BusinessDayCalculator>();
+
 // Register Google Workspace service (singleton — stateless, uses IServiceScopeFactory for DB access)
 builder.Services.AddSingleton<GoogleWorkspaceService>();
 
@@ -81,6 +99,7 @@ builder.Services.AddSingleton<WorkflowEngineService>();
 
 // Register scheduled offboarding service (checks hourly, auto-offboards employees whose date has arrived)
 builder.Services.AddHostedService<ScheduledOffboardingService>();
+builder.Services.AddHostedService<PayrollReminderService>();
 
 var app = builder.Build();
 

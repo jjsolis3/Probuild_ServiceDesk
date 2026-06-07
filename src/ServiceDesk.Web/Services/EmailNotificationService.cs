@@ -92,8 +92,13 @@ public class EmailNotificationService
     /// </summary>
     private async Task<EmailConfiguration?> GetActiveConfig()
     {
+        // Don't gate on IsAuthorized — that flag can be auto-cleared by a
+        // transient token-refresh failure in GmailApiService, and the next
+        // successful refresh sets it back to true. Outbound sends should keep
+        // trying as long as we still hold a refresh token (admin "Revoke"
+        // wipes the token, which still excludes the row here).
         return await _context.EmailConfigurations
-            .FirstOrDefaultAsync(c => c.IsActive && c.IsAuthorized && c.GmailRefreshToken != null);
+            .FirstOrDefaultAsync(c => c.IsActive && c.GmailRefreshToken != null);
     }
 
     /// <summary>
@@ -165,6 +170,79 @@ public class EmailNotificationService
     {
         var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == key);
         return setting == null || setting.Value?.ToLower() == "true";
+    }
+
+    /// <summary>
+    /// Resolves the configured delivery mode for payroll group-emails.
+    /// "Combined" sends one email with the first address in To and the
+    /// rest in Cc (recipients see each other and can Reply-All).
+    /// Anything else — including missing/blank — means "Individual": one
+    /// independent send per recipient, which is privacy-safe and the
+    /// default. Returns lower-case strings so callers can string-compare.
+    /// </summary>
+    private async Task<string> GetPayrollDeliveryModeAsync()
+    {
+        var setting = await _context.AppSettings.FirstOrDefaultAsync(s => s.Key == "PayrollNotificationDeliveryMode");
+        var value = setting?.Value?.Trim().ToLowerInvariant();
+        return value == "combined" ? "combined" : "individual";
+    }
+
+    /// <summary>
+    /// Sends a payroll alert to one or more recipients, honoring the
+    /// admin-configured delivery mode. "Combined" mode makes a single
+    /// Gmail API call (first address as To, rest as Cc) but still logs
+    /// one row per recipient so the notification log stays useful when
+    /// auditing who saw what. "Individual" mode preserves the original
+    /// behavior of one send + one log row per recipient — bouncing on
+    /// recipient #3 doesn't block #4.
+    /// </summary>
+    private async Task SendToPayrollRecipientsAsync(
+        EmailConfiguration config,
+        IList<(string Email, string Name)> recipients,
+        string subject,
+        string htmlBody,
+        string logType)
+    {
+        if (recipients.Count == 0) return;
+
+        var mode = await GetPayrollDeliveryModeAsync();
+
+        if (mode == "combined" && recipients.Count > 1)
+        {
+            var primary = recipients[0];
+            var ccList  = string.Join(", ", recipients.Skip(1).Select(r => r.Email));
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(
+                    config, _context, primary.Email, subject, htmlBody,
+                    ticketId: null, inReplyTo: null, references: null, ccEmail: ccList);
+                // Log each recipient — both To and Cc — so the activity
+                // log captures the full audience.
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Combined send failed for {LogType} ({Count} recipients)", logType, recipients.Count);
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, false, ex.Message);
+            }
+            return;
+        }
+
+        foreach (var (email, name) in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync(logType, email, name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed to send {LogType} to {Email}", logType, email);
+                await LogNotificationAsync(logType, email, name, subject, null, false, ex.Message);
+            }
+        }
     }
 
     /// <summary>
@@ -508,11 +586,13 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("Sent test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            await LogNotificationAsync($"Test:{templateKey}", recipientEmail, null, subject, null, true);
             return (true, $"Test email sent successfully to {recipientEmail}.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send test email for template '{Key}' to {Email}", templateKey, recipientEmail);
+            await LogNotificationAsync($"Test:{templateKey}", recipientEmail, null, subject, null, false, ex.Message);
             return (false, $"Send failed: {ex.Message}");
         }
     }
@@ -520,11 +600,14 @@ public class EmailNotificationService
     /// <summary>
     /// Sends a store order confirmation to the user who placed the order.
     /// </summary>
+    /// <param name="baseUrl">Optional absolute base URL (e.g. "https://portal.example.com")
+    /// used to build absolute image src and a "View Order" link. Empty string disables both.</param>
     public async Task SendStoreOrderConfirmationAsync(
         ServiceDesk.Core.Models.StoreOrder order,
         string recipientEmail,
         string recipientName,
-        List<ServiceDesk.Core.Models.StoreOrderItem> items)
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl = "")
     {
         var config = await GetActiveConfig();
         if (config == null)
@@ -536,23 +619,31 @@ public class EmailNotificationService
         var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
         var tmpl = await GetTemplateAsync("StoreOrderConfirmation");
 
-        var itemRows = string.Join("\n", items.Select(i =>
-            $"<tr>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(i.ProductNameSnapshot)}</td>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;'>" +
-            $"{System.Net.WebUtility.HtmlEncode(i.ProductCategorySnapshot ?? "—")}</td>" +
-            $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:bold;'>{i.Quantity}</td>" +
-            $"</tr>"));
+        var itemsHtml = BuildStoreOrderItemsTable(items, baseUrl, showPricing: true);
+        var totalQty   = items.Sum(i => i.Quantity);
+        var totalCost  = items.Where(i => i.UnitPriceSnapshot.HasValue)
+                              .Sum(i => (i.UnitPriceSnapshot ?? 0m) * i.Quantity);
+        var hasPricing = items.Any(i => i.UnitPriceSnapshot.HasValue);
 
-        var itemsHtml =
-            "<table style='width:100%;border-collapse:collapse;margin:10px 0;'>" +
-            "<thead><tr style='background:#f3f4f6;'>" +
-            "<th style='padding:8px;text-align:left;'>Product</th>" +
-            "<th style='padding:8px;text-align:center;'>Category</th>" +
-            "<th style='padding:8px;text-align:center;'>Qty</th>" +
-            "</tr></thead><tbody>" +
-            itemRows +
-            "</tbody></table>";
+        var viewOrderButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:20px 0;'>
+                    <a href='{baseUrl}/Store/OrderDetail/{order.Id}' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        View My Order
+                    </a>
+                </p>"
+            : string.Empty;
+
+        var branchRow = !string.IsNullOrEmpty(order.BranchNameSnapshot)
+            ? $@"<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Branch</td>
+                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.BranchNameSnapshot)}</td></tr>"
+            : string.Empty;
+
+        var totalsBlock = $@"<div style='background:#f9fafb;border-radius:6px;padding:12px 14px;margin-top:10px;display:flex;justify-content:space-between;'>
+            <span style='font-weight:600;color:#374151;'>Total items: {totalQty}</span>"
+            + (hasPricing
+                ? $@"<span style='font-weight:700;color:#059669;'>Total: {totalCost:C}</span>"
+                : "<span style='color:#9ca3af;font-size:13px;'>No-charge order</span>")
+            + "</div>";
 
         var tokens = new Dictionary<string, string>
         {
@@ -570,19 +661,24 @@ public class EmailNotificationService
 
         var innerContent = tmpl?.BodyTemplate != null
             ? ApplyTokens(tmpl.BodyTemplate, tokens)
-            : $@"<h3>Order Confirmed — {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h3>
+            : $@"<h3 style='margin-top:0;'>Order Confirmed — {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h3>
             <p>Hi {System.Net.WebUtility.HtmlEncode(recipientName)},</p>
-            <p>Your order has been received. The operations team will review and process it shortly.</p>
+            <p>Thanks for your order! The operations team will review and process it shortly. You'll receive another email when your order status changes.</p>
             <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:130px;'>Order #</td>
                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td>
-                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy}</td></tr>
-                <tr><td style='padding:8px;font-weight:bold;'>Quarter</td>
-                    <td style='padding:8px;'>Q{order.Quarter} {order.Year}</td></tr>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy 'at' h:mm tt} UTC</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>Q{order.Quarter} {order.Year}</td></tr>
+                {branchRow}
+                <tr><td style='padding:8px;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;'><span style='background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'>Pending Review</span></td></tr>
             </table>
-            <h4 style='margin-top:20px;'>Items Ordered</h4>
+            <h4 style='margin-top:20px;margin-bottom:6px;'>Items Ordered</h4>
             {itemsHtml}
+            {totalsBlock}
+            {viewOrderButton}
             <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
@@ -590,6 +686,7 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("[Store] Sent confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderConfirmation", recipientEmail, recipientName, subject, null, true);
 
             // Mark confirmation sent
             order.ConfirmationEmailSent = true;
@@ -598,7 +695,207 @@ public class EmailNotificationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send confirmation for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderConfirmation", recipientEmail, recipientName, subject, null, false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Sends a "new order placed" digest to every active operations user. One
+    /// email per recipient; failures for one recipient don't block the others.
+    /// </summary>
+    public async Task SendStoreOrderOpsNotificationAsync(
+        ServiceDesk.Core.Models.StoreOrder order,
+        string placedByName,
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl = "")
+    {
+        var config = await GetActiveConfig();
+        if (config == null)
+        {
+            _logger.LogWarning("[Store] No active Gmail configuration. Cannot send ops notification for #{OrderId}.", order.Id);
+            return;
+        }
+
+        // Recipients: explicit Ops Hub users, plus Admins as a fallback so a new
+        // store always reaches someone.
+        var opsUserIds = await _context.StoreOperationsAccess
+            .Where(a => a.IsActive)
+            .Select(a => a.PortalUserId)
+            .ToListAsync();
+
+        var recipients = await _context.PortalUsers
+            .Include(u => u.Role)
+            .Where(u => u.IsActive && !string.IsNullOrEmpty(u.Email))
+            .Where(u => opsUserIds.Contains(u.Id)
+                     || (u.Role != null && u.Role.Name == "Admin"))
+            .ToListAsync();
+
+        if (recipients.Count == 0)
+        {
+            _logger.LogWarning("[Store] No ops recipients configured; skipping ops notification for order #{OrderNumber}.", order.OrderNumber);
+            return;
+        }
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var itemsHtml  = BuildStoreOrderItemsTable(items, baseUrl, showPricing: true);
+        var totalQty   = items.Sum(i => i.Quantity);
+        var totalCost  = items.Where(i => i.UnitPriceSnapshot.HasValue)
+                              .Sum(i => (i.UnitPriceSnapshot ?? 0m) * i.Quantity);
+        var hasPricing = items.Any(i => i.UnitPriceSnapshot.HasValue);
+
+        var hubButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:18px 0;'>
+                    <a href='{baseUrl}/Store/OperationsHub?year={order.Year}&quarter={order.Quarter}&status=Pending' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        Open in Operations Hub
+                    </a>
+                </p>"
+            : string.Empty;
+
+        var branchRow = !string.IsNullOrEmpty(order.BranchNameSnapshot)
+            ? $@"<tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Branch</td>
+                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.BranchNameSnapshot)}</td></tr>"
+            : string.Empty;
+
+        var notesBlock = !string.IsNullOrWhiteSpace(order.Notes)
+            ? $@"<div style='background:#fef9c3;border-left:4px solid #facc15;padding:10px 12px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#92400e;font-size:13px;'>Order notes:</strong>
+                    <div style='margin-top:4px;color:#374151;'>{System.Net.WebUtility.HtmlEncode(order.Notes)}</div>
+                 </div>"
+            : string.Empty;
+
+        var totalsBlock = $@"<div style='background:#f9fafb;border-radius:6px;padding:12px 14px;margin-top:10px;display:flex;justify-content:space-between;'>
+            <span style='font-weight:600;color:#374151;'>Total items: {totalQty}</span>"
+            + (hasPricing
+                ? $@"<span style='font-weight:700;color:#059669;'>Total: {totalCost:C}</span>"
+                : "<span style='color:#9ca3af;font-size:13px;'>No-charge order</span>")
+            + "</div>";
+
+        var subject = $"[New Store Order] {order.OrderNumber} — {placedByName} ({totalQty} item{(totalQty == 1 ? "" : "s")})";
+
+        var innerContent = $@"<h3 style='margin-top:0;'>New Store Order Placed</h3>
+            <p>A new store order is awaiting review in the Operations Hub.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:140px;'>Order #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Placed by</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(placedByName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Date</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{order.OrderDate:MMMM d, yyyy 'at' h:mm tt} UTC</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Quarter</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>Q{order.Quarter} {order.Year}</td></tr>
+                {branchRow}
+            </table>
+            {notesBlock}
+            <h4 style='margin-top:20px;margin-bottom:6px;'>Items Requested</h4>
+            {itemsHtml}
+            {totalsBlock}
+            {hubButton}
+            <p style='color:#6b7280;font-size:12px;margin-top:20px;'>You're receiving this because you have access to the Store Operations Hub.</p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        foreach (var rec in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailViaGmailApi(config, _context, rec.Email, subject, htmlBody, null, null, null);
+                await LogNotificationAsync("StoreOrderOpsAlert", rec.Email, rec.FullName, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Store] Failed to send ops notification for order #{OrderNumber} to {Email}", order.OrderNumber, rec.Email);
+                await LogNotificationAsync("StoreOrderOpsAlert", rec.Email, rec.FullName, subject, null, false, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the HTML table of order line items used in both the user
+    /// confirmation and the ops notification. Renders product thumbnails when a
+    /// non-empty <paramref name="baseUrl"/> is supplied so the relative
+    /// <c>/uploads/...</c> paths resolve in email clients.
+    /// </summary>
+    private static string BuildStoreOrderItemsTable(
+        List<ServiceDesk.Core.Models.StoreOrderItem> items,
+        string baseUrl,
+        bool showPricing)
+    {
+        var hasPricing = showPricing && items.Any(i => i.UnitPriceSnapshot.HasValue);
+        var rows = new List<string>();
+
+        foreach (var i in items)
+        {
+            var variants = new List<string>();
+            if (!string.IsNullOrEmpty(i.SelectedGender)) variants.Add(i.SelectedGender);
+            if (!string.IsNullOrEmpty(i.SelectedSize))   variants.Add(i.SelectedSize);
+            if (!string.IsNullOrEmpty(i.SelectedColor))  variants.Add(i.SelectedColor);
+            if (!string.IsNullOrWhiteSpace(i.CustomSelectionsJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(i.CustomSelectionsJson);
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                        variants.Add($"{p.Name}: {p.Value.GetString()}");
+                }
+                catch { /* malformed — skip */ }
+            }
+            var variantText = variants.Count > 0
+                ? $"<div style='color:#6b7280;font-size:12px;margin-top:3px;'>{System.Net.WebUtility.HtmlEncode(string.Join(" · ", variants))}</div>"
+                : string.Empty;
+
+            // Thumbnail: only include when a base URL is provided and the product has an image.
+            var imgPath = i.StoreProduct?.ImagePath ?? string.Empty;
+            string thumbCell;
+            if (!string.IsNullOrWhiteSpace(imgPath) && !string.IsNullOrWhiteSpace(baseUrl))
+            {
+                var src = imgPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? imgPath
+                    : baseUrl.TrimEnd('/') + (imgPath.StartsWith("/") ? imgPath : "/" + imgPath);
+                thumbCell = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;width:54px;'>" +
+                            $"<img src='{System.Net.WebUtility.HtmlEncode(src)}' alt='' style='width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;' /></td>";
+            }
+            else
+            {
+                thumbCell = "<td style='padding:8px;border-bottom:1px solid #e5e7eb;width:54px;'></td>";
+            }
+
+            var nameCell = "<td style='padding:8px;border-bottom:1px solid #e5e7eb;'>" +
+                           $"<div style='font-weight:600;color:#111827;'>{System.Net.WebUtility.HtmlEncode(i.ProductNameSnapshot)}</div>" +
+                           (string.IsNullOrEmpty(i.ProductCategorySnapshot)
+                               ? string.Empty
+                               : $"<div style='color:#9ca3af;font-size:11px;text-transform:uppercase;letter-spacing:.04em;'>{System.Net.WebUtility.HtmlEncode(i.ProductCategorySnapshot)}</div>") +
+                           variantText + "</td>";
+
+            var qtyCell = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:bold;'>{i.Quantity}</td>";
+
+            var priceCells = string.Empty;
+            if (hasPricing)
+            {
+                var unit = i.UnitPriceSnapshot?.ToString("C") ?? "—";
+                var sub  = i.UnitPriceSnapshot.HasValue
+                    ? (i.UnitPriceSnapshot.Value * i.Quantity).ToString("C")
+                    : "—";
+                priceCells = $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#6b7280;'>{unit}</td>" +
+                             $"<td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;'>{sub}</td>";
+            }
+
+            rows.Add($"<tr>{thumbCell}{nameCell}{qtyCell}{priceCells}</tr>");
+        }
+
+        var priceHeaders = hasPricing
+            ? "<th style='padding:8px;text-align:right;'>Price</th><th style='padding:8px;text-align:right;'>Subtotal</th>"
+            : string.Empty;
+
+        return "<table style='width:100%;border-collapse:collapse;margin:10px 0;border:1px solid #e5e7eb;border-radius:6px;'>" +
+               "<thead><tr style='background:#f3f4f6;'>" +
+               "<th style='padding:8px;text-align:left;width:54px;'></th>" +
+               "<th style='padding:8px;text-align:left;'>Product</th>" +
+               "<th style='padding:8px;text-align:center;'>Qty</th>" +
+               priceHeaders +
+               "</tr></thead><tbody>" +
+               string.Join("\n", rows) +
+               "</tbody></table>";
     }
 
     /// <summary>
@@ -609,7 +906,8 @@ public class EmailNotificationService
         ServiceDesk.Core.Models.StoreOrder order,
         string recipientEmail,
         string recipientName,
-        string newStatus)
+        string newStatus,
+        string baseUrl = "")
     {
         var config = await GetActiveConfig();
         if (config == null)
@@ -643,6 +941,14 @@ public class EmailNotificationService
             ? ApplyTokens(tmpl.SubjectTemplate, tokens)
             : $"Order Update — {order.OrderNumber} is now {newStatus}";
 
+        var viewOrderButton = !string.IsNullOrWhiteSpace(baseUrl)
+            ? $@"<p style='margin:20px 0;'>
+                    <a href='{baseUrl}/Store/OrderDetail/{order.Id}' style='background:{brandColor};color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>
+                        View Order Details
+                    </a>
+                </p>"
+            : string.Empty;
+
         var innerContent = tmpl?.BodyTemplate != null
             ? ApplyTokens(tmpl.BodyTemplate, tokens)
             : $@"<h3>Order Status Update</h3>
@@ -656,6 +962,7 @@ public class EmailNotificationService
                 <tr><td style='padding:8px;font-weight:bold;'>New Status</td>
                     <td style='padding:8px;'><strong>{System.Net.WebUtility.HtmlEncode(newStatus)}</strong></td></tr>
             </table>
+            {viewOrderButton}
             <p style='color:#6b7280;font-size:13px;margin-top:20px;'>If you have questions about your order, please contact your operations department.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
@@ -663,10 +970,12 @@ public class EmailNotificationService
         {
             await _gmailApiService.SendEmailViaGmailApi(config, _context, recipientEmail, subject, htmlBody, null, null, null);
             _logger.LogInformation("[Store] Sent status update ({Status}) for order #{OrderNumber} to {Email}", newStatus, order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderStatusUpdate", recipientEmail, recipientName, subject, null, true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Store] Failed to send status update for order #{OrderNumber} to {Email}", order.OrderNumber, recipientEmail);
+            await LogNotificationAsync("StoreOrderStatusUpdate", recipientEmail, recipientName, subject, null, false, ex.Message);
         }
     }
 
@@ -687,16 +996,48 @@ public class EmailNotificationService
             ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
             : "Contractor";
 
-        // Find first Admin user with an email
-        var admin = await _context.PortalUsers
-            .Include(u => u.Role)
-            .Where(u => u.Role != null && u.Role.Name == "Admin" && !string.IsNullOrEmpty(u.Email))
-            .OrderBy(u => u.Id)
-            .FirstOrDefaultAsync();
+        // Recipients are resolved from the PayrollNotificationRecipients
+        // configuration table — admin/HR/owner/AP can each be added
+        // individually, mixing portal users with free-form external
+        // emails. When the table is empty (fresh install or admin hasn't
+        // configured it yet) we fall back to "every active Admin" so
+        // notifications never silently disappear.
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
 
-        if (admin == null)
+        var recipients = configured
+            .Select(r =>
+            {
+                // Linked portal user wins — picks up rename/email change
+                // without us having to sync.
+                var email = r.PortalUser?.Email ?? r.Email;
+                var name  = r.PortalUser?.FullName
+                            ?? r.DisplayName
+                            ?? r.Email;
+                return (Email: email, Name: name);
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
         {
-            _logger.LogWarning("[Payroll] No Admin user found to notify on receipt #{Id} submit.", receipt.Id);
+            // Fallback: every active Admin with an email on file.
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive
+                         && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+
+        if (recipients.Count == 0)
+        {
+            _logger.LogWarning("[Payroll] No recipients configured (and no active Admins) — receipt #{Id} submit notification skipped.", receipt.Id);
             return;
         }
 
@@ -720,29 +1061,55 @@ public class EmailNotificationService
             <p>Open the <strong>Contractor Payroll</strong> page in ServiceSphere to review, approve, or reject this receipt.</p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-        try
-        {
-            await _gmailApiService.SendEmailViaGmailApi(config, _context, admin.Email, subject, htmlBody, null, null, null);
-            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Payroll] Failed to notify admin of receipt #{Id} submit", receipt.Id);
-            await LogNotificationAsync("PayrollSubmitted", admin.Email, admin.FullName, subject, null, false, ex.Message);
-        }
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollSubmitted");
     }
 
     /// <summary>
-    /// Notifies the contractor that their submitted receipt has been approved.
+    /// <summary>
+    /// Notifies the contractor that their submitted receipt has been
+    /// approved. When the admin chose to forward a copy in the Approve
+    /// modal, the corresponding flags tell the contractor which
+    /// downstream team (HR / AP) now has the receipt for processing —
+    /// without exposing internal email addresses.
     /// </summary>
-    public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt)
+    public async Task NotifyReceiptApprovedAsync(Core.Models.PayrollReceipt receipt,
+        bool forwardedToHr = false, bool forwardedToAp = false)
     {
         if (!await IsNotificationEnabled("NotifyOnPayrollApproved")) return;
+
+        // Surface the optional approval note inside a styled call-out so the
+        // contractor sees the context the admin captured at approval time.
+        var noteBlock = string.IsNullOrWhiteSpace(receipt.ApprovalNote)
+            ? string.Empty
+            : $@"<div style='background:#ecfdf5;border-left:4px solid #10b981;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#047857;'>Note from approver:</strong>
+                    <div style='margin-top:6px;color:#065f46;'>{System.Net.WebUtility.HtmlEncode(receipt.ApprovalNote)}</div>
+                 </div>";
+
+        // Forwarded-to call-out — only renders if at least one downstream
+        // copy actually went out. Naming is generic ("our HR / Accounts
+        // Payable team") so we don't leak internal email addresses to
+        // the contractor.
+        string forwardBlock = string.Empty;
+        if (forwardedToHr || forwardedToAp)
+        {
+            var targets = new List<string>();
+            if (forwardedToHr) targets.Add("our <strong>HR</strong> team");
+            if (forwardedToAp) targets.Add("our <strong>Accounts Payable</strong> team");
+            var targetText = string.Join(" and ", targets);
+            forwardBlock = $@"<div style='background:#eef4ff;border-left:4px solid #0d6efd;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                    <strong style='color:#0a58ca;'>Sent for processing</strong>
+                    <div style='margin-top:6px;color:#1e40af;'>
+                        A copy of your approved receipt has been forwarded to {targetText} for payment processing.
+                    </div>
+                </div>";
+        }
+
         await SendContractorReceiptStatusEmailAsync(receipt,
             statusLabel: "Approved",
             subject: $"Your receipt #{receipt.Id} has been approved",
             heading: "Receipt Approved",
-            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.",
+            body: $"Your payroll receipt has been approved and is now scheduled for payment. You will receive a separate confirmation when payment is processed.{noteBlock}{forwardBlock}",
             barColor: "#10b981",
             logType: "PayrollApproved");
     }
@@ -777,13 +1144,348 @@ public class EmailNotificationService
     public async Task NotifyReceiptPaidAsync(Core.Models.PayrollReceipt receipt)
     {
         if (!await IsNotificationEnabled("NotifyOnPayrollPaid")) return;
+
+        // Bundle method + reference into a styled call-out so the
+        // contractor has the exact strings they need to find the
+        // payment in their bank statement (check #, ACH ID, etc.).
+        var detailRows = new List<string>();
+        if (!string.IsNullOrWhiteSpace(receipt.PaymentMethod))
+            detailRows.Add($"<div><strong>Method:</strong> {System.Net.WebUtility.HtmlEncode(receipt.PaymentMethod)}</div>");
+        if (!string.IsNullOrWhiteSpace(receipt.PaymentReference))
+            detailRows.Add($"<div><strong>Reference:</strong> <code>{System.Net.WebUtility.HtmlEncode(receipt.PaymentReference)}</code></div>");
+        if (receipt.PaidDate.HasValue)
+            detailRows.Add($"<div><strong>Issued:</strong> {receipt.PaidDate:MMM d, yyyy}</div>");
+
+        var paymentBlock = detailRows.Count == 0
+            ? string.Empty
+            : $@"<div style='background:#ecfeff;border-left:4px solid #06b6d4;padding:12px 14px;border-radius:4px;margin:14px 0;color:#0e7490;'>
+                    <strong>Payment Details</strong>
+                    <div style='margin-top:6px;line-height:1.5;'>{string.Join("", detailRows)}</div>
+                 </div>";
+
+        var confirmBlock = receipt.PaymentConfirmedDate.HasValue
+            ? string.Empty
+            : @"<p style='margin-top:14px;font-size:.9rem;color:#475569;'>
+                    Once the funds land in your account, please open the receipt in
+                    the portal and click <strong>Confirm Received</strong> so we can
+                    close the loop on this payment.
+                </p>";
+
         await SendContractorReceiptStatusEmailAsync(receipt,
             statusLabel: "Paid",
-            subject: $"Payment confirmed for receipt #{receipt.Id} — {receipt.TotalAmount:C}",
-            heading: "Payment Confirmed",
-            body: $"Payment for your payroll receipt has been processed. Please allow 1–3 business days for the funds to appear in your account.",
+            subject: $"Payment issued for receipt #{receipt.Id} — {receipt.TotalAmount:C}",
+            heading: "Payment Issued",
+            body: $"Payment for your payroll receipt has been processed. Please allow 1–3 business days for the funds to appear in your account.{paymentBlock}{confirmBlock}",
             barColor: "#0ea5e9",
             logType: "PayrollPaid");
+    }
+
+    /// <summary>
+    /// Daily nudge to the configured recipients for any Submitted receipt
+    /// that's been sitting unapproved past the grace period. Reuses the
+    /// PayrollNotificationRecipients table for routing — same audience
+    /// that gets the initial submit notification.
+    /// </summary>
+    public async Task SendStaleReceiptReminderAsync(Core.Models.PayrollReceipt receipt, int graceDays, int? elapsedBusinessDays = null)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        // Prefer the caller-supplied business-day count; fall back to the
+        // grace threshold so the email still reads sensibly if the
+        // reminder service ever invokes us without that argument.
+        var pendingBizDays = elapsedBusinessDays ?? graceDays;
+
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
+
+        var recipients = configured
+            .Select(r => (Email: r.PortalUser?.Email ?? r.Email,
+                          Name:  r.PortalUser?.FullName ?? r.DisplayName ?? r.Email))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+        if (recipients.Count == 0) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var dayWord = pendingBizDays == 1 ? "business day" : "business days";
+        var subject = $"Reminder: Receipt #{receipt.Id} has been awaiting approval for {pendingBizDays} {dayWord}";
+
+        var innerContent = $@"<h3 style='color:#b45309;'>Receipt Awaiting Approval</h3>
+            <p>This payroll receipt has been sitting in <strong>Submitted</strong> status for <strong>{pendingBizDays} {dayWord}</strong> — past the {graceDays}-business-day grace period (weekends and company holidays excluded).</p>
+            <div style='background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                <strong>Action needed:</strong> open the Contractor Payroll page and approve, reject, or comment so {System.Net.WebUtility.HtmlEncode(contractorName)} knows where things stand.
+            </div>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Submitted</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.SubmittedDate:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+            </table>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollStaleReminder");
+    }
+
+    /// <summary>
+    /// Acknowledgement email back to the admin team once the contractor
+    /// clicks Confirm Received on a Paid receipt. Closes the loop on the
+    /// payment lifecycle. Sent to the same recipient list configured for
+    /// receipt-submitted alerts (so HR / AP / owner all hear about it).
+    /// </summary>
+    public async Task NotifyReceiptPaymentConfirmedAsync(Core.Models.PayrollReceipt receipt)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        // Same resolution logic as receipt-submitted — recipients table
+        // first, then fall back to all active Admins.
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
+
+        var recipients = configured
+            .Select(r => (Email: r.PortalUser?.Email ?? r.Email,
+                          Name:  r.PortalUser?.FullName ?? r.DisplayName ?? r.Email))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+        if (recipients.Count == 0) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+        var subject = $"Receipt #{receipt.Id} payment confirmed received by {contractorName}";
+
+        var noteBlock = string.IsNullOrWhiteSpace(receipt.PaymentConfirmedNote)
+            ? string.Empty
+            : $@"<div style='background:#ecfdf5;border-left:4px solid #10b981;padding:10px 12px;border-radius:4px;margin:12px 0;color:#065f46;'>
+                    <strong>Note from contractor:</strong>
+                    <div style='margin-top:4px;'>{System.Net.WebUtility.HtmlEncode(receipt.PaymentConfirmedNote)}</div>
+                </div>";
+
+        var innerContent = $@"<h3>Payment Confirmed Received</h3>
+            <p>{System.Net.WebUtility.HtmlEncode(contractorName)} has confirmed they received payment for receipt #{receipt.Id}.</p>
+            {noteBlock}
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Amount</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Paid On</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PaidDate:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Confirmed On</td>
+                    <td style='padding:8px;'>{receipt.PaymentConfirmedDate:MMM d, yyyy}</td></tr>
+            </table>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollPaymentConfirmed");
+    }
+
+    /// <summary>
+    /// Shares a submitted/approved/paid receipt with one or more external
+    /// recipients (typically Accounts Payable). Sender supplies the To,
+    /// optional Cc, optional subject override, and an optional message that
+    /// renders above the receipt summary. The receipt itself is attached as
+    /// PDF and/or XLSX so the recipient has an offline copy.
+    /// </summary>
+    public async Task<bool> ShareReceiptAsync(
+        Core.Models.PayrollReceipt receipt,
+        string toEmail,
+        string? ccEmail,
+        string? subjectOverride,
+        string? message,
+        IList<GmailApiService.EmailAttachment> attachments,
+        string senderDisplay)
+    {
+        if (string.IsNullOrWhiteSpace(toEmail)) return false;
+
+        var config = await GetActiveConfig();
+        if (config == null) return false;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "(unknown)";
+
+        var subject = !string.IsNullOrWhiteSpace(subjectOverride)
+            ? subjectOverride
+            : $"Contractor Receipt #{receipt.Id} — {contractorName} — {receipt.TotalAmount:C}";
+
+        var safeMessage = string.IsNullOrWhiteSpace(message)
+            ? ""
+            : $@"<div style='background:#f8f9fa;border-left:4px solid {brandColor};padding:12px;margin:0 0 16px;'>
+                    <div style='font-size:.75rem;color:#6c757d;text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:4px;'>Message from {System.Net.WebUtility.HtmlEncode(senderDisplay)}</div>
+                    <div style='white-space:pre-wrap;'>{System.Net.WebUtility.HtmlEncode(message)}</div>
+                </div>";
+
+        var attachmentList = string.Join("<br/>",
+            attachments.Select(a => $"<span style='color:#6c757d;'>• {System.Net.WebUtility.HtmlEncode(a.FileName)}</span>"));
+
+        var innerContent = $@"<h3 style='margin-top:0;'>Contractor Payroll Receipt</h3>
+            <p>{System.Net.WebUtility.HtmlEncode(senderDisplay)} has shared a payroll receipt with you. The full receipt is attached for your records.</p>
+            {safeMessage}
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Status}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.TotalHours:0.##} ({receipt.TotalBillableHours:0.##} billable)</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Total Amount</td>
+                    <td style='padding:8px;'><strong>{receipt.TotalAmount:C}</strong></td></tr>
+            </table>
+            <div style='font-size:.85rem;color:#6c757d;'>
+                <strong>Attached:</strong><br/>{attachmentList}
+            </div>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+
+        var primaryName = receipt.Contractor != null ? contractorName : "External";
+        try
+        {
+            var msgId = await _gmailApiService.SendEmailWithAttachmentsAsync(
+                config, _context, toEmail, ccEmail, subject, htmlBody, attachments);
+            await LogNotificationAsync("PayrollShare", toEmail, primaryName, subject, null, msgId != null);
+            return msgId != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Failed to share receipt #{Id} to {Email}", receipt.Id, toEmail);
+            await LogNotificationAsync("PayrollShare", toEmail, primaryName, subject, null, false, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Sends a contractor a single-week summary of their logged time —
+    /// total hours, Standard vs. Emergency split, billable vs. non-billable,
+    /// and a per-day breakdown. Triggered on-demand from the AdminPayroll
+    /// "Send Weekly Digest" action.
+    /// </summary>
+    public async Task NotifyContractorWeeklyHoursAsync(
+        Core.Models.Employee contractor, DateTime weekStart, DateTime weekEnd,
+        IReadOnlyList<Core.Models.TicketTimeEntry> entries)
+    {
+        if (string.IsNullOrWhiteSpace(contractor.Email)) return;
+
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var totalHours      = entries.Sum(e => e.Hours);
+        var billableHours   = entries.Where(e => e.IsBillable).Sum(e => e.Hours);
+        var standardHours   = entries.Where(e => e.RateType == Core.Enums.PayRateType.Standard).Sum(e => e.Hours);
+        var emergencyHours  = entries.Where(e => e.RateType == Core.Enums.PayRateType.Emergency).Sum(e => e.Hours);
+
+        var rows = new System.Text.StringBuilder();
+        if (entries.Count == 0)
+        {
+            rows.Append("<tr><td colspan='4' style='padding:12px;text-align:center;color:#6c757d;'>No hours logged this week.</td></tr>");
+        }
+        else
+        {
+            foreach (var dayGroup in entries.GroupBy(e => e.WorkDate.Date).OrderBy(g => g.Key))
+            {
+                var dayTotal     = dayGroup.Sum(e => e.Hours);
+                var dayBillable  = dayGroup.Where(e => e.IsBillable).Sum(e => e.Hours);
+                var dayEmergency = dayGroup.Where(e => e.RateType == Core.Enums.PayRateType.Emergency).Sum(e => e.Hours);
+                rows.Append($@"<tr>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{dayGroup.Key:ddd, MMM d}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{dayTotal:0.##}h</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{dayBillable:0.##}h</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#dc3545;'>{(dayEmergency > 0 ? $"{dayEmergency:0.##}h" : "—")}</td>
+                </tr>");
+            }
+        }
+
+        var subject = $"Weekly hours summary — {weekStart:MMM d} to {weekEnd:MMM d, yyyy}";
+        var contractorName = System.Net.WebUtility.HtmlEncode($"{contractor.FirstName} {contractor.LastName}");
+        var innerContent = $@"<h3>Weekly Hours Summary</h3>
+            <p>Hi {contractorName}, here's your time-logged summary for the week of
+                <strong>{weekStart:MMM d}</strong>–<strong>{weekEnd:MMM d, yyyy}</strong>.</p>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:180px;'>Total Hours</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{totalHours:0.##}h</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Billable</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{billableHours:0.##}h</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Standard / Emergency</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{standardHours:0.##}h / <span style='color:#dc3545;'>{emergencyHours:0.##}h</span></td></tr>
+            </table>
+            <h4 style='margin-top:24px;'>By Day</h4>
+            <table style='width:100%;border-collapse:collapse;margin:8px 0 15px;'>
+                <thead><tr style='background:#f8f9fa;'>
+                    <th style='padding:8px;text-align:left;border-bottom:2px solid #dee2e6;'>Day</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Total</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Billable</th>
+                    <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Emergency</th>
+                </tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+            <p style='margin-top:24px;font-size:.9em;color:#6c757d;'>
+                Heads up — entries don't appear on a payroll receipt until you submit one from the Contractor portal.
+            </p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, contractor.Email, subject, htmlBody, null, null, null);
+            await LogNotificationAsync("PayrollWeeklyDigest", contractor.Email, $"{contractor.FirstName} {contractor.LastName}", subject, null, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Weekly-digest send failed for contractor #{Id}", contractor.Id);
+            await LogNotificationAsync("PayrollWeeklyDigest", contractor.Email, $"{contractor.FirstName} {contractor.LastName}", subject, null, false, ex.Message);
+        }
     }
 
     /// <summary>

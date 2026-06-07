@@ -1,0 +1,203 @@
+@{
+    ViewData["Title"] = "Agent Performance";
+    var from         = (DateTime)ViewBag.From;
+    var to           = (DateTime)ViewBag.To;
+    var totalResolved= (int)ViewBag.TotalResolved;
+    var totalOpen    = (int)ViewBag.TotalOpen;
+    var fleetMttr    = (double?)ViewBag.FleetMttr;
+    var fleetCsat    = (double?)ViewBag.FleetCsat;
+    var agents       = (System.Collections.IEnumerable)ViewBag.PerAgent;
+    var agentList    = agents.Cast<dynamic>().ToList();
+
+    // Reused by every drill-link in this view so the modal pulls the
+    // exact slice that produced the number on screen.
+    var rangeQs = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Reports</a></li>
+        <li class="breadcrumb-item active">Agent Performance</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0"><i class="bi bi-people-fill text-primary me-1"></i>Agent Performance</h1>
+    <form method="get" class="d-flex gap-2 align-items-center">
+        <label class="small text-muted mb-0">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="form-control form-control-sm" style="width:150px;" />
+        <label class="small text-muted mb-0">To</label>
+        <input type="date" name="to"   value="@to.ToString("yyyy-MM-dd")"   class="form-control form-control-sm" style="width:150px;" />
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
+        <a asp-action="Agents" class="btn btn-sm btn-outline-secondary">Reset</a>
+    </form>
+</div>
+
+@if (agentList.Count == 0)
+{
+    @await Html.PartialAsync("_EmptyState", new {
+        Icon       = "bi-people",
+        Title      = "No assigned tickets in this range",
+        Message    = "Once tickets get routed to agents in the selected window, their resolution counts, MTTR, and CSAT scores will appear here. Widen the date range or check the unassigned queue.",
+        ActionLink = Url.Action("Index", "Tickets", new { unassigned = true }),
+        ActionText = "View Unassigned"
+    })
+}
+else
+{
+    <!-- Fleet KPIs (clickable → drill modal) -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/TicketsResolvedInRange?@rangeQs"
+                 data-ssdrill-title="Resolved Tickets (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                 data-ssdrill-type="tickets"
+                 title="Click to see the resolved tickets">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Resolved</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#16a34a;line-height:1;">@totalResolved</div>
+                    <div class="small text-muted mt-2">across @agentList.Count agent@(agentList.Count == 1 ? "" : "s")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm ss-drill-card"
+                 data-ssdrill-url="/Reports/TicketsCurrentlyOpen"
+                 data-ssdrill-title="Currently Open Tickets"
+                 data-ssdrill-type="tickets"
+                 title="Click to see the open tickets">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Currently Open</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#0d6efd;line-height:1;">@totalOpen</div>
+                    <div class="small text-muted mt-2">in-flight tickets</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Avg MTTR</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#0ea5e9;line-height:1;">
+                        @(fleetMttr.HasValue ? fleetMttr.Value.ToString("0.0") : "—")<span style="font-size:1.2rem;color:#9ca3af;font-weight:500;">h</span>
+                    </div>
+                    <div class="small text-muted mt-2">from creation to resolution</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase mb-1" style="letter-spacing:.06em;">Avg CSAT</div>
+                    <div style="font-size:2.4rem;font-weight:700;color:#f59e0b;line-height:1;">
+                        @(fleetCsat.HasValue ? fleetCsat.Value.ToString("0.0") : "—")<span style="font-size:1.2rem;color:#9ca3af;font-weight:500;">/5</span>
+                    </div>
+                    <div class="small text-muted mt-2">fleet-wide</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <span class="fw-semibold"><i class="bi bi-trophy me-1 text-warning"></i>Leaderboard</span>
+            <span class="text-muted small">Sorted by resolved count, then CSAT</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:50px;">#</th>
+                            <th>Agent</th>
+                            <th class="text-end">Resolved</th>
+                            <th class="text-end">Open</th>
+                            <th class="text-end">Avg MTTR</th>
+                            <th class="text-end">CSAT</th>
+                            <th>Workload</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            // Cap workload visualization at the busiest agent so the
+                            // bar widths read as relative effort.
+                            var maxResolved = agentList.Max(a => (int)a.Resolved);
+                            var rank = 0;
+                        }
+                        @foreach (dynamic a in agentList)
+                        {
+                            rank++;
+                            int resolved = a.Resolved;
+                            double? csat = a.CsatAvg;
+                            int     csatN = a.CsatCount;
+                            var pct  = maxResolved == 0 ? 0 : (int)Math.Round(resolved * 100.0 / maxResolved);
+                            var csatColor = csat is null ? "#9ca3af" : (csat >= 4 ? "#16a34a" : (csat >= 3 ? "#f59e0b" : "#dc2626"));
+                            var rankBadge = rank switch
+                            {
+                                1 => "🥇",
+                                2 => "🥈",
+                                3 => "🥉",
+                                _ => $"#{rank}"
+                            };
+                            <tr>
+                                <td><span class="small fw-semibold text-muted">@rankBadge</span></td>
+                                <td>
+                                    <a asp-controller="Tickets" asp-action="Index" asp-route-assignee="@a.AgentId"
+                                       class="text-decoration-none fw-semibold">@a.Name</a>
+                                </td>
+                                <td class="text-end fw-semibold ss-drill-row" style="color:#16a34a;"
+                                    data-ssdrill-url="/Reports/TicketsForAgent?agentId=@a.AgentId&scope=resolved&@rangeQs"
+                                    data-ssdrill-title="@a.Name — Resolved (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                    data-ssdrill-type="tickets"
+                                    title="Click to see the resolved tickets">@resolved</td>
+                                <td class="text-end ss-drill-row"
+                                    data-ssdrill-url="/Reports/TicketsForAgent?agentId=@a.AgentId&scope=open"
+                                    data-ssdrill-title="@a.Name — Currently Open"
+                                    data-ssdrill-type="tickets"
+                                    title="Click to see this agent's open tickets">@a.Open</td>
+                                <td class="text-end text-muted">
+                                    @(a.MttrHours == null ? "—" : ((double)a.MttrHours).ToString("0.0") + "h")
+                                </td>
+                                @if (csat.HasValue)
+                                {
+                                    <td class="text-end ss-drill-row"
+                                        data-ssdrill-url="/Reports/SurveysForAgent?agentId=@a.AgentId&@rangeQs"
+                                        data-ssdrill-title="@a.Name — Surveys (@from.ToString("MMM d") – @to.ToString("MMM d, yyyy"))"
+                                        data-ssdrill-type="surveys"
+                                        title="Click to see this agent's surveys">
+                                        <span style="color:@csatColor;font-weight:600;">@csat.Value.ToString("0.0")</span>
+                                        <span class="text-muted small">/5</span>
+                                        <span class="text-muted small ms-1">(@csatN)</span>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td class="text-end">
+                                        <span class="text-muted small">no surveys</span>
+                                    </td>
+                                }
+                                <td style="min-width:160px;">
+                                    <div style="height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;">
+                                        <div style="width:@(pct)%;height:100%;background:linear-gradient(90deg,#3b82f6,#1d4ed8);"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-secondary mt-3 small mb-0">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>About this report.</strong>
+        <em>Resolved</em> counts tickets that reached Resolved or Closed during the window.
+        <em>Open</em> is the live count of in-flight tickets currently assigned (not filtered by date — gives you a "what's on their plate right now" view).
+        <em>MTTR</em> = average hours from creation to resolution, computed only over tickets resolved in this window.
+        <em>CSAT</em> is the avg score of surveys completed in this window for tickets the agent handled (sample size in parentheses).
+        Click any number to see the underlying tickets / surveys.
+    </div>
+}
+
+@await Html.PartialAsync("_DrillDownModal")

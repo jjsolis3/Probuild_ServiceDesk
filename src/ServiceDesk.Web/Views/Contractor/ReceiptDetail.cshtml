@@ -1,5 +1,10 @@
 @model ServiceDesk.Core.Models.PayrollReceipt
 @{
+    // Single source of truth for "is this page being viewed by an
+    // admin?" — referenced by both the Back button at the top and the
+    // comment-post form lower down. Declared once at file scope so a
+    // duplicate `var isAdminViewer` doesn't shadow / conflict.
+    var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
     var companyName = ViewBag.CompanyName as string ?? "ServiceSphere";
     var statusColor = Model.Status switch {
         "Draft"     => "#6c757d",
@@ -81,7 +86,7 @@
         font-weight: 700;
         letter-spacing: .04em;
         color: #fff;
-        background: @statusColor;
+        background: var(--status-color);
         margin-top: 4px;
     }
 
@@ -223,10 +228,54 @@
 
     /* Print */
     @@media print {
-        .no-print { display: none !important; }
-        body { background: #fff !important; }
-        .invoice-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+        /* Hide the Jobick admin chrome that bleeds into the print output
+           when the user hits the browser Print button. The page uses
+           _Layout.cshtml whose top-level structure is:
+             .nav-header (brand bar)
+             .header     (search/profile bar)
+             .dlabnav    (left sidebar nav)
+             .content-body (main content — what we want)
+             .footer     (footer strip)
+           Only .content-body should survive, and even there we strip
+           padding/background so the receipt card sits flush on the page. */
+        .nav-header, .header, .dlabnav, .footer,
+        .modal-backdrop,
+        .no-print {
+            display: none !important;
+        }
+        body, html {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        /* The Jobick wrapper indents .content-body to make room for the
+           sidebar — once the sidebar is hidden, drop the indent so the
+           receipt uses the full printable width. */
+        #main-wrapper, .content-body, .container-fluid, .container {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        .receipt-page {
+            margin: 0 !important;
+            padding: 8px !important;
+        }
+        .invoice-card {
+            box-shadow: none !important;
+            border: 1px solid #ccc !important;
+            page-break-inside: avoid;
+        }
         .invoice-table tbody tr:hover { background: inherit; }
+        /* Force colour on the status badge / accents in print — Chrome
+           strips background colours otherwise. */
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        /* Avoid splitting a single time-entry row across pages. */
+        .invoice-table tr { page-break-inside: avoid; }
+        @@page { margin: 0.5in; }
     }
 </style>
 }
@@ -240,8 +289,19 @@
             <div class="text-muted small">@Model.PeriodStart.ToString("MMMM d, yyyy") – @Model.PeriodEnd.ToString("MMMM d, yyyy")</div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a asp-action="Payroll" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-arrow-left me-1"></i>Back
+            @{
+                // Back button routes by audience: admins / IT agents land
+                // on the AdminPayroll queue they came from; contractors
+                // go to their own My Payroll page. Avoids the "your
+                // employee profile is not flagged as a contractor"
+                // bounce when an admin clicks Back from a contractor's
+                // receipt.
+                var backController = isAdminViewer ? "AdminPayroll" : "Contractor";
+                var backAction     = isAdminViewer ? "Index"        : "Payroll";
+                var backLabel      = isAdminViewer ? "Back to Payroll Queue" : "Back";
+            }
+            <a asp-controller="@backController" asp-action="@backAction" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>@backLabel
             </a>
             <button onclick="window.print()" class="btn btn-sm btn-outline-dark">
                 <i class="bi bi-printer me-1"></i>Print / PDF
@@ -249,7 +309,15 @@
             <a asp-action="ReceiptExcel" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-success">
                 <i class="bi bi-file-earmark-excel me-1"></i>Download Excel
             </a>
-            @if (Model.Status == "Draft")
+            @if (Model.Status != "Draft")
+            {
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-bs-toggle="modal" data-bs-target="#shareReceiptModal"
+                        title="Email this receipt to AP, Payroll, or anyone else">
+                    <i class="bi bi-send me-1"></i>Share via Email
+                </button>
+            }
+            @if (Model.Status == "Draft" && !User.IsInRole("Admin") && !User.IsInRole("IT Agent"))
             {
                 <form asp-action="SubmitReceipt" asp-route-id="@Model.Id" method="post" class="d-inline">
                     @Html.AntiForgeryToken()
@@ -260,6 +328,71 @@
             }
         </div>
     </div>
+
+    @if (Model.Status != "Draft")
+    {
+        <!-- Share Receipt modal — only rendered for Submitted+ receipts -->
+        <div class="modal fade no-print" id="shareReceiptModal" tabindex="-1" aria-labelledby="shareReceiptModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header" style="background:#0d6efd;color:#fff;">
+                        <h5 class="modal-title" id="shareReceiptModalLabel">
+                            <i class="bi bi-send me-2"></i>Share Receipt #@Model.Id
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form asp-action="ShareReceipt" asp-route-id="@Model.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">To <span class="text-danger">*</span></label>
+                                <input type="email" name="toEmail" class="form-control" required
+                                       placeholder="ap@example.com" />
+                                <div class="form-text">Where to send the receipt (single email).</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cc <span class="text-muted fw-normal">(optional)</span></label>
+                                <input type="text" name="ccEmail" class="form-control"
+                                       placeholder="payroll@example.com, you@example.com" />
+                                <div class="form-text">Comma-separated if multiple.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Subject <span class="text-muted fw-normal">(optional)</span></label>
+                                <input type="text" name="subject" class="form-control"
+                                       value="Contractor Receipt #@Model.Id — @Model.PeriodStart.ToString("MMM d") to @Model.PeriodEnd.ToString("MMM d, yyyy")" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Message <span class="text-muted fw-normal">(optional)</span></label>
+                                <textarea name="message" class="form-control" rows="3"
+                                          placeholder="e.g. Hi AP — receipt for the May 16–31 window, approved by Jane. Please process this pay cycle."></textarea>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label fw-semibold d-block">Attach</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtPdf" value="pdf" />
+                                    <label class="form-check-label" for="fmtPdf">PDF</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtXlsx" value="xlsx" />
+                                    <label class="form-check-label" for="fmtXlsx">Excel (XLSX)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="format" id="fmtBoth" value="both" checked />
+                                    <label class="form-check-label" for="fmtBoth">Both</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-send me-1"></i>Send
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
 
     <!-- Invoice card -->
     <div class="invoice-card">
@@ -272,7 +405,7 @@
             <div>
                 <div class="invoice-company-name">@companyName</div>
                 <div class="invoice-doc-type">Contractor Payroll Receipt</div>
-                <div class="status-pill mt-2">
+                <div class="status-pill mt-2" style="--status-color:@statusColor;">
                     <i class="bi @statusIcon"></i>@Model.Status
                 </div>
             </div>
@@ -315,10 +448,17 @@
                     </div>
                 </div>
                 <div class="bill-box">
-                    <div class="bill-label">Rate</div>
+                    <div class="bill-label">Rates</div>
                     <div class="bill-value">
-                        <strong>$@Model.HourlyRateSnapshot.ToString("N2")</strong><br />
-                        per hour
+                        <strong>@($"{Model.HourlyRateSnapshot:C2}/hr")</strong><text> standard</text>
+                        @if (Model.EmergencyRateSnapshot.HasValue)
+                        {
+                            <br /><strong class="text-danger">@($"{Model.EmergencyRateSnapshot.Value:C2}/hr")</strong><text> emergency</text>
+                        }
+                        @if (Model.MonthlyRetainerAmountSnapshot.HasValue && Model.MonthlyRetainerAmountSnapshot.Value > 0)
+                        {
+                            <br /><span class="text-muted small">@($"+ {Model.MonthlyRetainerAmountSnapshot.Value:C2}/mo retainer")</span>
+                        }
                     </div>
                 </div>
             </div>
@@ -334,8 +474,17 @@
                     <div class="tile-value">@Model.TotalBillableHours.ToString("0.##")</div>
                 </div>
                 <div class="tile tile-neutral">
-                    <div class="tile-label">Rate / hr</div>
-                    <div class="tile-value" style="font-size:1.3rem;">$@Model.HourlyRateSnapshot.ToString("N2")</div>
+                    <div class="tile-label">@(Model.TotalEmergencyHours > 0 ? "Standard / Emergency" : "Rate / hr")</div>
+                    <div class="tile-value" style="font-size:1.3rem;">
+                        @if (Model.TotalEmergencyHours > 0)
+                        {
+                            <text>@Model.TotalStandardHours.ToString("0.##") / @Model.TotalEmergencyHours.ToString("0.##") h</text>
+                        }
+                        else
+                        {
+                            <text>$@Model.HourlyRateSnapshot.ToString("N2")</text>
+                        }
+                    </div>
                 </div>
                 <div class="tile tile-total">
                     <div class="tile-label">Total Due</div>
@@ -345,14 +494,27 @@
 
             <!-- Time entries table -->
             <div class="bill-label mb-2">Time Entries</div>
+            @{
+                // Per-row rate display. Emergency entries always bill at the
+                // emergency rate. Standard entries bill at the standard rate
+                // EXCEPT for the portion absorbed by the retainer — but we
+                // can't know which individual entry "ran out of pool" without
+                // tracking running totals here; the per-month breakdown box
+                // below shows the aggregate so per-row just renders the
+                // entry's gross rate.
+                var calc = ViewBag.PayrollCalc as ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation;
+                var stdRate  = Model.HourlyRateSnapshot;
+                var emerRate = Model.EmergencyRateSnapshot ?? 0m;
+            }
             <div class="table-responsive mb-2">
                 <table class="invoice-table">
                     <thead>
                         <tr>
                             <th>Work Date</th>
                             <th>Ticket #</th>
-                            <th style="width:35%">Description</th>
+                            <th style="width:30%">Description</th>
                             <th class="text-center">Hours</th>
+                            <th class="text-center">Rate Type</th>
                             <th class="text-center">Billable</th>
                             <th class="text-end">Rate</th>
                             <th class="text-end">Amount</th>
@@ -361,7 +523,9 @@
                     <tbody>
                         @foreach (var entry in Model.TimeEntries.OrderBy(e => e.WorkDate))
                         {
-                            var amount = entry.IsBillable ? entry.Hours * Model.HourlyRateSnapshot : 0m;
+                            var isEmer = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+                            var rateForRow = isEmer ? emerRate : stdRate;
+                            var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
                             <tr>
                                 <td class="text-nowrap">@entry.WorkDate.ToString("MMM d, yyyy")</td>
                                 <td>
@@ -374,13 +538,19 @@
                                 <td class="text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
                                 <td class="text-center fw-semibold">@entry.Hours.ToString("0.##")</td>
                                 <td class="text-center">
+                                    @if (isEmer)
+                                    { <span class="badge bg-danger">Emergency</span> }
+                                    else
+                                    { <span class="badge bg-secondary">Standard</span> }
+                                </td>
+                                <td class="text-center">
                                     @if (entry.IsBillable)
                                     { <span class="badge-billable-yes">Billable</span> }
                                     else
                                     { <span class="badge-billable-no">Non-billable</span> }
                                 </td>
                                 <td class="text-end">
-                                    @(entry.IsBillable ? "$" + Model.HourlyRateSnapshot.ToString("N2") : "—")
+                                    @(entry.IsBillable ? "$" + rateForRow.ToString("N2") : "—")
                                 </td>
                                 <td class="text-end fw-semibold">
                                     @(entry.IsBillable ? "$" + amount.ToString("N2") : "—")
@@ -388,17 +558,112 @@
                             </tr>
                         }
                     </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="3" class="text-end">TOTAL</td>
-                            <td class="text-center">@Model.TotalHours.ToString("0.##")</td>
-                            <td></td>
-                            <td></td>
-                            <td class="text-end">$@Model.TotalAmount.ToString("N2")</td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
+
+            @* ── Payroll breakdown — Standard / Emergency / Retainer subtotals ── *@
+            @if (calc != null)
+            {
+                <div class="card border-0 shadow-sm mb-3" style="background:#fafbfc;">
+                    <div class="card-body py-3">
+                        <h6 class="fw-bold mb-3 text-uppercase small text-muted">Payroll Breakdown</h6>
+                        <table class="table table-sm align-middle mb-0">
+                            <tbody>
+                                @{
+                                    var stdAbsorbed = calc.TotalRetainerHoursApplied;
+                                    var stdHours    = calc.TotalStandardHours;
+                                    var stdBill     = calc.StandardBillableHours;
+                                    var emerHours   = calc.TotalEmergencyHours;
+                                }
+                                <tr>
+                                    <td class="fw-semibold">Standard hours</td>
+                                    <td class="text-end">@stdHours.ToString("0.##") h</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                                @if (stdAbsorbed > 0)
+                                {
+                                    <tr class="text-muted small">
+                                        <td class="ps-4"><i class="bi bi-arrow-return-right me-1"></i>Covered by retainer</td>
+                                        <td class="text-end">@stdAbsorbed.ToString("0.##") h</td>
+                                        <td class="text-end">$0.00</td>
+                                        <td class="text-end">$0.00</td>
+                                    </tr>
+                                }
+                                <tr class="small">
+                                    <td class="ps-4"><i class="bi bi-arrow-return-right me-1"></i>Billable at standard rate</td>
+                                    <td class="text-end">@stdBill.ToString("0.##") h</td>
+                                    <td class="text-end">@stdRate.ToString("C2")</td>
+                                    <td class="text-end fw-semibold">@calc.StandardBillableAmount.ToString("C2")</td>
+                                </tr>
+                                @if (emerHours > 0)
+                                {
+                                    <tr>
+                                        <td class="fw-semibold">Emergency hours</td>
+                                        <td class="text-end">@emerHours.ToString("0.##") h</td>
+                                        <td class="text-end">@emerRate.ToString("C2")</td>
+                                        <td class="text-end fw-semibold">@calc.EmergencyBillableAmount.ToString("C2")</td>
+                                    </tr>
+                                }
+                                @foreach (var m in calc.Months.Where(b => b.RetainerAmountThisReceipt > 0))
+                                {
+                                    <tr>
+                                        <td class="fw-semibold">
+                                            Monthly retainer — @m.Label
+                                            <span class="text-muted small">
+                                                (covers up to @((Model.MonthlyRetainerHoursSnapshot ?? 0m).ToString("0.##")) h)
+                                            </span>
+                                        </td>
+                                        <td></td>
+                                        <td></td>
+                                        <td class="text-end fw-semibold">@m.RetainerAmountThisReceipt.ToString("C2")</td>
+                                    </tr>
+                                }
+                                @foreach (var m in calc.Months.Where(b =>
+                                    !b.IsFirstReceiptOfMonth
+                                    && (Model.MonthlyRetainerAmountSnapshot ?? 0m) > 0))
+                                {
+                                    <tr class="text-muted small">
+                                        <td>
+                                            <i class="bi bi-info-circle me-1"></i>@m.Label retainer
+                                            already applied to a prior receipt
+                                            @if (m.RetainerHoursApplied > 0)
+                                            { <text>(@m.RetainerHoursApplied.ToString("0.##") h absorbed from this receipt's pool)</text> }
+                                        </td>
+                                        <td colspan="3"></td>
+                                    </tr>
+                                }
+                                @foreach (var charge in calc.RecurringCharges)
+                                {
+                                    <tr>
+                                        <td class="fw-semibold">
+                                            @charge.LabelSnapshot
+                                            <span class="text-muted small">— @charge.OccurrenceCount × @charge.UnitAmountSnapshot.ToString("C2")</span>
+                                        </td>
+                                        <td></td>
+                                        <td></td>
+                                        <td class="text-end fw-semibold">@charge.TotalAmount.ToString("C2")</td>
+                                    </tr>
+                                }
+                                <tr style="border-top:2px solid #333;">
+                                    <td class="fw-bold pt-2">Total</td>
+                                    <td class="text-end pt-2">
+                                        <span class="text-muted small">@Model.TotalHours.ToString("0.##") h logged</span>
+                                    </td>
+                                    <td></td>
+                                    <td class="text-end fw-bold pt-2" style="font-size:1.05rem;">$@Model.TotalAmount.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* Fallback when ViewBag.PayrollCalc isn't set (older receipts re-rendered without breakdown). *@
+                <div class="text-end fw-bold mb-3" style="font-size:1.1rem;">
+                    Total: $@Model.TotalAmount.ToString("N2")
+                </div>
+            }
 
             @if (!string.IsNullOrEmpty(Model.Notes))
             {
@@ -415,6 +680,93 @@
                         <div style="font-weight:700;color:#856404;font-size:.88rem;margin-bottom:3px;">Returned by HR for Revision</div>
                         <div style="color:#533f03;font-size:.875rem;">@Model.RejectionNote</div>
                     </div>
+                </div>
+            }
+
+            @if ((Model.Status == "Approved" || Model.Status == "Paid") && Model.ApprovedDate.HasValue)
+            {
+                <div style="background:#d1e7dd;border:1px solid #198754;border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+                    <i class="bi bi-check-circle-fill" style="color:#0f5132;font-size:1.1rem;flex-shrink:0;margin-top:2px;"></i>
+                    <div style="flex-grow:1;">
+                        <div style="font-weight:700;color:#0f5132;font-size:.88rem;margin-bottom:3px;">
+                            Approved on @Model.ApprovedDate.Value.ToString("MMMM d, yyyy 'at' h:mm tt") UTC
+                            @if (Model.ApprovedBy != null)
+                            { <span class="fw-normal">by @Model.ApprovedBy.FullName</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.ApprovalNote))
+                        {
+                            <div style="color:#0a3622;font-size:.875rem;">
+                                <strong>Note:</strong> @Model.ApprovalNote
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (Model.Status == "Paid" && Model.PaidDate.HasValue)
+            {
+                <!-- Payment details + Confirm Received -->
+                <div style="background:#cff4fc;border:1px solid #0aa2c0;border-radius:8px;padding:14px 18px;margin-bottom:18px;">
+                    <div style="display:flex;gap:12px;align-items:flex-start;">
+                        <i class="bi bi-cash-coin" style="color:#055160;font-size:1.2rem;flex-shrink:0;margin-top:2px;"></i>
+                        <div style="flex-grow:1;">
+                            <div style="font-weight:700;color:#055160;font-size:.95rem;margin-bottom:6px;">
+                                Payment Issued on @Model.PaidDate.Value.ToString("MMMM d, yyyy")
+                            </div>
+                            @if (!string.IsNullOrEmpty(Model.PaymentMethod) || !string.IsNullOrEmpty(Model.PaymentReference))
+                            {
+                                <div style="color:#055160;font-size:.875rem;display:flex;gap:18px;flex-wrap:wrap;">
+                                    @if (!string.IsNullOrEmpty(Model.PaymentMethod))
+                                    {
+                                        <span><strong>Method:</strong> @Model.PaymentMethod</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(Model.PaymentReference))
+                                    {
+                                        <span><strong>Reference:</strong> <code style="background:#fff;padding:1px 6px;border-radius:3px;">@Model.PaymentReference</code></span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="color:#055160;font-size:.85rem;font-style:italic;">No payment method or reference was recorded.</div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (Model.PaymentConfirmedDate.HasValue)
+                    {
+                        <div class="mt-3 pt-3" style="border-top:1px dashed #0aa2c0;">
+                            <div style="color:#0f5132;font-weight:600;display:flex;align-items:center;gap:6px;">
+                                <i class="bi bi-check2-all"></i>
+                                You confirmed receipt of this payment on @Model.PaymentConfirmedDate.Value.ToString("MMM d, yyyy")
+                            </div>
+                            @if (!string.IsNullOrEmpty(Model.PaymentConfirmedNote))
+                            {
+                                <div class="text-muted mt-1 small">Note: @Model.PaymentConfirmedNote</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mt-3 pt-3 no-print" style="border-top:1px dashed #0aa2c0;">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div style="color:#055160;font-size:.875rem;">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    @if (User.IsInRole("Admin") || User.IsInRole("IT Agent"))
+                                    { <span>Awaiting contractor confirmation.</span> }
+                                    else
+                                    { <span>Once the funds land in your account, please confirm receipt.</span> }
+                                </div>
+                                @if (!User.IsInRole("Admin") && !User.IsInRole("IT Agent"))
+                                {
+                                    <button type="button" class="btn btn-sm btn-success"
+                                            data-bs-toggle="modal" data-bs-target="#confirmReceivedModal">
+                                        <i class="bi bi-check2-circle me-1"></i>Confirm Received
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
             }
 
@@ -456,8 +808,134 @@
                     <div class="status-trail-label">Paid</div>
                     <div class="status-trail-date">@(paid ? Model.PaidDate!.Value.ToString("MMM d, yyyy") : "Pending")</div>
                 </div>
+                @if (Model.PaymentConfirmedDate.HasValue)
+                {
+                    <div class="status-step">
+                        <div class="status-dot status-dot-done" style="background:#0aa2c0;">
+                            <i class="bi bi-check2-all"></i>
+                        </div>
+                        <div class="status-trail-label">Confirmed</div>
+                        <div class="status-trail-date">@Model.PaymentConfirmedDate.Value.ToString("MMM d, yyyy")</div>
+                    </div>
+                }
             </div>
 
         </div>
     </div>
+
+    @{
+        var comments = ViewBag.Comments as IList<ServiceDesk.Core.Models.PayrollReceiptComment>
+                       ?? new List<ServiceDesk.Core.Models.PayrollReceiptComment>();
+    }
+
+    @* ── Activity / Discussion thread ────────────────────────────────────── *@
+    @if (Model.Status != "Draft" || comments.Any())
+    {
+        <div class="card shadow-sm mt-4 no-print">
+            <div class="card-header bg-white d-flex align-items-center">
+                <h5 class="mb-0"><i class="bi bi-chat-square-text me-2 text-primary"></i>Activity &amp; Discussion</h5>
+                <span class="badge bg-secondary ms-2">@comments.Count</span>
+            </div>
+            <div class="card-body">
+                @if (!comments.Any())
+                {
+                    <p class="text-muted small mb-0">No activity yet.</p>
+                }
+                else
+                {
+                    <div class="timeline">
+                        @foreach (var c in comments)
+                        {
+                            var isAdmin      = c.AuthorRole == "Admin";
+                            var isContractor = c.AuthorRole == "Contractor";
+                            var bg           = isAdmin ? "#eef4ff" : (isContractor ? "#f0fdf4" : "#f8f9fa");
+                            var bar          = isAdmin ? "#0d6efd" : (isContractor ? "#16a34a" : "#9ca3af");
+                            var icon         = isAdmin ? "bi-person-badge" : (isContractor ? "bi-person-circle" : "bi-gear");
+                            <div class="mb-3" style="background:@bg;border-left:4px solid @bar;padding:10px 14px;border-radius:6px;">
+                                <div class="d-flex justify-content-between align-items-start flex-wrap">
+                                    <div class="fw-semibold small">
+                                        <i class="bi @icon me-1" style="color:@bar;"></i>
+                                        @c.AuthorName
+                                        <span class="text-muted fw-normal">· @c.AuthorRole</span>
+                                    </div>
+                                    <div class="text-muted small">@c.CreatedDate.ToString("MMM d, yyyy h:mm tt")</div>
+                                </div>
+                                <div class="mt-1 small" style="white-space:pre-wrap;">@c.Body</div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (Model.Status != "Draft")
+                {
+                    var postController = isAdminViewer ? "AdminPayroll" : "Contractor";
+                    var postAction     = isAdminViewer ? "PostComment"  : "PostReceiptComment";
+                    var promptText     = isAdminViewer
+                        ? "Reply to the contractor, ask for clarification, or leave an internal note."
+                        : "Ask a clarifying question, add context, or leave a note for the admin team.";
+
+                    <form asp-controller="@postController" asp-action="@postAction" asp-route-id="@Model.Id" method="post" class="mt-3">
+                        @Html.AntiForgeryToken()
+                        @if (isAdminViewer)
+                        {
+                            <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
+                        }
+                        <label class="form-label small fw-semibold">Add a comment</label>
+                        <textarea name="body" class="form-control" rows="2" required
+                                  data-autosave="receipt-@Model.Id-comment"
+                                  placeholder="@promptText"></textarea>
+                        <div class="mt-2 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                <i class="bi bi-send me-1"></i>Post
+                            </button>
+                        </div>
+                    </form>
+                }
+            </div>
+        </div>
+    }
 </div>
+
+@if (Model.Status == "Paid" && !Model.PaymentConfirmedDate.HasValue)
+{
+    <!-- Confirm Received modal -->
+    <div class="modal fade no-print" id="confirmReceivedModal" tabindex="-1" aria-labelledby="confirmReceivedModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#198754;color:#fff;">
+                    <h5 class="modal-title" id="confirmReceivedModalLabel">
+                        <i class="bi bi-check2-circle me-2"></i>Confirm Payment Received
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form asp-action="ConfirmPaymentReceived" asp-route-id="@Model.Id" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-body">
+                        <p>
+                            By confirming, you're acknowledging that you've received payment of
+                            <strong class="text-success">$@Model.TotalAmount.ToString("N2")</strong>
+                            for receipt #@Model.Id.
+                        </p>
+                        @if (!string.IsNullOrEmpty(Model.PaymentReference))
+                        {
+                            <p class="small text-muted">
+                                Match against reference: <code>@Model.PaymentReference</code>
+                            </p>
+                        }
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">Note <span class="text-muted fw-normal">(optional)</span></label>
+                            <textarea name="confirmationNote" class="form-control" rows="2"
+                                      placeholder="e.g. Received via Zelle on May 30 — thanks!"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check2-circle me-1"></i>Confirm Received
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
