@@ -42,10 +42,15 @@ public sealed class PayrollCalculatorService
         public decimal StandardBillableAmount  { get; set; }
         public decimal EmergencyBillableAmount { get; set; }
         public decimal TotalRetainerAmountApplied { get; set; }
+        public decimal TotalRecurringChargesAmount { get; set; }
         public decimal TotalAmount             { get; set; }
 
         // Per-month breakdown for the receipt view's footer
         public List<MonthBucket> Months { get; set; } = new();
+
+        // Recurring-charge snapshot rows folded into TotalAmount. Passed through
+        // unchanged so the New Receipt / Receipt Detail views can render them.
+        public List<PayrollReceiptCharge> RecurringCharges { get; set; } = new();
     }
 
     public sealed class MonthBucket
@@ -76,6 +81,7 @@ public sealed class PayrollCalculatorService
         Employee contractor,
         IReadOnlyList<TicketTimeEntry> entries,
         int? receiptIdToIgnore = null,
+        IReadOnlyList<PayrollReceiptCharge>? charges = null,
         CancellationToken ct = default)
     {
         var standardRate  = contractor.HourlyRate ?? 0m;
@@ -176,10 +182,17 @@ public sealed class PayrollCalculatorService
             calc.TotalRetainerAmountApplied  += b.RetainerAmountThisReceipt;
         }
 
+        if (charges is { Count: > 0 })
+        {
+            calc.RecurringCharges.AddRange(charges);
+            calc.TotalRecurringChargesAmount = charges.Sum(c => c.TotalAmount);
+        }
+
         calc.TotalAmount =
             calc.StandardBillableAmount
             + calc.EmergencyBillableAmount
-            + calc.TotalRetainerAmountApplied;
+            + calc.TotalRetainerAmountApplied
+            + calc.TotalRecurringChargesAmount;
 
         return calc;
     }

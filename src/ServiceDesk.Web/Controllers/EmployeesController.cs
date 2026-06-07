@@ -339,6 +339,18 @@ public class EmployeesController : Controller
             .FirstOrDefaultAsync(e => e.Id == id);
         if (employee == null) return NotFound();
         ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+
+        // Recurring-charge templates for the Contractor Settings card. Loaded
+        // separately (not via .Include) so the existing payload doesn't get
+        // unnecessarily heavier for non-contractor employees.
+        ViewBag.RecurringCharges = employee.IsContractor
+            ? await _context.RecurringChargeTemplates
+                .Where(t => t.ContractorId == employee.Id)
+                .OrderByDescending(t => t.IsActive)
+                .ThenBy(t => t.Label)
+                .ToListAsync()
+            : new List<RecurringChargeTemplate>();
+
         return View(employee);
     }
 
@@ -382,6 +394,116 @@ public class EmployeesController : Controller
         }
         ViewBag.Branches = await _context.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
         return View(employee);
+    }
+
+    // ── Recurring Charge Templates ────────────────────────────────────────────
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AddRecurringCharge(int employeeId, RecurringChargeTemplate model)
+    {
+        var contractor = await _context.Employees.FindAsync(employeeId);
+        if (contractor == null) return NotFound();
+        if (!contractor.IsContractor)
+        {
+            TempData["Error"] = "Recurring charges can only be added to contractor employees.";
+            return RedirectToAction(nameof(Edit), new { id = employeeId });
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Label) || model.UnitAmount < 0)
+        {
+            TempData["Error"] = "Label is required and Unit Amount must be zero or more.";
+            return RedirectToAction(nameof(Edit), new { id = employeeId });
+        }
+
+        // PerDay with an empty weekday mask is treated as "all 7 days" by the
+        // calculator; normalize it here so the table shows a clear value.
+        var weekdayMask = model.Cadence == Core.Enums.RecurringChargeCadence.PerDay
+            ? (model.WeekdayMask == 0 ? (byte)127 : model.WeekdayMask)
+            : (byte)0;
+
+        _context.RecurringChargeTemplates.Add(new RecurringChargeTemplate
+        {
+            ContractorId = employeeId,
+            Label        = model.Label.Trim(),
+            Cadence      = model.Cadence,
+            WeekdayMask  = weekdayMask,
+            PricingMode  = model.PricingMode,
+            UnitAmount   = model.UnitAmount,
+            StartDate    = model.StartDate,
+            EndDate      = model.EndDate,
+            IsActive     = model.IsActive,
+            Notes        = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes.Trim(),
+            CreatedDate  = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Recurring charge '{model.Label}' added.";
+        return RedirectToAction(nameof(Edit), new { id = employeeId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateRecurringCharge(int id, RecurringChargeTemplate model)
+    {
+        var existing = await _context.RecurringChargeTemplates.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(model.Label) || model.UnitAmount < 0)
+        {
+            TempData["Error"] = "Label is required and Unit Amount must be zero or more.";
+            return RedirectToAction(nameof(Edit), new { id = existing.ContractorId });
+        }
+
+        existing.Label       = model.Label.Trim();
+        existing.Cadence     = model.Cadence;
+        existing.WeekdayMask = model.Cadence == Core.Enums.RecurringChargeCadence.PerDay
+            ? (model.WeekdayMask == 0 ? (byte)127 : model.WeekdayMask)
+            : (byte)0;
+        existing.PricingMode = model.PricingMode;
+        existing.UnitAmount  = model.UnitAmount;
+        existing.StartDate   = model.StartDate;
+        existing.EndDate     = model.EndDate;
+        existing.IsActive    = model.IsActive;
+        existing.Notes       = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes.Trim();
+
+        await _context.SaveChangesAsync();
+
+        TempData["Success"] = $"Recurring charge '{existing.Label}' updated.";
+        return RedirectToAction(nameof(Edit), new { id = existing.ContractorId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteRecurringCharge(int id)
+    {
+        var template = await _context.RecurringChargeTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+
+        var contractorId = template.ContractorId;
+        var label        = template.Label;
+
+        // If this template has any historical snapshot rows attached to saved
+        // receipts, prefer a soft-disable so the receipt's TemplateId FK
+        // doesn't get nulled out (SET NULL would otherwise scrub the link).
+        var hasHistory = await _context.PayrollReceiptCharges.AnyAsync(c => c.TemplateId == id);
+        if (hasHistory)
+        {
+            template.IsActive = false;
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Recurring charge '{label}' deactivated (kept on file because it appears on saved receipts).";
+        }
+        else
+        {
+            _context.RecurringChargeTemplates.Remove(template);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = $"Recurring charge '{label}' deleted.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id = contractorId });
     }
 
     public async Task<IActionResult> Delete(int? id)
