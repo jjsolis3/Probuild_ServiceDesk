@@ -1,18 +1,26 @@
 @model IEnumerable<ServiceDesk.Core.Models.TicketTimeEntry>
+@using ServiceDesk.Core.Enums
+@using ServiceDesk.Core.Models
+@using ServiceDesk.Web.Services
 @{
-    var contractor  = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
-    var periodStart = ViewBag.PeriodStart as string;
-    var periodEnd   = ViewBag.PeriodEnd   as string;
-    var calc        = ViewBag.PayrollCalc as ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation;
-    var stdRate     = contractor?.HourlyRate ?? 0m;
-    var emerRate    = contractor?.EmergencyHourlyRate ?? 0m;
-    var entries     = Model.ToList();
+    var contractor      = ViewBag.Contractor as ServiceDesk.Core.Models.Employee;
+    var periodStart     = ViewBag.PeriodStart as string;
+    var periodEnd       = ViewBag.PeriodEnd   as string;
+    var calc            = ViewBag.PayrollCalc as ServiceDesk.Web.Services.PayrollCalculatorService.PayrollCalculation;
+    var stdRate         = contractor?.HourlyRate ?? 0m;
+    var emerRate        = contractor?.EmergencyHourlyRate ?? 0m;
+    var entries         = Model.ToList();
+    var chargeTemplates = (ViewBag.ChargeTemplates as List<RecurringChargeTemplate>) ?? new List<RecurringChargeTemplate>();
+    var chargeSnapshots = (ViewBag.ChargeSnapshots as List<PayrollReceiptCharge>) ?? new List<PayrollReceiptCharge>();
+    var snapshotByTemplateId = chargeSnapshots.Where(s => s.TemplateId.HasValue).ToDictionary(s => s.TemplateId!.Value);
+    var hasEntries      = entries.Count > 0;
+    var hasCharges      = chargeTemplates.Count > 0;
 }
 
 <div class="row page-titles">
     <div class="col-sm-6">
         <h4>New Payroll Receipt</h4>
-        <p class="text-muted mb-0">Pick the unclaimed time entries to include on this receipt</p>
+        <p class="text-muted mb-0">Pick the unclaimed time entries and recurring charges to include on this receipt</p>
     </div>
     <div class="col-sm-6 text-end">
         <a asp-action="Payroll" class="btn btn-outline-secondary">
@@ -42,12 +50,12 @@
     </div>
 </div>
 
-@if (!entries.Any())
+@if (!hasEntries && !hasCharges)
 {
     @await Html.PartialAsync("_EmptyState", new {
         Icon    = "bi-hourglass",
-        Title   = "No unclaimed entries in this period",
-        Message = "Adjust the period above, or log new hours on a ticket first. Already-claimed entries (in a submitted, approved, or paid receipt) are excluded."
+        Title   = "Nothing to include in this period",
+        Message = "No unclaimed time entries and no recurring charges in this window. Adjust the period above, log new hours on a ticket, or ask an admin to set up recurring charges on your profile."
     })
 }
 else
@@ -58,76 +66,142 @@ else
         <input type="hidden" name="periodStart" value="@periodStart" />
         <input type="hidden" name="periodEnd" value="@periodEnd" />
 
-        <div class="card shadow-sm mb-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-list me-1"></i>Time Entries</span>
-                <span class="text-muted small">
-                    <span id="selCount">@entries.Count</span> of @entries.Count selected ·
-                    <span id="selHours">@entries.Sum(e => e.Hours).ToString("0.##")</span> h ·
-                    <a href="#" id="selectAllLink" class="ms-2">Select all</a> ·
-                    <a href="#" id="clearAllLink" class="ms-1">Clear all</a>
-                </span>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="text-center" style="width:38px;">
-                                    <input type="checkbox" id="selectAllCheck" class="form-check-input" checked
-                                           aria-label="Select all entries" />
-                                </th>
-                                <th>Work Date</th>
-                                <th>Ticket</th>
-                                <th>Description</th>
-                                <th class="text-center">Hours</th>
-                                <th class="text-center">Rate Type</th>
-                                <th class="text-center">Billable</th>
-                                <th class="text-end">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var entry in entries)
-                            {
-                                var isEmer     = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
-                                var rateForRow = isEmer ? emerRate : stdRate;
-                                var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
+        @if (hasEntries)
+        {
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-list me-1"></i>Time Entries</span>
+                    <span class="text-muted small">
+                        <span id="selCount">@entries.Count</span> of @entries.Count selected ·
+                        <span id="selHours">@entries.Sum(e => e.Hours).ToString("0.##")</span> h ·
+                        <a href="#" id="selectAllLink" class="ms-2">Select all</a> ·
+                        <a href="#" id="clearAllLink" class="ms-1">Clear all</a>
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
                                 <tr>
-                                    <td class="text-center">
-                                        <input type="checkbox" name="selectedEntryIds" value="@entry.Id"
-                                               class="form-check-input entry-check" checked
-                                               data-hours="@entry.Hours.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                               aria-label="Include entry @entry.Id" />
-                                    </td>
-                                    <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
-                                    <td class="small">
-                                        @if (entry.Ticket != null)
-                                        {
-                                            <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@entry.Ticket.Id">#@entry.Ticket.Id</a>
-                                        }
-                                    </td>
-                                    <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
-                                    <td class="text-center small">@entry.Hours.ToString("0.##")</td>
-                                    <td class="text-center">
-                                        @if (isEmer)
-                                        { <span class="badge bg-danger">Emergency</span> }
-                                        else
-                                        { <span class="badge bg-secondary">Standard</span> }
-                                    </td>
-                                    <td class="text-center">
-                                        @if (entry.IsBillable)
-                                        { <span class="badge bg-success">Yes</span> }
-                                        else
-                                        { <span class="badge bg-secondary">No</span> }
-                                    </td>
-                                    <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                                    <th class="text-center" style="width:38px;">
+                                        <input type="checkbox" id="selectAllCheck" class="form-check-input" checked
+                                               aria-label="Select all entries" />
+                                    </th>
+                                    <th>Work Date</th>
+                                    <th>Ticket</th>
+                                    <th>Description</th>
+                                    <th class="text-center">Hours</th>
+                                    <th class="text-center">Rate Type</th>
+                                    <th class="text-center">Billable</th>
+                                    <th class="text-end">Amount</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var entry in entries)
+                                {
+                                    var isEmer     = entry.RateType == ServiceDesk.Core.Enums.PayRateType.Emergency;
+                                    var rateForRow = isEmer ? emerRate : stdRate;
+                                    var amount     = entry.IsBillable ? entry.Hours * rateForRow : 0m;
+                                    <tr>
+                                        <td class="text-center">
+                                            <input type="checkbox" name="selectedEntryIds" value="@entry.Id"
+                                                   class="form-check-input entry-check" checked
+                                                   data-hours="@entry.Hours.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                                   aria-label="Include entry @entry.Id" />
+                                        </td>
+                                        <td class="small">@entry.WorkDate.ToString("MMM d, yyyy")</td>
+                                        <td class="small">
+                                            @if (entry.Ticket != null)
+                                            {
+                                                <a asp-controller="Tickets" asp-action="Edit" asp-route-id="@entry.Ticket.Id">#@entry.Ticket.Id</a>
+                                            }
+                                        </td>
+                                        <td class="small text-muted">@(entry.Description ?? entry.Ticket?.Title ?? "—")</td>
+                                        <td class="text-center small">@entry.Hours.ToString("0.##")</td>
+                                        <td class="text-center">
+                                            @if (isEmer)
+                                            { <span class="badge bg-danger">Emergency</span> }
+                                            else
+                                            { <span class="badge bg-secondary">Standard</span> }
+                                        </td>
+                                        <td class="text-center">
+                                            @if (entry.IsBillable)
+                                            { <span class="badge bg-success">Yes</span> }
+                                            else
+                                            { <span class="badge bg-secondary">No</span> }
+                                        </td>
+                                        <td class="text-end small">@(entry.IsBillable ? "$" + amount.ToString("N2") : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
+
+        @if (hasCharges)
+        {
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <i class="fas fa-repeat me-1"></i>Recurring Charges
+                    <small class="text-muted ms-2">— pre-filled from your contractor profile. Untick rows you don't want on this receipt, or override the occurrence count for a short period.</small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:38px;">&nbsp;</th>
+                                    <th>Charge</th>
+                                    <th>Cadence</th>
+                                    <th class="text-end">Unit</th>
+                                    <th class="text-center" style="width:110px;">Occurrences</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in chargeTemplates)
+                                {
+                                    var snap = snapshotByTemplateId.TryGetValue(t.Id, out var s) ? s : null;
+                                    var auto = snap?.OccurrenceCount ?? RecurringChargeCalculator.CountOccurrences(t, DateTime.Parse(periodStart!), DateTime.Parse(periodEnd!));
+                                    var unitDollars = snap?.UnitAmountSnapshot ?? RecurringChargeCalculator.UnitDollars(t, contractor!);
+                                    var unitDisplay = t.PricingMode == RecurringChargePricingMode.Hourly
+                                        ? $"{t.UnitAmount:0.##} h × rate = {unitDollars:C2}"
+                                        : unitDollars.ToString("C2");
+                                    var isZeroUnit = unitDollars <= 0m && t.PricingMode == RecurringChargePricingMode.Hourly;
+                                    <tr data-template-id="@t.Id">
+                                        <td class="text-center">
+                                            <input type="checkbox" name="selectedChargeTemplateIds" value="@t.Id"
+                                                   class="form-check-input charge-check" checked
+                                                   data-unit="@unitDollars.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                                   data-auto="@auto"
+                                                   aria-label="Include charge @t.Label" />
+                                        </td>
+                                        <td>
+                                            <strong>@t.Label</strong>
+                                            @if (isZeroUnit)
+                                            {
+                                                <span class="badge bg-warning text-dark ms-1" title="Hourly charge but contractor's hourly rate is not set">No rate</span>
+                                            }
+                                        </td>
+                                        <td class="small">@RecurringChargeCalculator.DescribeCadence(t)</td>
+                                        <td class="text-end small">@unitDisplay</td>
+                                        <td class="text-center">
+                                            <input type="number" name="chargeOccurrenceCounts" value="@auto"
+                                                   class="form-control form-control-sm text-center charge-count"
+                                                   min="0" max="@(auto * 2)" step="1"
+                                                   aria-label="Occurrences for @t.Label" />
+                                        </td>
+                                        <td class="text-end fw-semibold charge-total">@((unitDollars * auto).ToString("C2"))</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
 
         <div class="card shadow-sm mb-4" id="summaryCard">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -165,6 +239,8 @@ else
                 var periodStart  = form.querySelector('input[name="periodStart"]').value;
                 var periodEnd    = form.querySelector('input[name="periodEnd"]').value;
                 var checks       = Array.prototype.slice.call(form.querySelectorAll('.entry-check'));
+                var chargeChecks = Array.prototype.slice.call(form.querySelectorAll('.charge-check'));
+                var chargeCounts = Array.prototype.slice.call(form.querySelectorAll('.charge-count'));
                 var selectAll    = document.getElementById('selectAllCheck');
                 var selectAllLnk = document.getElementById('selectAllLink');
                 var clearAllLnk  = document.getElementById('clearAllLink');
@@ -182,11 +258,31 @@ else
                     checks.forEach(function (c) {
                         if (c.checked) { n++; h += parseFloat(c.dataset.hours || '0') || 0; }
                     });
-                    selCount.textContent = n;
-                    selHours.textContent = (Math.round(h * 100) / 100).toString();
-                    saveBtn.disabled = (n === 0);
-                    selectAll.checked = (n === checks.length && n > 0);
-                    selectAll.indeterminate = (n > 0 && n < checks.length);
+                    if (selCount) selCount.textContent = n;
+                    if (selHours) selHours.textContent = (Math.round(h * 100) / 100).toString();
+
+                    var anyChargeChecked = chargeChecks.some(function (c) {
+                        var count = parseInt(c.closest('tr').querySelector('.charge-count').value, 10) || 0;
+                        return c.checked && count > 0;
+                    });
+                    saveBtn.disabled = (n === 0 && !anyChargeChecked);
+
+                    if (selectAll) {
+                        selectAll.checked = (n === checks.length && n > 0);
+                        selectAll.indeterminate = (n > 0 && n < checks.length);
+                    }
+                }
+
+                function updateChargeRowTotal(check) {
+                    var row = check.closest('tr');
+                    var unit = parseFloat(check.dataset.unit || '0') || 0;
+                    var countInput = row.querySelector('.charge-count');
+                    var count = parseInt(countInput.value, 10);
+                    if (isNaN(count) || count < 0) count = 0;
+                    var totalCell = row.querySelector('.charge-total');
+                    var effective = check.checked ? count : 0;
+                    totalCell.textContent = '$' + (Math.round(unit * effective * 100) / 100).toFixed(2);
+                    row.classList.toggle('text-muted', !check.checked);
                 }
 
                 function recalcSummary() {
@@ -196,6 +292,15 @@ else
                     fd.append('periodEnd', periodEnd);
                     checks.forEach(function (c) {
                         if (c.checked) fd.append('selectedEntryIds', c.value);
+                    });
+                    chargeChecks.forEach(function (c) {
+                        if (!c.checked) return;
+                        var countInput = c.closest('tr').querySelector('.charge-count');
+                        var count = parseInt(countInput.value, 10);
+                        if (isNaN(count) || count < 0) count = 0;
+                        // Send the pair in parallel — controller pairs by position.
+                        fd.append('selectedChargeTemplateIds', c.value);
+                        fd.append('chargeOccurrenceCounts', count.toString());
                     });
 
                     if (inflight) inflight.abort();
@@ -224,24 +329,47 @@ else
                     });
                 });
 
-                selectAll.addEventListener('change', function () {
-                    checks.forEach(function (c) { c.checked = selectAll.checked; });
-                    updateRunningTotals();
-                    scheduleRecalc();
+                chargeChecks.forEach(function (c) {
+                    c.addEventListener('change', function () {
+                        updateChargeRowTotal(c);
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                });
+                chargeCounts.forEach(function (input) {
+                    input.addEventListener('input', function () {
+                        var row = input.closest('tr');
+                        var check = row.querySelector('.charge-check');
+                        updateChargeRowTotal(check);
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
                 });
 
-                selectAllLnk.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    checks.forEach(function (c) { c.checked = true; });
-                    updateRunningTotals();
-                    scheduleRecalc();
-                });
-                clearAllLnk.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    checks.forEach(function (c) { c.checked = false; });
-                    updateRunningTotals();
-                    scheduleRecalc();
-                });
+                if (selectAll) {
+                    selectAll.addEventListener('change', function () {
+                        checks.forEach(function (c) { c.checked = selectAll.checked; });
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                }
+
+                if (selectAllLnk) {
+                    selectAllLnk.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        checks.forEach(function (c) { c.checked = true; });
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                }
+                if (clearAllLnk) {
+                    clearAllLnk.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        checks.forEach(function (c) { c.checked = false; });
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                }
 
                 updateRunningTotals();
             })();

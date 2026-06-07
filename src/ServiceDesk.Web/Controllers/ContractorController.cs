@@ -221,9 +221,16 @@ public class ContractorController : Controller
 
         var entries = await GetUnclaimedEntriesAsync(contractor.Id, start, end);
 
+        // Recurring-charge templates active and in-window for this period.
+        // Each renders as one pre-checked row on the receipt form with an
+        // editable Occurrences input.
+        var (templates, snapshots) = await BuildChargeCandidatesAsync(contractor, start, end);
+        ViewBag.ChargeTemplates = templates;
+        ViewBag.ChargeSnapshots = snapshots;
+
         // Preview the same totals the POST handler will persist — keeps the
         // user from being surprised by retainer / rate-type math on submit.
-        ViewBag.PayrollCalc = await _payroll.CalculateAsync(contractor, entries);
+        ViewBag.PayrollCalc = await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
 
         return View(entries);
     }
@@ -231,7 +238,9 @@ public class ContractorController : Controller
     // POST /Contractor/NewReceipt
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes, int[]? selectedEntryIds)
+    public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes,
+        int[]? selectedEntryIds,
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null)
@@ -243,25 +252,30 @@ public class ContractorController : Controller
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        if (selectedEntryIds == null || selectedEntryIds.Length == 0)
+        var hasEntries  = selectedEntryIds != null && selectedEntryIds.Length > 0;
+        var hasCharges  = selectedChargeTemplateIds != null && selectedChargeTemplateIds.Length > 0;
+        if (!hasEntries && !hasCharges)
         {
-            TempData["Error"] = "Pick at least one entry to include on the receipt.";
+            TempData["Error"] = "Pick at least one entry or recurring charge to include on the receipt.";
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
         var available = await GetUnclaimedEntriesAsync(contractor.Id, periodStart, periodEnd);
-        var requestedSet = selectedEntryIds.ToHashSet();
+        var requestedSet = (selectedEntryIds ?? Array.Empty<int>()).ToHashSet();
         var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
 
-        if (entries.Count == 0)
+        var snapshots = await BuildSelectedChargeSnapshotsAsync(
+            contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+
+        if (entries.Count == 0 && snapshots.Count == 0)
         {
-            TempData["Warning"] = "The selected entries are no longer available (they may have been claimed or deleted).";
+            TempData["Warning"] = "The selected entries / charges are no longer available (they may have been claimed, deleted, or are out of the period).";
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
-        var droppedCount = selectedEntryIds.Length - entries.Count;
+        var droppedCount = (selectedEntryIds?.Length ?? 0) - entries.Count;
 
-        var calc = await _payroll.CalculateAsync(contractor, entries);
+        var calc = await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
 
         var receipt = new PayrollReceipt
         {
@@ -278,6 +292,7 @@ public class ContractorController : Controller
             MonthlyRetainerHoursSnapshot   = contractor.MonthlyRetainerHoursIncluded,
             TotalRetainerHoursApplied      = calc.TotalRetainerHoursApplied,
             TotalRetainerAmountApplied     = calc.TotalRetainerAmountApplied,
+            TotalRecurringChargesAmount    = calc.TotalRecurringChargesAmount,
             TotalAmount                    = calc.TotalAmount,
             Status                         = "Draft",
             Notes                          = notes,
@@ -291,6 +306,14 @@ public class ContractorController : Controller
         foreach (var entry in entries)
             entry.PayrollReceiptId = receipt.Id;
 
+        // Attach the recurring-charge snapshots — assigning to the FK is
+        // enough (no need to set Receipt nav).
+        foreach (var snap in snapshots)
+        {
+            snap.PayrollReceiptId = receipt.Id;
+            _context.PayrollReceiptCharges.Add(snap);
+        }
+
         await _context.SaveChangesAsync();
 
         TempData["Success"] = droppedCount > 0
@@ -301,11 +324,14 @@ public class ContractorController : Controller
 
     // POST /Contractor/RecalcReceiptPreview
     // Re-renders the summary card body for the New Receipt page when the
-    // contractor ticks / unticks entries. Returns the partial as HTML so the
-    // client can swap it in directly.
+    // contractor ticks / unticks entries or charges, or changes a charge's
+    // occurrence override. Returns the partial as HTML so the client can
+    // swap it in directly.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RecalcReceiptPreview(DateTime periodStart, DateTime periodEnd, int[]? selectedEntryIds)
+    public async Task<IActionResult> RecalcReceiptPreview(DateTime periodStart, DateTime periodEnd,
+        int[]? selectedEntryIds,
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null) return Forbid();
@@ -316,9 +342,12 @@ public class ContractorController : Controller
         var requestedSet = (selectedEntryIds ?? Array.Empty<int>()).ToHashSet();
         var entries = available.Where(e => requestedSet.Contains(e.Id)).ToList();
 
-        var calc = entries.Count == 0
+        var snapshots = await BuildSelectedChargeSnapshotsAsync(
+            contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+
+        var calc = (entries.Count == 0 && snapshots.Count == 0)
             ? null
-            : await _payroll.CalculateAsync(contractor, entries);
+            : await _payroll.CalculateAsync(contractor, entries, charges: snapshots);
 
         return PartialView("_NewReceiptSummary", calc);
     }
@@ -341,6 +370,7 @@ public class ContractorController : Controller
             .Include(r => r.ApprovedBy)
             .Include(r => r.TimeEntries)
                 .ThenInclude(e => e.Ticket)
+            .Include(r => r.Charges)
             .AsQueryable();
 
         if (!isAdmin)
@@ -356,8 +386,11 @@ public class ContractorController : Controller
         // Rebuild the per-month breakdown for display. The receipt's own
         // entries are excluded from the "already claimed" check so the
         // retainer math reflects the moment this receipt was created.
+        // Passing the saved charges snapshot folds them back into TotalAmount.
         ViewBag.PayrollCalc = await _payroll.CalculateAsync(
-            receipt.Contractor!, receipt.TimeEntries.ToList(), receiptIdToIgnore: receipt.Id);
+            receipt.Contractor!, receipt.TimeEntries.ToList(),
+            receiptIdToIgnore: receipt.Id,
+            charges: receipt.Charges.ToList());
 
         ViewBag.CompanyName = companyName;
         ViewBag.Comments = await _context.PayrollReceiptComments
@@ -662,5 +695,98 @@ public class ContractorController : Controller
                 e.WorkDate <= end.Date)
             .OrderBy(e => e.WorkDate)
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Loads the contractor's active recurring-charge templates that overlap
+    /// the receipt period and builds a parallel list of (not-yet-saved)
+    /// PayrollReceiptCharge snapshots with auto-computed occurrence counts.
+    /// Used by the New Receipt GET to pre-render the charges table + summary.
+    /// </summary>
+    private async Task<(List<RecurringChargeTemplate> templates, List<PayrollReceiptCharge> snapshots)>
+        BuildChargeCandidatesAsync(Employee contractor, DateTime start, DateTime end)
+    {
+        var all = await _context.RecurringChargeTemplates
+            .Where(t => t.ContractorId == contractor.Id && t.IsActive)
+            .OrderBy(t => t.Label)
+            .ToListAsync();
+
+        // Date-window overlap done client-side (small list, comparisons are
+        // simpler than translating optional bounds to SQL).
+        var candidates = all.Where(t => RecurringChargeCalculator.CountOccurrences(t, start, end) > 0).ToList();
+
+        var snapshots = candidates
+            .Select(t => BuildChargeSnapshot(t, contractor, RecurringChargeCalculator.CountOccurrences(t, start, end)))
+            .ToList();
+
+        return (candidates, snapshots);
+    }
+
+    /// <summary>
+    /// Builds PayrollReceiptCharge snapshots from the form's selected template
+    /// ids + parallel occurrence-override array. Silently drops ids that
+    /// don't belong to this contractor, are inactive, or fall outside their
+    /// own date window. Override counts are clamped to [0, 2 × auto] to
+    /// stop a typo / tampering from producing a runaway number.
+    /// </summary>
+    private async Task<List<PayrollReceiptCharge>> BuildSelectedChargeSnapshotsAsync(
+        Employee contractor, DateTime periodStart, DateTime periodEnd,
+        int[]? selectedTemplateIds, int[]? occurrenceOverrides)
+    {
+        if (selectedTemplateIds == null || selectedTemplateIds.Length == 0)
+            return new List<PayrollReceiptCharge>();
+
+        var idSet = selectedTemplateIds.ToHashSet();
+        var templates = await _context.RecurringChargeTemplates
+            .Where(t => t.ContractorId == contractor.Id && t.IsActive && idSet.Contains(t.Id))
+            .ToListAsync();
+
+        // Pair selectedTemplateIds[i] with occurrenceOverrides[i] by position
+        // so the override goes with the right template even if templates come
+        // back from the DB in a different order.
+        var overrideByTemplateId = new Dictionary<int, int>();
+        for (int i = 0; i < selectedTemplateIds.Length; i++)
+        {
+            if (occurrenceOverrides != null && i < occurrenceOverrides.Length)
+                overrideByTemplateId[selectedTemplateIds[i]] = occurrenceOverrides[i];
+        }
+
+        var result = new List<PayrollReceiptCharge>();
+        foreach (var t in templates)
+        {
+            var auto = RecurringChargeCalculator.CountOccurrences(t, periodStart, periodEnd);
+            if (auto <= 0) continue; // out of window
+
+            var count = auto;
+            if (overrideByTemplateId.TryGetValue(t.Id, out var ovr))
+            {
+                if (ovr < 0) ovr = 0;
+                var ceiling = auto * 2;
+                if (ovr > ceiling) ovr = ceiling;
+                count = ovr;
+            }
+
+            if (count == 0) continue; // explicitly excluded
+            result.Add(BuildChargeSnapshot(t, contractor, count));
+        }
+
+        return result;
+    }
+
+    private static PayrollReceiptCharge BuildChargeSnapshot(
+        RecurringChargeTemplate template, Employee contractor, int occurrenceCount)
+    {
+        var unit = RecurringChargeCalculator.UnitDollars(template, contractor);
+        return new PayrollReceiptCharge
+        {
+            TemplateId          = template.Id,
+            LabelSnapshot       = template.Label,
+            CadenceSnapshot     = template.Cadence,
+            PricingModeSnapshot = template.PricingMode,
+            UnitAmountSnapshot  = unit,
+            OccurrenceCount     = occurrenceCount,
+            TotalAmount         = Math.Round(unit * occurrenceCount, 2, MidpointRounding.AwayFromZero),
+            CreatedDate         = DateTime.UtcNow,
+        };
     }
 }

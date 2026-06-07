@@ -69,6 +69,17 @@
                     <td colspan="3"></td>
                 </tr>
             }
+            @foreach (var charge in Model.RecurringCharges)
+            {
+                <tr>
+                    <td class="fw-semibold">
+                        @charge.LabelSnapshot
+                        <span class="text-muted small">— @charge.OccurrenceCount × @charge.UnitAmountSnapshot.ToString("C2")</span>
+                    </td>
+                    <td colspan="2"></td>
+                    <td class="text-end fw-semibold">@charge.TotalAmount.ToString("C2")</td>
+                </tr>
+            }
             <tr style="border-top:2px solid #333;">
                 <td class="fw-bold pt-2">Estimated total</td>
                 <td class="text-end pt-2">
@@ -82,5 +93,5 @@
 }
 else
 {
-    <p class="text-muted mb-0">No entries selected.</p>
+    <p class="text-muted mb-0">Nothing selected — tick at least one time entry or recurring charge to preview a total.</p>
 }
