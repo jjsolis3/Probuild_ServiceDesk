@@ -78,6 +78,14 @@ public class PayrollReceipt
     [Display(Name = "Retainer Amount Applied")]
     public decimal TotalRetainerAmountApplied { get; set; }
 
+    /// <summary>
+    /// Sum of all recurring-charge line items on this receipt. Snapshot at
+    /// receipt creation so historical totals don't shift when templates are
+    /// later edited or deleted.
+    /// </summary>
+    [Display(Name = "Recurring Charges Total")]
+    public decimal TotalRecurringChargesAmount { get; set; }
+
     [Display(Name = "Total Amount")]
     public decimal TotalAmount { get; set; }
 
@@ -161,4 +169,7 @@ public class PayrollReceipt
 
     // Activity / discussion thread — see PayrollReceiptComment
     public ICollection<PayrollReceiptComment> Comments { get; set; } = new List<PayrollReceiptComment>();
+
+    // Recurring-charge snapshot rows — see PayrollReceiptCharge
+    public ICollection<PayrollReceiptCharge> Charges { get; set; } = new List<PayrollReceiptCharge>();
 }

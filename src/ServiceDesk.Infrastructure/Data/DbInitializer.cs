@@ -2037,6 +2037,67 @@ public static class DbInitializer
             BEGIN
                 ALTER TABLE dbo.TicketHistory ADD Reason NVARCHAR(500) NULL;
             END");
+
+        // 71. Recurring payroll charges — reusable per-contractor templates
+        //     (e.g. "Daily Reports — $25 per weekday") that auto-suggest a
+        //     line item on every new payroll receipt. Each saved receipt
+        //     snapshots the rows it actually used into PayrollReceiptCharges
+        //     so later template edits don't retroactively change historical
+        //     totals. Three independent upgrades — each idempotent.
+        TryRunSchemaUpgrade(context, "AddTotalRecurringChargesAmountColumn", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceipts')
+               AND COL_LENGTH('dbo.PayrollReceipts', 'TotalRecurringChargesAmount') IS NULL
+            BEGIN
+                ALTER TABLE dbo.PayrollReceipts
+                    ADD TotalRecurringChargesAmount DECIMAL(12,2) NOT NULL
+                    CONSTRAINT DF_PayrollReceipts_TotalRecurringChargesAmount DEFAULT 0;
+            END");
+
+        TryRunSchemaUpgrade(context, "CreateRecurringChargeTemplatesTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'RecurringChargeTemplates')
+            BEGIN
+                CREATE TABLE dbo.RecurringChargeTemplates (
+                    Id           INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    ContractorId INT NOT NULL,
+                    Label        NVARCHAR(120) NOT NULL,
+                    Cadence      TINYINT NOT NULL DEFAULT 0,
+                    WeekdayMask  TINYINT NOT NULL DEFAULT 62,
+                    PricingMode  TINYINT NOT NULL DEFAULT 0,
+                    UnitAmount   DECIMAL(12,4) NOT NULL DEFAULT 0,
+                    StartDate    DATETIME2(7) NULL,
+                    EndDate      DATETIME2(7) NULL,
+                    IsActive     BIT NOT NULL DEFAULT 1,
+                    Notes        NVARCHAR(500) NULL,
+                    CreatedDate  DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_RecurringChargeTemplates_Employees_ContractorId
+                        FOREIGN KEY (ContractorId) REFERENCES dbo.Employees(Id) ON DELETE CASCADE
+                );
+                CREATE INDEX IX_RecurringChargeTemplates_Contractor_Active
+                    ON dbo.RecurringChargeTemplates (ContractorId, IsActive);
+            END");
+
+        TryRunSchemaUpgrade(context, "CreatePayrollReceiptChargesTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptCharges')
+            BEGIN
+                CREATE TABLE dbo.PayrollReceiptCharges (
+                    Id                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    PayrollReceiptId    INT NOT NULL,
+                    TemplateId          INT NULL,
+                    LabelSnapshot       NVARCHAR(120) NOT NULL,
+                    CadenceSnapshot     TINYINT NOT NULL DEFAULT 0,
+                    PricingModeSnapshot TINYINT NOT NULL DEFAULT 0,
+                    UnitAmountSnapshot  DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    OccurrenceCount     INT NOT NULL DEFAULT 0,
+                    TotalAmount         DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    CreatedDate         DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_PayrollReceiptCharges_PayrollReceipts
+                        FOREIGN KEY (PayrollReceiptId) REFERENCES dbo.PayrollReceipts(Id) ON DELETE CASCADE,
+                    CONSTRAINT FK_PayrollReceiptCharges_RecurringChargeTemplates
+                        FOREIGN KEY (TemplateId) REFERENCES dbo.RecurringChargeTemplates(Id) ON DELETE SET NULL
+                );
+                CREATE INDEX IX_PayrollReceiptCharges_Receipt
+                    ON dbo.PayrollReceiptCharges (PayrollReceiptId);
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

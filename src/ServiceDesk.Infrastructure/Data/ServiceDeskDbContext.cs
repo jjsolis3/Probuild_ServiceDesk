@@ -91,6 +91,8 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<PayrollReceipt> PayrollReceipts => Set<PayrollReceipt>();
     public DbSet<PayrollReceiptComment> PayrollReceiptComments => Set<PayrollReceiptComment>();
     public DbSet<PayrollNotificationRecipient> PayrollNotificationRecipients => Set<PayrollNotificationRecipient>();
+    public DbSet<RecurringChargeTemplate> RecurringChargeTemplates => Set<RecurringChargeTemplate>();
+    public DbSet<PayrollReceiptCharge> PayrollReceiptCharges => Set<PayrollReceiptCharge>();
 
     // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
@@ -650,6 +652,50 @@ public class ServiceDeskDbContext : DbContext
         modelBuilder.Entity<PayrollReceipt>()
             .Property(r => r.TotalRetainerAmountApplied)
             .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PayrollReceipt>()
+            .Property(r => r.TotalRecurringChargesAmount)
+            .HasPrecision(12, 2);
+
+        // RecurringChargeTemplate -> Contractor (Employee) — cascade so
+        // deleting an employee removes their templates. Snapshots on
+        // historical receipts persist via PayrollReceiptCharge (TemplateId
+        // SET NULL), so history isn't lost.
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .HasOne(t => t.Contractor)
+            .WithMany(e => e.RecurringCharges)
+            .HasForeignKey(t => t.ContractorId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .Property(t => t.UnitAmount)
+            .HasPrecision(12, 4);
+
+        modelBuilder.Entity<RecurringChargeTemplate>()
+            .HasIndex(t => new { t.ContractorId, t.IsActive });
+
+        // PayrollReceiptCharge -> Receipt (cascade with parent)
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .HasOne(c => c.Receipt)
+            .WithMany(r => r.Charges)
+            .HasForeignKey(c => c.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // PayrollReceiptCharge -> Template (SET NULL — snapshot wins if
+        // the template is deleted later).
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .HasOne(c => c.Template)
+            .WithMany()
+            .HasForeignKey(c => c.TemplateId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .Property(c => c.UnitAmountSnapshot)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<PayrollReceiptCharge>()
+            .Property(c => c.TotalAmount)
+            .HasPrecision(12, 2);
 
         modelBuilder.Entity<PayrollReceipt>()
             .Property(r => r.EmergencyRateSnapshot)

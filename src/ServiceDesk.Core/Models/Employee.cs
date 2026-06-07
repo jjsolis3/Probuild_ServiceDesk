@@ -110,4 +110,5 @@ public class Employee
     public ICollection<EmployeeCredential> Credentials { get; set; } = new List<EmployeeCredential>();
     public ICollection<EmployeeTask> Tasks { get; set; } = new List<EmployeeTask>();
     public ICollection<LicenseSeat> LicenseSeats { get; set; } = new List<LicenseSeat>();
+    public ICollection<RecurringChargeTemplate> RecurringCharges { get; set; } = new List<RecurringChargeTemplate>();
 }
