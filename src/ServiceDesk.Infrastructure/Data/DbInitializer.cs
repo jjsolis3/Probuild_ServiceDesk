@@ -2119,6 +2119,19 @@ public static class DbInitializer
                 CREATE INDEX IX_PayrollReceiptCharges_Receipt
                     ON dbo.PayrollReceiptCharges (PayrollReceiptId);
             END");
+
+        TryRunSchemaUpgrade(context, "StoreOrders_AddFulfillmentColumns", @"
+            IF COL_LENGTH('dbo.StoreOrders', 'TrackingNumber') IS NULL
+            BEGIN
+                ALTER TABLE dbo.StoreOrders ADD
+                    ConfirmedDate      DATETIME2(7) NULL,
+                    ShippedDate        DATETIME2(7) NULL,
+                    FulfilledDate      DATETIME2(7) NULL,
+                    CancelledDate      DATETIME2(7) NULL,
+                    TrackingNumber     NVARCHAR(100) NULL,
+                    Carrier            NVARCHAR(50)  NULL,
+                    CancellationReason NVARCHAR(500) NULL;
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

@@ -32,6 +32,29 @@ public class StoreOrder
     [Display(Name = "Last Status Change")]
     public DateTime? LastStatusChangedDate { get; set; }
 
+    // Per-state timestamps so the OrderDetail timeline can show when each
+    // transition happened, not just the most recent one.
+    public DateTime? ConfirmedDate { get; set; }
+    public DateTime? ShippedDate   { get; set; }
+    public DateTime? FulfilledDate { get; set; }
+    public DateTime? CancelledDate { get; set; }
+
+    // Captured when the order moves to Shipped. Surfaced on OrderDetail and in
+    // the status-update email so the requester can self-serve tracking.
+    [StringLength(100)]
+    [Display(Name = "Tracking Number")]
+    public string? TrackingNumber { get; set; }
+
+    [StringLength(50)]
+    [Display(Name = "Carrier")]
+    public string? Carrier { get; set; }
+
+    // Optional context captured when the order moves to Cancelled, e.g.
+    // "Item discontinued — refund issued".
+    [StringLength(500)]
+    [Display(Name = "Cancellation Reason")]
+    public string? CancellationReason { get; set; }
+
     [StringLength(1000)]
     public string? Notes { get; set; }
 

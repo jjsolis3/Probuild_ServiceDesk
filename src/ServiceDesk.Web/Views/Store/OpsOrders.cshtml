@@ -1,0 +1,233 @@
+@using ServiceDesk.Core.Models
+@model List<StoreOrder>
+@{
+    ViewData["Title"]      = "Search Orders";
+    ViewData["ActivePage"] = "OpsHub";
+    Layout = "_PortalLayout";
+
+    var q          = ViewBag.Q as string;
+    var product    = ViewBag.Product as string;
+    var status     = ViewBag.Status as string;
+    var year       = ViewBag.Year     as int?;
+    var quarter    = ViewBag.Quarter  as int?;
+    var branchId   = ViewBag.BranchId as int?;
+    var from       = ViewBag.From     as DateTime?;
+    var to         = ViewBag.To       as DateTime?;
+    var statuses   = ViewBag.Statuses as string[] ?? Array.Empty<string>();
+    var years      = ViewBag.Years as List<int> ?? new List<int>();
+    var branches   = ViewBag.Branches as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    int totalMatches = (int)(ViewBag.TotalMatches ?? 0);
+    int maxResults   = (int)(ViewBag.MaxResults ?? 200);
+    bool truncated   = (bool)(ViewBag.Truncated ?? false);
+
+    string BadgeClass(string s) => s switch
+    {
+        "Pending"   => "bg-warning text-dark",
+        "Confirmed" => "bg-info text-dark",
+        "Shipped"   => "bg-primary",
+        "Fulfilled" => "bg-success",
+        "Cancelled" => "bg-danger",
+        _           => "bg-secondary"
+    };
+
+    bool anyFilter = !string.IsNullOrWhiteSpace(q)
+                     || !string.IsNullOrWhiteSpace(product)
+                     || !string.IsNullOrEmpty(status)
+                     || year.HasValue || quarter.HasValue || branchId.HasValue
+                     || from.HasValue || to.HasValue;
+}
+
+@section Styles {
+<style>
+.ops-search-card { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.ops-order-row td { vertical-align: middle; }
+.ops-tracking { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: .8rem; }
+</style>
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-search me-2 text-primary"></i>Search Orders</h2>
+        <p class="text-muted small mb-0">
+            Find any order across every quarter — filter by requester, product, branch, status, tracking #, or date range.
+        </p>
+    </div>
+    <a asp-action="OperationsHub" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Operations Hub
+    </a>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2">
+        <i class="bi bi-check-circle me-1"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show py-2">
+        <i class="bi bi-exclamation-triangle me-1"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<form method="get" asp-action="OpsOrders" class="card ops-search-card mb-3">
+    <div class="card-body py-3">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold mb-1">Order / Requester / Branch / Tracking</label>
+                <input type="text" name="q" value="@q" class="form-control form-control-sm"
+                       placeholder="e.g. ORD-2025-0042, jane@…, UPS123…" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1">Product Name</label>
+                <input type="text" name="product" value="@product" class="form-control form-control-sm"
+                       placeholder="Match a line item" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold mb-1">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">— All —</option>
+                    @foreach (var s in statuses)
+                    {
+                        <option value="@s" selected="@(status == s)">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1">Branch</label>
+                <select name="branchId" class="form-select form-select-sm">
+                    <option value="">— Any —</option>
+                    @foreach (var b in branches)
+                    {
+                        <option value="@b.Id" selected="@(branchId == (int)b.Id)">@b.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold mb-1">Year</label>
+                <select name="year" class="form-select form-select-sm">
+                    <option value="">— Any —</option>
+                    @foreach (var y in years)
+                    {
+                        <option value="@y" selected="@(year == y)">@y</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold mb-1">Quarter</label>
+                <select name="quarter" class="form-select form-select-sm">
+                    <option value="">— Any —</option>
+                    @for (int qn = 1; qn <= 4; qn++)
+                    {
+                        <option value="@qn" selected="@(quarter == qn)">Q@(qn)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1">From</label>
+                <input type="date" name="from" value="@(from?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1">To</label>
+                <input type="date" name="to" value="@(to?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-1">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-search me-1"></i>Search
+                </button>
+                @if (anyFilter)
+                {
+                    <a asp-action="OpsOrders" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-x"></i>
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+</form>
+
+@if (!Model.Any())
+{
+    <div class="card shadow-sm">
+        <div class="card-body text-center text-muted py-5">
+            <i class="bi bi-search display-3 d-block mb-2 opacity-25"></i>
+            @if (anyFilter)
+            { <p class="mb-0">No orders match those filters. Try widening the date range or clearing fields.</p> }
+            else
+            { <p class="mb-0">Enter at least one filter above to search across all orders.</p> }
+        </div>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold small">
+                <i class="bi bi-list-ul me-1"></i>
+                @Model.Count of @totalMatches @(totalMatches == 1 ? "order" : "orders")
+                @if (truncated)
+                {
+                    <span class="text-muted">— showing newest @maxResults; narrow filters to see more</span>
+                }
+            </span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Order #</th>
+                        <th>Requester</th>
+                        <th>Branch</th>
+                        <th>Q / Yr</th>
+                        <th>Date</th>
+                        <th>Items</th>
+                        <th>Status</th>
+                        <th>Tracking</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in Model)
+                    {
+                        var itemTotal = order.Items.Sum(i => i.Quantity);
+                        var branchLabel = order.Branch?.Name ?? order.BranchNameSnapshot ?? "—";
+                        <tr class="ops-order-row">
+                            <td class="fw-bold">@order.OrderNumber</td>
+                            <td>
+                                <div class="small">@order.PortalUser.FullName</div>
+                                <div class="text-muted small">@order.PortalUser.Email</div>
+                            </td>
+                            <td class="small">@branchLabel</td>
+                            <td class="small">Q@(order.Quarter) @order.Year</td>
+                            <td class="small">@order.OrderDate.ToOrgDisplay((string?)ViewBag.OrgTz, "MMM d, yyyy")</td>
+                            <td class="small">
+                                @order.Items.Count type@(order.Items.Count == 1 ? "" : "s")
+                                <span class="text-muted">· @itemTotal qty</span>
+                            </td>
+                            <td><span class="badge @BadgeClass(order.Status)">@order.Status</span></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(order.TrackingNumber))
+                                {
+                                    <span class="ops-tracking" title="@order.Carrier">@order.TrackingNumber</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">—</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a asp-action="OrderDetail" asp-route-id="@order.Id"
+                                   class="btn btn-sm btn-outline-secondary" title="View">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

@@ -22,6 +22,7 @@
     {
         "Pending"   => "bg-warning text-dark",
         "Confirmed" => "bg-info text-dark",
+        "Shipped"   => "bg-primary",
         "Fulfilled" => "bg-success",
         "Cancelled" => "bg-danger",
         _           => "bg-secondary"
@@ -31,15 +32,27 @@
     {
         "Pending"   => "border-warning",
         "Confirmed" => "border-info",
+        "Shipped"   => "border-primary",
         "Fulfilled" => "border-success",
         "Cancelled" => "border-danger",
         _           => ""
     };
 
+    string CardCountColor(string s) => s switch
+    {
+        "Pending"   => "text-warning",
+        "Confirmed" => "text-info",
+        "Shipped"   => "text-primary",
+        "Fulfilled" => "text-success",
+        "Cancelled" => "text-danger",
+        _           => "text-muted"
+    };
+
     string NextStatuses(string current) => current switch
     {
         "Pending"   => "Confirmed,Cancelled",
-        "Confirmed" => "Fulfilled,Cancelled",
+        "Confirmed" => "Shipped,Fulfilled,Cancelled",
+        "Shipped"   => "Fulfilled,Cancelled",
         "Fulfilled" => "",
         "Cancelled" => "Pending",
         _           => ""
@@ -57,6 +70,7 @@
 .action-btn { font-size:.78rem; padding:3px 10px; }
 .pending-dot  { width:8px;height:8px;border-radius:50%;background:#ffc107;display:inline-block; }
 .confirmed-dot { width:8px;height:8px;border-radius:50%;background:#0dcaf0;display:inline-block; }
+.shipped-dot   { width:8px;height:8px;border-radius:50%;background:#0d6efd;display:inline-block; }
 .fulfilled-dot { width:8px;height:8px;border-radius:50%;background:#198754;display:inline-block; }
 .cancelled-dot { width:8px;height:8px;border-radius:50%;background:#dc3545;display:inline-block; }
 .bulk-toolbar { background:#e8f0fe; border-radius:6px; padding:6px 12px; font-size:.85rem; }
@@ -103,6 +117,9 @@
         </p>
     </div>
     <div class="d-flex gap-2 align-items-center flex-wrap">
+        <a asp-action="OpsOrders" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-search me-1"></i>Search Orders
+        </a>
         <a asp-action="OpsProducts" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-box-seam me-1"></i>Products
         </a>
@@ -184,7 +201,7 @@
                class="text-decoration-none">
                 <div class="card ops-stat-card shadow-sm @CardAccent(s) @(isActive ? "active-filter" : "")">
                     <div class="card-body py-3 text-center">
-                        <div class="display-6 fw-bold @(s == "Pending" ? "text-warning" : s == "Confirmed" ? "text-info" : s == "Fulfilled" ? "text-success" : "text-danger")">
+                        <div class="display-6 fw-bold @CardCountColor(s)">
                             @count
                         </div>
                         <div class="small text-muted fw-semibold">@s</div>
@@ -306,35 +323,53 @@
                                 <div class="d-flex gap-1 flex-shrink-0">
                                     @foreach (var ns in nextActions)
                                     {
-                                        <form method="post" asp-action="OpsUpdateStatus" asp-antiforgery="true"
-                                              onclick="event.stopPropagation();">
-                                            <input type="hidden" name="orderId"      value="@order.Id" />
-                                            <input type="hidden" name="newStatus"    value="@ns" />
-                                            <input type="hidden" name="year"         value="@year" />
-                                            <input type="hidden" name="quarter"      value="@quarter" />
-                                            <input type="hidden" name="returnStatus" value="@activeStatus" />
-                                            <button type="submit" class="btn btn-sm action-btn @(ns == "Cancelled" ? "btn-outline-danger" : ns == "Fulfilled" ? "btn-success" : "btn-outline-primary")"
-                                                    title="Mark as @ns"
-                                                    onclick="return confirm('Mark order @Html.Raw(order.OrderNumber.Replace("'","\\'")??"") as @ns and notify @Html.Raw(order.PortalUser.FullName.Replace("'","\\'")??"")\'s?')">
-                                                @if (ns == "Fulfilled")
-                                                {
-                                                    <i class="bi bi-check2-all me-1"></i>
-                                                }
-                                                else if (ns == "Confirmed")
-                                                {
-                                                    <i class="bi bi-check2 me-1"></i>
-                                                }
-                                                else if (ns == "Cancelled")
-                                                {
-                                                    <i class="bi bi-x me-1"></i>
-                                                }
-                                                else
-                                                {
-                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>
-                                                }
-                                                @ns
+                                        if (ns == "Shipped")
+                                        {
+                                            // Shipped collects tracking # + carrier — route through a modal
+                                            // rather than submitting inline.
+                                            <button type="button"
+                                                    class="btn btn-sm action-btn btn-outline-primary"
+                                                    title="Mark as Shipped (capture tracking)"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#shipModal"
+                                                    data-order-id="@order.Id"
+                                                    data-order-number="@order.OrderNumber"
+                                                    onclick="event.stopPropagation();">
+                                                <i class="bi bi-truck me-1"></i>Shipped
                                             </button>
-                                        </form>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" asp-action="OpsUpdateStatus" asp-antiforgery="true"
+                                                  onclick="event.stopPropagation();">
+                                                <input type="hidden" name="orderId"      value="@order.Id" />
+                                                <input type="hidden" name="newStatus"    value="@ns" />
+                                                <input type="hidden" name="year"         value="@year" />
+                                                <input type="hidden" name="quarter"      value="@quarter" />
+                                                <input type="hidden" name="returnStatus" value="@activeStatus" />
+                                                <button type="submit" class="btn btn-sm action-btn @(ns == "Cancelled" ? "btn-outline-danger" : ns == "Fulfilled" ? "btn-success" : "btn-outline-primary")"
+                                                        title="Mark as @ns"
+                                                        onclick="return confirm('Mark order @Html.Raw(order.OrderNumber.Replace("'","\\'")??"") as @ns and notify @Html.Raw(order.PortalUser.FullName.Replace("'","\\'")??"")\'s?')">
+                                                    @if (ns == "Fulfilled")
+                                                    {
+                                                        <i class="bi bi-check2-all me-1"></i>
+                                                    }
+                                                    else if (ns == "Confirmed")
+                                                    {
+                                                        <i class="bi bi-check2 me-1"></i>
+                                                    }
+                                                    else if (ns == "Cancelled")
+                                                    {
+                                                        <i class="bi bi-x me-1"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-arrow-counterclockwise me-1"></i>
+                                                    }
+                                                    @ns
+                                                </button>
+                                            </form>
+                                        }
                                     }
                                     <button class="btn btn-sm btn-outline-secondary action-btn" type="button"
                                             data-bs-toggle="collapse" data-bs-target="#@collapseId">
@@ -496,6 +531,7 @@
                     <ul class="small text-muted mb-0 ps-3">
                         <li class="mb-1"><span class="pending-dot me-1"></span><strong>Pending</strong> — New, not yet reviewed</li>
                         <li class="mb-1"><span class="confirmed-dot me-1"></span><strong>Confirmed</strong> — Reviewed, being processed</li>
+                        <li class="mb-1"><span class="shipped-dot me-1"></span><strong>Shipped</strong> — Sent with tracking number</li>
                         <li class="mb-1"><span class="fulfilled-dot me-1"></span><strong>Fulfilled</strong> — Items delivered / ready</li>
                         <li><span class="cancelled-dot me-1"></span><strong>Cancelled</strong> — Order will not be processed</li>
                     </ul>
@@ -509,8 +545,71 @@
     </div>
 </div>
 
+<!-- Shipped: tracking-number capture modal -->
+<div class="modal fade" id="shipModal" tabindex="-1" aria-labelledby="shipModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" asp-action="OpsUpdateStatus" asp-antiforgery="true">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="shipModalLabel">
+                        <i class="bi bi-truck me-2"></i>Mark as Shipped — <span id="shipModalOrderNumber"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="orderId"      id="shipModalOrderId" />
+                    <input type="hidden" name="newStatus"    value="Shipped" />
+                    <input type="hidden" name="year"         value="@year" />
+                    <input type="hidden" name="quarter"      value="@quarter" />
+                    <input type="hidden" name="returnStatus" value="@activeStatus" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Carrier</label>
+                        <input type="text" name="carrier" class="form-control"
+                               list="shipCarriers"
+                               placeholder="UPS, FedEx, USPS, DHL, …" />
+                        <datalist id="shipCarriers">
+                            <option value="UPS"></option>
+                            <option value="FedEx"></option>
+                            <option value="USPS"></option>
+                            <option value="DHL"></option>
+                            <option value="OnTrac"></option>
+                            <option value="Amazon"></option>
+                        </datalist>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tracking Number</label>
+                        <input type="text" name="trackingNumber" class="form-control"
+                               placeholder="e.g. 1Z999AA10123456784" />
+                        <div class="form-text small">Sent to the requester in the status-update email.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-truck me-1"></i>Mark Shipped &amp; Notify
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
+// Pre-fill the Ship modal from the button that opened it.
+document.addEventListener('DOMContentLoaded', function () {
+    var shipModal = document.getElementById('shipModal');
+    if (shipModal) {
+        shipModal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            document.getElementById('shipModalOrderId').value      = btn.getAttribute('data-order-id') || '';
+            document.getElementById('shipModalOrderNumber').textContent = btn.getAttribute('data-order-number') || '';
+        });
+    }
+});
+
 function toggleSelectAll(cb) {
     document.querySelectorAll('.order-checkbox').forEach(function(c) { c.checked = cb.checked; });
     updateSelectedCount();

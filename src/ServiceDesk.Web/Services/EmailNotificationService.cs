@@ -922,8 +922,13 @@ public class EmailNotificationService
         var statusMessage = newStatus switch
         {
             "Confirmed" => "Your order has been reviewed and confirmed by the operations team. It is now being processed.",
+            "Shipped"   => string.IsNullOrEmpty(order.TrackingNumber)
+                              ? "Your order has shipped."
+                              : $"Your order has shipped via <strong>{System.Net.WebUtility.HtmlEncode(order.Carrier ?? "carrier")}</strong>. Tracking number: <code>{System.Net.WebUtility.HtmlEncode(order.TrackingNumber)}</code>.",
             "Fulfilled" => "Great news! Your order has been fulfilled. Your items are on their way or ready for pickup.",
-            "Cancelled" => "Your order has been cancelled. Please contact the operations team if you have any questions.",
+            "Cancelled" => string.IsNullOrEmpty(order.CancellationReason)
+                              ? "Your order has been cancelled. Please contact the operations team if you have any questions."
+                              : $"Your order has been cancelled. Reason: <em>{System.Net.WebUtility.HtmlEncode(order.CancellationReason)}</em>",
             _           => $"Your order status has been updated to: <strong>{System.Net.WebUtility.HtmlEncode(newStatus)}</strong>."
         };
 
