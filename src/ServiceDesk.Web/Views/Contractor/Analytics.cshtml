@@ -1,0 +1,335 @@
+@using ServiceDesk.Core.Models
+@using ServiceDesk.Web.Controllers
+@{
+    var contractor          = ViewBag.Contractor as Employee;
+    var monthly             = ViewBag.Monthly as List<ContractorController.MonthlyBucket> ?? new();
+    var statusBuckets       = ViewBag.StatusBuckets as Dictionary<string, decimal> ?? new();
+    var totalStdHours       = (decimal)(ViewBag.TotalStdHours ?? 0m);
+    var totalEmerHours      = (decimal)(ViewBag.TotalEmergencyHours ?? 0m);
+    var totalStdAmount      = (decimal)(ViewBag.TotalStdAmount ?? 0m);
+    var totalEmerAmount     = (decimal)(ViewBag.TotalEmerAmount ?? 0m);
+    var totalRetainerAmt    = (decimal)(ViewBag.TotalRetainerAmount ?? 0m);
+    var retainerHrsInc      = (decimal)(ViewBag.RetainerHoursIncluded ?? 0m);
+    var retainerHrsApplied  = (decimal)(ViewBag.RetainerHoursApplied ?? 0m);
+    var ytdPaid             = (decimal)(ViewBag.YtdPaid ?? 0m);
+    var ytdPending          = (decimal)(ViewBag.YtdPending ?? 0m);
+    var totalLast12         = (decimal)(ViewBag.TotalLast12 ?? 0m);
+    var avgPerActiveMonth   = (decimal)(ViewBag.AvgPerActiveMonth ?? 0m);
+    var activeMonths        = (int)(ViewBag.ActiveMonths ?? 0);
+    var receiptCount        = (int)(ViewBag.ReceiptCount ?? 0);
+
+    var hasData = receiptCount > 0;
+}
+
+@section Styles {
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.css" />
+<style>
+    :root {
+        --pay-navy:   #1a3a5c;
+        --pay-blue:   #0d6efd;
+        --pay-green:  #198754;
+        --pay-amber:  #fd7e14;
+        --pay-red:    #dc3545;
+        --pay-muted:  #6c757d;
+        --pay-border: #dee2e6;
+        --pay-bg:     #f8f9fb;
+    }
+    .pay-page-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 24px; gap: 16px;
+    }
+    .pay-page-title { font-size: 1.45rem; font-weight: 700; color: var(--pay-navy); margin: 0; }
+    .pay-page-sub   { font-size: .85rem; color: var(--pay-muted); margin: 2px 0 0; }
+
+    .pay-card {
+        background: #fff; border: 1px solid var(--pay-border);
+        border-radius: 8px; overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 20px;
+    }
+    .pay-card-accent { height: 5px; background: linear-gradient(90deg, var(--pay-navy) 0%, var(--pay-blue) 100%); }
+    .pay-card-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 20px; border-bottom: 1px solid var(--pay-border);
+        background: var(--pay-bg);
+    }
+    .pay-card-header-title {
+        font-size: .78rem; font-weight: 700;
+        letter-spacing: .08em; text-transform: uppercase;
+        color: var(--pay-navy); display: flex; align-items: center; gap: 7px;
+    }
+    .pay-card-body { padding: 20px; }
+
+    .kpi-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 14px; margin-bottom: 20px;
+    }
+    .kpi-tile {
+        border-radius: 8px; padding: 18px 20px;
+        text-align: center; border: 1px solid transparent;
+    }
+    .kpi-label { font-size: .7rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; margin-bottom: 8px; }
+    .kpi-value { font-size: 1.7rem; font-weight: 700; line-height: 1; }
+    .kpi-sub   { font-size: .72rem; margin-top: 5px; }
+    .kpi-neutral { background: #f1f3f5; border-color: #dee2e6; }
+    .kpi-neutral .kpi-label { color: var(--pay-muted); } .kpi-neutral .kpi-value { color: #343a40; } .kpi-neutral .kpi-sub { color: var(--pay-muted); }
+    .kpi-blue { background: #e8f0fe; border-color: #b6cfff; }
+    .kpi-blue .kpi-label { color: #0a58ca; } .kpi-blue .kpi-value { color: #084298; } .kpi-blue .kpi-sub { color: #0a58ca; }
+    .kpi-green { background: #d1e7dd; border-color: #a3cfbb; }
+    .kpi-green .kpi-label { color: #0a5c36; } .kpi-green .kpi-value { color: #0a5c36; } .kpi-green .kpi-sub { color: #146c43; }
+    .kpi-navy { background: var(--pay-navy); border-color: var(--pay-navy); }
+    .kpi-navy .kpi-label { color: #a8c4e0; } .kpi-navy .kpi-value { color: #fff; } .kpi-navy .kpi-sub { color: #7fb3d3; }
+    .kpi-amber { background: #fff3e0; border-color: #ffcc80; }
+    .kpi-amber .kpi-label { color: #b45309; } .kpi-amber .kpi-value { color: #92400e; } .kpi-amber .kpi-sub { color: #b45309; }
+
+    .chart-grid {
+        display: grid; grid-template-columns: 2fr 1fr; gap: 16px;
+    }
+    @@media (max-width: 991px) {
+        .chart-grid { grid-template-columns: 1fr; }
+        .kpi-grid   { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .empty-state {
+        text-align: center; padding: 60px 24px; color: var(--pay-muted);
+    }
+    .empty-state .empty-icon { font-size: 3.5rem; color: #dee2e6; margin-bottom: 14px; }
+    .empty-state h5 { color: #495057; font-weight: 600; }
+
+    .util-bar {
+        height: 14px; background: #e9ecef; border-radius: 7px; overflow: hidden;
+        margin-top: 8px;
+    }
+    .util-bar-fill {
+        height: 100%; background: linear-gradient(90deg, var(--pay-blue), var(--pay-navy));
+        border-radius: 7px; transition: width .4s;
+    }
+</style>
+}
+
+<div class="pay-page-header">
+    <div>
+        <h1 class="pay-page-title">
+            <i class="bi bi-graph-up-arrow me-2" style="color:var(--pay-blue);"></i>Payroll Analytics
+        </h1>
+        <p class="pay-page-sub">
+            Last 12 months · @receiptCount @(receiptCount == 1 ? "receipt" : "receipts") (excluding drafts)
+        </p>
+    </div>
+    <a asp-action="Payroll" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Payroll
+    </a>
+</div>
+
+@if (!hasData)
+{
+    <div class="pay-card">
+        <div class="pay-card-accent"></div>
+        <div class="pay-card-body empty-state">
+            <div class="empty-icon"><i class="bi bi-bar-chart-line"></i></div>
+            <h5>No data yet</h5>
+            <p class="mb-3">Submit your first receipt to unlock earnings trends, hours breakdowns, and retainer-utilization insights.</p>
+            <a asp-action="Payroll" class="btn btn-sm" style="background:var(--pay-navy);color:#fff;">
+                <i class="bi bi-arrow-right me-1"></i>Go to Payroll
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    @* ── Headline KPI tiles ───────────────────────────────────────── *@
+    <div class="kpi-grid">
+        <div class="kpi-tile kpi-green">
+            <div class="kpi-label">Paid YTD</div>
+            <div class="kpi-value" style="font-size:1.5rem;">$@ytdPaid.ToString("N2")</div>
+            <div class="kpi-sub">funds received this year</div>
+        </div>
+        <div class="kpi-tile kpi-amber">
+            <div class="kpi-label">Pending YTD</div>
+            <div class="kpi-value" style="font-size:1.5rem;">$@ytdPending.ToString("N2")</div>
+            <div class="kpi-sub">submitted + approved</div>
+        </div>
+        <div class="kpi-tile kpi-navy">
+            <div class="kpi-label">12-Month Earnings</div>
+            <div class="kpi-value" style="font-size:1.5rem;">$@totalLast12.ToString("N2")</div>
+            <div class="kpi-sub">all non-draft receipts</div>
+        </div>
+        <div class="kpi-tile kpi-blue">
+            <div class="kpi-label">Avg / Active Month</div>
+            <div class="kpi-value" style="font-size:1.5rem;">$@avgPerActiveMonth.ToString("N2")</div>
+            <div class="kpi-sub">across @activeMonths active @(activeMonths == 1 ? "month" : "months")</div>
+        </div>
+    </div>
+
+    @* ── Monthly earnings + Status donut ──────────────────────────── *@
+    <div class="chart-grid">
+        <div class="pay-card">
+            <div class="pay-card-accent"></div>
+            <div class="pay-card-header">
+                <span class="pay-card-header-title">
+                    <i class="bi bi-bar-chart-fill" style="color:var(--pay-blue);"></i>
+                    Monthly Earnings (Paid vs. Pending)
+                </span>
+            </div>
+            <div class="pay-card-body">
+                <div id="chartMonthly" style="min-height:300px;"></div>
+            </div>
+        </div>
+        <div class="pay-card">
+            <div class="pay-card-accent"></div>
+            <div class="pay-card-header">
+                <span class="pay-card-header-title">
+                    <i class="bi bi-pie-chart-fill" style="color:var(--pay-blue);"></i>
+                    Receipts by Status
+                </span>
+            </div>
+            <div class="pay-card-body">
+                <div id="chartStatus" style="min-height:300px;"></div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Hours breakdown + retainer utilization ───────────────────── *@
+    <div class="chart-grid">
+        <div class="pay-card">
+            <div class="pay-card-accent"></div>
+            <div class="pay-card-header">
+                <span class="pay-card-header-title">
+                    <i class="bi bi-stopwatch-fill" style="color:var(--pay-blue);"></i>
+                    Monthly Hours Logged
+                </span>
+            </div>
+            <div class="pay-card-body">
+                <div id="chartHours" style="min-height:280px;"></div>
+            </div>
+        </div>
+        <div class="pay-card">
+            <div class="pay-card-accent"></div>
+            <div class="pay-card-header">
+                <span class="pay-card-header-title">
+                    <i class="bi bi-lightning-charge-fill" style="color:var(--pay-blue);"></i>
+                    Standard vs. Emergency
+                </span>
+            </div>
+            <div class="pay-card-body">
+                @{
+                    var totalHrs = totalStdHours + totalEmerHours;
+                    var stdPct  = totalHrs > 0 ? (double)(totalStdHours  / totalHrs) * 100 : 0;
+                    var emerPct = totalHrs > 0 ? (double)(totalEmerHours / totalHrs) * 100 : 0;
+                }
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small fw-semibold">
+                        <span><i class="bi bi-circle-fill me-1" style="color:#0a58ca;font-size:.6rem;"></i>Standard</span>
+                        <span>@totalStdHours.ToString("0.##") h · $@totalStdAmount.ToString("N2")</span>
+                    </div>
+                    <div class="util-bar"><div class="util-bar-fill" style="width:@stdPct.ToString("0.##")%;background:#0a58ca;"></div></div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small fw-semibold">
+                        <span><i class="bi bi-circle-fill me-1" style="color:var(--pay-red);font-size:.6rem;"></i>Emergency</span>
+                        <span>@totalEmerHours.ToString("0.##") h · $@totalEmerAmount.ToString("N2")</span>
+                    </div>
+                    <div class="util-bar"><div class="util-bar-fill" style="width:@emerPct.ToString("0.##")%;background:var(--pay-red);"></div></div>
+                </div>
+                @if (totalRetainerAmt > 0)
+                {
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="d-flex justify-content-between align-items-baseline">
+                            <span class="fw-semibold small">Retainer Earnings (12 mo)</span>
+                            <span class="fw-bold" style="color:var(--pay-navy);">$@totalRetainerAmt.ToString("N2")</span>
+                        </div>
+                        @if (retainerHrsInc > 0)
+                        {
+                            var utilPct = retainerHrsInc > 0
+                                ? Math.Min(100, (double)(retainerHrsApplied / retainerHrsInc) * 100 / Math.Max(1, activeMonths))
+                                : 0;
+                            <div class="small text-muted mt-2">
+                                Retainer hours absorbed: <strong>@retainerHrsApplied.ToString("0.##") h</strong>
+                                · pool of @retainerHrsInc.ToString("0.##") h/mo
+                            </div>
+                            <div class="util-bar"><div class="util-bar-fill" style="width:@utilPct.ToString("0.##")%;"></div></div>
+                            <div class="small text-muted mt-1">
+                                Avg utilization per active month: @utilPct.ToString("0.#")%
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var monthLabels  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(monthly.Select(m => m.Label).ToList()));
+    var paidAmts     = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(monthly.Select(m => m.PaidAmount).ToList()));
+    var pendingAmts  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(monthly.Select(m => m.PendingAmount).ToList()));
+    var paidHours    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(monthly.Select(m => m.PaidHours).ToList()));
+    var pendingHours = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(monthly.Select(m => m.PendingHours).ToList()));
+
+    var statusLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(statusBuckets.Keys.ToList()));
+    var statusValues = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(statusBuckets.Values.ToList()));
+
+    // ── Monthly earnings — stacked bar ──
+    var monthlyEl = document.getElementById('chartMonthly');
+    if (monthlyEl) {
+        new ApexCharts(monthlyEl, {
+            series: [
+                { name: 'Paid',    data: paidAmts },
+                { name: 'Pending', data: pendingAmts }
+            ],
+            chart: { type: 'bar', stacked: true, height: 320, toolbar: { show: false } },
+            plotOptions: { bar: { columnWidth: '50%', borderRadius: 4 } },
+            dataLabels: { enabled: false },
+            xaxis: { categories: monthLabels, labels: { rotate: -35, style: { fontSize: '10px' } } },
+            yaxis: { labels: { formatter: function (v) { return '$' + Math.round(v).toLocaleString(); }, style: { fontSize: '11px' } } },
+            colors: ['#198754', '#fd7e14'],
+            legend: { position: 'top', horizontalAlign: 'right', fontSize: '12px' },
+            grid: { borderColor: '#f1f1f1' },
+            tooltip: { y: { formatter: function (v) { return '$' + Number(v).toFixed(2); } } }
+        }).render();
+    }
+
+    // ── Status donut ──
+    var statusEl = document.getElementById('chartStatus');
+    if (statusEl) {
+        var anyStatus = statusValues.some(function (v) { return v > 0; });
+        if (anyStatus) {
+            new ApexCharts(statusEl, {
+                series: statusValues,
+                chart: { type: 'donut', height: 320 },
+                labels: statusLabels,
+                colors: ['#fd7e14', '#0d6efd', '#198754'],
+                legend: { position: 'bottom', fontSize: '12px' },
+                dataLabels: { enabled: true, formatter: function (v) { return v.toFixed(1) + '%'; } },
+                plotOptions: { pie: { donut: { size: '60%', labels: { show: true, total: { show: true, label: 'Total', formatter: function (w) { var t = w.globals.seriesTotals.reduce(function(a,b){return a+b;}, 0); return '$' + Math.round(t).toLocaleString(); } } } } } },
+                tooltip: { y: { formatter: function (v) { return '$' + Number(v).toFixed(2); } } }
+            }).render();
+        } else {
+            statusEl.innerHTML = '<p class="text-muted text-center py-5 small">No status data in the last 12 months.</p>';
+        }
+    }
+
+    // ── Monthly hours line chart ──
+    var hoursEl = document.getElementById('chartHours');
+    if (hoursEl) {
+        new ApexCharts(hoursEl, {
+            series: [
+                { name: 'Paid Hours',    data: paidHours },
+                { name: 'Pending Hours', data: pendingHours }
+            ],
+            chart: { type: 'line', height: 280, toolbar: { show: false } },
+            stroke: { curve: 'smooth', width: [3, 3], dashArray: [0, 5] },
+            markers: { size: 4 },
+            xaxis: { categories: monthLabels, labels: { rotate: -35, style: { fontSize: '10px' } } },
+            yaxis: { labels: { formatter: function (v) { return v.toFixed(1) + ' h'; }, style: { fontSize: '11px' } } },
+            colors: ['#198754', '#fd7e14'],
+            legend: { position: 'top', horizontalAlign: 'right', fontSize: '12px' },
+            grid: { borderColor: '#f1f1f1' },
+            tooltip: { y: { formatter: function (v) { return Number(v).toFixed(2) + ' h'; } } }
+        }).render();
+    }
+});
+</script>
+}
