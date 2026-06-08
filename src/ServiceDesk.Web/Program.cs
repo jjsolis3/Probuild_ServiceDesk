@@ -82,11 +82,19 @@ builder.Services.AddSingleton<AiTriageService>();
 // Register Ollama LLM service (singleton — stateless HTTP client wrapper)
 builder.Services.AddSingleton<OllamaService>();
 
-// Named HTTP client for Ollama with a generous timeout for LLM generation
+// Named HTTP client for Ollama. The per-call timeout is enforced via a
+// CancellationTokenSource inside OllamaService (driven by the
+// OllamaTimeoutSeconds AppSetting), so this client-level timeout is just a
+// safety net for misbehaving HTTP plumbing — set it high enough that the
+// per-call CTS always fires first.
 builder.Services.AddHttpClient("Ollama", c =>
 {
-    c.Timeout = TimeSpan.FromSeconds(120);
+    c.Timeout = TimeSpan.FromMinutes(15);
 });
+
+// Periodic warm-up so the Ollama model stays loaded in memory and the
+// first user request never pays the cold-load tax (~30s on CPU).
+builder.Services.AddHostedService<OllamaWarmupService>();
 
 // Register TF-IDF ticket similarity engine (singleton — builds corpus in memory)
 builder.Services.AddSingleton<TicketSimilarityService>();

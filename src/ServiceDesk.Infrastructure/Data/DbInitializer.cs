@@ -2132,6 +2132,37 @@ public static class DbInitializer
                     Carrier            NVARCHAR(50)  NULL,
                     CancellationReason NVARCHAR(500) NULL;
             END");
+
+        TryRunSchemaUpgrade(context, "SeedOllamaResilienceSettings", @"
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaTimeoutSeconds')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaTimeoutSeconds', '300', 'AI Triage',
+                        'HTTP timeout (seconds) for Ollama generation calls. CPU-only servers should use 300+; GPU servers can use 120.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaKeepAlive')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaKeepAlive', '30m', 'AI Triage',
+                        'How long Ollama keeps the model loaded between requests (e.g. 30m, 1h, -1 = forever). Eliminates 30s cold-load on every call.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaWarmupEnabled')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaWarmupEnabled', 'true', 'AI Triage',
+                        'Pre-load the configured model on app startup and every 25 minutes so the first user request never hits a cold load.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaNumPredict')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaNumPredict', '600', 'AI Triage',
+                        'Maximum tokens Ollama will generate per call. Caps runaway generation so a single request can''t burn the entire timeout.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaDraftModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaDraftModel', '', 'AI Triage',
+                        'Optional model override for Draft Reply / KB Article generation (e.g. gemma3:12b). Leave blank to use OllamaModel.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OllamaTriageModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OllamaTriageModel', '', 'AI Triage',
+                        'Optional faster model for escalation detection / workflow classification (e.g. phi3). Leave blank to use OllamaModel.');");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

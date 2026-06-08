@@ -1922,7 +1922,13 @@ function filterSelectOptions(input) {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-robot me-1"></i>Draft AI Reply';
         if (draftStatus)   draftStatus.classList.add('d-none');
-        if (draftComplete) draftComplete.classList.remove('d-none');
+        if (draftComplete) {
+            draftComplete.classList.remove('d-none');
+            // Surface the actual generation latency so admins can see whether
+            // their model is fast enough or the timeout needs bumping.
+            var secs = Math.max(0.1, (Date.now() - startTime) / 1000).toFixed(1);
+            draftComplete.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Complete in ' + secs + 's — review and insert below';
+        }
         if (btnUse)        btnUse.disabled = !draftText || draftText.value.trim().length === 0;
     }
 
@@ -2105,96 +2111,108 @@ function filterSelectOptions(input) {
 </script>
 
 <script>
-// ── AI Solution button (Ollama) ───────────────────────────────────────────
-(function () {
-    var btn = document.getElementById('btnSuggestSolution');
+// ── Streaming helper for the Summarize Thread / Suggest Solution banners ──
+//
+// Wires a button to a Server-Sent Events endpoint and streams tokens into a
+// dismissible banner placed above the ticket tabs. Mirrors the Draft Reply
+// pattern (modal version) but keeps the inline-banner UX.
+function streamIntoBanner(opts) {
+    var btn = document.getElementById(opts.buttonId);
     if (!btn) return;
-
-    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
     var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
+    if (!ticketId) return;
 
     btn.addEventListener('click', function () {
+        // Tear down any prior banner so multiple clicks always start fresh.
+        var existing = document.getElementById(opts.bannerId);
+        if (existing) existing.remove();
+
+        var tabs = document.getElementById('ticketTabs');
+        if (!tabs) return;
+
+        var banner = document.createElement('div');
+        banner.id = opts.bannerId;
+        banner.className = 'alert ' + opts.bannerClass + ' alert-dismissible fade show mb-3 small';
+        banner.innerHTML =
+            '<strong><i class="bi ' + opts.icon + ' me-1"></i>' + opts.title + '</strong> ' +
+            '<span class="text-muted ms-1" data-role="status">' +
+                '<span class="spinner-border spinner-border-sm me-1" style="width:0.8rem;height:0.8rem;"></span>' +
+                'streaming… <span data-role="elapsed"></span>' +
+            '</span>' +
+            '<div class="mt-1" style="white-space:pre-wrap;" data-role="content"></div>' +
+            '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        tabs.parentNode.insertBefore(banner, tabs);
+
+        var contentEl  = banner.querySelector('[data-role="content"]');
+        var statusEl   = banner.querySelector('[data-role="status"]');
+        var elapsedEl  = banner.querySelector('[data-role="elapsed"]');
+
         var origHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Generating…';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + (opts.workingLabel || 'Working…');
 
-        var fd = new FormData();
-        fd.append('__RequestVerificationToken', antiForgeryToken);
+        var startTime = Date.now();
+        var timerHandle = setInterval(function () {
+            elapsedEl.textContent = '(' + Math.round((Date.now() - startTime) / 1000) + 's)';
+        }, 1000);
 
-        fetch('/Tickets/SuggestSolution/' + ticketId, { method: 'POST', body: fd })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                btn.disabled = false;
-                btn.innerHTML = origHtml;
-                if (data.success && data.solution) {
-                    var existing = document.getElementById('aiSolutionBanner');
-                    if (existing) existing.remove();
-                    var banner = document.createElement('div');
-                    banner.id = 'aiSolutionBanner';
-                    banner.className = 'alert alert-success alert-dismissible fade show mb-3 small';
-                    banner.innerHTML =
-                        '<strong><i class="bi bi-tools me-1"><\/i>AI Recommended Solution (for IT staff):<\/strong>' +
-                        '<div class="mt-1" style="white-space:pre-wrap;">' + data.solution + '<\/div>' +
-                        '<button type="button" class="btn-close" data-bs-dismiss="alert"><\/button>';
-                    var tabs = document.getElementById('ticketTabs');
-                    if (tabs) tabs.parentNode.insertBefore(banner, tabs);
-                } else {
-                    alert(data.error || 'Solution generation failed. Ensure Ollama is running.');
-                }
-            })
-            .catch(function () {
-                btn.disabled = false;
-                btn.innerHTML = origHtml;
-                alert('Failed to reach the server. Please try again.');
-            });
+        var es = new EventSource(opts.url + '/' + ticketId);
+
+        function finish(errorMsg) {
+            clearInterval(timerHandle);
+            try { es.close(); } catch (_) {}
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            var seconds = Math.max(0.1, (Date.now() - startTime) / 1000).toFixed(1);
+            if (errorMsg) {
+                statusEl.classList.remove('text-muted');
+                statusEl.classList.add('text-danger');
+                statusEl.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + errorMsg;
+            } else {
+                statusEl.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>' +
+                                     'generated in ' + seconds + 's';
+            }
+        }
+
+        es.onmessage = function (e) {
+            if (e.data === '[DONE]') {
+                if (!contentEl.textContent.trim())
+                    finish('Ollama returned an empty response. Try a different model in Settings → AI.');
+                else
+                    finish(null);
+                return;
+            }
+            try {
+                contentEl.textContent += JSON.parse(e.data);
+            } catch (_) {}
+        };
+
+        es.onerror = function () {
+            if (contentEl.textContent.trim().length > 0) finish(null);
+            else finish('Could not reach Ollama. Verify the service is running and try Settings → AI → Test Connection.');
+        };
     });
-})();
+}
 
-// ── Summarize Thread button (Ollama) ──────────────────────────────────────
-(function () {
-    var btn = document.getElementById('btnSummarizeThread');
-    if (!btn) return;
+streamIntoBanner({
+    buttonId:    'btnSuggestSolution',
+    url:         '/Tickets/SuggestSolutionStream',
+    bannerId:    'aiSolutionBanner',
+    bannerClass: 'alert-success',
+    icon:        'bi-tools',
+    title:       'AI Recommended Solution (for IT staff):',
+    workingLabel: 'Generating…'
+});
 
-    var antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-    var ticketId = parseInt(document.querySelector('input[name="Id"]')?.value || '0', 10);
-
-    btn.addEventListener('click', function () {
-        var origHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"><\/span>Summarizing…';
-
-        var fd = new FormData();
-        fd.append('__RequestVerificationToken', antiForgeryToken);
-
-        fetch('/Tickets/SummarizeThread/' + ticketId, { method: 'POST', body: fd })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                btn.disabled = false;
-                btn.innerHTML = origHtml;
-                if (data.success && data.summary) {
-                    // Show in a small dismissible banner above the tabs
-                    var existing = document.getElementById('threadSummaryBanner');
-                    if (existing) existing.remove();
-                    var banner = document.createElement('div');
-                    banner.id = 'threadSummaryBanner';
-                    banner.className = 'alert alert-secondary alert-dismissible fade show mb-3 small';
-                    banner.innerHTML =
-                        '<strong><i class="bi bi-journal-text me-1"><\/i>AI Thread Summary:<\/strong> ' +
-                        data.summary +
-                        '<button type="button" class="btn-close" data-bs-dismiss="alert"><\/button>';
-                    var tabs = document.getElementById('ticketTabs');
-                    if (tabs) tabs.parentNode.insertBefore(banner, tabs);
-                } else {
-                    alert(data.error || 'Summarization failed. Ensure Ollama is running.');
-                }
-            })
-            .catch(function() {
-                btn.disabled = false;
-                btn.innerHTML = origHtml;
-                alert('Failed to reach the server. Please try again.');
-            });
-    });
-})();
+streamIntoBanner({
+    buttonId:    'btnSummarizeThread',
+    url:         '/Tickets/SummarizeThreadStream',
+    bannerId:    'threadSummaryBanner',
+    bannerClass: 'alert-secondary',
+    icon:        'bi-journal-text',
+    title:       'AI Thread Summary:',
+    workingLabel: 'Summarizing…'
+});
 </script>
 
 <script>
