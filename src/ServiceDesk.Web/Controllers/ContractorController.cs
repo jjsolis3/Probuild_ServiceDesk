@@ -15,6 +15,7 @@ public class ContractorController : Controller
     private readonly EmailNotificationService _emailService;
     private readonly PayrollCalculatorService _payroll;
     private readonly PayrollReceiptAttachmentService _attachments;
+    private readonly PayrollReceiptPdfService _pdfService;
     private readonly PayrollActivityService _activity;
     private readonly PortalNotificationService _bell;
     private readonly MentionService _mentions;
@@ -24,6 +25,7 @@ public class ContractorController : Controller
         EmailNotificationService emailService,
         PayrollCalculatorService payroll,
         PayrollReceiptAttachmentService attachments,
+        PayrollReceiptPdfService pdfService,
         PayrollActivityService activity,
         PortalNotificationService bell,
         MentionService mentions)
@@ -32,6 +34,7 @@ public class ContractorController : Controller
         _emailService = emailService;
         _payroll = payroll;
         _attachments = attachments;
+        _pdfService = pdfService;
         _activity = activity;
         _bell = bell;
         _mentions = mentions;
@@ -615,21 +618,59 @@ public class ContractorController : Controller
     // GET /Contractor/ReceiptExcel/{id}
     public async Task<IActionResult> ReceiptExcel(int id)
     {
+        // Mirrors ReceiptDetail's audience rules: admins/IT Agents can pull
+        // any receipt; contractors can only pull their own.
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("IT Agent");
         var contractor = await GetContractorEmployeeAsync();
-        if (contractor == null)
+        if (!isAdmin && contractor == null)
             return RedirectToAction(nameof(Payroll));
 
-        var receipt = await _context.PayrollReceipts
+        var query = _context.PayrollReceipts
             .Include(r => r.Contractor)
             .Include(r => r.TimeEntries)
                 .ThenInclude(e => e.Ticket)
-            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+            .AsQueryable();
+        if (!isAdmin)
+            query = query.Where(r => r.ContractorId == contractor!.Id);
 
+        var receipt = await query.FirstOrDefaultAsync(r => r.Id == id);
         if (receipt == null) return NotFound();
 
         var bytes = await _attachments.RenderXlsxAsync(receipt);
         var fileName = $"PayrollReceipt_{receipt.Id}_{receipt.PeriodStart:yyyyMMdd}-{receipt.PeriodEnd:yyyyMMdd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    // ── PDF Export ────────────────────────────────────────────────────────────
+
+    // GET /Contractor/ReceiptPdf/{id}
+    //
+    // Renders the receipt as a PDF via PayrollReceiptPdfService. Same audience
+    // rules as ReceiptDetail/ReceiptExcel: admins/IT Agents can download any
+    // receipt, contractors only their own.
+    public async Task<IActionResult> ReceiptPdf(int id)
+    {
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("IT Agent");
+        var contractor = await GetContractorEmployeeAsync();
+        if (!isAdmin && contractor == null)
+            return RedirectToAction(nameof(Payroll));
+
+        if (!isAdmin)
+        {
+            var owns = await _context.PayrollReceipts
+                .AnyAsync(r => r.Id == id && r.ContractorId == contractor!.Id);
+            if (!owns) return NotFound();
+        }
+
+        var receipt = await _context.PayrollReceipts
+            .AsNoTracking()
+            .Select(r => new { r.Id, r.PeriodStart, r.PeriodEnd })
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (receipt == null) return NotFound();
+
+        var bytes = await _pdfService.RenderAsync(id);
+        var fileName = $"PayrollReceipt_{receipt.Id}_{receipt.PeriodStart:yyyyMMdd}-{receipt.PeriodEnd:yyyyMMdd}.pdf";
+        return File(bytes, "application/pdf", fileName);
     }
 
     // POST /Contractor/ShareReceipt/{id}
@@ -681,6 +722,137 @@ public class ContractorController : Controller
         return RedirectToAction(nameof(ReceiptDetail), new { id });
     }
 
+
+    // ── Analytics Dashboard ───────────────────────────────────────────────────
+
+    // GET /Contractor/Analytics
+    //
+    // Aggregates the contractor's own receipts into chart-friendly buckets
+    // (last 12 months) so the view can render ApexCharts widgets without any
+    // client-side computation. Draft receipts are excluded — they're not
+    // earnings, just work-in-progress.
+    public async Task<IActionResult> Analytics()
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null)
+        {
+            TempData["Error"] = "Your employee profile is not flagged as a contractor.";
+            return RedirectToAction("Index", "Home");
+        }
+
+        var now      = DateTime.UtcNow;
+        var monthEnd = new DateTime(now.Year, now.Month, 1).AddMonths(1).AddDays(-1);
+        var rangeStart = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
+
+        var receipts = await _context.PayrollReceipts
+            .Where(r => r.ContractorId == contractor.Id
+                     && r.Status != "Draft"
+                     && r.PeriodStart >= rangeStart)
+            .AsNoTracking()
+            .ToListAsync();
+
+        // Build a Month -> {earnings, hours} dictionary covering all 12 months
+        // so the chart shows a continuous axis even when a month is empty.
+        var monthly = new List<MonthlyBucket>();
+        for (int i = 0; i < 12; i++)
+        {
+            var bucketStart = rangeStart.AddMonths(i);
+            var bucketEnd   = bucketStart.AddMonths(1).AddDays(-1);
+            var bucket = new MonthlyBucket
+            {
+                Label    = bucketStart.ToString("MMM yyyy"),
+                YearMonth = bucketStart.ToString("yyyy-MM"),
+            };
+            foreach (var r in receipts.Where(r => r.PeriodStart <= bucketEnd && r.PeriodEnd >= bucketStart))
+            {
+                // Distribute receipts to the month their period starts in. This
+                // is good enough for a trend chart — splitting a multi-month
+                // receipt across months would require per-entry analysis.
+                if (r.PeriodStart >= bucketStart && r.PeriodStart <= bucketEnd)
+                {
+                    if (r.Status == "Paid")
+                    {
+                        bucket.PaidAmount += r.TotalAmount;
+                        bucket.PaidHours  += r.TotalHours;
+                    }
+                    else
+                    {
+                        bucket.PendingAmount += r.TotalAmount;
+                        bucket.PendingHours  += r.TotalHours;
+                    }
+                }
+            }
+            monthly.Add(bucket);
+        }
+
+        // Status distribution across the same 12-month window.
+        var statusBuckets = new Dictionary<string, decimal>
+        {
+            ["Submitted"] = 0m,
+            ["Approved"]  = 0m,
+            ["Paid"]      = 0m,
+        };
+        foreach (var r in receipts)
+            if (statusBuckets.ContainsKey(r.Status))
+                statusBuckets[r.Status] += r.TotalAmount;
+
+        // Standard vs Emergency vs Retainer split — pulled from snapshot fields
+        // on the receipt. Avoids re-running the calculator for every receipt.
+        decimal totalStdHours       = receipts.Sum(r => r.TotalStandardHours);
+        decimal totalEmergencyHours = receipts.Sum(r => r.TotalEmergencyHours);
+        decimal totalRetainerAmt    = receipts.Sum(r => r.TotalRetainerAmountApplied);
+
+        var stdRate  = contractor.HourlyRate ?? 0m;
+        var emerRate = contractor.EmergencyHourlyRate ?? 0m;
+        decimal totalStdAmount  = totalStdHours * stdRate;
+        decimal totalEmerAmount = totalEmergencyHours * emerRate;
+
+        // Retainer utilization — only meaningful if the contractor has one.
+        // Hours included × number of paid/approved retainer months in window
+        // would be ideal, but we approximate using RetainerHoursApplied snapshot.
+        decimal retainerHoursIncluded = (contractor.MonthlyRetainerHoursIncluded ?? 0m);
+        decimal retainerHoursApplied  = receipts.Sum(r => r.TotalRetainerHoursApplied);
+
+        // Year-to-date totals for the header summary tiles.
+        var ytdStart    = new DateTime(now.Year, 1, 1);
+        var ytdReceipts = receipts.Where(r => r.PeriodEnd >= ytdStart).ToList();
+        decimal ytdPaid    = ytdReceipts.Where(r => r.Status == "Paid").Sum(r => r.TotalAmount);
+        decimal ytdPending = ytdReceipts.Where(r => r.Status != "Paid").Sum(r => r.TotalAmount);
+
+        // 12-month average earnings (per active month — months with any receipt).
+        var activeMonths = monthly.Count(m => m.PaidAmount + m.PendingAmount > 0);
+        decimal totalLast12 = monthly.Sum(m => m.PaidAmount + m.PendingAmount);
+        decimal avgPerActiveMonth = activeMonths > 0 ? totalLast12 / activeMonths : 0m;
+
+        ViewBag.Contractor             = contractor;
+        ViewBag.Monthly                = monthly;
+        ViewBag.StatusBuckets          = statusBuckets;
+        ViewBag.TotalStdHours          = totalStdHours;
+        ViewBag.TotalEmergencyHours    = totalEmergencyHours;
+        ViewBag.TotalStdAmount         = totalStdAmount;
+        ViewBag.TotalEmerAmount        = totalEmerAmount;
+        ViewBag.TotalRetainerAmount    = totalRetainerAmt;
+        ViewBag.RetainerHoursIncluded  = retainerHoursIncluded;
+        ViewBag.RetainerHoursApplied   = retainerHoursApplied;
+        ViewBag.YtdPaid                = ytdPaid;
+        ViewBag.YtdPending             = ytdPending;
+        ViewBag.TotalLast12            = totalLast12;
+        ViewBag.AvgPerActiveMonth      = avgPerActiveMonth;
+        ViewBag.ActiveMonths           = activeMonths;
+        ViewBag.ReceiptCount           = receipts.Count;
+        ViewData["Title"]              = "Payroll Analytics";
+        return View();
+    }
+
+    public class MonthlyBucket
+    {
+        public string Label { get; set; } = "";
+        public string YearMonth { get; set; } = "";
+        public decimal PaidAmount    { get; set; }
+        public decimal PendingAmount { get; set; }
+        public decimal PaidHours     { get; set; }
+        public decimal PendingHours  { get; set; }
+    }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
