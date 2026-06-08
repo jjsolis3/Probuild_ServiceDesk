@@ -334,6 +334,8 @@
         <select name="bulkAction" id="bulkActionSelect" class="form-select form-select-sm" style="width:auto;">
             <option value="">— Choose Action —</option>
             <option value="status">Change Status</option>
+            <option value="priority">Change Priority</option>
+            <option value="category">Change Category</option>
             <option value="assign">Reassign</option>
             <option value="delete">Delete Selected</option>
         </select>
@@ -342,6 +344,28 @@
                 @foreach (var s in Enum.GetValues<TicketStatus>())
                 {
                     <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div id="bulkPriorityGroup" class="d-none">
+            <select name="bulkPriority" class="form-select form-select-sm" style="width:auto;">
+                @foreach (var p in Enum.GetValues<TicketPriority>())
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+        </div>
+        <div id="bulkCategoryGroup" class="d-none">
+            <select name="bulkCategory" class="form-select form-select-sm" style="width:auto;">
+                @{
+                    var bulkCats = ViewBag.Categories as IEnumerable<dynamic>;
+                }
+                @if (bulkCats != null)
+                {
+                    foreach (var c in bulkCats)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
                 }
             </select>
         </div>
@@ -926,8 +950,13 @@
                 updateBar();
             }
         });
+        const priorityGroup = document.getElementById('bulkPriorityGroup');
+        const categoryGroup = document.getElementById('bulkCategoryGroup');
+
         actionSelect?.addEventListener('change', function () {
-            statusGroup.classList.toggle('d-none',  this.value !== 'status');
+            statusGroup.classList.toggle('d-none',   this.value !== 'status');
+            priorityGroup?.classList.toggle('d-none', this.value !== 'priority');
+            categoryGroup?.classList.toggle('d-none', this.value !== 'category');
             assigneeGroup.classList.toggle('d-none', this.value !== 'assign');
         });
         document.getElementById('btnBulkClear')?.addEventListener('click', function () {

@@ -1265,6 +1265,116 @@ public class SettingsController : Controller
         return RedirectToAction(nameof(CannedResponses));
     }
 
+    // ── Ticket Templates ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin,IT Agent")]
+    public async Task<IActionResult> TicketTemplates()
+    {
+        var templates = await _context.TicketTemplates
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .ToListAsync();
+        ViewBag.Categories = await _context.TicketCategories
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+        return View(templates);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateTicketTemplate()
+    {
+        await PopulateTicketTemplateLookupsAsync();
+        return View(new TicketTemplate());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateTicketTemplate(TicketTemplate template)
+    {
+        if (ModelState.IsValid)
+        {
+            template.CreatedDate = DateTime.UtcNow;
+            _context.TicketTemplates.Add(template);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket template created.";
+            return RedirectToAction(nameof(TicketTemplates));
+        }
+        await PopulateTicketTemplateLookupsAsync();
+        return View(template);
+    }
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditTicketTemplate(int id)
+    {
+        var template = await _context.TicketTemplates.FindAsync(id);
+        if (template == null) return NotFound();
+        await PopulateTicketTemplateLookupsAsync();
+        return View(template);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EditTicketTemplate(int id, TicketTemplate template)
+    {
+        if (id != template.Id) return NotFound();
+        if (ModelState.IsValid)
+        {
+            template.UpdatedDate = DateTime.UtcNow;
+            _context.Update(template);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket template updated.";
+            return RedirectToAction(nameof(TicketTemplates));
+        }
+        await PopulateTicketTemplateLookupsAsync();
+        return View(template);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteTicketTemplate(int id)
+    {
+        var template = await _context.TicketTemplates.FindAsync(id);
+        if (template != null)
+        {
+            _context.TicketTemplates.Remove(template);
+            await _context.SaveChangesAsync();
+            TempData["Success"] = "Ticket template deleted.";
+        }
+        return RedirectToAction(nameof(TicketTemplates));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ToggleTicketTemplate(int id)
+    {
+        var template = await _context.TicketTemplates.FindAsync(id);
+        if (template != null)
+        {
+            template.IsActive = !template.IsActive;
+            template.UpdatedDate = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(TicketTemplates));
+    }
+
+    private async Task PopulateTicketTemplateLookupsAsync()
+    {
+        ViewBag.Categories = await _context.TicketCategories
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .Select(c => new { c.Id, c.Name })
+            .ToListAsync();
+        ViewBag.SubCategories = await _context.TicketSubCategories
+            .AsNoTracking()
+            .OrderBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name, CategoryId = s.Category })
+            .ToListAsync();
+    }
+
     // ==================== CATEGORIES & SUB-CATEGORIES ====================
 
     private async Task<List<SelectListItem>> LoadCategorySelectItemsAsync()

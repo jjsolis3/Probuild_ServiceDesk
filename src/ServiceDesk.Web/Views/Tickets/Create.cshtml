@@ -1,6 +1,8 @@
 @model Ticket
 @{
     ViewData["Title"] = "Create Ticket";
+    var templates = ViewBag.TicketTemplates as IEnumerable<ServiceDesk.Core.Models.TicketTemplate>
+                    ?? Enumerable.Empty<ServiceDesk.Core.Models.TicketTemplate>();
 }
 
 <nav aria-label="breadcrumb">
@@ -16,6 +18,24 @@
     <div class="col-md-8">
         <form asp-action="Create" data-loading-btn="btnCreateTicket">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            @if (templates.Any())
+            {
+                <div class="mb-3 p-3 rounded" style="background:#f5f8ff; border:1px solid #cfdcff;">
+                    <label for="ticketTemplatePicker" class="form-label fw-semibold mb-1">
+                        <i class="bi bi-stars me-1 text-primary"></i>Start from a template
+                        <span class="text-muted fw-normal small ms-1">(optional — pre-fills Title, Description, Category & Priority)</span>
+                    </label>
+                    <select id="ticketTemplatePicker" class="form-select form-select-sm">
+                        <option value="">— No template —</option>
+                        @foreach (var t in templates)
+                        {
+                            <option value="@t.Id" data-desc="@t.Description">@t.Name</option>
+                        }
+                    </select>
+                    <div id="ticketTemplateHint" class="form-text small mt-1" style="min-height:1.1em;"></div>
+                </div>
+            }
 
             <div class="mb-3">
                 <label asp-for="Title" class="form-label"><span class="text-danger ms-1">*</span></label>
@@ -111,6 +131,50 @@
                 });
             });
     });
+
+    // ── Ticket template picker ────────────────────────────────────────────
+    // Fetches the chosen template's pre-fill payload and applies it to the
+    // form. Sub-category is loaded asynchronously since it depends on
+    // Category; we trigger the category change handler then select the
+    // template's sub-category id once the options arrive.
+    const tplPicker = document.getElementById('ticketTemplatePicker');
+    const tplHint   = document.getElementById('ticketTemplateHint');
+    if (tplPicker) {
+        tplPicker.addEventListener('change', function () {
+            const id = this.value;
+            const selected = this.options[this.selectedIndex];
+            tplHint.textContent = selected ? (selected.getAttribute('data-desc') || '') : '';
+            if (!id) return;
+
+            fetch('/Tickets/TemplateJson/' + encodeURIComponent(id))
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (!data) return;
+                    const titleEl    = document.querySelector('input[name="Title"]');
+                    const bodyEl     = document.querySelector('textarea[name="Description"]');
+                    const priorityEl = document.querySelector('select[name="Priority"]');
+                    if (titleEl)    titleEl.value = data.title;
+                    if (bodyEl)     bodyEl.value  = data.body;
+                    if (priorityEl) priorityEl.value = data.priority;
+
+                    // Apply Category first; it triggers SubCategory reload.
+                    catSel.value = data.category;
+                    catSel.dispatchEvent(new Event('change'));
+
+                    // Once sub-categories have loaded, select the template's
+                    // sub-category if it's present in the new options.
+                    if (data.subCategoryId) {
+                        const subTarget = String(data.subCategoryId);
+                        const tryPick = function (retries) {
+                            const opt = subSel.querySelector('option[value="' + subTarget + '"]');
+                            if (opt) { subSel.value = subTarget; return; }
+                            if (retries > 0) setTimeout(function () { tryPick(retries - 1); }, 120);
+                        };
+                        tryPick(8);
+                    }
+                });
+        });
+    }
 })();
 </script>
 }

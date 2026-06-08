@@ -2076,6 +2076,27 @@ public static class DbInitializer
                     ON dbo.RecurringChargeTemplates (ContractorId, IsActive);
             END");
 
+        TryRunSchemaUpgrade(context, "CreateTicketTemplatesTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketTemplates')
+            BEGIN
+                CREATE TABLE dbo.TicketTemplates (
+                    Id             INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    Name           NVARCHAR(120) NOT NULL,
+                    Description    NVARCHAR(300) NULL,
+                    TitleTemplate  NVARCHAR(200) NOT NULL,
+                    BodyTemplate   NVARCHAR(2000) NOT NULL,
+                    Category       INT NOT NULL,
+                    SubCategoryId  INT NULL,
+                    Priority       INT NOT NULL DEFAULT 1,
+                    SortOrder      INT NOT NULL DEFAULT 0,
+                    IsActive       BIT NOT NULL DEFAULT 1,
+                    CreatedDate    DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+                    UpdatedDate    DATETIME2(7) NULL
+                );
+                CREATE INDEX IX_TicketTemplates_Active_Sort
+                    ON dbo.TicketTemplates (IsActive, SortOrder);
+            END");
+
         TryRunSchemaUpgrade(context, "CreatePayrollReceiptChargesTable", @"
             IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptCharges')
             BEGIN
