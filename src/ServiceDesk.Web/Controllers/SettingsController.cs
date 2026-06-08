@@ -1691,8 +1691,8 @@ public class SettingsController : Controller
         if (ollama == null)
             return Json(new { ok = false, message = "OllamaService is not registered.", models = Array.Empty<string>() });
 
-        var (ok, message, models) = await ollama.TestConnectionAsync();
-        return Json(new { ok, message, models });
+        var result = await ollama.TestConnectionAsync();
+        return Json(new { ok = result.Ok, message = result.Message, models = result.Models, latencyMs = result.LatencyMs });
     }
 
     // GET: Settings/AiDashboard — AI statistics dashboard

@@ -1962,13 +1962,13 @@ public class TicketsController : Controller
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
 
-        var (draft, error) = await _ollama.DraftReplyWithErrorAsync(
+        var (draft, error, latencyMs) = await _ollama.DraftReplyWithErrorAsync(
             ticket.Title, ticket.Description, ticket.ResolutionNotes);
 
         if (string.IsNullOrWhiteSpace(draft))
-            return Json(new { success = false, error = error ?? "Ollama is not available or returned an empty response." });
+            return Json(new { success = false, error = error ?? "Ollama is not available or returned an empty response.", latencyMs });
 
-        return Json(new { success = true, draft });
+        return Json(new { success = true, draft, latencyMs });
     }
 
     /// <summary>
@@ -1996,6 +1996,73 @@ public class TicketsController : Controller
 
         await foreach (var token in _ollama.StreamDraftReplyAsync(
             ticket.Title, ticket.Description, ticket.ResolutionNotes, ct))
+        {
+            var data = JsonSerializer.Serialize(token);
+            await Response.WriteAsync($"data: {data}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        await Response.WriteAsync("data: [DONE]\n\n", ct);
+        await Response.Body.FlushAsync(ct);
+    }
+
+    /// <summary>
+    /// SSE endpoint that streams the thread summary token-by-token. Same pattern
+    /// as DraftAiReplyStream so the UI can swap one for the other.
+    /// </summary>
+    [HttpGet]
+    public async Task SummarizeThreadStream(int id, CancellationToken ct)
+    {
+        var ticket = await _context.Tickets
+            .Include(t => t.Notes.OrderBy(n => n.CreatedDate))
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (ticket == null)
+        {
+            Response.StatusCode = 404;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers["Cache-Control"] = "no-cache, no-transform";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        var noteContents = ticket.Notes
+            .Where(n => !string.IsNullOrWhiteSpace(n.Content))
+            .Select(n => n.Content!);
+
+        await foreach (var token in _ollama.StreamSummarizeThreadAsync(
+            ticket.Title, ticket.Description ?? string.Empty, noteContents, ct))
+        {
+            var data = JsonSerializer.Serialize(token);
+            await Response.WriteAsync($"data: {data}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        await Response.WriteAsync("data: [DONE]\n\n", ct);
+        await Response.Body.FlushAsync(ct);
+    }
+
+    /// <summary>
+    /// SSE endpoint that streams the IT resolution-steps suggestion token-by-token.
+    /// </summary>
+    [HttpGet]
+    public async Task SuggestSolutionStream(int id, CancellationToken ct)
+    {
+        var ticket = await _context.Tickets.FindAsync(new object[] { id }, ct);
+        if (ticket == null)
+        {
+            Response.StatusCode = 404;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers["Cache-Control"] = "no-cache, no-transform";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        await foreach (var token in _ollama.StreamSolutionAsync(
+            ticket.Title, ticket.Description ?? string.Empty, ct))
         {
             var data = JsonSerializer.Serialize(token);
             await Response.WriteAsync($"data: {data}\n\n", ct);
@@ -2074,13 +2141,13 @@ public class TicketsController : Controller
             .Where(n => !string.IsNullOrWhiteSpace(n.Content))
             .Select(n => n.Content!);
 
-        var (summary, error) = await _ollama.SummarizeThreadWithErrorAsync(
+        var (summary, error, latencyMs) = await _ollama.SummarizeThreadWithErrorAsync(
             ticket.Title, ticket.Description ?? string.Empty, noteContents);
 
         if (string.IsNullOrWhiteSpace(summary))
-            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings.", latencyMs });
 
-        return Json(new { success = true, summary });
+        return Json(new { success = true, summary, latencyMs });
     }
 
     /// <summary>
@@ -2094,13 +2161,13 @@ public class TicketsController : Controller
         var ticket = await _context.Tickets.FindAsync(id);
         if (ticket == null) return NotFound();
 
-        var (solution, error) = await _ollama.SuggestSolutionWithErrorAsync(
+        var (solution, error, latencyMs) = await _ollama.SuggestSolutionWithErrorAsync(
             ticket.Title, ticket.Description ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(solution))
-            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings." });
+            return Json(new { success = false, error = error ?? "Ollama returned an empty response. Ensure Ollama is running and configured in Settings.", latencyMs });
 
-        return Json(new { success = true, solution });
+        return Json(new { success = true, solution, latencyMs });
     }
 
     public async Task<IActionResult> Delete(int? id)

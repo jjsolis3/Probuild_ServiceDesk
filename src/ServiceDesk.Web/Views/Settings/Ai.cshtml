@@ -296,7 +296,7 @@
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing (running a real generation probe — may take 30–60s on a cold model)…';
         res.style.display = 'none';
 
         var fd = new FormData(form);
@@ -310,8 +310,17 @@
                 var modelsHtml = (data.models && data.models.length)
                     ? '<br><strong>Installed models:</strong> ' + data.models.map(function(m){ return '<code>' + m + '</code>'; }).join(', ')
                     : '';
+                var latencySec = data.latencyMs ? (data.latencyMs / 1000) : 0;
+                var perfHtml = '';
+                if (data.ok && latencySec > 0) {
+                    // >45s on a 1-token probe is a warning — strongly suggests CPU inference + cold load,
+                    // and signals to admins they should configure a longer OllamaTimeoutSeconds.
+                    var slow = latencySec > 45;
+                    perfHtml = '<br><strong>Probe latency:</strong> ' + latencySec.toFixed(1) + 's' +
+                               (slow ? ' <span class="badge bg-warning text-dark ms-1">Slow — consider a smaller model or longer OllamaTimeoutSeconds</span>' : '');
+                }
                 res.innerHTML = (data.ok ? '<i class="bi bi-check-circle me-1"></i>' : '<i class="bi bi-exclamation-triangle me-1"></i>')
-                    + data.message + modelsHtml;
+                    + data.message + perfHtml + modelsHtml;
             })
             .catch(function () {
                 btn.disabled = false;
