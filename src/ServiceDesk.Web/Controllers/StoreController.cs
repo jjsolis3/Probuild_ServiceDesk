@@ -727,16 +727,23 @@ public class StoreController : Controller
         ViewBag.Status       = status;
         ViewBag.StatusCounts = statusCounts.ToDictionary(x => x.Status, x => x.Count);
         ViewBag.ProductTotals = productTotals;
-        ViewBag.Statuses     = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
+        ViewBag.Statuses     = ValidStoreStatuses;
         ViewBag.TotalOrders  = statusCounts.Sum(x => x.Count);
 
         return View(orders);
     }
 
     // POST /Store/OpsUpdateStatus
+    //
+    // Optional inputs:
+    //   trackingNumber / carrier — captured when newStatus = Shipped so the
+    //     requester can self-serve tracking from OrderDetail and the email.
+    //   cancellationReason       — captured when newStatus = Cancelled to
+    //     give the requester context ("Item discontinued — refund issued").
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpsUpdateStatus(
-        int orderId, string newStatus, int year, int quarter, string? returnStatus)
+        int orderId, string newStatus, int year, int quarter, string? returnStatus,
+        string? trackingNumber, string? carrier, string? cancellationReason)
     {
         var user = await GetCurrentPortalUserAsync();
         if (user == null) return RedirectToAction("Login", "Account");
@@ -744,8 +751,7 @@ public class StoreController : Controller
         if (!await CanAccessOpsHubAsync(user.Id))
             return Forbid();
 
-        var validStatuses = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
-        if (!validStatuses.Contains(newStatus))
+        if (!ValidStoreStatuses.Contains(newStatus))
         {
             TempData["Error"] = "Invalid status value.";
             return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
@@ -759,9 +765,11 @@ public class StoreController : Controller
         if (order == null) return NotFound();
 
         var oldStatus = order.Status;
+        var now = DateTime.UtcNow;
         order.Status = newStatus;
+        ApplyStatusTransition(order, newStatus, now, trackingNumber, carrier, cancellationReason);
         if (oldStatus != newStatus)
-            order.LastStatusChangedDate = DateTime.UtcNow;
+            order.LastStatusChangedDate = now;
         await _context.SaveChangesAsync();
 
         if (oldStatus != newStatus)
@@ -780,21 +788,9 @@ public class StoreController : Controller
                 order.PortalUserId,
                 type: "StoreOrderStatus",
                 title: $"Order {order.OrderNumber} — {newStatus}",
-                message: newStatus switch
-                {
-                    "Confirmed" => "Your order has been reviewed and confirmed.",
-                    "Fulfilled" => "Your order has been fulfilled.",
-                    "Cancelled" => "Your order was cancelled.",
-                    _           => $"Status updated to {newStatus}."
-                },
+                message: StatusMessage(newStatus, order.TrackingNumber, order.Carrier),
                 linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
-                icon: newStatus switch
-                {
-                    "Confirmed" => "bi-check-circle",
-                    "Fulfilled" => "bi-box-seam",
-                    "Cancelled" => "bi-x-circle",
-                    _           => "bi-receipt"
-                });
+                icon: StatusIcon(newStatus));
         }
 
         TempData["Success"] = $"Order {order.OrderNumber} marked as {newStatus}. A notification email has been sent to {order.PortalUser.Email}.";
@@ -812,10 +808,18 @@ public class StoreController : Controller
         if (!await CanAccessOpsHubAsync(user.Id))
             return Forbid();
 
-        var validStatuses = new[] { "Pending", "Confirmed", "Fulfilled", "Cancelled" };
-        if (!validStatuses.Contains(newStatus) || orderIds == null || !orderIds.Any())
+        if (!ValidStoreStatuses.Contains(newStatus) || orderIds == null || !orderIds.Any())
         {
             TempData["Error"] = "Invalid bulk update request.";
+            return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+        }
+
+        // Bulk path can't capture per-order tracking numbers — block Shipped
+        // here so admins are forced through the single-order modal that
+        // collects TrackingNumber + Carrier.
+        if (newStatus == "Shipped")
+        {
+            TempData["Error"] = "Bulk marking as Shipped is not supported — open each order to enter tracking details.";
             return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
         }
 
@@ -831,6 +835,7 @@ public class StoreController : Controller
         {
             if (order.Status == newStatus) continue;
             order.Status = newStatus;
+            ApplyStatusTransition(order, newStatus, now, null, null, null);
             order.LastStatusChangedDate = now;
             updated++;
             try
@@ -847,26 +852,161 @@ public class StoreController : Controller
                 order.PortalUserId,
                 type: "StoreOrderStatus",
                 title: $"Order {order.OrderNumber} — {newStatus}",
-                message: newStatus switch
-                {
-                    "Confirmed" => "Your order has been reviewed and confirmed.",
-                    "Fulfilled" => "Your order has been fulfilled.",
-                    "Cancelled" => "Your order was cancelled.",
-                    _           => $"Status updated to {newStatus}."
-                },
+                message: StatusMessage(newStatus, order.TrackingNumber, order.Carrier),
                 linkUrl: Url.Action(nameof(OrderDetail), new { id = order.Id }),
-                icon: newStatus switch
-                {
-                    "Confirmed" => "bi-check-circle",
-                    "Fulfilled" => "bi-box-seam",
-                    "Cancelled" => "bi-x-circle",
-                    _           => "bi-receipt"
-                });
+                icon: StatusIcon(newStatus));
         }
 
         await _context.SaveChangesAsync();
         TempData["Success"] = $"{updated} order(s) marked as {newStatus}.";
         return RedirectToAction(nameof(OperationsHub), new { year, quarter, status = returnStatus });
+    }
+
+    // ── Order workflow constants & helpers ────────────────────────────────────
+
+    private static readonly string[] ValidStoreStatuses =
+        new[] { "Pending", "Confirmed", "Shipped", "Fulfilled", "Cancelled" };
+
+    private static void ApplyStatusTransition(StoreOrder order, string newStatus, DateTime now,
+        string? trackingNumber, string? carrier, string? cancellationReason)
+    {
+        switch (newStatus)
+        {
+            case "Confirmed":
+                order.ConfirmedDate ??= now;
+                break;
+            case "Shipped":
+                order.ShippedDate ??= now;
+                if (!string.IsNullOrWhiteSpace(trackingNumber))
+                    order.TrackingNumber = trackingNumber.Trim();
+                if (!string.IsNullOrWhiteSpace(carrier))
+                    order.Carrier = carrier.Trim();
+                break;
+            case "Fulfilled":
+                order.FulfilledDate ??= now;
+                break;
+            case "Cancelled":
+                order.CancelledDate ??= now;
+                if (!string.IsNullOrWhiteSpace(cancellationReason))
+                    order.CancellationReason = cancellationReason.Trim();
+                break;
+        }
+    }
+
+    private static string StatusMessage(string status, string? tracking, string? carrier) => status switch
+    {
+        "Confirmed" => "Your order has been reviewed and confirmed.",
+        "Shipped"   => string.IsNullOrEmpty(tracking)
+                         ? "Your order has shipped."
+                         : $"Your order has shipped via {carrier ?? "carrier"} — tracking {tracking}.",
+        "Fulfilled" => "Your order has been fulfilled.",
+        "Cancelled" => "Your order was cancelled.",
+        _           => $"Status updated to {status}."
+    };
+
+    private static string StatusIcon(string status) => status switch
+    {
+        "Confirmed" => "bi-check-circle",
+        "Shipped"   => "bi-truck",
+        "Fulfilled" => "bi-box-seam",
+        "Cancelled" => "bi-x-circle",
+        _           => "bi-receipt"
+    };
+
+    // GET /Store/OpsOrders
+    //
+    // Admin-only global search across ALL store orders (any year/quarter),
+    // complementing the per-quarter OperationsHub. Supports filtering by:
+    //   q          — fuzzy match on order #, requester name/email, branch, tracking #
+    //   product    — fuzzy match on product name on any line item
+    //   status     — exact match (Pending/Confirmed/Shipped/Fulfilled/Cancelled)
+    //   year, quarter — exact match
+    //   from, to   — order date window
+    //   branchId   — exact match
+    // Results capped at 200 rows with the newest first.
+    public async Task<IActionResult> OpsOrders(
+        string? q, string? product, string? status,
+        int? year, int? quarter, int? branchId,
+        DateTime? from, DateTime? to)
+    {
+        var user = await GetCurrentPortalUserAsync();
+        if (user == null) return RedirectToAction("Login", "Account");
+        if (!await CanAccessOpsHubAsync(user.Id))
+        {
+            TempData["Error"] = "You are not authorised to access the Operations Hub.";
+            return RedirectToAction("Index", "Portal");
+        }
+
+        var query = _context.StoreOrders
+            .Include(o => o.PortalUser)
+            .Include(o => o.Branch)
+            .Include(o => o.Items)
+                .ThenInclude(i => i.StoreProduct)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var needle = q.Trim();
+            query = query.Where(o =>
+                o.OrderNumber.Contains(needle) ||
+                o.PortalUser.Email.Contains(needle) ||
+                o.PortalUser.FirstName.Contains(needle) ||
+                o.PortalUser.LastName.Contains(needle) ||
+                (o.BranchNameSnapshot != null && o.BranchNameSnapshot.Contains(needle)) ||
+                (o.TrackingNumber != null && o.TrackingNumber.Contains(needle)));
+        }
+        if (!string.IsNullOrWhiteSpace(product))
+        {
+            var pn = product.Trim();
+            query = query.Where(o => o.Items.Any(i => i.ProductNameSnapshot.Contains(pn)));
+        }
+        if (!string.IsNullOrWhiteSpace(status) && ValidStoreStatuses.Contains(status))
+            query = query.Where(o => o.Status == status);
+        if (year.HasValue)    query = query.Where(o => o.Year == year.Value);
+        if (quarter.HasValue) query = query.Where(o => o.Quarter == quarter.Value);
+        if (branchId.HasValue) query = query.Where(o => o.BranchId == branchId.Value);
+        if (from.HasValue)
+        {
+            var fromUtc = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
+            query = query.Where(o => o.OrderDate >= fromUtc);
+        }
+        if (to.HasValue)
+        {
+            // Inclusive end-of-day so a single-day window catches everything that day.
+            var toUtc = DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            query = query.Where(o => o.OrderDate <= toUtc);
+        }
+
+        const int maxResults = 200;
+        var totalMatches = await query.CountAsync();
+        var orders = await query
+            .OrderByDescending(o => o.OrderDate)
+            .Take(maxResults)
+            .ToListAsync();
+
+        ViewBag.Q           = q;
+        ViewBag.Product     = product;
+        ViewBag.Status      = status;
+        ViewBag.Year        = year;
+        ViewBag.Quarter     = quarter;
+        ViewBag.BranchId    = branchId;
+        ViewBag.From        = from;
+        ViewBag.To          = to;
+        ViewBag.Statuses    = ValidStoreStatuses;
+        ViewBag.Years       = await _context.StoreOrders
+            .Select(o => o.Year)
+            .Distinct()
+            .OrderByDescending(y => y)
+            .ToListAsync();
+        ViewBag.Branches    = await _context.Branches
+            .OrderBy(b => b.Name)
+            .Select(b => new { b.Id, b.Name })
+            .ToListAsync();
+        ViewBag.TotalMatches = totalMatches;
+        ViewBag.MaxResults   = maxResults;
+        ViewBag.Truncated    = totalMatches > maxResults;
+
+        return View(orders);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

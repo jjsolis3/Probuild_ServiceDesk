@@ -9,6 +9,7 @@
     {
         "Pending"   => "bg-warning text-dark",
         "Confirmed" => "bg-info text-dark",
+        "Shipped"   => "bg-primary",
         "Fulfilled" => "bg-success",
         "Cancelled" => "bg-danger",
         _           => "bg-secondary"
@@ -33,7 +34,7 @@
 @{
     // Build the order progression timeline. "Cancelled" is a terminal off-path
     // state and is shown as its own stepper instead of mixed with the happy path.
-    var statusFlow = new[] { "Pending", "Confirmed", "Fulfilled" };
+    var statusFlow = new[] { "Pending", "Confirmed", "Shipped", "Fulfilled" };
     var isCancelled = Model.Status == "Cancelled";
     int currentIdx  = Array.IndexOf(statusFlow, Model.Status);
     if (isCancelled) currentIdx = -1;
@@ -42,6 +43,7 @@
     {
         "Pending"   => "bi-hourglass-split",
         "Confirmed" => "bi-check2-circle",
+        "Shipped"   => "bi-truck",
         "Fulfilled" => "bi-box-seam",
         "Cancelled" => "bi-x-circle",
         _           => "bi-circle"
@@ -151,6 +153,24 @@
                     <dd class="col-sm-7">
                         <span class="badge @StatusBadge(Model.Status)">@Model.Status</span>
                     </dd>
+
+                    @if (!string.IsNullOrEmpty(Model.TrackingNumber))
+                    {
+                        <dt class="col-sm-5">Tracking</dt>
+                        <dd class="col-sm-7">
+                            @if (!string.IsNullOrEmpty(Model.Carrier))
+                            {
+                                <div class="small text-muted">@Model.Carrier</div>
+                            }
+                            <code class="user-select-all">@Model.TrackingNumber</code>
+                        </dd>
+                    }
+
+                    @if (Model.Status == "Cancelled" && !string.IsNullOrEmpty(Model.CancellationReason))
+                    {
+                        <dt class="col-sm-5">Cancellation Reason</dt>
+                        <dd class="col-sm-7 text-danger">@Model.CancellationReason</dd>
+                    }
 
                     @if (!string.IsNullOrEmpty(Model.Notes))
                     {
