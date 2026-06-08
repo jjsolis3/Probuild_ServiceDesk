@@ -65,6 +65,7 @@ public class ServiceDeskDbContext : DbContext
 
     // Agent productivity
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
+    public DbSet<TicketTemplate> TicketTemplates => Set<TicketTemplate>();
 
     // Ticket categorisation
     public DbSet<TicketCategoryEntry> TicketCategories => Set<TicketCategoryEntry>();

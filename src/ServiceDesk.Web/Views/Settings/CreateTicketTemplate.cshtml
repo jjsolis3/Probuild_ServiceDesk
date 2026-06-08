@@ -1,0 +1,132 @@
+@model TicketTemplate
+@{
+    ViewData["Title"] = "Add Ticket Template";
+    var cats = ViewBag.Categories as IEnumerable<dynamic>;
+    var subs = ViewBag.SubCategories as IEnumerable<dynamic>;
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Settings</a></li>
+        <li class="breadcrumb-item"><a asp-action="TicketTemplates">Ticket Templates</a></li>
+        <li class="breadcrumb-item active">New Template</li>
+    </ol>
+</nav>
+
+<h1><i class="bi bi-plus-lg"></i> Add Ticket Template</h1>
+
+<div class="row">
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="CreateTicketTemplate" method="post">
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label asp-for="Name" class="form-label fw-semibold">Template Name</label>
+                            <input asp-for="Name" class="form-control" placeholder="e.g. New Hire Setup" />
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="SortOrder" class="form-label fw-semibold"></label>
+                            <input asp-for="SortOrder" class="form-control" type="number" />
+                            <div class="form-text">Lower numbers appear first.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label fw-semibold">Description <span class="text-muted fw-normal small">(optional)</span></label>
+                        <input asp-for="Description" class="form-control" placeholder="One-line hint shown under the template name in the picker." />
+                        <span asp-validation-for="Description" class="text-danger small"></span>
+                    </div>
+
+                    <hr />
+                    <h6 class="text-uppercase text-muted small fw-bold mb-3">Pre-filled Ticket Fields</h6>
+
+                    <div class="mb-3">
+                        <label asp-for="TitleTemplate" class="form-label fw-semibold"></label>
+                        <input asp-for="TitleTemplate" class="form-control" placeholder="e.g. New hire onboarding — laptop & accounts" />
+                        <span asp-validation-for="TitleTemplate" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="BodyTemplate" class="form-label fw-semibold"></label>
+                        <textarea asp-for="BodyTemplate" class="form-control" rows="8"
+                                  placeholder="Full ticket body. Include checklists, links, or instructions agents should follow."></textarea>
+                        <span asp-validation-for="BodyTemplate" class="text-danger small"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="Category" class="form-label fw-semibold"></label>
+                            <select asp-for="Category" class="form-select" id="tplCategory">
+                                <option value="">— Select —</option>
+                                @if (cats != null)
+                                {
+                                    foreach (var c in cats)
+                                    {
+                                        <option value="@c.Id">@c.Name</option>
+                                    }
+                                }
+                            </select>
+                            <span asp-validation-for="Category" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Sub-Category <span class="text-muted fw-normal small">(optional)</span></label>
+                            <select asp-for="SubCategoryId" class="form-select" id="tplSubCategory">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Priority" class="form-label fw-semibold"></label>
+                            <select asp-for="Priority" asp-items="Html.GetEnumSelectList<TicketPriority>()" class="form-select"></select>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input asp-for="IsActive" class="form-check-input" type="checkbox" checked />
+                            <label asp-for="IsActive" class="form-check-label">Active (visible in template picker)</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i> Save Template
+                    </button>
+                    <a asp-action="TicketTemplates" class="btn btn-outline-secondary ms-2">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var subData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(subs ?? Enumerable.Empty<dynamic>()));
+    var catSel  = document.getElementById('tplCategory');
+    var subSel  = document.getElementById('tplSubCategory');
+    var initialSubId = '@(Model.SubCategoryId?.ToString() ?? "")';
+
+    function refreshSubs() {
+        subSel.innerHTML = '<option value="">— None —</option>';
+        var catId = parseInt(catSel.value, 10);
+        if (!catId) return;
+        subData.filter(function (s) { return s.CategoryId === catId; }).forEach(function (s) {
+            var opt = document.createElement('option');
+            opt.value = s.Id;
+            opt.textContent = s.Name;
+            subSel.appendChild(opt);
+        });
+        if (initialSubId) {
+            subSel.value = initialSubId;
+            initialSubId = ''; // only restore once
+        }
+    }
+
+    catSel.addEventListener('change', refreshSubs);
+    refreshSubs();
+})();
+</script>
+}

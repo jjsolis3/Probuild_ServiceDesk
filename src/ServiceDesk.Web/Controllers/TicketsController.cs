@@ -850,10 +850,39 @@ public class TicketsController : Controller
         return PartialView("_TicketDetailsModalContent", ticket);
     }
 
-    public IActionResult Create()
+    public async Task<IActionResult> Create()
     {
         PopulateDropdowns();
+        ViewBag.TicketTemplates = await _context.TicketTemplates
+            .AsNoTracking()
+            .Where(t => t.IsActive)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .ToListAsync();
         return View();
+    }
+
+    // GET /Tickets/TemplateJson/{id}
+    //
+    // Returns a single active template's pre-fill fields as JSON. Called by
+    // the Create page's "Use template" picker to populate the form without a
+    // full reload. Inactive templates are hidden so the picker can't surface
+    // a template an admin has paused.
+    public async Task<IActionResult> TemplateJson(int id)
+    {
+        var t = await _context.TicketTemplates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+        if (t == null) return NotFound();
+        return Json(new
+        {
+            id            = t.Id,
+            name          = t.Name,
+            title         = t.TitleTemplate,
+            body          = t.BodyTemplate,
+            category      = t.Category,
+            subCategoryId = t.SubCategoryId,
+            priority      = t.Priority.ToString(),
+        });
     }
 
     [HttpPost]
@@ -1401,10 +1430,11 @@ public class TicketsController : Controller
         });
     }
 
-    // POST: Tickets/BulkUpdate — assign or change status on multiple tickets at once
+    // POST: Tickets/BulkUpdate — assign, change status/priority/category, or delete in bulk
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> BulkUpdate(int[] selectedIds, string bulkAction, int? bulkAssigneeId, string? bulkStatus)
+    public async Task<IActionResult> BulkUpdate(int[] selectedIds, string bulkAction,
+        int? bulkAssigneeId, string? bulkStatus, string? bulkPriority, int? bulkCategory)
     {
         if (selectedIds == null || selectedIds.Length == 0)
         {
@@ -1446,6 +1476,36 @@ public class TicketsController : Controller
                     ticket.ResolvedDate = DateTime.UtcNow;
                 if (newStatus == TicketStatus.Closed && ticket.ClosedDate == null)
                     ticket.ClosedDate = DateTime.UtcNow;
+            }
+            else if (bulkAction == "priority" && !string.IsNullOrEmpty(bulkPriority)
+                     && Enum.TryParse<TicketPriority>(bulkPriority, out var newPriority))
+            {
+                if (ticket.Priority != newPriority)
+                {
+                    histories.Add(new TicketHistory
+                    {
+                        TicketId = ticket.Id, ChangedBy = changedBy, FieldName = "Priority",
+                        OldValue = ticket.Priority.ToString(), NewValue = newPriority.ToString()
+                    });
+                    ticket.Priority = newPriority;
+                    ticket.UpdatedDate = DateTime.UtcNow;
+                }
+            }
+            else if (bulkAction == "category" && bulkCategory.HasValue)
+            {
+                if (ticket.Category != bulkCategory.Value)
+                {
+                    histories.Add(new TicketHistory
+                    {
+                        TicketId = ticket.Id, ChangedBy = changedBy, FieldName = "Category",
+                        OldValue = ticket.Category.ToString(), NewValue = bulkCategory.Value.ToString()
+                    });
+                    ticket.Category = bulkCategory.Value;
+                    // Changing category invalidates any prior sub-category — null it out
+                    // so we don't end up with a sub-category that belongs to a different category.
+                    ticket.SubCategoryId = null;
+                    ticket.UpdatedDate = DateTime.UtcNow;
+                }
             }
             else if (bulkAction == "delete")
             {
