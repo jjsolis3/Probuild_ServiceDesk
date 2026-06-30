@@ -50,21 +50,29 @@
     </div>
 </div>
 
-@if (!hasEntries && !hasCharges)
-{
-    @await Html.PartialAsync("_EmptyState", new {
-        Icon    = "bi-hourglass",
-        Title   = "Nothing to include in this period",
-        Message = "No unclaimed time entries and no recurring charges in this window. Adjust the period above, log new hours on a ticket, or ask an admin to set up recurring charges on your profile."
-    })
+@{
+    // We always render the form now — even with no entries and no templates,
+    // the ad-hoc charges section gives the contractor a way to bill for
+    // work that doesn't have a ticket and isn't on a recurring template.
 }
-else
-{
     <form id="newReceiptForm" method="post" asp-action="NewReceipt"
           data-recalc-url="@Url.Action("RecalcReceiptPreview")">
         @Html.AntiForgeryToken()
         <input type="hidden" name="periodStart" value="@periodStart" />
         <input type="hidden" name="periodEnd" value="@periodEnd" />
+
+        @if (!hasEntries && !hasCharges)
+        {
+            <div class="alert alert-light border d-flex align-items-start mb-3" role="status">
+                <i class="bi bi-info-circle me-2 mt-1 text-primary"></i>
+                <div class="small">
+                    <strong>No time entries or recurring charges in this window.</strong>
+                    Adjust the period above, log new hours on a ticket, or use the
+                    <strong>Ad-hoc Charges</strong> section below to bill for one-off work
+                    (e.g. weekly reports) without needing a ticket or admin-managed template.
+                </div>
+            </div>
+        }
 
         @if (hasEntries)
         {
@@ -203,6 +211,67 @@ else
             </div>
         }
 
+        <div class="card shadow-sm mb-3" id="adhocCard">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="fas fa-plus-circle me-1"></i>Ad-hoc Charges
+                    <small class="text-muted ms-2">— bill for one-off work that doesn't have a ticket and isn't a recurring template (e.g. weekly reports, vendor onboarding).</small>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddAdhoc">
+                    <i class="fas fa-plus me-1"></i>Add ad-hoc charge
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0" id="adhocTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Label</th>
+                                <th style="width:140px;">Pricing</th>
+                                <th class="text-end" style="width:140px;">Amount</th>
+                                <th class="text-end" style="width:140px;">Total</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="adhocBody">
+                            <tr id="adhocEmpty">
+                                <td colspan="5" class="text-center text-muted small py-3">
+                                    No ad-hoc charges yet. Click <strong>Add ad-hoc charge</strong> to add one.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        @* Hidden row template — cloned by JS for each new ad-hoc charge. *@
+        <template id="adhocRowTemplate">
+            <tr class="adhoc-row">
+                <td>
+                    <input type="text" name="adhocLabels" maxlength="120"
+                           class="form-control form-control-sm adhoc-label"
+                           placeholder="e.g. Weekly reports" required />
+                </td>
+                <td>
+                    <select name="adhocPricingModes" class="form-select form-select-sm adhoc-mode">
+                        <option value="Hourly">Hourly (× @($"{stdRate:C2}/hr"))</option>
+                        <option value="Flat">Flat $</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="number" name="adhocAmounts" class="form-control form-control-sm text-end adhoc-amount"
+                           step="0.25" min="0" max="10000" placeholder="2.0" required />
+                </td>
+                <td class="text-end fw-semibold adhoc-total">$0.00</td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-link text-danger adhoc-remove" title="Remove row">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </td>
+            </tr>
+        </template>
+
         <div class="card shadow-sm mb-4" id="summaryCard">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="fas fa-file-invoice-dollar me-1"></i>Estimated Payout Summary</span>
@@ -253,6 +322,66 @@ else
                 var debounceId   = null;
                 var inflight     = null;
 
+                // Ad-hoc charges: dynamic rows + per-row rate from the contractor profile
+                var adhocBody    = document.getElementById('adhocBody');
+                var adhocEmpty   = document.getElementById('adhocEmpty');
+                var adhocTpl     = document.getElementById('adhocRowTemplate');
+                var btnAddAdhoc  = document.getElementById('btnAddAdhoc');
+                var stdRateNum   = @stdRate.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                function adhocRowTotal(row) {
+                    var mode = row.querySelector('.adhoc-mode').value;
+                    var amt  = parseFloat(row.querySelector('.adhoc-amount').value);
+                    if (isNaN(amt) || amt < 0) amt = 0;
+                    if (amt > 10000) amt = 10000;
+                    var total = mode === 'Hourly' ? amt * stdRateNum : amt;
+                    row.querySelector('.adhoc-total').textContent = '$' + (Math.round(total * 100) / 100).toFixed(2);
+                    return total;
+                }
+
+                function refreshAdhocVisibility() {
+                    var anyRow = adhocBody.querySelector('.adhoc-row') != null;
+                    if (adhocEmpty) adhocEmpty.style.display = anyRow ? 'none' : '';
+                }
+
+                function wireAdhocRow(row) {
+                    row.querySelector('.adhoc-mode').addEventListener('change', function () {
+                        adhocRowTotal(row);
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                    row.querySelector('.adhoc-amount').addEventListener('input', function () {
+                        adhocRowTotal(row);
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                    row.querySelector('.adhoc-label').addEventListener('input', function () {
+                        // Label changes don't move the total but the preview shows the label
+                        scheduleRecalc();
+                    });
+                    row.querySelector('.adhoc-remove').addEventListener('click', function () {
+                        row.parentNode.removeChild(row);
+                        refreshAdhocVisibility();
+                        updateRunningTotals();
+                        scheduleRecalc();
+                    });
+                }
+
+                if (btnAddAdhoc) {
+                    btnAddAdhoc.addEventListener('click', function () {
+                        var clone = adhocTpl.content.cloneNode(true);
+                        var row = clone.querySelector('.adhoc-row');
+                        adhocBody.appendChild(clone);
+                        wireAdhocRow(row);
+                        refreshAdhocVisibility();
+                        row.querySelector('.adhoc-label').focus();
+                    });
+                }
+
+                function adhocRows() {
+                    return Array.prototype.slice.call(adhocBody.querySelectorAll('.adhoc-row'));
+                }
+
                 function updateRunningTotals() {
                     var n = 0, h = 0;
                     checks.forEach(function (c) {
@@ -265,7 +394,12 @@ else
                         var count = parseInt(c.closest('tr').querySelector('.charge-count').value, 10) || 0;
                         return c.checked && count > 0;
                     });
-                    saveBtn.disabled = (n === 0 && !anyChargeChecked);
+                    var anyValidAdhoc = adhocRows().some(function (row) {
+                        var label = (row.querySelector('.adhoc-label').value || '').trim();
+                        var amt = parseFloat(row.querySelector('.adhoc-amount').value);
+                        return label.length > 0 && !isNaN(amt) && amt > 0;
+                    });
+                    saveBtn.disabled = (n === 0 && !anyChargeChecked && !anyValidAdhoc);
 
                     if (selectAll) {
                         selectAll.checked = (n === checks.length && n > 0);
@@ -301,6 +435,16 @@ else
                         // Send the pair in parallel — controller pairs by position.
                         fd.append('selectedChargeTemplateIds', c.value);
                         fd.append('chargeOccurrenceCounts', count.toString());
+                    });
+
+                    // Ad-hoc charges — parallel arrays keyed by row order.
+                    adhocRows().forEach(function (row) {
+                        var label = (row.querySelector('.adhoc-label').value || '').trim();
+                        var amt = parseFloat(row.querySelector('.adhoc-amount').value);
+                        if (!label || isNaN(amt) || amt <= 0) return;
+                        fd.append('adhocLabels', label);
+                        fd.append('adhocPricingModes', row.querySelector('.adhoc-mode').value);
+                        fd.append('adhocAmounts', amt.toString());
                     });
 
                     if (inflight) inflight.abort();
@@ -375,4 +519,3 @@ else
             })();
         </script>
     }
-}
