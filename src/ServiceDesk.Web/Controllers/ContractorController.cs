@@ -243,7 +243,8 @@ public class ContractorController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> NewReceipt(DateTime periodStart, DateTime periodEnd, string? notes,
         int[]? selectedEntryIds,
-        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts,
+        string[]? adhocLabels, string[]? adhocPricingModes, decimal[]? adhocAmounts)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null)
@@ -257,9 +258,11 @@ public class ContractorController : Controller
 
         var hasEntries  = selectedEntryIds != null && selectedEntryIds.Length > 0;
         var hasCharges  = selectedChargeTemplateIds != null && selectedChargeTemplateIds.Length > 0;
-        if (!hasEntries && !hasCharges)
+        var adhocSnapshots = BuildAdhocChargeSnapshots(contractor, adhocLabels, adhocPricingModes, adhocAmounts);
+        var hasAdhoc    = adhocSnapshots.Count > 0;
+        if (!hasEntries && !hasCharges && !hasAdhoc)
         {
-            TempData["Error"] = "Pick at least one entry or recurring charge to include on the receipt.";
+            TempData["Error"] = "Pick at least one entry, recurring charge, or ad-hoc charge to include on the receipt.";
             return RedirectToAction(nameof(NewReceipt), new { periodStart, periodEnd });
         }
 
@@ -269,6 +272,10 @@ public class ContractorController : Controller
 
         var snapshots = await BuildSelectedChargeSnapshotsAsync(
             contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+
+        // Merge ad-hoc snapshots in alongside template-derived ones — the
+        // calculator and downstream UI treat both lists identically.
+        snapshots.AddRange(adhocSnapshots);
 
         if (entries.Count == 0 && snapshots.Count == 0)
         {
@@ -334,7 +341,8 @@ public class ContractorController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RecalcReceiptPreview(DateTime periodStart, DateTime periodEnd,
         int[]? selectedEntryIds,
-        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts)
+        int[]? selectedChargeTemplateIds, int[]? chargeOccurrenceCounts,
+        string[]? adhocLabels, string[]? adhocPricingModes, decimal[]? adhocAmounts)
     {
         var contractor = await GetContractorEmployeeAsync();
         if (contractor == null) return Forbid();
@@ -347,6 +355,7 @@ public class ContractorController : Controller
 
         var snapshots = await BuildSelectedChargeSnapshotsAsync(
             contractor, periodStart, periodEnd, selectedChargeTemplateIds, chargeOccurrenceCounts);
+        snapshots.AddRange(BuildAdhocChargeSnapshots(contractor, adhocLabels, adhocPricingModes, adhocAmounts));
 
         var calc = (entries.Count == 0 && snapshots.Count == 0)
             ? null
@@ -940,6 +949,84 @@ public class ContractorController : Controller
 
             if (count == 0) continue; // explicitly excluded
             result.Add(BuildChargeSnapshot(t, contractor, count));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Builds PayrollReceiptCharge snapshots for ad-hoc (one-off) charges the
+    /// contractor types directly on the New Receipt page — no template
+    /// required. TemplateId stays null so the row lives only on this receipt
+    /// and never carries forward.
+    ///
+    /// Each row is validated independently; rows with a blank label, an
+    /// invalid pricing mode, or a non-positive amount are silently dropped.
+    /// For Hourly rows where the contractor has no hourly rate configured,
+    /// UnitAmountSnapshot is 0 — the row still saves but contributes $0.
+    /// </summary>
+    private static List<PayrollReceiptCharge> BuildAdhocChargeSnapshots(
+        Employee contractor, string[]? labels, string[]? pricingModes, decimal[]? amounts)
+    {
+        var result = new List<PayrollReceiptCharge>();
+        if (labels == null || labels.Length == 0) return result;
+
+        var stdRate = contractor.HourlyRate ?? 0m;
+        var now = DateTime.UtcNow;
+
+        for (int i = 0; i < labels.Length; i++)
+        {
+            var rawLabel = labels[i];
+            if (string.IsNullOrWhiteSpace(rawLabel)) continue;
+
+            var rawMode = (pricingModes != null && i < pricingModes.Length)
+                ? pricingModes[i] : "Flat";
+            if (!Enum.TryParse<Core.Enums.RecurringChargePricingMode>(rawMode, true, out var mode))
+                continue;
+
+            var rawAmount = (amounts != null && i < amounts.Length) ? amounts[i] : 0m;
+            if (rawAmount <= 0m) continue;
+
+            // Defensive cap — keep one ad-hoc row from accidentally being entered
+            // as 99,999 hours / dollars. Same ceiling as occurrence overrides.
+            if (rawAmount > 10000m) rawAmount = 10000m;
+
+            // Both pricing modes are normalised to a single-occurrence Flat-style
+            // snapshot so the receipt UI renders one clean line per ad-hoc row
+            // (`1 × $X.XX = $X.XX`) regardless of fractional hours. For Hourly
+            // rows the hours-and-rate breakdown is captured in the label.
+            decimal totalAmount;
+            string labelSnapshot;
+            var trimmedLabel = rawLabel.Trim();
+            if (trimmedLabel.Length > 80) trimmedLabel = trimmedLabel[..80];
+
+            if (mode == Core.Enums.RecurringChargePricingMode.Hourly)
+            {
+                // Skip Hourly rows when the contractor has no hourly rate
+                // configured — saving a $0 line would be misleading. The user
+                // can switch the row to Flat and enter the dollar amount directly.
+                if (stdRate <= 0m) continue;
+                totalAmount = Math.Round(rawAmount * stdRate, 2, MidpointRounding.AwayFromZero);
+                labelSnapshot = $"{trimmedLabel} ({rawAmount.ToString("0.##")}h × {stdRate.ToString("C2")}/hr)";
+            }
+            else
+            {
+                totalAmount = Math.Round(rawAmount, 2, MidpointRounding.AwayFromZero);
+                labelSnapshot = trimmedLabel;
+            }
+            if (labelSnapshot.Length > 120) labelSnapshot = labelSnapshot[..120];
+
+            result.Add(new PayrollReceiptCharge
+            {
+                TemplateId          = null, // ad-hoc — no template
+                LabelSnapshot       = labelSnapshot,
+                CadenceSnapshot     = Core.Enums.RecurringChargeCadence.FlatPerReceipt,
+                PricingModeSnapshot = Core.Enums.RecurringChargePricingMode.Flat,
+                UnitAmountSnapshot  = totalAmount,
+                OccurrenceCount     = 1,
+                TotalAmount         = totalAmount,
+                CreatedDate         = now,
+            });
         }
 
         return result;
