@@ -82,6 +82,22 @@
         Main wrapper start
     ***********************************-->
     <div id="main-wrapper">
+        @* ── Restore sidebar collapsed/expanded state from localStorage ────
+           Runs synchronously right after the wrapper opens so the
+           `menu-toggle` class is applied BEFORE the sidebar renders — no
+           flicker between the default expanded state and the user's saved
+           collapsed state. Persistence writes happen in the DOMContentLoaded
+           block further down. *@
+        <script>
+            (function () {
+                try {
+                    var wrapper = document.getElementById('main-wrapper');
+                    if (wrapper && localStorage.getItem('sidebarCollapsed') === 'true') {
+                        wrapper.classList.add('menu-toggle');
+                    }
+                } catch (_) { /* private mode or storage disabled — fall back to default */ }
+            })();
+        </script>
 
         <!--**********************************
             Nav header start
@@ -586,7 +602,37 @@
                 document.querySelector('.hamburger')?.addEventListener('click', function () {
                     setTimeout(updateBrandLogo, 80);
                     setTimeout(updateBrandLogo, 250);
+                    // Persist the sidebar's collapsed state so it survives page
+                    // refreshes. Jobick toggles `.menu-toggle` on #main-wrapper
+                    // synchronously in its own click handler; the small delay
+                    // just guarantees we read the class AFTER that toggle.
+                    setTimeout(function () {
+                        try {
+                            var w = document.getElementById('main-wrapper');
+                            if (w) {
+                                localStorage.setItem('sidebarCollapsed',
+                                    w.classList.contains('menu-toggle') ? 'true' : 'false');
+                            }
+                        } catch (_) { /* storage disabled — silently drop */ }
+                    }, 60);
                 });
+
+                // Backup persistence: some layout modes (mini/compact/icon-hover
+                // via data-sidebar-style, and Jobick's own JS on resize) can
+                // toggle `.menu-toggle` without going through the hamburger.
+                // Watch the class attribute directly so any transition is saved.
+                (function () {
+                    var w = document.getElementById('main-wrapper');
+                    if (!w || typeof MutationObserver === 'undefined') return;
+                    var last = w.classList.contains('menu-toggle');
+                    new MutationObserver(function () {
+                        var cur = w.classList.contains('menu-toggle');
+                        if (cur === last) return;
+                        last = cur;
+                        try { localStorage.setItem('sidebarCollapsed', cur ? 'true' : 'false'); }
+                        catch (_) {}
+                    }).observe(w, { attributes: true, attributeFilter: ['class'] });
+                })();
 
                 document.querySelector('.dlab-theme-mode')?.addEventListener('click', function () {
                     setTimeout(updateBrandLogo, 80);
