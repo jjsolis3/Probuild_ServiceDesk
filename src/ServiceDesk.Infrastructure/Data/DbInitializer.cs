@@ -2163,6 +2163,40 @@ public static class DbInitializer
                 INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                 VALUES ('OllamaTriageModel', '', 'AI Triage',
                         'Optional faster model for escalation detection / workflow classification (e.g. phi3). Leave blank to use OllamaModel.');");
+
+        TryRunSchemaUpgrade(context, "AiRecommendations_AddEnrichmentColumns", @"
+            IF COL_LENGTH('dbo.AiRecommendations', 'AiSuggestedSolution') IS NULL
+            BEGIN
+                ALTER TABLE dbo.AiRecommendations ADD
+                    AiSuggestedSolution  NVARCHAR(4000) NULL,
+                    EscalationSignal     BIT NOT NULL CONSTRAINT DF_AiRecs_EscalationSignal DEFAULT 0,
+                    EscalationReason     NVARCHAR(200) NULL,
+                    RelatedKbArticleId   INT NULL,
+                    LlmEnrichedDate      DATETIME2(7) NULL;
+            END
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.foreign_keys
+                WHERE name = 'FK_AiRecommendations_KbArticles_RelatedKbArticleId')
+            AND COL_LENGTH('dbo.AiRecommendations', 'RelatedKbArticleId') IS NOT NULL
+            AND EXISTS (SELECT 1 FROM sys.tables WHERE name = 'KbArticles')
+            BEGIN
+                ALTER TABLE dbo.AiRecommendations
+                    ADD CONSTRAINT FK_AiRecommendations_KbArticles_RelatedKbArticleId
+                    FOREIGN KEY (RelatedKbArticleId)
+                    REFERENCES dbo.KbArticles(Id)
+                    ON DELETE SET NULL;
+            END");
+
+        TryRunSchemaUpgrade(context, "SeedAiSmartTriageSettings", @"
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiLlmEnrichmentEnabled')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AiLlmEnrichmentEnabled', 'true', 'AI Triage',
+                        'After ML.NET triage runs, ask the local LLM to enrich the recommendation with: content-aware sub-category, suggested resolution steps, escalation signal, and a related KB article match. Enrichment runs asynchronously so ticket creation stays fast.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiLlmEnrichmentDelaySeconds')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AiLlmEnrichmentDelaySeconds', '2', 'AI Triage',
+                        'Delay before LLM enrichment kicks in after a new ticket (seconds). Small delay lets ticket creation return quickly; enrichment catches up in the background.');");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

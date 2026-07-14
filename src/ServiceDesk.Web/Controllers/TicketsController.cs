@@ -991,6 +991,7 @@ public class TicketsController : Controller
         var pendingRec = await _context.AiRecommendations
             .Include(r => r.SuggestedAssignee)
             .Include(r => r.SuggestedSubCategory)
+            .Include(r => r.RelatedKbArticle)
             .Where(r => r.TicketId == id && r.Status == "Pending")
             .OrderByDescending(r => r.CreatedDate)
             .FirstOrDefaultAsync();

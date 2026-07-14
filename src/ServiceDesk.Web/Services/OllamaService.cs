@@ -237,6 +237,88 @@ public class OllamaService
     }
 
     /// <summary>
+    /// Picks the best-fitting sub-category for a ticket by asking the LLM to
+    /// choose from a finite list of candidates. Returns the chosen id or null
+    /// if the LLM's response can't be parsed to one of the supplied ids.
+    ///
+    /// This is used by the Smart-Triage flow to replace the previous
+    /// "most-common sub-cat for the category" heuristic with a content-aware
+    /// classification. The candidate list is kept small (sub-cats belonging
+    /// to the already-predicted parent category) so the prompt stays tight.
+    /// </summary>
+    public async Task<int?> ClassifySubCategoryAsync(string title, string description,
+        IReadOnlyList<(int Id, string Name)> candidates, CancellationToken ct = default)
+    {
+        if (candidates == null || candidates.Count == 0) return null;
+        if (candidates.Count == 1) return candidates[0].Id; // no choice to make
+
+        // Build a numbered list so the model can reply with either the id or the
+        // list position — we accept both to be lenient with local-model output.
+        var lines = string.Join("\n", candidates.Select((c, i) =>
+            $"[{i + 1}] id={c.Id} — {c.Name}"));
+
+        var prompt =
+            "You are an IT help desk classifier. Pick the single sub-category that best fits " +
+            "the ticket below. Choose from this list and reply with ONLY the numeric id, " +
+            "nothing else — no explanation, no punctuation.\n\n" +
+            $"Sub-categories:\n{lines}\n\n" +
+            $"Ticket title: {title}\n\nDescription:\n{description}\n\n" +
+            "Reply with only the chosen id (e.g. '42').";
+
+        var result = await GenerateAsync(prompt, ModelRole.Triage, ct);
+        if (string.IsNullOrWhiteSpace(result.Text)) return null;
+
+        // Extract the first integer token in the response — models sometimes
+        // wrap the answer with extra prose despite the instruction.
+        var match = Regex.Match(result.Text, @"-?\d+");
+        if (!match.Success) return null;
+        if (!int.TryParse(match.Value, out var picked)) return null;
+
+        // Only trust the pick if it's one of the offered ids (or the 1-based
+        // position, in case the model echoed the bracket number).
+        if (candidates.Any(c => c.Id == picked)) return picked;
+        if (picked >= 1 && picked <= candidates.Count) return candidates[picked - 1].Id;
+        return null;
+    }
+
+    /// <summary>
+    /// Picks the best-fitting KB article for a ticket by asking the LLM to
+    /// choose from a shortlist. Returns the article id, or null when the model
+    /// answers "none" (or its output can't be parsed). Same guardrails as
+    /// ClassifySubCategoryAsync.
+    /// </summary>
+    public async Task<int?> MatchKbArticleAsync(string title, string description,
+        IReadOnlyList<(int Id, string Title)> candidates, CancellationToken ct = default)
+    {
+        if (candidates == null || candidates.Count == 0) return null;
+
+        var lines = string.Join("\n", candidates.Select((c, i) =>
+            $"[{i + 1}] id={c.Id} — {c.Title}"));
+
+        var prompt =
+            "You are an IT help desk assistant. Pick the single KB article that most closely " +
+            "matches the ticket below, so the agent can point the requester at it. If none of " +
+            "the articles fit, reply exactly with the word NONE. Otherwise reply with ONLY the " +
+            "numeric id, nothing else.\n\n" +
+            $"KB articles:\n{lines}\n\n" +
+            $"Ticket title: {title}\n\nDescription:\n{description}\n\n" +
+            "Reply with only the chosen id (e.g. '42') or NONE.";
+
+        var result = await GenerateAsync(prompt, ModelRole.Triage, ct);
+        var text = result.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (text.StartsWith("none", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var match = Regex.Match(text, @"-?\d+");
+        if (!match.Success) return null;
+        if (!int.TryParse(match.Value, out var picked)) return null;
+
+        if (candidates.Any(c => c.Id == picked)) return picked;
+        if (picked >= 1 && picked <= candidates.Count) return candidates[picked - 1].Id;
+        return null;
+    }
+
+    /// <summary>
     /// Tests the Ollama connection AND verifies the configured model can actually
     /// produce tokens — not just that the server is reachable. Returns the model
     /// list plus latency so admins can sanity-check generation speed.
