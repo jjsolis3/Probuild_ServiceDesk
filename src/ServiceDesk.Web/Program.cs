@@ -79,6 +79,12 @@ builder.Services.AddScoped<AssignmentResolverService>();
 // Register AI triage service (singleton — holds trained model in memory)
 builder.Services.AddSingleton<AiTriageService>();
 
+// LLM-based enrichment of AI Triage recommendations (sub-cat refinement,
+// suggested solution, escalation signal, KB match). Scoped so it can own
+// a per-call DbContext; invoked via IServiceScopeFactory from
+// AiTriageService's background enrichment task.
+builder.Services.AddScoped<AiTriageEnrichmentService>();
+
 // Register Ollama LLM service (singleton — stateless HTTP client wrapper)
 builder.Services.AddSingleton<OllamaService>();
 

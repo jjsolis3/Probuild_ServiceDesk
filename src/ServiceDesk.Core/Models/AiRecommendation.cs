@@ -39,6 +39,32 @@ public class AiRecommendation
     /// <summary>AI-generated draft reply to the ticket submitter.</summary>
     public string? AiDraftReply { get; set; }
 
+    /// <summary>
+    /// LLM-generated recommended IT resolution steps (numbered list) shown
+    /// inside the AI Triage panel so the agent gets actionable guidance
+    /// without clicking a separate "Suggest Solution" button. Populated
+    /// asynchronously by AiTriageEnrichmentService after ML.NET triage.
+    /// </summary>
+    [StringLength(4000)]
+    public string? AiSuggestedSolution { get; set; }
+
+    /// <summary>
+    /// True when the LLM's escalation-signal check on the ticket text says
+    /// the customer is signalling urgency / frustration / deadline pressure.
+    /// Surfaced as a red banner in the triage panel.
+    /// </summary>
+    public bool EscalationSignal { get; set; }
+
+    /// <summary>Short human-readable reason returned by the escalation check (e.g. "mentions manager", "deadline today").</summary>
+    [StringLength(200)]
+    public string? EscalationReason { get; set; }
+
+    /// <summary>Optional KB article the LLM matched to this ticket at triage time. Rendered as a suggested-read link in the panel.</summary>
+    public int? RelatedKbArticleId { get; set; }
+
+    /// <summary>Cadence marker: when the LLM enrichment step last completed. Null = enrichment not yet run.</summary>
+    public DateTime? LlmEnrichedDate { get; set; }
+
     // ── Workflow status ───────────────────────────────────────────────────────
     /// <summary>Pending, Approved, or Dismissed.</summary>
     [Required]
@@ -56,4 +82,5 @@ public class AiRecommendation
     public Ticket? Ticket { get; set; }
     public Employee? SuggestedAssignee { get; set; }
     public TicketSubCategory? SuggestedSubCategory { get; set; }
+    public KbArticle? RelatedKbArticle { get; set; }
 }

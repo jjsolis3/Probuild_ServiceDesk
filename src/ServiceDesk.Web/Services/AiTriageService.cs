@@ -198,7 +198,7 @@ public class AiTriageService
                     .FirstOrDefaultAsync();
             }
 
-            context.AiRecommendations.Add(new AiRecommendation
+            var recommendation = new AiRecommendation
             {
                 TicketId                = ticketId,
                 SuggestedCategory       = result.CategoryConfidence >= threshold ? result.SuggestedCategory : null,
@@ -209,8 +209,8 @@ public class AiTriageService
                 PriorityConfidence      = result.PriorityConfidence,
                 Status                  = "Pending",
                 CreatedDate             = DateTime.UtcNow
-            });
-
+            };
+            context.AiRecommendations.Add(recommendation);
             await context.SaveChangesAsync();
 
             _logger.LogInformation(
@@ -218,6 +218,28 @@ public class AiTriageService
                 ticketId,
                 result.SuggestedCategory, result.CategoryConfidence * 100,
                 result.SuggestedPriority, result.PriorityConfidence * 100);
+
+            // Kick off async LLM enrichment (sub-cat refinement, suggested
+            // solution, escalation signal, KB match). Fire-and-forget so the
+            // caller — typically ticket creation — returns fast; enrichment
+            // catches up in the background.
+            var recId = recommendation.Id;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var enrichScope = _scopeFactory.CreateScope();
+                    var enricher = enrichScope.ServiceProvider
+                        .GetService<AiTriageEnrichmentService>();
+                    if (enricher != null)
+                        await enricher.EnrichForRecommendationAsync(recId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "[AiTriage] Enrichment kick-off failed for recommendation #{Id}.", recId);
+                }
+            });
         }
         catch (Exception ex)
         {

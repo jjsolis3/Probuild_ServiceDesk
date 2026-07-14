@@ -246,10 +246,39 @@
                         <span class="fs-4" title="AI Triage">&#129302;</span>
                     </div>
                     <div class="flex-grow-1">
-                        <div class="fw-semibold mb-1" style="color:#1a56db;">
-                            AI Triage Suggestion
-                            <span class="fw-normal text-muted small ms-2">ML.NET classification</span>
+                        <div class="fw-semibold mb-1 d-flex flex-wrap align-items-center gap-2" style="color:#1a56db;">
+                            <span>AI Triage Suggestion</span>
+                            <span class="fw-normal text-muted small">
+                                ML.NET classification
+                                @if (aiRec.LlmEnrichedDate.HasValue)
+                                {
+                                    <span class="ms-1" title="Enriched by the local LLM at @aiRec.LlmEnrichedDate.Value.ToString("MMM d, yyyy h:mm tt") UTC">
+                                        + LLM enriched
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="ms-1 text-muted" title="LLM enrichment running in the background — refresh in a few seconds to see the full analysis.">
+                                        <span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;"></span>
+                                        LLM enriching…
+                                    </span>
+                                }
+                            </span>
                         </div>
+
+                        @if (aiRec.EscalationSignal)
+                        {
+                            <div class="alert alert-danger py-1 px-2 mb-2 d-flex align-items-center gap-2 small" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <div>
+                                    <strong>Escalation signal detected.</strong>
+                                    @if (!string.IsNullOrWhiteSpace(aiRec.EscalationReason))
+                                    { <span class="ms-1">@aiRec.EscalationReason</span> }
+                                    <span class="text-muted ms-1">— consider elevating priority or looping in a senior agent.</span>
+                                </div>
+                            </div>
+                        }
+
                         <div class="d-flex flex-wrap gap-3 small mb-2">
                             @if (aiRec.SuggestedCategory.HasValue)
                             {
@@ -277,6 +306,11 @@
                                 <span>
                                     <i class="bi bi-diagram-3 me-1 text-info"></i>
                                     <strong>Sub-Category:</strong> @aiRec.SuggestedSubCategory.Name
+                                    @if (aiRec.LlmEnrichedDate.HasValue)
+                                    {
+                                        <span class="badge bg-info bg-opacity-25 text-info-emphasis ms-1"
+                                              title="Chosen by the local LLM from the sub-categories under this parent">🤖 LLM</span>
+                                    }
                                 </span>
                             }
                             @if (aiRec.SuggestedAssignee != null)
@@ -287,6 +321,32 @@
                                 </span>
                             }
                         </div>
+
+                        @if (!string.IsNullOrWhiteSpace(aiRec.AiSuggestedSolution))
+                        {
+                            <details class="mb-2" open>
+                                <summary class="small fw-semibold" style="cursor:pointer;color:#0f5132;">
+                                    <i class="bi bi-tools me-1"></i>AI Suggested First Steps
+                                    <span class="text-muted fw-normal">— internal, not sent to the requester</span>
+                                </summary>
+                                <div class="mt-2 p-2 rounded small"
+                                     style="background:#f0faf4;border:1px solid #cfe8d9;white-space:pre-wrap;">@aiRec.AiSuggestedSolution</div>
+                            </details>
+                        }
+
+                        @if (aiRec.RelatedKbArticle != null)
+                        {
+                            <div class="small mb-2">
+                                <i class="bi bi-book me-1 text-primary"></i>
+                                <strong>Related KB:</strong>
+                                <a asp-controller="Kb" asp-action="Details" asp-route-id="@aiRec.RelatedKbArticle.Id"
+                                   target="_blank" rel="noopener">
+                                    @aiRec.RelatedKbArticle.Title
+                                </a>
+                                <span class="text-muted ms-1">— check for a matching resolution before troubleshooting.</span>
+                            </div>
+                        }
+
                         <div class="d-flex gap-2 flex-wrap">
                             <button type="button" class="btn btn-sm btn-primary" id="btnApproveAiRec">
                                 <i class="bi bi-check-lg me-1"></i>Apply Suggestions
