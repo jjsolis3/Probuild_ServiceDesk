@@ -3,10 +3,31 @@
     ViewData["Title"] = "AI Triage Settings";
 
     // Keys that should render as toggle switches
-    var boolKeys    = new[] { "AiTriageEnabled", "OllamaEnabled" };
+    var boolKeys    = new[] { "AiTriageEnabled", "OllamaEnabled",
+                              "GeminiEnabled", "OpenAiEnabled", "AnthropicEnabled",
+                              "OllamaWarmupEnabled", "AiLlmEnrichmentEnabled" };
 
     // Keys that should render as dropdowns
     var modeOptions = new[] { "RecommendOnly", "AutoApply" };
+
+    // API-key fields — rendered as password with a mask so the current value
+    // is never re-displayed. Blank submit = "leave existing value alone";
+    // typing a new value replaces it (encrypted by the POST handler).
+    var secretKeys  = new[] { "GeminiApiKey", "OpenAiApiKey", "AnthropicApiKey" };
+
+    // Provider selector dropdowns.
+    var providerKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "AiProvider", "AiProviderDraft", "AiProviderTriage"
+    };
+    var providerOptions = new (string Value, string Label)[]
+    {
+        ("",          "— use default —"),
+        ("ollama",    "Ollama (local)"),
+        ("gemini",    "Google Gemini"),
+        ("openai",    "OpenAI (GPT)"),
+        ("anthropic", "Anthropic Claude"),
+    };
 
     var lastLog = ViewBag.LastRunLog as ServiceDesk.Core.Models.AiRunLog;
     var totalTrained = (int)(ViewBag.TotalTrainingTickets ?? 0);
@@ -158,6 +179,29 @@
                                         }
                                     </select>
                                 }
+                                else if (providerKeys.Contains(setting.Key))
+                                {
+                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
+                                        @foreach (var opt in providerOptions)
+                                        {
+                                            // AiProvider must have a real backend; role overrides allow blank.
+                                            if (setting.Key == "AiProvider" && opt.Value == "") { continue; }
+                                            var isSelected = string.Equals(setting.Value ?? string.Empty, opt.Value, StringComparison.OrdinalIgnoreCase);
+                                            <option value="@opt.Value" selected="@(isSelected ? "selected" : null)">@opt.Label</option>
+                                        }
+                                    </select>
+                                }
+                                else if (secretKeys.Contains(setting.Key))
+                                {
+                                    // Show a mask when a value is already stored; empty submit == "keep existing".
+                                    var hasStored = !string.IsNullOrEmpty(setting.Value);
+                                    <input type="password"
+                                           class="form-control"
+                                           name="@setting.Key"
+                                           placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
+                                           autocomplete="new-password"
+                                           id="s_@setting.Key" />
+                                }
                                 else
                                 {
                                     <input type="text"
@@ -249,19 +293,31 @@
         <div class="card shadow-sm border-0 bg-light">
             <div class="card-body">
                 <h6 class="card-title">
-                    <i class="bi bi-hdd-stack me-1 text-info"></i> Ollama Setup
+                    <i class="bi bi-hdd-stack me-1 text-info"></i> LLM Provider Setup
                 </h6>
-                <ul class="small text-muted mb-3">
-                    <li class="mb-2">Install Ollama from <strong>ollama.ai</strong> and run it locally on the server.</li>
-                    <li class="mb-2">Pull a model: <code>ollama pull phi</code>, <code>ollama pull phi3</code>, or <code>ollama pull llama3.1</code></li>
-                    <li class="mb-2">Set <strong>Ollama Model</strong> to the exact model name you pulled (e.g. <code>phi</code> or <code>phi3:mini</code>).</li>
-                    <li class="mb-2">Default server URL is <code>http://localhost:11434</code>. Ensure the port is accessible from the web server.</li>
-                    <li>Once enabled, a <strong>Draft AI Reply</strong> button appears on ticket Details and Edit pages.</li>
-                </ul>
+                <div class="small text-muted mb-3">
+                    <p class="mb-2">
+                        <strong>AiProvider</strong> picks the backend for every AI feature. Two role-scoped overrides
+                        (<strong>AiProviderDraft</strong>, <strong>AiProviderTriage</strong>) let you route draft replies
+                        to a smarter model and classification to a cheaper one.
+                    </p>
+                    <ul class="mb-2">
+                        <li><strong>Ollama</strong> — local, free, private. Slow on CPU (30–120s cold-load); fast on GPU.</li>
+                        <li><strong>Gemini</strong> — <code>gemini-1.5-flash</code> replies in 1–3s and is very cheap. Requires <code>GeminiApiKey</code>.</li>
+                        <li><strong>OpenAI</strong> — <code>gpt-4o-mini</code>. Requires <code>OpenAiApiKey</code>. Off by default.</li>
+                        <li><strong>Anthropic Claude</strong> — <code>claude-haiku-4-5</code>. Requires <code>AnthropicApiKey</code>. Off by default.</li>
+                    </ul>
+                    <p class="mb-0 small">
+                        <i class="bi bi-shield-lock me-1"></i>
+                        API keys are encrypted at rest (Data Protection API, purpose <code>LlmApiKeys.v1</code>).
+                        Cloud providers send prompt text to their servers — confirm with your team before enabling if
+                        ticket content is sensitive.
+                    </p>
+                </div>
                 <form method="post" asp-action="TestOllama" id="frmTestOllama">
                     @Html.AntiForgeryToken()
                     <button type="submit" class="btn btn-sm btn-outline-info w-100" id="btnTestOllama">
-                        <i class="bi bi-wifi me-1"></i>Test Ollama Connection
+                        <i class="bi bi-wifi me-1"></i>Test Active Provider
                     </button>
                 </form>
                 <div id="ollamaTestResult" class="mt-2 small" style="display:none;"></div>
@@ -304,7 +360,7 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Ollama Connection';
+                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Active Provider';
                 res.style.display = '';
                 res.className = 'mt-2 small alert ' + (data.ok ? 'alert-success' : 'alert-warning') + ' py-2 px-3';
                 var modelsHtml = (data.models && data.models.length)
@@ -324,7 +380,7 @@
             })
             .catch(function () {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Ollama Connection';
+                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Active Provider';
                 res.style.display = '';
                 res.className = 'mt-2 small alert alert-danger py-2 px-3';
                 res.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed — check browser console.';

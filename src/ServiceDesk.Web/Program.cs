@@ -98,6 +98,23 @@ builder.Services.AddHttpClient("Ollama", c =>
     c.Timeout = TimeSpan.FromMinutes(15);
 });
 
+// Shared HttpClient for cloud LLM providers (Gemini, OpenAI, Anthropic).
+// Same "outer bound only — inner CTS is authoritative" contract as Ollama.
+builder.Services.AddHttpClient("Llm", c =>
+{
+    c.Timeout = TimeSpan.FromMinutes(5);
+});
+
+// Provider-agnostic LLM plumbing. Providers are singletons so the router can
+// hold them in a dict; the settings loader is singleton because it takes
+// IServiceScopeFactory itself to open per-call DbContext scopes.
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.LlmSettingsLoader>();
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.ILlmProvider, ServiceDesk.Web.Services.Llm.OllamaProvider>();
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.ILlmProvider, ServiceDesk.Web.Services.Llm.GeminiProvider>();
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.ILlmProvider, ServiceDesk.Web.Services.Llm.OpenAiProvider>();
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.ILlmProvider, ServiceDesk.Web.Services.Llm.AnthropicProvider>();
+builder.Services.AddSingleton<ServiceDesk.Web.Services.Llm.LlmProviderRouter>();
+
 // Periodic warm-up so the Ollama model stays loaded in memory and the
 // first user request never pays the cold-load tax (~30s on CPU).
 builder.Services.AddHostedService<OllamaWarmupService>();
