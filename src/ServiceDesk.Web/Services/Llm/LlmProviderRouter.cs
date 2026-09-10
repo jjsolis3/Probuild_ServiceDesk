@@ -105,6 +105,22 @@ public class LlmProviderRouter
         return (provider.DisplayName, await provider.TestConnectionAsync(ct));
     }
 
+    /// <summary>
+    /// Lists available models for one specific provider (by its lowercase
+    /// <see cref="ILlmProvider.Name"/>). Used by the Settings → AI "List
+    /// Models" button so admins can pick from what their key actually
+    /// serves rather than guessing.
+    /// </summary>
+    public async Task<LlmModelsResult> ListModelsAsync(string providerName, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerName)
+            || !_providersByName.TryGetValue(providerName, out var provider))
+        {
+            return LlmModelsResult.Empty($"Unknown provider '{providerName}'.");
+        }
+        return await provider.ListModelsAsync(ct);
+    }
+
     private static string FirstNonBlank(params string[] xs)
     {
         foreach (var x in xs)

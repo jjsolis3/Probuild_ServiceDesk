@@ -137,12 +137,21 @@ public class OpenAiProvider : ILlmProvider
                     _                                                       => LlmErrorKind.HttpError,
                 };
                 _logger.LogWarning("[OpenAI] HTTP {Code} for model '{Model}'. Body: {Body}",
-                    (int)response.StatusCode, model, Truncate(errBody, 500));
+                    (int)response.StatusCode, model, Truncate(errBody, 2000));
+                var openAiMsg = ExtractErrorMessage(errBody);
                 var msg = kind switch
                 {
-                    LlmErrorKind.Unauthorized => "OpenAI rejected the API key (HTTP 401/403). Check OpenAiApiKey in Settings → AI.",
-                    LlmErrorKind.RateLimited  => "OpenAI rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the plan.",
-                    _                         => $"OpenAI returned HTTP {(int)response.StatusCode}.",
+                    LlmErrorKind.Unauthorized => "OpenAI rejected the API key (HTTP 401/403). Check OpenAiApiKey in Settings → AI." +
+                                                 (openAiMsg != null ? $" ({openAiMsg})" : ""),
+                    LlmErrorKind.RateLimited  => "OpenAI rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the plan." +
+                                                 (openAiMsg != null ? $" ({openAiMsg})" : ""),
+                    _ when response.StatusCode == HttpStatusCode.NotFound =>
+                        openAiMsg != null
+                            ? $"OpenAI 404: {openAiMsg}"
+                            : $"OpenAI returned HTTP 404 — the model '{model}' probably doesn't exist for this key. Click 'List Models'.",
+                    _ => openAiMsg != null
+                            ? $"OpenAI {(int)response.StatusCode}: {openAiMsg}"
+                            : $"OpenAI returned HTTP {(int)response.StatusCode}.",
                 };
                 return LlmGenerationResult.Fail(msg, sw.Elapsed.TotalMilliseconds, kind);
             }
@@ -150,9 +159,13 @@ public class OpenAiProvider : ILlmProvider
             var json = await response.Content.ReadAsStringAsync(cts.Token);
             var text = ExtractResponseText(json);
             if (string.IsNullOrWhiteSpace(text))
-                return LlmGenerationResult.Fail(
-                    $"OpenAI returned an empty response (model='{model}'). Check server logs for the raw response.",
-                    sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            {
+                var diagnostic = DiagnoseEmpty(json)
+                    ?? $"OpenAI returned an empty response (model='{model}'). Server log has the raw payload.";
+                _logger.LogWarning("[OpenAI] Empty response for model '{Model}'. Raw body: {Body}",
+                    model, Truncate(json, 2000));
+                return LlmGenerationResult.Fail(diagnostic, sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            }
 
             return LlmGenerationResult.Success(text, sw.Elapsed.TotalMilliseconds);
         }
@@ -204,5 +217,112 @@ public class OpenAiProvider : ILlmProvider
         catch { return string.Empty; }
     }
 
+    /// <summary>
+    /// When the text extract came back empty, look for OpenAI's structured
+    /// diagnostics: <c>choices[].finish_reason</c> (stop | length | content_filter |
+    /// tool_calls) plus the top-level <c>error.message</c>.
+    /// </summary>
+    private static string? DiagnoseEmpty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var err)
+                && err.TryGetProperty("message", out var m)
+                && m.ValueKind == JsonValueKind.String)
+            {
+                return $"OpenAI error: {m.GetString()}";
+            }
+
+            if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var c in choices.EnumerateArray())
+                {
+                    if (!c.TryGetProperty("finish_reason", out var fr) || fr.ValueKind != JsonValueKind.String) continue;
+                    var reason = fr.GetString();
+                    if (string.IsNullOrWhiteSpace(reason) || reason == "stop") continue;
+                    return reason switch
+                    {
+                        "length"         => "OpenAI stopped at MaxTokens before producing text — increase OpenAiMaxTokens.",
+                        "content_filter" => "OpenAI content filter stopped the response.",
+                        _                => $"OpenAI finished with reason '{reason}' but produced no text.",
+                    };
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Pulls <c>error.message</c> from OpenAI's structured error body; returns null when absent.</summary>
+    private static string? ExtractErrorMessage(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var err)
+                && err.TryGetProperty("message", out var m)
+                && m.ValueKind == JsonValueKind.String)
+            {
+                return m.GetString();
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    /// <inheritdoc />
+    public async Task<LlmModelsResult> ListModelsAsync(CancellationToken ct = default)
+    {
+        var s = await _settings.LoadAsync(ct);
+        if (string.IsNullOrWhiteSpace(s.OpenAiApiKey))
+            return LlmModelsResult.Empty("OpenAI API key is not configured.");
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Llm");
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+            req.Headers.Add("Authorization", $"Bearer {s.OpenAiApiKey}");
+            req.Headers.Add("Accept", "application/json");
+
+            using var resp = await client.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+                return LlmModelsResult.Empty($"OpenAI returned HTTP {(int)resp.StatusCode} when listing models.");
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+
+            var names = new List<string>();
+            if (doc.RootElement.TryGetProperty("data", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in arr.EnumerateArray())
+                    if (m.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                    {
+                        var name = id.GetString();
+                        // Filter to the chat-completion-capable families — the
+                        // /models endpoint also lists embedding, audio, and
+                        // fine-tuning models that this app can't use.
+                        if (!string.IsNullOrWhiteSpace(name)
+                            && (name.StartsWith("gpt-", StringComparison.Ordinal)
+                                || name.StartsWith("o1", StringComparison.Ordinal)
+                                || name.StartsWith("o3", StringComparison.Ordinal)
+                                || name.StartsWith("o4", StringComparison.Ordinal)
+                                || name.StartsWith("chatgpt-", StringComparison.Ordinal)))
+                        {
+                            names.Add(name);
+                        }
+                    }
+            }
+            return names.Count == 0
+                ? LlmModelsResult.Empty("OpenAI returned no chat-completion models for this API key.")
+                : LlmModelsResult.Live(names.OrderBy(x => x).ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[OpenAI] ListModels failed.");
+            return LlmModelsResult.Empty($"Could not list OpenAI models: {ex.Message}");
+        }
+    }
 }

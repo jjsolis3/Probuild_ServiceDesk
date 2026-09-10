@@ -131,12 +131,21 @@ public class AnthropicProvider : ILlmProvider
                     _                                                       => LlmErrorKind.HttpError,
                 };
                 _logger.LogWarning("[Anthropic] HTTP {Code} for model '{Model}'. Body: {Body}",
-                    (int)response.StatusCode, model, Truncate(errBody, 500));
+                    (int)response.StatusCode, model, Truncate(errBody, 2000));
+                var apiMsg = ExtractErrorMessage(errBody);
                 var msg = kind switch
                 {
-                    LlmErrorKind.Unauthorized => "Anthropic rejected the API key (HTTP 401/403). Check AnthropicApiKey in Settings → AI.",
-                    LlmErrorKind.RateLimited  => "Anthropic rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the tier.",
-                    _                         => $"Anthropic returned HTTP {(int)response.StatusCode}.",
+                    LlmErrorKind.Unauthorized => "Anthropic rejected the API key (HTTP 401/403). Check AnthropicApiKey in Settings → AI." +
+                                                 (apiMsg != null ? $" ({apiMsg})" : ""),
+                    LlmErrorKind.RateLimited  => "Anthropic rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the tier." +
+                                                 (apiMsg != null ? $" ({apiMsg})" : ""),
+                    _ when response.StatusCode == HttpStatusCode.NotFound =>
+                        apiMsg != null
+                            ? $"Anthropic 404: {apiMsg}"
+                            : $"Anthropic returned HTTP 404 — the model '{model}' probably doesn't exist. Click 'List Models'.",
+                    _ => apiMsg != null
+                            ? $"Anthropic {(int)response.StatusCode}: {apiMsg}"
+                            : $"Anthropic returned HTTP {(int)response.StatusCode}.",
                 };
                 return LlmGenerationResult.Fail(msg, sw.Elapsed.TotalMilliseconds, kind);
             }
@@ -144,9 +153,13 @@ public class AnthropicProvider : ILlmProvider
             var json = await response.Content.ReadAsStringAsync(cts.Token);
             var text = ExtractResponseText(json);
             if (string.IsNullOrWhiteSpace(text))
-                return LlmGenerationResult.Fail(
-                    $"Anthropic returned an empty response (model='{model}'). Check server logs for the raw response.",
-                    sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            {
+                var diagnostic = DiagnoseEmpty(json)
+                    ?? $"Anthropic returned an empty response (model='{model}'). Server log has the raw payload.";
+                _logger.LogWarning("[Anthropic] Empty response for model '{Model}'. Raw body: {Body}",
+                    model, Truncate(json, 2000));
+                return LlmGenerationResult.Fail(diagnostic, sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            }
 
             return LlmGenerationResult.Success(text, sw.Elapsed.TotalMilliseconds);
         }
@@ -205,5 +218,86 @@ public class AnthropicProvider : ILlmProvider
         catch { return string.Empty; }
     }
 
+    /// <summary>
+    /// Anthropic's structured error and stop-reason fields. Errors have shape
+    /// <c>{ type: "error", error: { type, message } }</c>; a completed response
+    /// carries <c>stop_reason</c> which can be end_turn | max_tokens |
+    /// stop_sequence | tool_use.
+    /// </summary>
+    private static string? DiagnoseEmpty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var err)
+                && err.TryGetProperty("message", out var m)
+                && m.ValueKind == JsonValueKind.String)
+            {
+                return $"Anthropic error: {m.GetString()}";
+            }
+
+            if (doc.RootElement.TryGetProperty("stop_reason", out var sr) && sr.ValueKind == JsonValueKind.String)
+            {
+                var reason = sr.GetString();
+                return reason switch
+                {
+                    "max_tokens" => "Anthropic stopped at max_tokens before producing text — increase AnthropicMaxTokens.",
+                    "end_turn"   => null, // clean stop; caller falls back to the generic message
+                    _            => $"Anthropic finished with stop_reason='{reason}' but produced no text.",
+                };
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Pulls <c>error.message</c> from Anthropic's structured error body; returns null when absent.</summary>
+    private static string? ExtractErrorMessage(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var err)
+                && err.TryGetProperty("message", out var m)
+                && m.ValueKind == JsonValueKind.String)
+            {
+                return m.GetString();
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    /// <summary>
+    /// Curated list of Anthropic model IDs available on the public API. The
+    /// service doesn't expose a `/models` discovery endpoint, so we hardcode
+    /// the current family and keep it updated when new releases land.
+    /// </summary>
+    private static readonly string[] CuratedModels = new[]
+    {
+        // Claude 5 family (latest stable).
+        "claude-opus-5",
+        "claude-sonnet-5",
+        // Fast, cheap.
+        "claude-haiku-4-5-20251001",
+        // Claude 4 family (previous stable — still on API).
+        "claude-opus-4-8",
+        "claude-sonnet-4-5",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-haiku-latest",
+    };
+
+    /// <inheritdoc />
+    public async Task<LlmModelsResult> ListModelsAsync(CancellationToken ct = default)
+    {
+        var s = await _settings.LoadAsync(ct);
+        if (string.IsNullOrWhiteSpace(s.AnthropicApiKey))
+            return LlmModelsResult.Empty("Anthropic API key is not configured.");
+        // Anthropic's API doesn't publish a /models discovery endpoint —
+        // return the curated list so the picker still surfaces valid choices.
+        await Task.CompletedTask;
+        return LlmModelsResult.CuratedList(CuratedModels);
+    }
 }

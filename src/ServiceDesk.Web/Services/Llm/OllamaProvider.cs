@@ -302,4 +302,46 @@ public class OllamaProvider : ILlmProvider
                 return true;
         return false;
     }
+
+    /// <inheritdoc />
+    public async Task<LlmModelsResult> ListModelsAsync(CancellationToken ct = default)
+    {
+        var s = await _settings.LoadAsync(ct);
+        if (!s.OllamaEnabled)
+            return LlmModelsResult.Empty("Ollama is disabled in Settings.");
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Ollama");
+            using var resp = await client.GetAsync($"{s.OllamaUrl.TrimEnd('/')}/api/tags", ct);
+            if (!resp.IsSuccessStatusCode)
+                return LlmModelsResult.Empty($"Ollama returned HTTP {(int)resp.StatusCode} listing models.");
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+
+            var names = new List<string>();
+            if (doc.RootElement.TryGetProperty("models", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in arr.EnumerateArray())
+                    if (m.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+                    {
+                        var name = n.GetString();
+                        if (!string.IsNullOrWhiteSpace(name)) names.Add(name);
+                    }
+            }
+            return names.Count == 0
+                ? LlmModelsResult.Empty("Ollama has no models installed. Run `ollama pull <model>` on the server.")
+                : LlmModelsResult.Live(names.OrderBy(x => x).ToArray());
+        }
+        catch (HttpRequestException ex) when (IsConnectionRefused(ex))
+        {
+            return LlmModelsResult.Empty($"Cannot reach Ollama at {s.OllamaUrl} — connection refused.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Ollama] ListModels failed.");
+            return LlmModelsResult.Empty($"Could not list Ollama models: {ex.Message}");
+        }
+    }
 }

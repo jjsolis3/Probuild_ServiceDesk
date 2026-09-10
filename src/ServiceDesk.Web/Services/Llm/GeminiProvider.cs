@@ -131,12 +131,27 @@ public class GeminiProvider : ILlmProvider
                     _                                                       => LlmErrorKind.HttpError,
                 };
                 _logger.LogWarning("[Gemini] HTTP {Code} for model '{Model}'. Body: {Body}",
-                    (int)response.StatusCode, model, Truncate(errBody, 500));
+                    (int)response.StatusCode, model, Truncate(errBody, 2000));
+
+                // Prefer Google's structured error message when present — for
+                // a 404 this typically reads "models/foo is not found for API
+                // version v1beta, or is not supported for generateContent…"
+                // which is far more actionable than "Gemini returned HTTP 404".
+                var googleMsg = ExtractErrorMessage(errBody);
+
                 var msg = kind switch
                 {
-                    LlmErrorKind.Unauthorized => "Gemini rejected the API key (HTTP 401/403). Check GeminiApiKey in Settings → AI.",
-                    LlmErrorKind.RateLimited  => "Gemini rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the API tier.",
-                    _                         => $"Gemini returned HTTP {(int)response.StatusCode}.",
+                    LlmErrorKind.Unauthorized => "Gemini rejected the API key (HTTP 401/403). Check GeminiApiKey in Settings → AI." +
+                                                 (googleMsg != null ? $" ({googleMsg})" : ""),
+                    LlmErrorKind.RateLimited  => "Gemini rate limit hit (HTTP 429). Wait a moment and retry, or upgrade the API tier." +
+                                                 (googleMsg != null ? $" ({googleMsg})" : ""),
+                    _ when response.StatusCode == HttpStatusCode.NotFound =>
+                        googleMsg != null
+                            ? $"Gemini 404: {googleMsg}"
+                            : $"Gemini returned HTTP 404 — the model '{model}' probably doesn't exist. Click 'List Models' to see valid names.",
+                    _ => googleMsg != null
+                            ? $"Gemini {(int)response.StatusCode}: {googleMsg}"
+                            : $"Gemini returned HTTP {(int)response.StatusCode}.",
                 };
                 return LlmGenerationResult.Fail(msg, sw.Elapsed.TotalMilliseconds, kind);
             }
@@ -144,9 +159,17 @@ public class GeminiProvider : ILlmProvider
             var json = await response.Content.ReadAsStringAsync(cts.Token);
             var text = ExtractResponseText(json);
             if (string.IsNullOrWhiteSpace(text))
-                return LlmGenerationResult.Fail(
-                    $"Gemini returned an empty response (model='{model}'). This can happen when safety filters block the prompt or the model has no relevant knowledge — check server logs.",
-                    sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            {
+                // Dig for the real reason — safety filter, wrong model,
+                // MAX_TOKENS, etc. Fall back to a generic message when the
+                // envelope offers no clue. Also log the truncated raw body
+                // so admins can inspect exactly what Google sent back.
+                var diagnostic = DiagnoseEmpty(json)
+                    ?? $"Gemini returned an empty response (model='{model}'). Verify the model name via the 'List Models' button — 'gemini-3.5-flash-lite' style names don't exist; valid options include gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp.";
+                _logger.LogWarning("[Gemini] Empty response for model '{Model}'. Raw body: {Body}",
+                    model, Truncate(json, 2000));
+                return LlmGenerationResult.Fail(diagnostic, sw.Elapsed.TotalMilliseconds, LlmErrorKind.EmptyResponse);
+            }
 
             return LlmGenerationResult.Success(text, sw.Elapsed.TotalMilliseconds);
         }
@@ -232,5 +255,137 @@ public class GeminiProvider : ILlmProvider
         }
     }
 
+    /// <summary>
+    /// Digs into a Gemini response body when the text extract came back empty.
+    /// Gemini's response can carry the real reason in any of three places —
+    /// <c>promptFeedback.blockReason</c> (safety filter blocked the whole
+    /// prompt), <c>candidates[].finishReason</c> (a specific candidate was
+    /// cut short — SAFETY, RECITATION, MAX_TOKENS, OTHER), or a top-level
+    /// <c>error.message</c> (structured error). Returns a human-facing
+    /// diagnostic or null when the body offers no clue.
+    /// </summary>
+    private static string? DiagnoseEmpty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+
+            // Top-level error envelope wins — this is Google's structured error.
+            if (doc.RootElement.TryGetProperty("error", out var err))
+            {
+                var code = err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 0;
+                var msg  = err.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(msg))
+                    return code > 0 ? $"Gemini error {code}: {msg}" : $"Gemini error: {msg}";
+            }
+
+            // Safety block on the whole prompt.
+            if (doc.RootElement.TryGetProperty("promptFeedback", out var pf))
+            {
+                if (pf.TryGetProperty("blockReason", out var br) && br.ValueKind == JsonValueKind.String)
+                {
+                    var reason = br.GetString();
+                    if (!string.IsNullOrWhiteSpace(reason))
+                        return $"Gemini blocked the prompt (blockReason={reason}). Try softer wording or adjust safety settings.";
+                }
+            }
+
+            // Individual candidate was cut short.
+            if (doc.RootElement.TryGetProperty("candidates", out var cand) && cand.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var c in cand.EnumerateArray())
+                {
+                    if (!c.TryGetProperty("finishReason", out var fr) || fr.ValueKind != JsonValueKind.String) continue;
+                    var reason = fr.GetString();
+                    if (string.IsNullOrWhiteSpace(reason) || reason == "STOP") continue; // clean stop with empty text = odd but not a failure reason
+                    return reason switch
+                    {
+                        "SAFETY"     => "Gemini safety filter stopped the response (finishReason=SAFETY).",
+                        "RECITATION" => "Gemini stopped because the reply looked like recitation of training data (finishReason=RECITATION).",
+                        "MAX_TOKENS" => "Gemini hit MaxTokens before producing text — increase GeminiMaxTokens.",
+                        _            => $"Gemini finished with reason '{reason}' but produced no text.",
+                    };
+                }
+            }
+        }
+        catch { /* fall through */ }
+        return null;
+    }
+
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    /// <summary>Pulls <c>error.message</c> from a Google-shaped error body; returns null when absent or malformed.</summary>
+    private static string? ExtractErrorMessage(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var err)
+                && err.TryGetProperty("message", out var m)
+                && m.ValueKind == JsonValueKind.String)
+            {
+                return m.GetString();
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<LlmModelsResult> ListModelsAsync(CancellationToken ct = default)
+    {
+        var s = await _settings.LoadAsync(ct);
+        if (string.IsNullOrWhiteSpace(s.GeminiApiKey))
+            return LlmModelsResult.Empty("Gemini API key is not configured.");
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Llm");
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}?pageSize=100");
+            req.Headers.Add("x-goog-api-key", s.GeminiApiKey);
+            req.Headers.Add("Accept", "application/json");
+
+            using var resp = await client.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+                return LlmModelsResult.Empty($"Gemini returned HTTP {(int)resp.StatusCode} when listing models.");
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+
+            var names = new List<string>();
+            if (doc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in models.EnumerateArray())
+                {
+                    // Only surface models that actually support generateContent
+                    // so the picker never lists embedding or vision-only models
+                    // that the app can't call.
+                    if (m.TryGetProperty("supportedGenerationMethods", out var methods) && methods.ValueKind == JsonValueKind.Array)
+                    {
+                        bool supportsGen = false;
+                        foreach (var mth in methods.EnumerateArray())
+                            if (mth.ValueKind == JsonValueKind.String && mth.GetString() == "generateContent") { supportsGen = true; break; }
+                        if (!supportsGen) continue;
+                    }
+
+                    if (m.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+                    {
+                        var raw = n.GetString() ?? "";
+                        // Gemini prefixes IDs with "models/" — strip so the picker
+                        // shows values that paste cleanly into the model field.
+                        var stripped = raw.StartsWith("models/", StringComparison.Ordinal) ? raw[7..] : raw;
+                        if (!string.IsNullOrWhiteSpace(stripped)) names.Add(stripped);
+                    }
+                }
+            }
+            return names.Count == 0
+                ? LlmModelsResult.Empty("Gemini returned no models that support generateContent for this API key.")
+                : LlmModelsResult.Live(names.OrderBy(x => x).ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Gemini] ListModels failed.");
+            return LlmModelsResult.Empty($"Could not list Gemini models: {ex.Message}");
+        }
+    }
 }

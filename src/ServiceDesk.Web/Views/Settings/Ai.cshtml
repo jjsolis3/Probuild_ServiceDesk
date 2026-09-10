@@ -29,6 +29,43 @@
         ("anthropic", "Anthropic Claude"),
     };
 
+    // Model-name fields per provider — get a datalist + "List Models" button
+    // so admins never have to guess a valid model name. The prefix on the
+    // key name maps to the provider so the JS knows which endpoint to hit.
+    var modelKeyToProvider = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // Ollama
+        { "OllamaModel",         "ollama" },
+        { "OllamaDraftModel",    "ollama" },
+        { "OllamaTriageModel",   "ollama" },
+        // Gemini
+        { "GeminiModel",         "gemini" },
+        { "GeminiDraftModel",    "gemini" },
+        { "GeminiTriageModel",   "gemini" },
+        // OpenAI
+        { "OpenAiModel",         "openai" },
+        { "OpenAiDraftModel",    "openai" },
+        { "OpenAiTriageModel",   "openai" },
+        // Anthropic
+        { "AnthropicModel",       "anthropic" },
+        { "AnthropicDraftModel",  "anthropic" },
+        { "AnthropicTriageModel", "anthropic" },
+    };
+
+    // Fallback / hint list — shown in the datalist before the live "List Models"
+    // call runs, so autocomplete works even when no API key is configured yet.
+    // Kept short on purpose — the live discovery replaces this list on demand.
+    var modelHints = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        { "gemini", new[] { "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro",
+                            "gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-2.5-pro" } },
+        { "openai", new[] { "gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-4.1-mini",
+                            "o1-mini", "o3-mini" } },
+        { "anthropic", new[] { "claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5",
+                               "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest" } },
+        { "ollama", new[] { "phi3", "llama3.1", "llama3.2", "mistral", "gemma3", "qwen2.5" } },
+    };
+
     var lastLog = ViewBag.LastRunLog as ServiceDesk.Core.Models.AiRunLog;
     var totalTrained = (int)(ViewBag.TotalTrainingTickets ?? 0);
     var modelIsTrained = (bool)(ViewBag.ModelIsTrained ?? false);
@@ -63,6 +100,14 @@
 {
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Warning"] != null)
+{
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>Pre-flight probe:</strong> @TempData["Warning"]
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 }
@@ -201,6 +246,39 @@
                                            placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
                                            autocomplete="new-password"
                                            id="s_@setting.Key" />
+                                }
+                                else if (modelKeyToProvider.TryGetValue(setting.Key, out var modelProvider))
+                                {
+                                    // Model-name field — text input paired with a datalist for
+                                    // autocomplete hints and a "List Models" button that hits
+                                    // /Settings/ListLlmModels?provider=X to refresh the hints
+                                    // from a live discovery call.
+                                    var listId = "dl_" + setting.Key;
+                                    var hints = modelHints.TryGetValue(modelProvider, out var h) ? h : Array.Empty<string>();
+                                    <div class="input-group">
+                                        <input type="text"
+                                               class="form-control"
+                                               name="@setting.Key"
+                                               value="@setting.Value"
+                                               id="s_@setting.Key"
+                                               list="@listId"
+                                               data-model-provider="@modelProvider"
+                                               autocomplete="off" />
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-list-models"
+                                                data-target="s_@setting.Key"
+                                                data-datalist="@listId"
+                                                data-provider="@modelProvider"
+                                                title="Fetch models available for this provider">
+                                            <i class="bi bi-list-ul me-1"></i>List Models
+                                        </button>
+                                    </div>
+                                    <datalist id="@listId">
+                                        @foreach (var opt in hints)
+                                        {
+                                            <option value="@opt"></option>
+                                        }
+                                    </datalist>
                                 }
                                 else
                                 {
@@ -385,6 +463,73 @@
                 res.className = 'mt-2 small alert alert-danger py-2 px-3';
                 res.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed — check browser console.';
             });
+    });
+})();
+
+// ── "List Models" button — refresh the datalist for a model-name field ────
+// Hits /Settings/ListLlmModels?provider=X and replaces the input's <datalist>
+// options with what the provider actually serves. Curated results (e.g.
+// Anthropic — no discovery endpoint) get a small "curated" note appended.
+(function () {
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    document.querySelectorAll('.btn-list-models').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var provider = btn.getAttribute('data-provider');
+            var datalistId = btn.getAttribute('data-datalist');
+            var targetId = btn.getAttribute('data-target');
+            var datalist = document.getElementById(datalistId);
+            var input    = document.getElementById(targetId);
+            if (!provider || !datalist || !input) return;
+
+            var origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', token);
+            fd.append('provider', provider);
+
+            fetch('/Settings/ListLlmModels', { method: 'POST', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    if (!data.ok) {
+                        alert('Could not list ' + provider + ' models: ' + (data.error || 'unknown error'));
+                        return;
+                    }
+                    // Rebuild the datalist so the input's autocomplete now
+                    // reflects live discovery.
+                    while (datalist.firstChild) datalist.removeChild(datalist.firstChild);
+                    (data.models || []).forEach(function (m) {
+                        var opt = document.createElement('option');
+                        opt.value = m;
+                        datalist.appendChild(opt);
+                    });
+                    // Show a small toast-like inline note so the admin knows
+                    // the fetch succeeded (datalists don't open automatically
+                    // from JS; they open when the field is focused).
+                    var note = document.createElement('div');
+                    note.className = 'form-text small text-success mt-1';
+                    note.innerHTML = '<i class="bi bi-check-circle me-1"></i>' +
+                                     data.models.length + ' model(s) loaded' +
+                                     (data.curated ? ' <span class="text-muted">(curated — no live discovery endpoint)</span>' : '') +
+                                     '. Click the field to see suggestions.';
+                    // Remove any previous note under this input
+                    var next = input.parentElement.parentElement.querySelector('[data-role="model-load-note"]');
+                    if (next) next.remove();
+                    note.setAttribute('data-role', 'model-load-note');
+                    input.parentElement.parentElement.appendChild(note);
+                    // Focus the input so the datalist popup appears immediately in most browsers
+                    input.focus();
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert('Request failed — check browser console.');
+                });
+        });
     });
 })();
 </script>
