@@ -33,6 +33,33 @@
     var totalTrained = (int)(ViewBag.TotalTrainingTickets ?? 0);
     var modelIsTrained = (bool)(ViewBag.ModelIsTrained ?? false);
     var minTraining = (int)(ViewBag.MinTrainingTickets ?? 20);
+
+    // Tab layout: each provider gets its own tab, plus a General tab for the
+    // cross-provider triage / enrichment / provider-selection knobs. A key
+    // maps to a tab by prefix; the General bucket catches everything that
+    // isn't part of a provider block.
+    var tabDefs = new (string Id, string Label, string Icon, Func<string, bool> Match)[]
+    {
+        ("general",   "General",   "bi-gear-fill",         k => k.StartsWith("AiProvider", StringComparison.Ordinal)
+                                                              || k.StartsWith("AiTriage", StringComparison.Ordinal)
+                                                              || k.StartsWith("AiConfidence", StringComparison.Ordinal)
+                                                              || k.StartsWith("AiMin", StringComparison.Ordinal)
+                                                              || k.StartsWith("AiLlm", StringComparison.Ordinal)),
+        ("ollama",    "Ollama",    "bi-hdd-stack",         k => k.StartsWith("Ollama",    StringComparison.Ordinal)),
+        ("gemini",    "Gemini",    "bi-stars",             k => k.StartsWith("Gemini",    StringComparison.Ordinal)),
+        ("openai",    "OpenAI",    "bi-cpu",               k => k.StartsWith("OpenAi",    StringComparison.Ordinal)),
+        ("anthropic", "Anthropic", "bi-chat-square-quote", k => k.StartsWith("Anthropic", StringComparison.Ordinal)),
+    };
+    var allSettings = Model.ToList();
+    var settingsByTab = tabDefs.ToDictionary(
+        t => t.Id,
+        t => allSettings.Where(s => t.Match(s.Key)).OrderBy(s => s.Key).ToList());
+    // Anything the prefix rules didn't catch falls into General so no setting
+    // is ever silently missing from the UI.
+    var alreadyAssigned = settingsByTab.Values.SelectMany(l => l).Select(s => s.Key).ToHashSet();
+    var leftover = allSettings.Where(s => !alreadyAssigned.Contains(s.Key)).ToList();
+    if (leftover.Count > 0)
+        settingsByTab["general"].AddRange(leftover);
 }
 
 <nav aria-label="breadcrumb">
@@ -131,103 +158,142 @@
     <div class="col-lg-8">
 
         <form method="post" asp-action="Ai" asp-antiforgery="true">
-            @foreach (var group in Model.GroupBy(s => s.Category).OrderBy(g => g.Key))
-            {
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-sliders me-2"></i>@group.Key
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        @foreach (var setting in group)
+            <div class="card shadow-sm mb-4">
+                <div class="card-header p-0">
+                    <ul class="nav nav-tabs card-header-tabs mx-2 mt-2 border-bottom-0" role="tablist" id="aiSettingsTabs">
+                        @{ var isFirstTab = true; }
+                        @foreach (var t in tabDefs)
                         {
-                            <div class="mb-3">
-                                <label class="form-label fw-semibold" for="s_@setting.Key">
-                                    @FormatKey(setting.Key)
-                                </label>
-
-                                @if (boolKeys.Contains(setting.Key))
+                            var count = settingsByTab[t.Id].Count;
+                            <li class="nav-item" role="presentation">
+                                <button type="button"
+                                        class="nav-link @(isFirstTab ? "active" : "")"
+                                        id="tab-btn-@t.Id"
+                                        data-bs-toggle="tab"
+                                        data-bs-target="#tab-@t.Id"
+                                        role="tab"
+                                        aria-controls="tab-@t.Id"
+                                        aria-selected="@(isFirstTab ? "true" : "false")">
+                                    <i class="bi @t.Icon me-1"></i>@t.Label
+                                    @if (count > 0)
+                                    {
+                                        <span class="badge bg-light text-muted ms-1">@count</span>
+                                    }
+                                </button>
+                            </li>
+                            isFirstTab = false;
+                        }
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="aiSettingsTabContent">
+                        @{ var isFirstPane = true; }
+                        @foreach (var t in tabDefs)
+                        {
+                            <div class="tab-pane fade @(isFirstPane ? "show active" : "")"
+                                 id="tab-@t.Id"
+                                 role="tabpanel"
+                                 aria-labelledby="tab-btn-@t.Id">
+                                @if (settingsByTab[t.Id].Count == 0)
                                 {
-                                    <input type="hidden" name="@setting.Key" value="false" />
-                                    <div class="form-check form-switch">
-                                        <input type="checkbox"
-                                               class="form-check-input"
-                                               name="@setting.Key"
-                                               value="true"
-                                               id="s_@setting.Key"
-                                               @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "checked" : "") />
-                                        <label class="form-check-label" for="s_@setting.Key">
-                                            @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "Enabled" : "Disabled")
-                                        </label>
-                                    </div>
-                                }
-                                else if (setting.Key == "AiTriageMode")
-                                {
-                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
-                                        @foreach (var opt in modeOptions)
-                                        {
-                                            if (setting.Value == opt)
-                                            {
-                                                <option value="@opt" selected="selected">@opt</option>
-                                            }
-                                            else
-                                            {
-                                                <option value="@opt">@opt</option>
-                                            }
-
-                                        }
-                                    </select>
-                                }
-                                else if (providerKeys.Contains(setting.Key))
-                                {
-                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
-                                        @foreach (var opt in providerOptions)
-                                        {
-                                            // AiProvider must have a real backend; role overrides allow blank.
-                                            if (setting.Key == "AiProvider" && opt.Value == "") { continue; }
-                                            var isSelected = string.Equals(setting.Value ?? string.Empty, opt.Value, StringComparison.OrdinalIgnoreCase);
-                                            <option value="@opt.Value" selected="@(isSelected ? "selected" : null)">@opt.Label</option>
-                                        }
-                                    </select>
-                                }
-                                else if (secretKeys.Contains(setting.Key))
-                                {
-                                    // Show a mask when a value is already stored; empty submit == "keep existing".
-                                    var hasStored = !string.IsNullOrEmpty(setting.Value);
-                                    <input type="password"
-                                           class="form-control"
-                                           name="@setting.Key"
-                                           placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
-                                           autocomplete="new-password"
-                                           id="s_@setting.Key" />
+                                    <p class="text-muted small mb-0">No settings in this tab.</p>
                                 }
                                 else
                                 {
-                                    <input type="text"
-                                           class="form-control"
-                                           name="@setting.Key"
-                                           value="@setting.Value"
-                                           id="s_@setting.Key" />
-                                }
+                                    @foreach (var setting in settingsByTab[t.Id])
+                                    {
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold" for="s_@setting.Key">
+                                                @FormatKey(setting.Key)
+                                            </label>
 
-                                @if (!string.IsNullOrEmpty(setting.Description))
-                                {
-                                    <div class="form-text text-muted">
-                                        <i class="bi bi-info-circle me-1"></i>@setting.Description
-                                    </div>
+                                            @if (boolKeys.Contains(setting.Key))
+                                            {
+                                                <input type="hidden" name="@setting.Key" value="false" />
+                                                <div class="form-check form-switch">
+                                                    <input type="checkbox"
+                                                           class="form-check-input"
+                                                           name="@setting.Key"
+                                                           value="true"
+                                                           id="s_@setting.Key"
+                                                           @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "checked" : "") />
+                                                    <label class="form-check-label" for="s_@setting.Key">
+                                                        @(setting.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true ? "Enabled" : "Disabled")
+                                                    </label>
+                                                </div>
+                                            }
+                                            else if (setting.Key == "AiTriageMode")
+                                            {
+                                                <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
+                                                    @foreach (var opt in modeOptions)
+                                                    {
+                                                        if (setting.Value == opt)
+                                                        {
+                                                            <option value="@opt" selected="selected">@opt</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@opt">@opt</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            }
+                                            else if (providerKeys.Contains(setting.Key))
+                                            {
+                                                <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
+                                                    @foreach (var opt in providerOptions)
+                                                    {
+                                                        // AiProvider must have a real backend; role overrides allow blank.
+                                                        if (setting.Key == "AiProvider" && opt.Value == "") { continue; }
+                                                        var isSelected = string.Equals(setting.Value ?? string.Empty, opt.Value, StringComparison.OrdinalIgnoreCase);
+                                                        <option value="@opt.Value" selected="@(isSelected ? "selected" : null)">@opt.Label</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else if (secretKeys.Contains(setting.Key))
+                                            {
+                                                // Show a mask when a value is already stored; empty submit == "keep existing".
+                                                var hasStored = !string.IsNullOrEmpty(setting.Value);
+                                                <input type="password"
+                                                       class="form-control"
+                                                       name="@setting.Key"
+                                                       placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
+                                                       autocomplete="new-password"
+                                                       id="s_@setting.Key" />
+                                            }
+                                            else
+                                            {
+                                                <input type="text"
+                                                       class="form-control"
+                                                       name="@setting.Key"
+                                                       value="@setting.Value"
+                                                       id="s_@setting.Key" />
+                                            }
+
+                                            @if (!string.IsNullOrEmpty(setting.Description))
+                                            {
+                                                <div class="form-text text-muted">
+                                                    <i class="bi bi-info-circle me-1"></i>@setting.Description
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 }
                             </div>
+                            isFirstPane = false;
                         }
                     </div>
                 </div>
-            }
+            </div>
 
             <div class="mb-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-check-lg me-1"></i>Save Settings
                 </button>
                 <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                <span class="ms-auto text-muted small align-self-center">
+                    <i class="bi bi-info-circle me-1"></i>Save applies changes across every tab.
+                </span>
             </div>
         </form>
 
@@ -385,6 +451,34 @@
                 res.className = 'mt-2 small alert alert-danger py-2 px-3';
                 res.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed — check browser console.';
             });
+    });
+})();
+
+// ── Persist the active AI-settings tab across saves / reloads ─────────────
+// Save/Cancel triggers a POST-redirect, so without persistence the page
+// always comes back on "General". LocalStorage keeps the user on the tab
+// they were editing.
+(function () {
+    var storageKey = 'aiSettingsActiveTab';
+    var tabList = document.getElementById('aiSettingsTabs');
+    if (!tabList || typeof bootstrap === 'undefined') return;
+
+    // Restore the last-active tab on load — falls back silently to the
+    // server-rendered default (General) when storage is unavailable.
+    try {
+        var saved = localStorage.getItem(storageKey);
+        if (saved) {
+            var target = tabList.querySelector('[data-bs-target="#tab-' + saved + '"]');
+            if (target) new bootstrap.Tab(target).show();
+        }
+    } catch (_) { /* private mode — ignore */ }
+
+    // Save on tab switch. Bootstrap fires shown.bs.tab after the transition.
+    tabList.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (btn) {
+        btn.addEventListener('shown.bs.tab', function (e) {
+            var t = (e.target.getAttribute('data-bs-target') || '').replace('#tab-', '');
+            try { if (t) localStorage.setItem(storageKey, t); } catch (_) {}
+        });
     });
 })();
 </script>
