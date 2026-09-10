@@ -1636,20 +1636,43 @@ public class SettingsController : Controller
     }
 
     // POST: Settings/Ai — save AI settings
+    //
+    // API-key fields (Gemini/OpenAI/Anthropic) are encrypted with the
+    // LlmApiKeys.v1 data-protection purpose before being persisted, so a DB
+    // dump never leaks a raw key. The masked-value convention on the view
+    // side ("••••") signals "don't change" — we skip persistence when the
+    // form value looks like the mask, preserving whatever's currently stored.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Ai(IFormCollection form)
+    public async Task<IActionResult> Ai(IFormCollection form,
+        [FromServices] ServiceDesk.Web.Services.Llm.LlmSettingsLoader llmSettings)
     {
         var settings = await _context.AppSettings
             .Where(s => s.Category == "AI Triage")
             .ToListAsync();
 
+        var secretKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "GeminiApiKey", "OpenAiApiKey", "AnthropicApiKey"
+        };
+
         foreach (var setting in settings)
         {
-            if (form.ContainsKey(setting.Key))
+            if (!form.ContainsKey(setting.Key)) continue;
+
+            var values = form[setting.Key];
+            var incoming = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
+
+            if (secretKeys.Contains(setting.Key))
             {
-                var values = form[setting.Key];
-                setting.Value = values.Contains("true") ? "true" : values.FirstOrDefault() ?? setting.Value;
+                // Masked value == "leave existing encrypted value alone".
+                if (string.IsNullOrEmpty(incoming) || incoming.All(c => c == '•' || c == '*'))
+                    continue;
+                setting.Value = llmSettings.Protect(incoming);
+            }
+            else
+            {
+                setting.Value = incoming;
             }
         }
         await _context.SaveChangesAsync();

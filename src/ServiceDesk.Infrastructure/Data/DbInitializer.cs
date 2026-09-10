@@ -2197,6 +2197,131 @@ public static class DbInitializer
                 INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                 VALUES ('AiLlmEnrichmentDelaySeconds', '2', 'AI Triage',
                         'Delay before LLM enrichment kicks in after a new ticket (seconds). Small delay lets ticket creation return quickly; enrichment catches up in the background.');");
+
+        TryRunSchemaUpgrade(context, "SeedLlmProviderSettings", @"
+            -- Global provider selector + per-feature overrides.
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiProvider')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AiProvider', 'ollama', 'AI Triage',
+                        'Active LLM backend for all AI features: ollama (local, default) | gemini | openai | anthropic. Blank falls back to ollama.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiProviderDraft')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AiProviderDraft', '', 'AI Triage',
+                        'Optional per-feature override for Draft Reply / KB Article generation (leave blank to use AiProvider). Values: ollama | gemini | openai | anthropic.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AiProviderTriage')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AiProviderTriage', '', 'AI Triage',
+                        'Optional per-feature override for classification / escalation detection (fast, high-volume). Values: ollama | gemini | openai | anthropic.');
+
+            -- Gemini (Google AI Studio).
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiEnabled')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiEnabled', 'false', 'AI Triage',
+                        'Enable Google Gemini as an available LLM backend. Requires GeminiApiKey.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiApiKey')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiApiKey', '', 'AI Triage',
+                        'API key from https://aistudio.google.com/apikey. Stored encrypted at rest (LlmApiKeys.v1 purpose) — paste in plaintext and save.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiModel', 'gemini-1.5-flash', 'AI Triage',
+                        'Default Gemini model. gemini-1.5-flash is fast and cheap; gemini-1.5-pro is smarter but slower.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiTimeoutSeconds')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiTimeoutSeconds', '60', 'AI Triage',
+                        'HTTP timeout for Gemini generation calls (seconds). Gemini Flash usually completes in <3s so 60 is generous.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiMaxTokens')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiMaxTokens', '1024', 'AI Triage',
+                        'Maximum tokens Gemini will generate per call.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiDraftModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiDraftModel', '', 'AI Triage',
+                        'Optional Gemini model override for Draft/KB tasks (e.g. gemini-1.5-pro). Blank uses GeminiModel.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'GeminiTriageModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('GeminiTriageModel', '', 'AI Triage',
+                        'Optional Gemini model override for triage/classification. Blank uses GeminiModel.');
+
+            -- OpenAI (disabled by default — enable when cost is acceptable).
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiEnabled')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiEnabled', 'false', 'AI Triage',
+                        'Enable OpenAI as an available LLM backend. Requires OpenAiApiKey. Off by default to avoid accidental billing.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiApiKey')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiApiKey', '', 'AI Triage',
+                        'API key from https://platform.openai.com/api-keys. Stored encrypted at rest.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiModel', 'gpt-4o-mini', 'AI Triage',
+                        'Default OpenAI model. gpt-4o-mini is fast and cheap; gpt-4o is smarter but more expensive.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiTimeoutSeconds')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiTimeoutSeconds', '60', 'AI Triage',
+                        'HTTP timeout for OpenAI generation calls (seconds).');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiMaxTokens')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiMaxTokens', '1024', 'AI Triage',
+                        'Maximum tokens OpenAI will generate per call.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiDraftModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiDraftModel', '', 'AI Triage',
+                        'Optional OpenAI model override for Draft/KB tasks (e.g. gpt-4o). Blank uses OpenAiModel.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'OpenAiTriageModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('OpenAiTriageModel', '', 'AI Triage',
+                        'Optional OpenAI model override for triage/classification. Blank uses OpenAiModel.');
+
+            -- Anthropic Claude (disabled by default — enable when cost is acceptable).
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicEnabled')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicEnabled', 'false', 'AI Triage',
+                        'Enable Anthropic Claude as an available LLM backend. Requires AnthropicApiKey. Off by default to avoid accidental billing.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicApiKey')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicApiKey', '', 'AI Triage',
+                        'API key from https://console.anthropic.com. Stored encrypted at rest.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicModel', 'claude-haiku-4-5-20251001', 'AI Triage',
+                        'Default Claude model. claude-haiku-4-5 is fast and cheap; claude-sonnet-5 is smarter for drafts / KB.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicTimeoutSeconds')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicTimeoutSeconds', '60', 'AI Triage',
+                        'HTTP timeout for Anthropic generation calls (seconds).');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicMaxTokens')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicMaxTokens', '1024', 'AI Triage',
+                        'Maximum tokens Anthropic will generate per call.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicDraftModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicDraftModel', '', 'AI Triage',
+                        'Optional Claude model override for Draft/KB tasks (e.g. claude-sonnet-5). Blank uses AnthropicModel.');
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE [Key] = 'AnthropicTriageModel')
+                INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
+                VALUES ('AnthropicTriageModel', '', 'AI Triage',
+                        'Optional Claude model override for triage/classification. Blank uses AnthropicModel.');");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)
