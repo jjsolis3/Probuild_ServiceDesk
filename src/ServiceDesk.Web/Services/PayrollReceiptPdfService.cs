@@ -42,6 +42,16 @@ public class PayrollReceiptPdfService
             .FirstOrDefaultAsync(r => r.Id == receiptId)
             ?? throw new InvalidOperationException($"Receipt {receiptId} not found.");
 
+        // Payments Received — pulled separately so we don't force a navigation
+        // property onto the receipt just for the PDF path.
+        var payments = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .OrderBy(p => p.PaymentDate).ThenBy(p => p.Id)
+            .AsNoTracking()
+            .ToListAsync();
+        var totalPaid   = payments.Sum(p => p.Amount);
+        var outstanding = Math.Max(0m, Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+
         var companyName = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
 
@@ -236,6 +246,79 @@ public class PayrollReceiptPdfService
                                 .Text(e.IsBillable ? $"{amt:C}" : "—").FontSize(9);
                         }
                     });
+
+                    // ── Payments Received ──
+                    if (payments.Count > 0)
+                    {
+                        col.Item().PaddingTop(10).Text("Payments Received")
+                            .FontSize(11).Bold().FontColor(brandNavy);
+
+                        col.Item().PaddingTop(4).Table(t =>
+                        {
+                            t.ColumnsDefinition(cd =>
+                            {
+                                cd.RelativeColumn(2);  // Date
+                                cd.RelativeColumn(2);  // Method
+                                cd.RelativeColumn(3);  // Reference
+                                cd.RelativeColumn(2);  // Amount
+                                cd.RelativeColumn(2);  // Confirmed?
+                            });
+
+                            t.Header(h =>
+                            {
+                                void HeaderCell(string text) =>
+                                    h.Cell().Background(brandNavy).Padding(4).Text(text).FontColor("#ffffff").FontSize(9).Bold();
+                                HeaderCell("Date");
+                                HeaderCell("Method");
+                                HeaderCell("Reference");
+                                HeaderCell("Amount");
+                                HeaderCell("Confirmed");
+                            });
+
+                            var alt = false;
+                            foreach (var p in payments)
+                            {
+                                var bg = alt ? rowAlt : "#ffffff"; alt = !alt;
+                                string refDisplay = p.CheckNumber != null && p.Reference != null
+                                                       ? $"#{p.CheckNumber} · {p.Reference}"
+                                                       : (p.CheckNumber != null ? $"#{p.CheckNumber}"
+                                                          : p.Reference ?? "—");
+
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text(p.PaymentDate.ToString("MMM d, yyyy")).FontSize(9);
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text(p.PaymentMethod).FontSize(9);
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text(refDisplay).FontSize(9);
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4).AlignRight()
+                                    .Text($"{p.Amount:C}").FontSize(9).Bold();
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text(p.ContractorConfirmedDate.HasValue
+                                            ? $"✓ {p.ContractorConfirmedDate.Value:MMM d, yyyy}"
+                                            : "Awaiting")
+                                    .FontSize(9)
+                                    .FontColor(p.ContractorConfirmedDate.HasValue ? "#198754" : muted);
+                            }
+                        });
+
+                        // Totals footer
+                        col.Item().PaddingTop(4).Row(r =>
+                        {
+                            r.RelativeItem().Text($"Total paid: {totalPaid:C}").Bold();
+                            r.RelativeItem().AlignRight().Text(text =>
+                            {
+                                if (outstanding > 0)
+                                {
+                                    text.Span("Outstanding: ").FontSize(9);
+                                    text.Span($"{outstanding:C}").FontSize(9).Bold().FontColor(brandRed);
+                                }
+                                else
+                                {
+                                    text.Span("Fully paid").FontSize(9).Bold().FontColor("#198754");
+                                }
+                            });
+                        });
+                    }
 
                     // ── Notes / approval / rejection callouts ──
                     if (!string.IsNullOrWhiteSpace(receipt.Notes))

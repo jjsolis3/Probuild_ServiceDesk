@@ -163,6 +163,72 @@ public class PayrollReceiptAttachmentService
         ws.Cell(row, 8).Style.Font.Bold = true;
         ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
 
+        // ── Payments Received block — appended after the time entries totals so
+        // the top part of the sheet stays unchanged for downstream tooling.
+        var payments = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .OrderBy(p => p.PaymentDate).ThenBy(p => p.Id)
+            .ToListAsync();
+        if (payments.Count > 0)
+        {
+            row += 2;
+            ws.Cell(row, 1).Value = "Payments Received";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontSize = 13;
+            ws.Cell(row, 1).Style.Font.FontColor = brandBlue;
+            ws.Range(row, 1, row, 8).Merge();
+            row++;
+
+            var payHeaders = new[] { "Date", "Method", "Check #", "Reference", "Note", "Confirmed", "", "Amount" };
+            for (int col = 1; col <= payHeaders.Length; col++)
+            {
+                var cell = ws.Cell(row, col);
+                cell.Value = payHeaders[col - 1];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = headerGray;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+            row++;
+
+            bool payAlt = false;
+            foreach (var p in payments)
+            {
+                if (payAlt) ws.Range(row, 1, row, payHeaders.Length).Style.Fill.BackgroundColor = altRow;
+                ws.Cell(row, 1).Value = p.PaymentDate.ToString("yyyy-MM-dd");
+                ws.Cell(row, 2).Value = p.PaymentMethod;
+                ws.Cell(row, 3).Value = p.CheckNumber ?? "";
+                ws.Cell(row, 4).Value = p.Reference ?? "";
+                ws.Cell(row, 5).Value = p.Note ?? "";
+                ws.Cell(row, 6).Value = p.ContractorConfirmedDate.HasValue
+                                        ? p.ContractorConfirmedDate.Value.ToString("yyyy-MM-dd")
+                                        : "";
+                ws.Cell(row, 8).Value = (double)p.Amount;
+                ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
+                payAlt = !payAlt;
+                row++;
+            }
+
+            var totalPaid = payments.Sum(p => p.Amount);
+            var outstanding = Math.Max(0m, Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+            ws.Range(row, 1, row, payHeaders.Length).Style.Fill.BackgroundColor = totalsBg;
+            ws.Cell(row, 1).Value = "TOTAL PAID";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Range(row, 1, row, 7).Merge();
+            ws.Cell(row, 8).Value = (double)totalPaid;
+            ws.Cell(row, 8).Style.Font.Bold = true;
+            ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
+            row++;
+            ws.Cell(row, 1).Value = outstanding > 0 ? "OUTSTANDING" : "FULLY PAID";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontColor = outstanding > 0 ? XLColor.FromHtml("#f59e0b") : XLColor.FromHtml("#198754");
+            ws.Range(row, 1, row, 7).Merge();
+            ws.Cell(row, 8).Value = (double)outstanding;
+            ws.Cell(row, 8).Style.Font.Bold = true;
+            ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
+            ws.Cell(row, 8).Style.Font.FontColor = outstanding > 0 ? XLColor.FromHtml("#f59e0b") : XLColor.FromHtml("#198754");
+        }
+
         ws.Columns().AdjustToContents();
 
         using var ms = new MemoryStream();

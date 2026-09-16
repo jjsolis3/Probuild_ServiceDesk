@@ -2322,6 +2322,63 @@ public static class DbInitializer
                 INSERT INTO dbo.AppSettings ([Key], Value, Category, Description)
                 VALUES ('AnthropicTriageModel', '', 'AI Triage',
                         'Optional Claude model override for triage/classification. Blank uses AnthropicModel.');");
+
+        // ── Partial payments on payroll receipts ──
+        // New table lets admins record multiple payments per receipt so the
+        // receipt runs through Approved → PartiallyPaid → Paid based on the
+        // running sum of amounts, and the contractor can see every check /
+        // ACH / Zelle that landed.
+        TryRunSchemaUpgrade(context, "CreatePayrollReceiptPaymentsTable", @"
+            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptPayments')
+            BEGIN
+                CREATE TABLE dbo.PayrollReceiptPayments (
+                    Id                       INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    PayrollReceiptId         INT NOT NULL,
+                    PaymentDate              DATETIME2(7)  NOT NULL,
+                    Amount                   DECIMAL(12,2) NOT NULL,
+                    PaymentMethod            NVARCHAR(50)  NOT NULL,
+                    CheckNumber              NVARCHAR(50)  NULL,
+                    [Reference]              NVARCHAR(200) NULL,
+                    Note                     NVARCHAR(1000) NULL,
+                    ContractorConfirmedDate  DATETIME2(7)  NULL,
+                    ContractorConfirmedNote  NVARCHAR(500) NULL,
+                    RecordedByEmployeeId     INT           NULL,
+                    RecordedByName           NVARCHAR(200) NULL,
+                    CreatedDate              DATETIME2(7)  NOT NULL DEFAULT SYSUTCDATETIME(),
+                    CONSTRAINT FK_PayrollReceiptPayments_PayrollReceipts
+                        FOREIGN KEY (PayrollReceiptId) REFERENCES dbo.PayrollReceipts(Id) ON DELETE CASCADE
+                );
+                CREATE INDEX IX_PayrollReceiptPayments_Receipt
+                    ON dbo.PayrollReceiptPayments (PayrollReceiptId);
+            END");
+
+        // Backfill: every receipt already marked Paid gets a single retroactive
+        // payment row so the new UI shows something for historical receipts.
+        // Idempotent — only inserts when the receipt has no payment rows yet.
+        TryRunSchemaUpgrade(context, "BackfillPayrollPaymentsForHistoricalPaid", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PayrollReceiptPayments')
+            BEGIN
+                INSERT INTO dbo.PayrollReceiptPayments
+                    (PayrollReceiptId, PaymentDate, Amount, PaymentMethod, [Reference],
+                     Note, ContractorConfirmedDate, ContractorConfirmedNote,
+                     RecordedByEmployeeId, RecordedByName, CreatedDate)
+                SELECT
+                    r.Id,
+                    COALESCE(r.PaidDate, SYSUTCDATETIME()),
+                    r.TotalAmount,
+                    COALESCE(r.PaymentMethod, 'Other'),
+                    r.PaymentReference,
+                    N'Backfilled from single-payment fields on ' + CONVERT(NVARCHAR(19), SYSUTCDATETIME(), 120),
+                    r.PaymentConfirmedDate,
+                    r.PaymentConfirmedNote,
+                    NULL,
+                    N'System (backfill)',
+                    SYSUTCDATETIME()
+                FROM dbo.PayrollReceipts r
+                LEFT JOIN dbo.PayrollReceiptPayments p ON p.PayrollReceiptId = r.Id
+                WHERE r.Status = 'Paid'
+                  AND p.Id IS NULL;
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

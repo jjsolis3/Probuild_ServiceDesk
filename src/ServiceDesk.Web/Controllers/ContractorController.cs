@@ -409,6 +409,21 @@ public class ContractorController : Controller
             .Where(c => c.PayrollReceiptId == receipt.Id)
             .OrderBy(c => c.CreatedDate)
             .ToListAsync();
+
+        // Payments Received card — newest first for the UI. TotalPaid /
+        // Outstanding are computed here so the view stays dumb.
+        var payments = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .OrderByDescending(p => p.PaymentDate)
+            .ThenByDescending(p => p.Id)
+            .ToListAsync();
+        var totalPaid = payments.Sum(p => p.Amount);
+        var outstanding = Math.Max(0m,
+            Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+        ViewBag.Payments             = payments;
+        ViewBag.TotalPaid            = totalPaid;
+        ViewBag.OutstandingBalance   = outstanding;
+
         ViewData["Title"] = $"Receipt #{receipt.Id}";
         return View(receipt);
     }
@@ -475,6 +490,50 @@ public class ContractorController : Controller
     // Closes the loop on a Paid receipt — contractor attests that the
     // funds landed. We don't change Status (still "Paid") because Paid
     // is the payer's claim; ConfirmedDate is the payee's attestation.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmPayment(int paymentId)
+    {
+        // Per-payment confirmation — used from the Payments Received table
+        // on ReceiptDetail so a contractor can confirm each partial payment
+        // as it clears their bank instead of waiting until the receipt is
+        // fully paid.
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var payment = await _context.PayrollReceiptPayments
+            .Include(p => p.Receipt)
+            .FirstOrDefaultAsync(p => p.Id == paymentId
+                                   && p.Receipt != null
+                                   && p.Receipt.ContractorId == contractor.Id);
+        if (payment == null) return NotFound();
+        if (payment.ContractorConfirmedDate.HasValue)
+        {
+            TempData["Warning"] = "This payment was already confirmed.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id = payment.PayrollReceiptId });
+        }
+
+        payment.ContractorConfirmedDate = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        await _activity.LogContractorAsync(payment.PayrollReceiptId, contractor,
+            $"Confirmed receipt of {payment.Amount:C2} ({payment.PaymentMethod}" +
+            (string.IsNullOrEmpty(payment.CheckNumber) ? "" : $", check #{payment.CheckNumber}") + ").");
+
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollPaymentConfirmed",
+            title:   $"{contractor.FirstName} confirmed {payment.Amount:C2} on #{payment.PayrollReceiptId}",
+            message: $"{payment.PaymentMethod}" +
+                     (string.IsNullOrEmpty(payment.Reference)
+                         ? (string.IsNullOrEmpty(payment.CheckNumber) ? "" : $" · check #{payment.CheckNumber}")
+                         : $" · ref {payment.Reference}"),
+            link:    Url.Action(nameof(ReceiptDetail), new { id = payment.PayrollReceiptId }),
+            icon:    "bi-check2-all");
+
+        TempData["Success"] = $"Confirmed payment of {payment.Amount:C2}.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id = payment.PayrollReceiptId });
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ConfirmPaymentReceived(int id, string? confirmationNote)
