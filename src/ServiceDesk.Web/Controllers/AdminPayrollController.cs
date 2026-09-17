@@ -5,6 +5,7 @@ using ServiceDesk.Core.Models;
 using ServiceDesk.Infrastructure.Data;
 using ServiceDesk.Web.Services;
 using System.Security.Claims;
+using System.Text;
 
 namespace ServiceDesk.Web.Controllers;
 
@@ -333,6 +334,201 @@ public class AdminPayrollController : Controller
 
         TempData["Success"] = "Receipt marked as Paid.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // POST /AdminPayroll/RecordPayment/{id}
+    //
+    // Adds a single payment row against a receipt. The receipt's Status
+    // auto-transitions based on the running sum of amounts:
+    //   Approved → PartiallyPaid (first sub-total payment)
+    //   PartiallyPaid → Paid    (when the sum reaches TotalAmount)
+    // Sends a contractor notification with paid-so-far and outstanding balance.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecordPayment(int id,
+        decimal amount, DateTime paymentDate, string paymentMethod,
+        string? checkNumber, string? reference, string? note,
+        string? returnUrl)
+    {
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status != "Approved" && receipt.Status != "PartiallyPaid" && receipt.Status != "Paid")
+        {
+            TempData["Error"] = "Payments can only be recorded on Approved, PartiallyPaid, or Paid receipts.";
+            return SafeRedirect(returnUrl, nameof(Index));
+        }
+        if (amount <= 0m)
+        {
+            TempData["Error"] = "Payment amount must be greater than zero.";
+            return SafeRedirect(returnUrl, nameof(Index));
+        }
+
+        var method = string.IsNullOrWhiteSpace(paymentMethod) ? "Other" : paymentMethod.Trim();
+        var admin = await GetActingAdminAsync();
+        var recorderName = admin?.FullName;
+
+        var payment = new PayrollReceiptPayment
+        {
+            PayrollReceiptId       = receipt.Id,
+            PaymentDate            = paymentDate == default ? DateTime.UtcNow : paymentDate,
+            Amount                 = Math.Round(amount, 2, MidpointRounding.AwayFromZero),
+            PaymentMethod          = method,
+            CheckNumber            = string.IsNullOrWhiteSpace(checkNumber) ? null : checkNumber.Trim(),
+            Reference              = string.IsNullOrWhiteSpace(reference)   ? null : reference.Trim(),
+            Note                   = string.IsNullOrWhiteSpace(note)        ? null : note.Trim(),
+            RecordedByEmployeeId   = admin != null ? await _context.Employees
+                                        .Where(e => e.Email == admin.Email)
+                                        .Select(e => (int?)e.Id).FirstOrDefaultAsync()
+                                       : null,
+            RecordedByName         = recorderName,
+            CreatedDate            = DateTime.UtcNow,
+        };
+        _context.PayrollReceiptPayments.Add(payment);
+        await _context.SaveChangesAsync();
+
+        // Recompute status + last-payment snapshot fields on the receipt.
+        var (totalPaid, outstanding, statusChanged) = await RecomputeReceiptPaymentStateAsync(receipt);
+
+        // Log the payment to the activity thread. Include enough detail that
+        // the audit trail is self-explanatory when read years later.
+        if (admin != null)
+        {
+            var detail = new StringBuilder();
+            detail.Append($"Recorded payment of {payment.Amount:C2} via {payment.PaymentMethod}");
+            if (!string.IsNullOrEmpty(payment.CheckNumber)) detail.Append($" (check #{payment.CheckNumber})");
+            if (!string.IsNullOrEmpty(payment.Reference))   detail.Append($" — ref {payment.Reference}");
+            detail.Append($". Total paid {totalPaid:C2} of {receipt.TotalAmount:C2}");
+            if (outstanding > 0) detail.Append($" ({outstanding:C2} outstanding).");
+            else                 detail.Append(" — fully paid.");
+            await _activity.LogAdminAsync(receipt.Id, admin, detail.ToString());
+        }
+
+        // Contractor email + bell. On the final payment we use the existing
+        // "receipt paid" template; on partials we use a new one.
+        try
+        {
+            if (outstanding <= 0m)
+                await _emailService.NotifyReceiptPaidAsync(receipt);
+            else
+                await _emailService.NotifyPartialPaymentAsync(receipt, payment, totalPaid, outstanding);
+        }
+        catch (Exception) { /* email failure should not block UI flow */ }
+
+        var bellTitle = outstanding <= 0m
+            ? $"Receipt #{receipt.Id} fully paid"
+            : $"Partial payment on receipt #{receipt.Id}";
+        var bellMessage = outstanding <= 0m
+            ? $"Final payment of {payment.Amount:C2} recorded. Total {totalPaid:C2}."
+            : $"{payment.Amount:C2} recorded. Paid {totalPaid:C2} of {receipt.TotalAmount:C2} — {outstanding:C2} outstanding.";
+        await NotifyContractorOnBellAsync(
+            receipt.ContractorId,
+            type:    outstanding <= 0m ? "PayrollPaid" : "PayrollPartialPaid",
+            title:   bellTitle,
+            message: bellMessage,
+            link:    ContractorReceiptLink(Url, receipt.Id),
+            icon:    outstanding <= 0m ? "bi-cash-coin" : "bi-cash");
+
+        TempData["Success"] = outstanding <= 0m
+            ? $"Payment of {payment.Amount:C2} recorded. Receipt fully paid ({totalPaid:C2}) — status set to Paid."
+            : $"Payment of {payment.Amount:C2} recorded. Paid so far {totalPaid:C2} of {receipt.TotalAmount:C2} ({outstanding:C2} outstanding).";
+        return SafeRedirect(returnUrl, nameof(Index));
+    }
+
+    // POST /AdminPayroll/DeletePayment/{paymentId}
+    //
+    // Removes one payment row, then recomputes the receipt's status +
+    // last-payment snapshot fields. Used when a check bounces or was
+    // logged in error. Logged to the activity thread with the admin's name.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeletePayment(int paymentId, string? returnUrl)
+    {
+        var payment = await _context.PayrollReceiptPayments
+            .Include(p => p.Receipt)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+        if (payment == null || payment.Receipt == null) return NotFound();
+
+        var receipt = payment.Receipt;
+        var deletedAmount = payment.Amount;
+        var deletedMethod = payment.PaymentMethod;
+        var deletedRef    = payment.Reference ?? payment.CheckNumber;
+
+        _context.PayrollReceiptPayments.Remove(payment);
+        await _context.SaveChangesAsync();
+
+        var (totalPaid, outstanding, _) = await RecomputeReceiptPaymentStateAsync(receipt);
+
+        var admin = await GetActingAdminAsync();
+        if (admin != null)
+        {
+            var detail = new StringBuilder();
+            detail.Append($"Deleted payment of {deletedAmount:C2} ({deletedMethod}");
+            if (!string.IsNullOrEmpty(deletedRef)) detail.Append($" — {deletedRef}");
+            detail.Append($"). Total paid {totalPaid:C2} of {receipt.TotalAmount:C2}");
+            if (outstanding > 0) detail.Append($" ({outstanding:C2} outstanding).");
+            else                 detail.Append(" — fully paid.");
+            await _activity.LogAdminAsync(receipt.Id, admin, detail.ToString());
+        }
+
+        TempData["Success"] = $"Payment removed. Total paid now {totalPaid:C2}.";
+        return SafeRedirect(returnUrl, nameof(Index));
+    }
+
+    /// <summary>
+    /// Sums this receipt's payments, sets the receipt Status based on the
+    /// running total, and refreshes the "last payment" snapshot fields on
+    /// the receipt (PaidDate / PaymentMethod / PaymentReference) so
+    /// downstream code that reads those directly stays in sync. Saves and
+    /// returns (totalPaid, outstanding, statusChanged).
+    /// </summary>
+    private async Task<(decimal TotalPaid, decimal Outstanding, bool StatusChanged)>
+        RecomputeReceiptPaymentStateAsync(PayrollReceipt receipt)
+    {
+        var payments = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .OrderByDescending(p => p.PaymentDate)
+            .ThenByDescending(p => p.Id)
+            .ToListAsync();
+
+        var totalPaid   = payments.Sum(p => p.Amount);
+        var outstanding = Math.Max(0m, Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+        var oldStatus   = receipt.Status;
+
+        // Status transitions. Only touch the status when the receipt is
+        // sitting in a "post-approval" state — never demote from Rejected or
+        // pull a Submitted receipt into PartiallyPaid.
+        if (receipt.Status == "Approved" || receipt.Status == "PartiallyPaid" || receipt.Status == "Paid")
+        {
+            if (totalPaid <= 0m)          receipt.Status = "Approved";
+            else if (outstanding > 0m)    receipt.Status = "PartiallyPaid";
+            else                          receipt.Status = "Paid";
+        }
+
+        // Keep the single-payment snapshot fields in sync so PDF / email
+        // templates that still read them show the LATEST payment.
+        var latest = payments.FirstOrDefault();
+        receipt.PaidDate         = latest?.PaymentDate;
+        receipt.PaymentMethod    = latest?.PaymentMethod;
+        receipt.PaymentReference = latest?.Reference ?? latest?.CheckNumber;
+
+        await _context.SaveChangesAsync();
+        return (totalPaid, outstanding, receipt.Status != oldStatus);
+    }
+
+    /// <summary>
+    /// Post handlers reached from either the AdminPayroll queue or the
+    /// contractor-side ReceiptDetail want to bounce back to the caller's
+    /// page. Guards against open-redirect abuse by requiring the URL to
+    /// be a local path.
+    /// </summary>
+    private IActionResult SafeRedirect(string? returnUrl, string fallbackAction)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+        return RedirectToAction(fallbackAction);
     }
 
     // POST /AdminPayroll/Reject/{id}

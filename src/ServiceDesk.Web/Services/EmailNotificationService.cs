@@ -1186,6 +1186,61 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Sends the contractor a "partial payment received" email whenever an
+    /// admin records a payment that doesn't fully cover the receipt. The
+    /// running total and outstanding balance are called out so the
+    /// contractor can reconcile against their bank without opening the app.
+    /// </summary>
+    public async Task NotifyPartialPaymentAsync(
+        Core.Models.PayrollReceipt receipt,
+        Core.Models.PayrollReceiptPayment payment,
+        decimal totalPaid,
+        decimal outstanding)
+    {
+        // Reuse the same feature flag as the fully-paid notification. Any
+        // admin who wants to hear about the fully-paid event will want to
+        // hear about partials too.
+        if (!await IsNotificationEnabled("NotifyOnPayrollPaid")) return;
+
+        var rows = new List<string>
+        {
+            $"<div><strong>Payment:</strong> {payment.Amount:C}</div>",
+            $"<div><strong>Method:</strong> {System.Net.WebUtility.HtmlEncode(payment.PaymentMethod)}</div>",
+        };
+        if (!string.IsNullOrWhiteSpace(payment.CheckNumber))
+            rows.Add($"<div><strong>Check #:</strong> <code>{System.Net.WebUtility.HtmlEncode(payment.CheckNumber)}</code></div>");
+        if (!string.IsNullOrWhiteSpace(payment.Reference))
+            rows.Add($"<div><strong>Reference:</strong> <code>{System.Net.WebUtility.HtmlEncode(payment.Reference)}</code></div>");
+        rows.Add($"<div><strong>Payment date:</strong> {payment.PaymentDate:MMM d, yyyy}</div>");
+        if (!string.IsNullOrWhiteSpace(payment.Note))
+            rows.Add($"<div><strong>Note:</strong> {System.Net.WebUtility.HtmlEncode(payment.Note)}</div>");
+
+        var paymentBlock =
+            $@"<div style='background:#ecfeff;border-left:4px solid #06b6d4;padding:12px 14px;border-radius:4px;margin:14px 0;color:#0e7490;'>
+                    <strong>Payment Details</strong>
+                    <div style='margin-top:6px;line-height:1.5;'>{string.Join("", rows)}</div>
+               </div>";
+
+        var runningBlock =
+            $@"<div style='background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:4px;margin:14px 0;color:#78350f;'>
+                    <strong>Running total on receipt #{receipt.Id}</strong>
+                    <div style='margin-top:6px;line-height:1.5;'>
+                        <div>Paid so far: <strong>{totalPaid:C}</strong></div>
+                        <div>Receipt total: <strong>{receipt.TotalAmount:C}</strong></div>
+                        <div style='color:#b45309;'>Outstanding: <strong>{outstanding:C}</strong></div>
+                    </div>
+               </div>";
+
+        await SendContractorReceiptStatusEmailAsync(receipt,
+            statusLabel: "Partially Paid",
+            subject: $"Partial payment received on receipt #{receipt.Id} — {payment.Amount:C} of {receipt.TotalAmount:C}",
+            heading: "Partial Payment Received",
+            body: $"A partial payment has been recorded against your payroll receipt. Details below.{paymentBlock}{runningBlock}<p style='margin-top:14px;font-size:.9rem;color:#475569;'>Once the funds land in your account, open the receipt in the portal and click <strong>Confirm Received</strong> next to this row so the admin knows it's cleared.</p>",
+            barColor: "#f59e0b",
+            logType: "PayrollPartialPaid");
+    }
+
+    /// <summary>
     /// Daily nudge to the configured recipients for any Submitted receipt
     /// that's been sitting unapproved past the grace period. Reuses the
     /// PayrollNotificationRecipients table for routing — same audience

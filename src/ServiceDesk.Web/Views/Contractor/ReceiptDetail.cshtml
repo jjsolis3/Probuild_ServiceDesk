@@ -7,18 +7,20 @@
     var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
     var companyName = ViewBag.CompanyName as string ?? "ServiceSphere";
     var statusColor = Model.Status switch {
-        "Draft"     => "#6c757d",
-        "Submitted" => "#fd7e14",
-        "Approved"  => "#0d6efd",
-        "Paid"      => "#198754",
-        _           => "#6c757d"
+        "Draft"          => "#6c757d",
+        "Submitted"      => "#fd7e14",
+        "Approved"       => "#0d6efd",
+        "PartiallyPaid"  => "#f59e0b",
+        "Paid"           => "#198754",
+        _                => "#6c757d"
     };
     var statusIcon = Model.Status switch {
-        "Draft"     => "bi-pencil-square",
-        "Submitted" => "bi-send",
-        "Approved"  => "bi-check-circle",
-        "Paid"      => "bi-patch-check-fill",
-        _           => "bi-circle"
+        "Draft"          => "bi-pencil-square",
+        "Submitted"      => "bi-send",
+        "Approved"       => "bi-check-circle",
+        "PartiallyPaid"  => "bi-cash",
+        "Paid"           => "bi-patch-check-fill",
+        _                => "bi-circle"
     };
 }
 
@@ -706,6 +708,243 @@
                 </div>
             }
 
+            @{
+                var payments             = ViewBag.Payments as List<ServiceDesk.Core.Models.PayrollReceiptPayment>
+                                             ?? new List<ServiceDesk.Core.Models.PayrollReceiptPayment>();
+                var totalPaidVal         = (decimal)(ViewBag.TotalPaid ?? 0m);
+                var outstandingVal       = (decimal)(ViewBag.OutstandingBalance ?? 0m);
+                var canRecordPayment     = isAdminViewer
+                                            && (Model.Status == "Approved"
+                                                || Model.Status == "PartiallyPaid"
+                                                || (Model.Status == "Paid" && outstandingVal > 0m));
+                var showPaymentsCard     = payments.Count > 0 || canRecordPayment;
+                var paymentPct           = Model.TotalAmount > 0m
+                                             ? (int)Math.Min(100, Math.Round(totalPaidVal / Model.TotalAmount * 100m))
+                                             : 0;
+            }
+            @if (showPaymentsCard)
+            {
+                <div class="card shadow-sm border-0 mb-3 no-print">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h6 class="mb-0"><i class="bi bi-cash-stack me-2 text-primary"></i>Payments Received</h6>
+                            <div class="text-muted small mt-1">
+                                <strong>@totalPaidVal.ToString("C2")</strong> of @Model.TotalAmount.ToString("C2")
+                                @if (outstandingVal > 0m)
+                                {
+                                    <span class="text-warning fw-semibold">· @outstandingVal.ToString("C2") outstanding</span>
+                                }
+                                else if (payments.Count > 0)
+                                {
+                                    <span class="text-success fw-semibold">· fully paid</span>
+                                }
+                            </div>
+                        </div>
+                        @if (canRecordPayment)
+                        {
+                            <button type="button" class="btn btn-sm btn-success"
+                                    data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
+                                <i class="bi bi-plus-lg me-1"></i>Record Payment
+                            </button>
+                        }
+                    </div>
+                    <div class="progress" style="height:6px;border-radius:0;">
+                        <div class="progress-bar @(outstandingVal <= 0m ? "bg-success" : "bg-warning")"
+                             role="progressbar"
+                             style="width:@paymentPct%;"
+                             aria-valuenow="@paymentPct" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (payments.Count == 0)
+                        {
+                            <div class="text-muted small text-center py-3">No payments recorded yet.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width:110px;">Date</th>
+                                            <th style="width:100px;">Method</th>
+                                            <th>Reference</th>
+                                            <th class="text-end">Amount</th>
+                                            <th>Confirmed?</th>
+                                            <th class="text-end no-export">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var pay in payments)
+                                        {
+                                            var refDisplay = pay.CheckNumber != null && pay.Reference != null
+                                                             ? $"#{pay.CheckNumber} · {pay.Reference}"
+                                                             : (pay.CheckNumber != null ? $"#{pay.CheckNumber}"
+                                                                 : pay.Reference ?? "—");
+                                            <tr>
+                                                <td class="small text-nowrap">@pay.PaymentDate.ToString("MMM d, yyyy")</td>
+                                                <td class="small">
+                                                    <span class="badge bg-secondary bg-opacity-25 text-dark">@pay.PaymentMethod</span>
+                                                </td>
+                                                <td class="small text-muted">
+                                                    <code class="text-muted">@refDisplay</code>
+                                                    @if (!string.IsNullOrWhiteSpace(pay.Note))
+                                                    {
+                                                        <div class="text-muted small fst-italic mt-1">@pay.Note</div>
+                                                    }
+                                                </td>
+                                                <td class="text-end fw-semibold text-nowrap">@pay.Amount.ToString("C2")</td>
+                                                <td class="small">
+                                                    @if (pay.ContractorConfirmedDate.HasValue)
+                                                    {
+                                                        <span class="text-success">
+                                                            <i class="bi bi-check2-all me-1"></i>@pay.ContractorConfirmedDate.Value.ToString("MMM d, yyyy")
+                                                        </span>
+                                                    }
+                                                    else if (!isAdminViewer)
+                                                    {
+                                                        <form asp-controller="Contractor" asp-action="ConfirmPayment"
+                                                              asp-route-paymentId="@pay.Id" method="post" class="d-inline">
+                                                            @Html.AntiForgeryToken()
+                                                            <button type="submit" class="btn btn-outline-success btn-sm py-0">
+                                                                <i class="bi bi-check2-circle me-1"></i>Confirm
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">Awaiting</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end no-export">
+                                                    @if (isAdminViewer)
+                                                    {
+                                                        <form asp-controller="AdminPayroll" asp-action="DeletePayment"
+                                                              method="post" class="d-inline"
+                                                              onsubmit="return confirm('Delete this @pay.Amount.ToString("C2") @pay.PaymentMethod payment? The receipt status will be recalculated.');">
+                                                            @Html.AntiForgeryToken()
+                                                            <input type="hidden" name="paymentId" value="@pay.Id" />
+                                                            <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
+                                                            <button type="submit" class="btn btn-outline-danger btn-sm py-0" title="Delete payment">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot class="table-light">
+                                        <tr>
+                                            <td colspan="3" class="text-end fw-semibold">Total paid</td>
+                                            <td class="text-end fw-bold">@totalPaidVal.ToString("C2")</td>
+                                            <td colspan="2" class="small text-muted">
+                                                @if (outstandingVal > 0m)
+                                                {
+                                                    <text>Outstanding: <strong class="text-warning">@outstandingVal.ToString("C2")</strong></text>
+                                                }
+                                                else
+                                                {
+                                                    <text><i class="bi bi-check-circle text-success me-1"></i>Fully paid</text>
+                                                }
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Record Payment modal — admin only. Pre-fills Amount with the
+               outstanding balance so single-shot full payments are one click. *@
+            @if (canRecordPayment)
+            {
+                <div class="modal fade no-print" id="recordPaymentModal" tabindex="-1" aria-labelledby="recordPaymentModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <form asp-controller="AdminPayroll" asp-action="RecordPayment" asp-route-id="@Model.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
+                                <div class="modal-header" style="background:#0d6efd;color:#fff;">
+                                    <h5 class="modal-title" id="recordPaymentModalLabel">
+                                        <i class="bi bi-cash-stack me-2"></i>Record Payment on Receipt #@Model.Id
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-semibold">Payment Date</label>
+                                            <input type="date" name="paymentDate" class="form-control" required
+                                                   value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-semibold">Amount</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">$</span>
+                                                <input type="number" name="amount" class="form-control" required
+                                                       step="0.01" min="0.01"
+                                                       value="@outstandingVal.ToString("F2")"
+                                                       id="recordPaymentAmount" />
+                                                <button type="button" class="btn btn-outline-secondary" title="Fill outstanding balance"
+                                                        onclick="document.getElementById('recordPaymentAmount').value='@outstandingVal.ToString("F2")';">
+                                                    <i class="bi bi-arrow-clockwise"></i>
+                                                </button>
+                                            </div>
+                                            <div class="form-text small">Outstanding: @outstandingVal.ToString("C2")</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-semibold">Method</label>
+                                            <select name="paymentMethod" class="form-select" id="recordPaymentMethod" required>
+                                                <option value="Check">Check</option>
+                                                <option value="ACH">ACH</option>
+                                                <option value="Zelle">Zelle</option>
+                                                <option value="Wire">Wire</option>
+                                                <option value="Cash">Cash</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6" id="recordPaymentCheckWrapper">
+                                            <label class="form-label fw-semibold">Check #</label>
+                                            <input type="text" name="checkNumber" class="form-control" placeholder="e.g. 4521" maxlength="50" />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-semibold">Reference <span class="text-muted fw-normal small">(optional)</span></label>
+                                            <input type="text" name="reference" class="form-control"
+                                                   placeholder="ACH id, Zelle confirmation, wire ref, etc." maxlength="200" />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-semibold">Note <span class="text-muted fw-normal small">(optional)</span></label>
+                                            <input type="text" name="note" class="form-control"
+                                                   placeholder="e.g. First installment" maxlength="1000" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="bi bi-check-lg me-1"></i>Record Payment
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <script>
+                    // Only show the "Check #" field when Method = Check — the
+                    // rest of the methods use the Reference field instead.
+                    (function () {
+                        var sel = document.getElementById('recordPaymentMethod');
+                        var wrap = document.getElementById('recordPaymentCheckWrapper');
+                        if (!sel || !wrap) return;
+                        var sync = function () { wrap.style.display = sel.value === 'Check' ? '' : 'none'; };
+                        sel.addEventListener('change', sync);
+                        sync();
+                    })();
+                </script>
+            }
+
             @if (Model.Status == "Paid" && Model.PaidDate.HasValue)
             {
                 <!-- Payment details + Confirm Received -->
@@ -877,22 +1116,40 @@
                         ? "Reply to the contractor, ask for clarification, or leave an internal note."
                         : "Ask a clarifying question, add context, or leave a note for the admin team.";
 
-                    <form asp-controller="@postController" asp-action="@postAction" asp-route-id="@Model.Id" method="post" class="mt-3">
+                    @* Comment form — server validates emptiness so we drop the
+                       HTML5 `required` attribute (which was causing an invisible
+                       validation tooltip when the form is scrolled off screen)
+                       and disable autosave here (short comments belong sent,
+                       not stashed as drafts). The Post button stays disabled
+                       until the textarea has non-whitespace content so users
+                       get immediate visible feedback. *@
+                    <form asp-controller="@postController" asp-action="@postAction" asp-route-id="@Model.Id"
+                          method="post" class="mt-3" id="receiptCommentForm-@Model.Id">
                         @Html.AntiForgeryToken()
                         @if (isAdminViewer)
                         {
                             <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
                         }
-                        <label class="form-label small fw-semibold">Add a comment</label>
-                        <textarea name="body" class="form-control" rows="2" required
-                                  data-autosave="receipt-@Model.Id-comment"
+                        <label class="form-label small fw-semibold" for="receiptCommentBody-@Model.Id">Add a comment</label>
+                        <textarea name="body" id="receiptCommentBody-@Model.Id"
+                                  class="form-control" rows="2"
                                   placeholder="@promptText"></textarea>
                         <div class="mt-2 d-flex justify-content-end">
-                            <button type="submit" class="btn btn-sm btn-primary">
+                            <button type="submit" class="btn btn-sm btn-primary" id="receiptCommentPost-@Model.Id" disabled>
                                 <i class="bi bi-send me-1"></i>Post
                             </button>
                         </div>
                     </form>
+                    <script>
+                        (function () {
+                            var ta  = document.getElementById('receiptCommentBody-@Model.Id');
+                            var btn = document.getElementById('receiptCommentPost-@Model.Id');
+                            if (!ta || !btn) return;
+                            var sync = function () { btn.disabled = ta.value.trim().length === 0; };
+                            ta.addEventListener('input', sync);
+                            sync();
+                        })();
+                    </script>
                 }
             </div>
         </div>

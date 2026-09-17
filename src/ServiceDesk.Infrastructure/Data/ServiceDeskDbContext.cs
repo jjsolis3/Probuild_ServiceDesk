@@ -94,6 +94,7 @@ public class ServiceDeskDbContext : DbContext
     public DbSet<PayrollNotificationRecipient> PayrollNotificationRecipients => Set<PayrollNotificationRecipient>();
     public DbSet<RecurringChargeTemplate> RecurringChargeTemplates => Set<RecurringChargeTemplate>();
     public DbSet<PayrollReceiptCharge> PayrollReceiptCharges => Set<PayrollReceiptCharge>();
+    public DbSet<PayrollReceiptPayment> PayrollReceiptPayments => Set<PayrollReceiptPayment>();
 
     // Admin-managed list of company holidays (used to auto-suggest Emergency rate on time entries)
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
@@ -689,6 +690,18 @@ public class ServiceDeskDbContext : DbContext
             .WithMany()
             .HasForeignKey(c => c.TemplateId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // PayrollReceiptPayment -> Receipt (cascade with parent). A payment
+        // has no meaning without its receipt.
+        modelBuilder.Entity<PayrollReceiptPayment>()
+            .HasOne(p => p.Receipt)
+            .WithMany()
+            .HasForeignKey(p => p.PayrollReceiptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PayrollReceiptPayment>()
+            .Property(p => p.Amount)
+            .HasColumnType("decimal(12,2)");
 
         modelBuilder.Entity<PayrollReceiptCharge>()
             .Property(c => c.UnitAmountSnapshot)
