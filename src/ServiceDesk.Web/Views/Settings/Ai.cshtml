@@ -29,6 +29,43 @@
         ("anthropic", "Anthropic Claude"),
     };
 
+    // Model-name fields per provider — get a datalist + "List Models" button
+    // so admins never have to guess a valid model name. The prefix on the
+    // key name maps to the provider so the JS knows which endpoint to hit.
+    var modelKeyToProvider = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // Ollama
+        { "OllamaModel",         "ollama" },
+        { "OllamaDraftModel",    "ollama" },
+        { "OllamaTriageModel",   "ollama" },
+        // Gemini
+        { "GeminiModel",         "gemini" },
+        { "GeminiDraftModel",    "gemini" },
+        { "GeminiTriageModel",   "gemini" },
+        // OpenAI
+        { "OpenAiModel",         "openai" },
+        { "OpenAiDraftModel",    "openai" },
+        { "OpenAiTriageModel",   "openai" },
+        // Anthropic
+        { "AnthropicModel",       "anthropic" },
+        { "AnthropicDraftModel",  "anthropic" },
+        { "AnthropicTriageModel", "anthropic" },
+    };
+
+    // Fallback / hint list — shown in the datalist before the live "List Models"
+    // call runs, so autocomplete works even when no API key is configured yet.
+    // Kept short on purpose — the live discovery replaces this list on demand.
+    var modelHints = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        { "gemini", new[] { "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro",
+                            "gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-2.5-pro" } },
+        { "openai", new[] { "gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-4.1-mini",
+                            "o1-mini", "o3-mini" } },
+        { "anthropic", new[] { "claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5",
+                               "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest" } },
+        { "ollama", new[] { "phi3", "llama3.1", "llama3.2", "mistral", "gemma3", "qwen2.5" } },
+    };
+
     var lastLog = ViewBag.LastRunLog as ServiceDesk.Core.Models.AiRunLog;
     var totalTrained = (int)(ViewBag.TotalTrainingTickets ?? 0);
     var modelIsTrained = (bool)(ViewBag.ModelIsTrained ?? false);
@@ -90,6 +127,14 @@
 {
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="bi bi-exclamation-triangle me-2"></i> @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Warning"] != null)
+{
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>Pre-flight probe:</strong> @TempData["Warning"]
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 }
@@ -270,14 +315,79 @@
                                                        id="s_@setting.Key" />
                                             }
 
-                                            @if (!string.IsNullOrEmpty(setting.Description))
-                                            {
-                                                <div class="form-text text-muted">
-                                                    <i class="bi bi-info-circle me-1"></i>@setting.Description
-                                                </div>
-                                            }
-                                        </div>
-                                    }
+                                        }
+                                    </select>
+                                }
+                                else if (providerKeys.Contains(setting.Key))
+                                {
+                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
+                                        @foreach (var opt in providerOptions)
+                                        {
+                                            // AiProvider must have a real backend; role overrides allow blank.
+                                            if (setting.Key == "AiProvider" && opt.Value == "") { continue; }
+                                            var isSelected = string.Equals(setting.Value ?? string.Empty, opt.Value, StringComparison.OrdinalIgnoreCase);
+                                            <option value="@opt.Value" selected="@(isSelected ? "selected" : null)">@opt.Label</option>
+                                        }
+                                    </select>
+                                }
+                                else if (secretKeys.Contains(setting.Key))
+                                {
+                                    // Show a mask when a value is already stored; empty submit == "keep existing".
+                                    var hasStored = !string.IsNullOrEmpty(setting.Value);
+                                    <input type="password"
+                                           class="form-control"
+                                           name="@setting.Key"
+                                           placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
+                                           autocomplete="new-password"
+                                           id="s_@setting.Key" />
+                                }
+                                else if (modelKeyToProvider.TryGetValue(setting.Key, out var modelProvider))
+                                {
+                                    // Model-name field — text input paired with a datalist for
+                                    // autocomplete hints and a "List Models" button that hits
+                                    // /Settings/ListLlmModels?provider=X to refresh the hints
+                                    // from a live discovery call.
+                                    var listId = "dl_" + setting.Key;
+                                    var hints = modelHints.TryGetValue(modelProvider, out var h) ? h : Array.Empty<string>();
+                                    <div class="input-group">
+                                        <input type="text"
+                                               class="form-control"
+                                               name="@setting.Key"
+                                               value="@setting.Value"
+                                               id="s_@setting.Key"
+                                               list="@listId"
+                                               data-model-provider="@modelProvider"
+                                               autocomplete="off" />
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-list-models"
+                                                data-target="s_@setting.Key"
+                                                data-datalist="@listId"
+                                                data-provider="@modelProvider"
+                                                title="Fetch models available for this provider">
+                                            <i class="bi bi-list-ul me-1"></i>List Models
+                                        </button>
+                                    </div>
+                                    <datalist id="@listId">
+                                        @foreach (var opt in hints)
+                                        {
+                                            <option value="@opt"></option>
+                                        }
+                                    </datalist>
+                                }
+                                else
+                                {
+                                    <input type="text"
+                                           class="form-control"
+                                           name="@setting.Key"
+                                           value="@setting.Value"
+                                           id="s_@setting.Key" />
+                                }
+
+                                @if (!string.IsNullOrEmpty(setting.Description))
+                                {
+                                    <div class="form-text text-muted">
+                                        <i class="bi bi-info-circle me-1"></i>@setting.Description
+                                    </div>
                                 }
                             </div>
                             isFirstPane = false;
@@ -454,30 +564,69 @@
     });
 })();
 
-// ── Persist the active AI-settings tab across saves / reloads ─────────────
-// Save/Cancel triggers a POST-redirect, so without persistence the page
-// always comes back on "General". LocalStorage keeps the user on the tab
-// they were editing.
+// ── "List Models" button — refresh the datalist for a model-name field ────
+// Hits /Settings/ListLlmModels?provider=X and replaces the input's <datalist>
+// options with what the provider actually serves. Curated results (e.g.
+// Anthropic — no discovery endpoint) get a small "curated" note appended.
 (function () {
-    var storageKey = 'aiSettingsActiveTab';
-    var tabList = document.getElementById('aiSettingsTabs');
-    if (!tabList || typeof bootstrap === 'undefined') return;
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
 
-    // Restore the last-active tab on load — falls back silently to the
-    // server-rendered default (General) when storage is unavailable.
-    try {
-        var saved = localStorage.getItem(storageKey);
-        if (saved) {
-            var target = tabList.querySelector('[data-bs-target="#tab-' + saved + '"]');
-            if (target) new bootstrap.Tab(target).show();
-        }
-    } catch (_) { /* private mode — ignore */ }
+    document.querySelectorAll('.btn-list-models').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var provider = btn.getAttribute('data-provider');
+            var datalistId = btn.getAttribute('data-datalist');
+            var targetId = btn.getAttribute('data-target');
+            var datalist = document.getElementById(datalistId);
+            var input    = document.getElementById(targetId);
+            if (!provider || !datalist || !input) return;
 
-    // Save on tab switch. Bootstrap fires shown.bs.tab after the transition.
-    tabList.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (btn) {
-        btn.addEventListener('shown.bs.tab', function (e) {
-            var t = (e.target.getAttribute('data-bs-target') || '').replace('#tab-', '');
-            try { if (t) localStorage.setItem(storageKey, t); } catch (_) {}
+            var origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', token);
+            fd.append('provider', provider);
+
+            fetch('/Settings/ListLlmModels', { method: 'POST', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    if (!data.ok) {
+                        alert('Could not list ' + provider + ' models: ' + (data.error || 'unknown error'));
+                        return;
+                    }
+                    // Rebuild the datalist so the input's autocomplete now
+                    // reflects live discovery.
+                    while (datalist.firstChild) datalist.removeChild(datalist.firstChild);
+                    (data.models || []).forEach(function (m) {
+                        var opt = document.createElement('option');
+                        opt.value = m;
+                        datalist.appendChild(opt);
+                    });
+                    // Show a small toast-like inline note so the admin knows
+                    // the fetch succeeded (datalists don't open automatically
+                    // from JS; they open when the field is focused).
+                    var note = document.createElement('div');
+                    note.className = 'form-text small text-success mt-1';
+                    note.innerHTML = '<i class="bi bi-check-circle me-1"></i>' +
+                                     data.models.length + ' model(s) loaded' +
+                                     (data.curated ? ' <span class="text-muted">(curated — no live discovery endpoint)</span>' : '') +
+                                     '. Click the field to see suggestions.';
+                    // Remove any previous note under this input
+                    var next = input.parentElement.parentElement.querySelector('[data-role="model-load-note"]');
+                    if (next) next.remove();
+                    note.setAttribute('data-role', 'model-load-note');
+                    input.parentElement.parentElement.appendChild(note);
+                    // Focus the input so the datalist popup appears immediately in most browsers
+                    input.focus();
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert('Request failed — check browser console.');
+                });
         });
     });
 })();

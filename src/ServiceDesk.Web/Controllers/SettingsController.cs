@@ -1676,8 +1676,61 @@ public class SettingsController : Controller
             }
         }
         await _context.SaveChangesAsync();
-        TempData["Success"] = "AI Triage settings saved.";
+
+        // Pre-flight probe — after any save, run a real generation call against
+        // the active provider so admins learn immediately if the settings they
+        // typed actually work. Results land in TempData so the next render
+        // shows a coloured banner rather than making them click Test.
+        try
+        {
+            var router = HttpContext.RequestServices
+                .GetService<ServiceDesk.Web.Services.Llm.LlmProviderRouter>();
+            if (router != null)
+            {
+                var (providerName, probe) = await router.TestActiveProviderAsync();
+                if (probe.Ok)
+                {
+                    TempData["Success"] = $"AI Triage settings saved. Pre-flight probe OK — [{providerName}] {probe.Message}";
+                }
+                else
+                {
+                    TempData["Success"] = "AI Triage settings saved.";
+                    TempData["Warning"] = $"Pre-flight probe against {providerName} failed: {probe.Message}";
+                }
+            }
+            else
+            {
+                TempData["Success"] = "AI Triage settings saved.";
+            }
+        }
+        catch
+        {
+            // Probe failure never blocks the save — the settings ARE saved
+            // regardless. Fall through to the plain success message.
+            TempData["Success"] = "AI Triage settings saved.";
+        }
         return RedirectToAction(nameof(Ai));
+    }
+
+    // POST: Settings/ListLlmModels?provider=gemini — returns { ok, models[], curated, error }
+    //
+    // Used by the "List Models" button next to each provider's model field so
+    // admins can pick from what their key actually serves. Curated=true means
+    // the list came from a hardcoded static set (e.g. Anthropic, which has no
+    // /models discovery endpoint), not a live discovery call.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ListLlmModels(string provider,
+        [FromServices] ServiceDesk.Web.Services.Llm.LlmProviderRouter router)
+    {
+        var result = await router.ListModelsAsync(provider ?? string.Empty);
+        return Json(new
+        {
+            ok      = result.Ok,
+            models  = result.Models,
+            error   = result.Error,
+            curated = result.Curated,
+        });
     }
 
     // POST: Settings/AiRetrain — force-retrain the ML.NET model immediately

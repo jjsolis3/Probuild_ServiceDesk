@@ -43,6 +43,18 @@ public interface ILlmProvider
     /// endpoint is reachable.
     /// </summary>
     Task<LlmProviderTestResult> TestConnectionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the list of model IDs this provider can currently serve for
+    /// the configured API key. Powers the "List Available Models" picker in
+    /// Settings → AI so admins never have to guess a valid model name.
+    ///
+    /// Providers whose API doesn't expose a discovery endpoint (e.g.
+    /// Anthropic) return a hardcoded curated list. Providers that require
+    /// configuration (missing API key, disabled) return an empty list with
+    /// an explanatory Error.
+    /// </summary>
+    Task<LlmModelsResult> ListModelsAsync(CancellationToken ct = default);
 }
 
 /// <summary>Reason a generation call failed. Drives the user-facing message in the UI.</summary>
@@ -106,4 +118,17 @@ public sealed record LlmProviderTestResult(bool Ok, string Message, string[] Mod
 {
     public static LlmProviderTestResult Fail(string message) => new(false, message, Array.Empty<string>(), 0);
     public static LlmProviderTestResult SuccessNoProbe(string message, string[] models) => new(true, message, models, 0);
+}
+
+/// <summary>
+/// Result of a "List Available Models" call. When <see cref="Ok"/> is false,
+/// <see cref="Error"/> explains why (missing API key, HTTP failure, etc.);
+/// <see cref="Curated"/> is true when the list came from a hardcoded static
+/// set rather than a live API discovery call.
+/// </summary>
+public sealed record LlmModelsResult(bool Ok, string[] Models, string? Error, bool Curated)
+{
+    public static LlmModelsResult Empty(string error) => new(false, Array.Empty<string>(), error, false);
+    public static LlmModelsResult Live(string[] models) => new(true, models, null, false);
+    public static LlmModelsResult CuratedList(string[] models) => new(true, models, null, true);
 }
