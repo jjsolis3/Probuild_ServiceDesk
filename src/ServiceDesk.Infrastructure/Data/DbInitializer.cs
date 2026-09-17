@@ -2379,6 +2379,14 @@ public static class DbInitializer
                 WHERE r.Status = 'Paid'
                   AND p.Id IS NULL;
             END");
+
+        // Contractor-triggered payment reminder: throttle timestamp.
+        TryRunSchemaUpgrade(context, "PayrollReceipts_AddLastPaymentRequestDate", @"
+            IF COL_LENGTH('dbo.PayrollReceipts', 'LastPaymentRequestDate') IS NULL
+            BEGIN
+                ALTER TABLE dbo.PayrollReceipts
+                    ADD LastPaymentRequestDate DATETIME2(7) NULL;
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

@@ -717,7 +717,12 @@
                                             && (Model.Status == "Approved"
                                                 || Model.Status == "PartiallyPaid"
                                                 || (Model.Status == "Paid" && outstandingVal > 0m));
-                var showPaymentsCard     = payments.Count > 0 || canRecordPayment;
+                // Contractor-side: can nudge admins when there's an
+                // outstanding balance on an Approved / PartiallyPaid receipt.
+                var canRequestPayment    = !isAdminViewer
+                                            && outstandingVal > 0m
+                                            && (Model.Status == "Approved" || Model.Status == "PartiallyPaid");
+                var showPaymentsCard     = payments.Count > 0 || canRecordPayment || canRequestPayment;
                 var paymentPct           = Model.TotalAmount > 0m
                                              ? (int)Math.Min(100, Math.Round(totalPaidVal / Model.TotalAmount * 100m))
                                              : 0;
@@ -746,6 +751,28 @@
                                     data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
                                 <i class="bi bi-plus-lg me-1"></i>Record Payment
                             </button>
+                        }
+                        @if (canRequestPayment)
+                        {
+                            var lastReq  = Model.LastPaymentRequestDate;
+                            var cooldown = TimeSpan.FromHours(24);
+                            var onCooldown = lastReq.HasValue && (DateTime.UtcNow - lastReq.Value) < cooldown;
+                            var nextEligible = lastReq.HasValue ? lastReq.Value + cooldown : DateTime.UtcNow;
+                            if (onCooldown)
+                            {
+                                var hoursLeft = Math.Max(1, (int)Math.Ceiling((nextEligible - DateTime.UtcNow).TotalHours));
+                                <button type="button" class="btn btn-sm btn-outline-warning" disabled
+                                        title="You can send another request in @hoursLeft hour(s) — 24 h cooldown">
+                                    <i class="bi bi-clock-history me-1"></i>Request Payment (in ~@hoursLeft h)
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-warning"
+                                        data-bs-toggle="modal" data-bs-target="#requestPaymentModal">
+                                    <i class="bi bi-cash-coin me-1"></i>Request Payment
+                                </button>
+                            }
                         }
                     </div>
                     <div class="progress" style="height:6px;border-radius:0;">
@@ -943,6 +970,49 @@
                         sync();
                     })();
                 </script>
+            }
+
+            @* Request Payment modal — contractor only. Optional note goes
+               into the email + activity log so admins have context. *@
+            @if (canRequestPayment && !(Model.LastPaymentRequestDate.HasValue
+                    && (DateTime.UtcNow - Model.LastPaymentRequestDate.Value) < TimeSpan.FromHours(24)))
+            {
+                <div class="modal fade no-print" id="requestPaymentModal" tabindex="-1" aria-labelledby="requestPaymentModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <form asp-controller="Contractor" asp-action="RequestPayment" asp-route-id="@Model.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
+                                <div class="modal-header" style="background:#f59e0b;color:#fff;">
+                                    <h5 class="modal-title" id="requestPaymentModalLabel">
+                                        <i class="bi bi-cash-coin me-2"></i>Request Payment on Receipt #@Model.Id
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-warning small mb-3">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        This will email your payroll admins that <strong>@outstandingVal.ToString("C2")</strong>
+                                        is still outstanding on this receipt. To keep the queue calm, another request can only be sent
+                                        <strong>24 hours</strong> from now.
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-semibold">Optional note</label>
+                                        <textarea name="note" class="form-control" rows="3" maxlength="500"
+                                                  placeholder="e.g. Month-end closing pressure, or asking for a status update."></textarea>
+                                        <div class="form-text small">The note is shown to admins in the email and stored in the receipt's activity thread.</div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-warning">
+                                        <i class="bi bi-send me-1"></i>Send Payment Request
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             }
 
             @if (Model.Status == "Paid" && Model.PaidDate.HasValue)
