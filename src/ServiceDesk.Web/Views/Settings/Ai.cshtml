@@ -306,6 +306,39 @@
                                                        autocomplete="new-password"
                                                        id="s_@setting.Key" />
                                             }
+                                            else if (modelKeyToProvider.TryGetValue(setting.Key, out var modelProvider))
+                                            {
+                                                // Model-name field — text input paired with a datalist for
+                                                // autocomplete hints and a "List Models" button that hits
+                                                // /Settings/ListLlmModels?provider=X to refresh the hints
+                                                // from a live discovery call.
+                                                var listId = "dl_" + setting.Key;
+                                                var hints = modelHints.TryGetValue(modelProvider, out var h) ? h : Array.Empty<string>();
+                                                <div class="input-group">
+                                                    <input type="text"
+                                                           class="form-control"
+                                                           name="@setting.Key"
+                                                           value="@setting.Value"
+                                                           id="s_@setting.Key"
+                                                           list="@listId"
+                                                           data-model-provider="@modelProvider"
+                                                           autocomplete="off" />
+                                                    <button type="button"
+                                                            class="btn btn-outline-secondary btn-list-models"
+                                                            data-target="s_@setting.Key"
+                                                            data-datalist="@listId"
+                                                            data-provider="@modelProvider"
+                                                            title="Fetch models available for this provider">
+                                                        <i class="bi bi-list-ul me-1"></i>List Models
+                                                    </button>
+                                                </div>
+                                                <datalist id="@listId">
+                                                    @foreach (var opt in hints)
+                                                    {
+                                                        <option value="@opt"></option>
+                                                    }
+                                                </datalist>
+                                            }
                                             else
                                             {
                                                 <input type="text"
@@ -315,79 +348,14 @@
                                                        id="s_@setting.Key" />
                                             }
 
-                                        }
-                                    </select>
-                                }
-                                else if (providerKeys.Contains(setting.Key))
-                                {
-                                    <select name="@setting.Key" class="form-select" id="s_@setting.Key" data-no-picker="true">
-                                        @foreach (var opt in providerOptions)
-                                        {
-                                            // AiProvider must have a real backend; role overrides allow blank.
-                                            if (setting.Key == "AiProvider" && opt.Value == "") { continue; }
-                                            var isSelected = string.Equals(setting.Value ?? string.Empty, opt.Value, StringComparison.OrdinalIgnoreCase);
-                                            <option value="@opt.Value" selected="@(isSelected ? "selected" : null)">@opt.Label</option>
-                                        }
-                                    </select>
-                                }
-                                else if (secretKeys.Contains(setting.Key))
-                                {
-                                    // Show a mask when a value is already stored; empty submit == "keep existing".
-                                    var hasStored = !string.IsNullOrEmpty(setting.Value);
-                                    <input type="password"
-                                           class="form-control"
-                                           name="@setting.Key"
-                                           placeholder="@(hasStored ? "•••••• (stored — leave blank to keep)" : "Paste API key")"
-                                           autocomplete="new-password"
-                                           id="s_@setting.Key" />
-                                }
-                                else if (modelKeyToProvider.TryGetValue(setting.Key, out var modelProvider))
-                                {
-                                    // Model-name field — text input paired with a datalist for
-                                    // autocomplete hints and a "List Models" button that hits
-                                    // /Settings/ListLlmModels?provider=X to refresh the hints
-                                    // from a live discovery call.
-                                    var listId = "dl_" + setting.Key;
-                                    var hints = modelHints.TryGetValue(modelProvider, out var h) ? h : Array.Empty<string>();
-                                    <div class="input-group">
-                                        <input type="text"
-                                               class="form-control"
-                                               name="@setting.Key"
-                                               value="@setting.Value"
-                                               id="s_@setting.Key"
-                                               list="@listId"
-                                               data-model-provider="@modelProvider"
-                                               autocomplete="off" />
-                                        <button type="button"
-                                                class="btn btn-outline-secondary btn-list-models"
-                                                data-target="s_@setting.Key"
-                                                data-datalist="@listId"
-                                                data-provider="@modelProvider"
-                                                title="Fetch models available for this provider">
-                                            <i class="bi bi-list-ul me-1"></i>List Models
-                                        </button>
-                                    </div>
-                                    <datalist id="@listId">
-                                        @foreach (var opt in hints)
-                                        {
-                                            <option value="@opt"></option>
-                                        }
-                                    </datalist>
-                                }
-                                else
-                                {
-                                    <input type="text"
-                                           class="form-control"
-                                           name="@setting.Key"
-                                           value="@setting.Value"
-                                           id="s_@setting.Key" />
-                                }
-
-                                @if (!string.IsNullOrEmpty(setting.Description))
-                                {
-                                    <div class="form-text text-muted">
-                                        <i class="bi bi-info-circle me-1"></i>@setting.Description
-                                    </div>
+                                            @if (!string.IsNullOrEmpty(setting.Description))
+                                            {
+                                                <div class="form-text text-muted">
+                                                    <i class="bi bi-info-circle me-1"></i>@setting.Description
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 }
                             </div>
                             isFirstPane = false;
