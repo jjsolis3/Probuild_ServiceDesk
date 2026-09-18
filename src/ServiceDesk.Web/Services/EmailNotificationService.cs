@@ -246,6 +246,118 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Same delivery fan-out as <see cref="SendToPayrollRecipientsAsync"/> but routes
+    /// through <see cref="GmailApiService.SendEmailWithAttachmentsAsync"/> so a PDF/XLSX
+    /// of the receipt can ride along with the notification (e.g. a payment request or
+    /// status update, so the recipient sees hard evidence instead of just numbers).
+    /// </summary>
+    private async Task SendToPayrollRecipientsWithAttachmentsAsync(
+        EmailConfiguration config,
+        IList<(string Email, string Name)> recipients,
+        string subject,
+        string htmlBody,
+        IList<GmailApiService.EmailAttachment> attachments,
+        string logType)
+    {
+        if (recipients.Count == 0) return;
+
+        var mode = await GetPayrollDeliveryModeAsync();
+
+        if (mode == "combined" && recipients.Count > 1)
+        {
+            var primary = recipients[0];
+            var ccList  = string.Join(", ", recipients.Skip(1).Select(r => r.Email));
+            try
+            {
+                await _gmailApiService.SendEmailWithAttachmentsAsync(
+                    config, _context, primary.Email, ccList, subject, htmlBody, attachments);
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Combined send failed for {LogType} ({Count} recipients)", logType, recipients.Count);
+                foreach (var r in recipients)
+                    await LogNotificationAsync(logType, r.Email, r.Name, subject, null, false, ex.Message);
+            }
+            return;
+        }
+
+        foreach (var (email, name) in recipients)
+        {
+            try
+            {
+                await _gmailApiService.SendEmailWithAttachmentsAsync(config, _context, email, null, subject, htmlBody, attachments);
+                await LogNotificationAsync(logType, email, name, subject, null, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Payroll] Failed to send {LogType} to {Email}", logType, email);
+                await LogNotificationAsync(logType, email, name, subject, null, false, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Renders the itemized "Payments Received" table for a receipt so payment-related
+    /// emails (contractor's payment request, admin's status update) show the actual
+    /// recorded payments — date, method, reference, amount, confirmation state — rather
+    /// than just an aggregate paid/outstanding total.
+    /// </summary>
+    private async Task<string> BuildPaymentsTableHtmlAsync(int receiptId)
+    {
+        var payments = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receiptId)
+            .OrderBy(p => p.PaymentDate)
+            .ThenBy(p => p.Id)
+            .ToListAsync();
+
+        if (payments.Count == 0)
+        {
+            return @"<div style='background:#f9fafb;border-left:4px solid #9ca3af;padding:12px 14px;border-radius:4px;margin:14px 0;color:#4b5563;'>
+                    No payments have been recorded against this receipt yet.
+                </div>";
+        }
+
+        var rows = string.Join(string.Empty, payments.Select(p =>
+        {
+            var reference = string.Join(" ", new[]
+            {
+                p.PaymentMethod == "Check" && !string.IsNullOrWhiteSpace(p.CheckNumber) ? $"#{p.CheckNumber}" : null,
+                p.Reference
+            }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+            var confirmed = p.ContractorConfirmedDate.HasValue
+                ? $"<span style='color:#166534;'>✓ {p.ContractorConfirmedDate.Value:MMM d, yyyy}</span>"
+                : "<span style='color:#b45309;'>Awaiting</span>";
+
+            return $@"<tr>
+                <td style='padding:6px 8px;border-bottom:1px solid #e5e7eb;'>{p.PaymentDate:MMM d, yyyy}</td>
+                <td style='padding:6px 8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(p.PaymentMethod)}</td>
+                <td style='padding:6px 8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(reference)}</td>
+                <td style='padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{p.Amount:C}</td>
+                <td style='padding:6px 8px;border-bottom:1px solid #e5e7eb;'>{confirmed}</td>
+            </tr>";
+        }));
+
+        return $@"<div style='margin:14px 0;'>
+            <strong style='font-size:.9rem;color:#374151;'>Payments Received ({payments.Count})</strong>
+            <table style='width:100%;border-collapse:collapse;margin-top:6px;font-size:.9rem;'>
+                <thead>
+                    <tr style='background:#f9fafb;'>
+                        <th style='padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;'>Date</th>
+                        <th style='padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;'>Method</th>
+                        <th style='padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;'>Reference</th>
+                        <th style='padding:6px 8px;text-align:right;border-bottom:2px solid #e5e7eb;'>Amount</th>
+                        <th style='padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;'>Confirmed</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>";
+    }
+
+    /// <summary>
     /// Sends a confirmation email when a new ticket is created from an inbound email.
     /// Includes the [#SS-XXXXX] reference so future replies thread correctly.
     /// </summary>
@@ -1325,7 +1437,8 @@ public class EmailNotificationService
         Core.Models.PayrollReceipt receipt,
         decimal totalPaid,
         decimal outstanding,
-        string? contractorNote)
+        string? contractorNote,
+        IList<GmailApiService.EmailAttachment>? attachments = null)
     {
         var config = await GetActiveConfig();
         if (config == null) return;
@@ -1381,6 +1494,7 @@ public class EmailNotificationService
                     <div style='color:#b45309;'>Outstanding: <strong>{outstanding:C}</strong></div>
                 </div>
             </div>
+            {await BuildPaymentsTableHtmlAsync(receipt.Id)}
             <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
@@ -1398,7 +1512,14 @@ public class EmailNotificationService
             </p>";
 
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
-        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollPaymentRequest");
+        if (attachments != null && attachments.Count > 0)
+        {
+            await SendToPayrollRecipientsWithAttachmentsAsync(config, recipients, subject, htmlBody, attachments, "PayrollPaymentRequest");
+        }
+        else
+        {
+            await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollPaymentRequest");
+        }
     }
 
     /// <summary>
@@ -1422,7 +1543,8 @@ public class EmailNotificationService
         string toEmail,
         string? ccEmail,
         string? note,
-        string senderDisplay)
+        string senderDisplay,
+        IList<GmailApiService.EmailAttachment>? attachments = null)
     {
         if (string.IsNullOrWhiteSpace(toEmail)) return false;
 
@@ -1457,6 +1579,7 @@ public class EmailNotificationService
                     <div style='color:#b45309;'>Outstanding: <strong>{outstanding:C}</strong></div>
                 </div>
             </div>
+            {await BuildPaymentsTableHtmlAsync(receipt.Id)}
             <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
                 <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
                     <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
@@ -1471,6 +1594,13 @@ public class EmailNotificationService
         var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
         try
         {
+            if (attachments != null && attachments.Count > 0)
+            {
+                var msgId = await _gmailApiService.SendEmailWithAttachmentsAsync(config, _context, toEmail, ccEmail, subject, htmlBody, attachments);
+                await LogNotificationAsync("PayrollPaymentStatusUpdate", toEmail, toEmail, subject, null, msgId != null);
+                return msgId != null;
+            }
+
             await _gmailApiService.SendEmailViaGmailApi(config, _context, toEmail, subject, htmlBody, null, null, null, ccEmail);
             await LogNotificationAsync("PayrollPaymentStatusUpdate", toEmail, toEmail, subject, null, true);
             return true;
