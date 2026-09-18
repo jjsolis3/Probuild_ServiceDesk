@@ -1313,6 +1313,95 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Contractor-triggered nudge: the contractor is asking admins to please
+    /// pay the outstanding balance on a specific receipt. Routes to the same
+    /// PayrollNotificationRecipients that get the initial submit notification,
+    /// falling back to all Admin portal users if that list is empty.
+    ///
+    /// Rate-limiting is enforced by the caller (ContractorController checks
+    /// LastPaymentRequestDate) so this method just sends the mail.
+    /// </summary>
+    public async Task SendContractorPaymentRequestAsync(
+        Core.Models.PayrollReceipt receipt,
+        decimal totalPaid,
+        decimal outstanding,
+        string? contractorNote)
+    {
+        var config = await GetActiveConfig();
+        if (config == null) return;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        var configured = await _context.PayrollNotificationRecipients
+            .Include(r => r.PortalUser)
+            .Where(r => r.IsActive)
+            .ToListAsync();
+
+        var recipients = configured
+            .Select(r => (Email: r.PortalUser?.Email ?? r.Email,
+                          Name:  r.PortalUser?.FullName ?? r.DisplayName ?? r.Email))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Email.ToLowerInvariant())
+            .Select(g => g.First())
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            recipients = await _context.PortalUsers
+                .Include(u => u.Role)
+                .Where(u => u.IsActive && u.Role != null && u.Role.Name == "Admin"
+                         && !string.IsNullOrEmpty(u.Email))
+                .Select(u => new ValueTuple<string, string>(u.Email!, u.FirstName + " " + u.LastName))
+                .ToListAsync();
+        }
+        if (recipients.Count == 0) return;
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var subject = $"Payment request from {contractorName} — receipt #{receipt.Id} ({outstanding:C} outstanding)";
+
+        var noteBlock = string.IsNullOrWhiteSpace(contractorNote)
+            ? string.Empty
+            : $@"<div style='background:#f0f9ff;border-left:4px solid #0284c7;padding:12px 14px;border-radius:4px;margin:14px 0;color:#075985;'>
+                    <strong>Note from {System.Net.WebUtility.HtmlEncode(contractorName)}:</strong>
+                    <div style='margin-top:6px;white-space:pre-wrap;'>{System.Net.WebUtility.HtmlEncode(contractorNote.Trim())}</div>
+               </div>";
+
+        var innerContent = $@"<h3 style='color:#b45309;'>Payment Request from Contractor</h3>
+            <p><strong>{System.Net.WebUtility.HtmlEncode(contractorName)}</strong> is asking about the pending balance on payroll receipt <strong>#{receipt.Id}</strong>.</p>
+            {noteBlock}
+            <div style='background:#fff7ed;border-left:4px solid #ea580c;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                <strong>Balance summary</strong>
+                <div style='margin-top:6px;line-height:1.6;'>
+                    <div>Receipt total: <strong>{receipt.TotalAmount:C}</strong></div>
+                    <div>Paid so far: <strong>{totalPaid:C}</strong></div>
+                    <div style='color:#b45309;'>Outstanding: <strong>{outstanding:C}</strong></div>
+                </div>
+            </div>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Status}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Approved</td>
+                    <td style='padding:8px;'>{(receipt.ApprovedDate.HasValue ? receipt.ApprovedDate.Value.ToString("MMM d, yyyy") : "—")}</td></tr>
+            </table>
+            <p style='margin-top:14px;font-size:.9rem;color:#475569;'>
+                Open the Contractor Payroll queue and record a payment (or reply in the receipt thread) so the contractor sees where things stand.
+            </p>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        await SendToPayrollRecipientsAsync(config, recipients, subject, htmlBody, "PayrollPaymentRequest");
+    }
+
+    /// <summary>
     /// Acknowledgement email back to the admin team once the contractor
     /// clicks Confirm Received on a Paid receipt. Closes the loop on the
     /// payment lifecycle. Sent to the same recipient list configured for
@@ -1487,6 +1576,71 @@ public class EmailNotificationService
         var standardHours   = entries.Where(e => e.RateType == Core.Enums.PayRateType.Standard).Sum(e => e.Hours);
         var emergencyHours  = entries.Where(e => e.RateType == Core.Enums.PayRateType.Emergency).Sum(e => e.Hours);
 
+        // ── Outstanding-balance snapshot ──
+        // Pulls every receipt owned by this contractor whose sum-of-payments
+        // is short of TotalAmount and summarises. Rendered as a "Payment
+        // status" block in the digest so the contractor sees at a glance
+        // what's still open — and gets a reminder that they can nudge
+        // admins from the receipt page.
+        var openReceipts = await _context.PayrollReceipts
+            .Where(r => r.ContractorId == contractor.Id
+                     && (r.Status == "Approved" || r.Status == "PartiallyPaid"))
+            .AsNoTracking()
+            .ToListAsync();
+        var openReceiptIds = openReceipts.Select(r => r.Id).ToList();
+        var paidLookup = await _context.PayrollReceiptPayments
+            .Where(p => openReceiptIds.Contains(p.PayrollReceiptId))
+            .GroupBy(p => p.PayrollReceiptId)
+            .Select(g => new { PayrollReceiptId = g.Key, Paid = g.Sum(x => x.Amount) })
+            .ToDictionaryAsync(x => x.PayrollReceiptId, x => x.Paid);
+
+        var openWithBalance = openReceipts
+            .Select(r =>
+            {
+                var paid = paidLookup.TryGetValue(r.Id, out var pv) ? pv : 0m;
+                var outstanding = Math.Max(0m, Math.Round(r.TotalAmount - paid, 2, MidpointRounding.AwayFromZero));
+                return new { Receipt = r, Paid = paid, Outstanding = outstanding };
+            })
+            .Where(x => x.Outstanding > 0m)
+            .OrderBy(x => x.Receipt.ApprovedDate ?? x.Receipt.CreatedDate)
+            .ToList();
+
+        var totalOutstanding = openWithBalance.Sum(x => x.Outstanding);
+        var paymentStatusBlock = new System.Text.StringBuilder();
+        if (openWithBalance.Count > 0)
+        {
+            paymentStatusBlock.Append($@"<h4 style='margin-top:24px;'>Payment Status</h4>
+                <div style='background:#fff7ed;border-left:4px solid #ea580c;padding:12px 14px;border-radius:4px;margin:8px 0 12px;color:#7c2d12;'>
+                    <strong>Outstanding balance: {totalOutstanding:C}</strong>
+                    across {openWithBalance.Count} receipt{(openWithBalance.Count == 1 ? "" : "s")}.
+                </div>
+                <table style='width:100%;border-collapse:collapse;margin:8px 0 15px;'>
+                    <thead><tr style='background:#f8f9fa;'>
+                        <th style='padding:8px;text-align:left;border-bottom:2px solid #dee2e6;'>Receipt</th>
+                        <th style='padding:8px;text-align:left;border-bottom:2px solid #dee2e6;'>Period</th>
+                        <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Total</th>
+                        <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Paid</th>
+                        <th style='padding:8px;text-align:right;border-bottom:2px solid #dee2e6;'>Outstanding</th>
+                    </tr></thead>
+                    <tbody>");
+            foreach (var row in openWithBalance)
+            {
+                paymentStatusBlock.Append($@"<tr>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>#{row.Receipt.Id}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{row.Receipt.PeriodStart:MMM d} – {row.Receipt.PeriodEnd:MMM d, yyyy}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;'>{row.Receipt.TotalAmount:C}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#166534;'>{row.Paid:C}</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;color:#b45309;font-weight:bold;'>{row.Outstanding:C}</td>
+                </tr>");
+            }
+            paymentStatusBlock.Append(@"</tbody></table>
+                <p style='margin:8px 0 0;font-size:.9em;color:#6c757d;'>
+                    If a receipt has been waiting a while, open it in the portal and click
+                    <strong>Request Payment</strong> to send a reminder to the admin team.
+                </p>");
+        }
+        var paymentStatusHtml = paymentStatusBlock.ToString();
+
         var rows = new System.Text.StringBuilder();
         if (entries.Count == 0)
         {
@@ -1531,6 +1685,7 @@ public class EmailNotificationService
                 </tr></thead>
                 <tbody>{rows}</tbody>
             </table>
+            {paymentStatusHtml}
             <p style='margin-top:24px;font-size:.9em;color:#6c757d;'>
                 Heads up — entries don't appear on a payroll receipt until you submit one from the Contractor portal.
             </p>";

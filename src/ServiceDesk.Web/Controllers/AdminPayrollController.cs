@@ -137,9 +137,86 @@ public class AdminPayrollController : Controller
             .ToDictionaryAsync(s => s.Key, s => s.Value);
         ViewBag.DefaultHrEmail = defaultsLookup.TryGetValue("PayrollHrEmail", out var hr) ? hr : "";
         ViewBag.DefaultApEmail = defaultsLookup.TryGetValue("PayrollApEmail", out var ap) ? ap : "";
+
+        // ── Per-contractor rollup for the collapsible summary card ──
+        // Pull every payment row once; group in memory to build the per-
+        // contractor Paid / Outstanding totals + oldest outstanding date.
+        var receiptIds = allReceipts.Select(r => r.Id).ToHashSet();
+        var allPaymentRows = await _context.PayrollReceiptPayments
+            .Where(p => receiptIds.Contains(p.PayrollReceiptId))
+            .Select(p => new { p.PayrollReceiptId, p.Amount, p.PaymentDate })
+            .ToListAsync();
+        var paidByReceipt = allPaymentRows
+            .GroupBy(p => p.PayrollReceiptId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        var jan1 = new DateTime(now.Year, 1, 1);
+        var contractorSummaries = allReceipts
+            .Where(r => r.Contractor != null)
+            .GroupBy(r => r.ContractorId)
+            .Select(g =>
+            {
+                var contractor = g.First().Contractor!;
+                var ytdPaid   = g.Where(r => r.Status == "Paid" && r.PaidDate.HasValue && r.PaidDate.Value >= jan1)
+                                 .Sum(r => r.TotalAmount);
+                var outstandingReceipts = g.Where(r =>
+                        r.Status == "Approved" || r.Status == "PartiallyPaid"
+                        || (r.Status == "Paid" && paidByReceipt.GetValueOrDefault(r.Id, 0m) < r.TotalAmount))
+                    .Select(r =>
+                    {
+                        var paid = paidByReceipt.GetValueOrDefault(r.Id, 0m);
+                        return new
+                        {
+                            Receipt = r,
+                            Outstanding = Math.Max(0m, Math.Round(r.TotalAmount - paid, 2, MidpointRounding.AwayFromZero)),
+                        };
+                    })
+                    .Where(x => x.Outstanding > 0m)
+                    .ToList();
+
+                var totalOutstanding = outstandingReceipts.Sum(x => x.Outstanding);
+                var partialCount = g.Count(r => r.Status == "PartiallyPaid");
+                var approvedUnpaidAmount = g.Where(r => r.Status == "Approved")
+                                            .Sum(r => r.TotalAmount - paidByReceipt.GetValueOrDefault(r.Id, 0m));
+                var oldestOutstanding = outstandingReceipts
+                    .Select(x => (DateTime?)(x.Receipt.ApprovedDate ?? x.Receipt.CreatedDate))
+                    .DefaultIfEmpty(null)
+                    .Min();
+
+                return new AdminPayrollContractorSummary(
+                    ContractorId:        contractor.Id,
+                    ContractorName:      $"{contractor.FirstName} {contractor.LastName}",
+                    ReceiptCount:        g.Count(),
+                    YtdPaid:             ytdPaid,
+                    ApprovedUnpaidAmount:Math.Max(0m, approvedUnpaidAmount),
+                    PartiallyPaidCount:  partialCount,
+                    Outstanding:         totalOutstanding,
+                    OldestOutstandingAt: oldestOutstanding);
+            })
+            .OrderByDescending(s => s.Outstanding)
+            .ThenBy(s => s.ContractorName)
+            .ToList();
+
+        // Per-receipt paid/outstanding for the new column in the receipt list.
+        ViewBag.PaidByReceipt        = paidByReceipt;
+        ViewBag.ContractorSummaries  = contractorSummaries;
+        ViewBag.TotalOutstanding     = contractorSummaries.Sum(s => s.Outstanding);
+        ViewBag.TotalYtdPaid         = contractorSummaries.Sum(s => s.YtdPaid);
+
         ViewData["Title"]          = "Contractor Payroll";
         return View(receipts.ToList());
     }
+
+    /// <summary>Immutable per-contractor summary row used by the AdminPayroll Index collapsible card.</summary>
+    public sealed record AdminPayrollContractorSummary(
+        int      ContractorId,
+        string   ContractorName,
+        int      ReceiptCount,
+        decimal  YtdPaid,
+        decimal  ApprovedUnpaidAmount,
+        int      PartiallyPaidCount,
+        decimal  Outstanding,
+        DateTime? OldestOutstandingAt);
 
     // POST /AdminPayroll/Approve/{id}
     [HttpPost]

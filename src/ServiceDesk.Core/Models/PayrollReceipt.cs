@@ -147,6 +147,15 @@ public class PayrollReceipt
     /// </summary>
     public DateTime? LastReminderSentUtc { get; set; }
 
+    /// <summary>
+    /// Last time the contractor manually sent a "please pay this outstanding
+    /// balance" nudge from the Payroll UI. Used to enforce a 24-hour cooldown
+    /// so a frustrated contractor can't accidentally flood admins.
+    /// Null = never requested payment on this receipt.
+    /// </summary>
+    [Display(Name = "Last Payment Request")]
+    public DateTime? LastPaymentRequestDate { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
     // Set by admin when returning a receipt to Draft with feedback

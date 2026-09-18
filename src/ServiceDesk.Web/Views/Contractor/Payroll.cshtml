@@ -522,6 +522,29 @@
                                             </button>
                                         </form>
                                     }
+                                    @* Request Payment nudge — visible on rows with an outstanding balance.
+                                       Cooldown handled server-side; here we just dim the icon when we
+                                       know the last request landed within 24h so users get visible
+                                       feedback instead of an alert on click. *@
+                                    @if (receipt.Status == "Approved" || receipt.Status == "PartiallyPaid")
+                                    {
+                                        var onCooldownRow = receipt.LastPaymentRequestDate.HasValue
+                                                            && (DateTime.UtcNow - receipt.LastPaymentRequestDate.Value) < TimeSpan.FromHours(24);
+                                        if (onCooldownRow)
+                                        {
+                                            var hoursLeftRow = Math.Max(1, (int)Math.Ceiling((receipt.LastPaymentRequestDate!.Value.AddHours(24) - DateTime.UtcNow).TotalHours));
+                                            <span class="pay-btn-icon" title="Payment request cooldown — try again in ~@hoursLeftRow h" style="opacity:.55;cursor:default;">
+                                                <i class="bi bi-clock-history"></i>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <a asp-action="ReceiptDetail" asp-route-id="@receipt.Id" asp-fragment="requestPayment"
+                                               class="pay-btn-icon" title="Request payment (opens receipt)" style="color:#b45309;">
+                                                <i class="bi bi-cash-coin"></i>
+                                            </a>
+                                        }
+                                    }
                                 </div>
                             </td>
                         </tr>

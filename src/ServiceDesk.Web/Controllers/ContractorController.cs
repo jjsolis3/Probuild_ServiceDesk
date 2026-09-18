@@ -534,6 +534,99 @@ public class ContractorController : Controller
         return RedirectToAction(nameof(ReceiptDetail), new { id = payment.PayrollReceiptId });
     }
 
+    // POST /Contractor/RequestPayment/{id}
+    //
+    // Contractor-triggered nudge: emails PayrollNotificationRecipients (and
+    // portal-bells admins) asking about the outstanding balance on a
+    // specific receipt. Rate-limited to once per 24 hours per receipt so
+    // a frustrated contractor can't flood the audience. Allowed only on
+    // Approved or PartiallyPaid receipts (there's something to be paid).
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RequestPayment(int id, string? note, string? returnUrl)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .FirstOrDefaultAsync(r => r.Id == id && r.ContractorId == contractor.Id);
+        if (receipt == null) return NotFound();
+
+        if (receipt.Status != "Approved" && receipt.Status != "PartiallyPaid")
+        {
+            TempData["Error"] = "Payment requests only apply to Approved or Partially Paid receipts.";
+            return SafeRedirectContractor(returnUrl, receipt.Id);
+        }
+
+        // 24-hour cooldown — protects admins from flood, contractor sees the
+        // remaining minutes so it doesn't feel like a silent failure.
+        if (receipt.LastPaymentRequestDate.HasValue)
+        {
+            var since = DateTime.UtcNow - receipt.LastPaymentRequestDate.Value;
+            var cooldown = TimeSpan.FromHours(24);
+            if (since < cooldown)
+            {
+                var remaining = cooldown - since;
+                var hoursLeft = Math.Max(1, (int)Math.Ceiling(remaining.TotalHours));
+                TempData["Error"] = $"You already requested payment on this receipt recently. Try again in about {hoursLeft} hour(s).";
+                return SafeRedirectContractor(returnUrl, receipt.Id);
+            }
+        }
+
+        // Compute running totals so the email + audit line carry real numbers.
+        var totalPaid = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .SumAsync(p => (decimal?)p.Amount) ?? 0m;
+        var outstanding = Math.Max(0m,
+            Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+        if (outstanding <= 0m)
+        {
+            TempData["Warning"] = "This receipt has no outstanding balance — nothing to request.";
+            return SafeRedirectContractor(returnUrl, receipt.Id);
+        }
+
+        var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (trimmedNote?.Length > 500) trimmedNote = trimmedNote[..500];
+
+        receipt.LastPaymentRequestDate = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // Audit — the activity thread records who nudged when.
+        var activityLine = trimmedNote is null
+            ? $"Requested payment of the outstanding balance ({outstanding:C2})."
+            : $"Requested payment of the outstanding balance ({outstanding:C2}). Note: {trimmedNote}";
+        await _activity.LogContractorAsync(receipt.Id, contractor, activityLine);
+
+        // Email the payroll recipient list. Fire-and-log so a Gmail hiccup
+        // doesn't block the UI.
+        try
+        {
+            await _emailService.SendContractorPaymentRequestAsync(receipt, totalPaid, outstanding, trimmedNote);
+        }
+        catch (Exception) { /* email failure surfaces in the notification log */ }
+
+        // Portal-bell admins so the request lands somewhere fast even when
+        // email is delayed.
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollPaymentRequest",
+            title:   $"Payment request on #{receipt.Id} — {outstanding:C2} outstanding",
+            message: trimmedNote ?? $"{contractor.FirstName} is asking about the balance",
+            link:    Url.Action(nameof(ReceiptDetail), new { id = receipt.Id }),
+            icon:    "bi-cash-coin");
+
+        TempData["Success"] = $"Payment request sent for receipt #{receipt.Id} ({outstanding:C2}). You can send another in 24 hours.";
+        return SafeRedirectContractor(returnUrl, receipt.Id);
+    }
+
+    /// <summary>Local redirect helper that falls back to the receipt detail page.</summary>
+    private IActionResult SafeRedirectContractor(string? returnUrl, int receiptId)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+        return RedirectToAction(nameof(ReceiptDetail), new { id = receiptId });
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ConfirmPaymentReceived(int id, string? confirmationNote)

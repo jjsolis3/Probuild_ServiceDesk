@@ -350,6 +350,136 @@
     </div>
 </div>
 
+@* ── Per-contractor summary (collapsible) ─────────────────────────────
+   Shows Paid YTD vs Outstanding per contractor so admins can spot who's
+   waiting on money at a glance. Collapsed by default to keep the queue
+   view uncluttered; expand state is remembered in localStorage. *@
+@{
+    var contractorSummaries = ViewBag.ContractorSummaries as List<ServiceDesk.Web.Controllers.AdminPayrollController.AdminPayrollContractorSummary>
+                              ?? new List<ServiceDesk.Web.Controllers.AdminPayrollController.AdminPayrollContractorSummary>();
+    var totalOutstanding    = (decimal)(ViewBag.TotalOutstanding ?? 0m);
+    var totalYtdPaid        = (decimal)(ViewBag.TotalYtdPaid ?? 0m);
+}
+<div class="card shadow-sm mb-3">
+    <button type="button"
+            class="btn w-100 text-start d-flex justify-content-between align-items-center py-3"
+            data-bs-toggle="collapse"
+            data-bs-target="#contractorSummaryPanel"
+            aria-expanded="false"
+            aria-controls="contractorSummaryPanel"
+            id="contractorSummaryToggle"
+            style="border:0;background:transparent;">
+        <div>
+            <span class="fw-semibold">
+                <i class="bi bi-people-fill me-2 text-primary"></i>Contractor Summary
+            </span>
+            <span class="text-muted small ms-2">
+                @contractorSummaries.Count contractor@(contractorSummaries.Count == 1 ? "" : "s")
+                · Paid YTD <strong>@totalYtdPaid.ToString("C0")</strong>
+                @if (totalOutstanding > 0m)
+                {
+                    <text> · </text>
+                    <span class="text-warning fw-semibold">Outstanding @totalOutstanding.ToString("C0")</span>
+                }
+            </span>
+        </div>
+        <i class="bi bi-chevron-down text-muted" id="contractorSummaryChevron"></i>
+    </button>
+    <div class="collapse" id="contractorSummaryPanel">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Contractor</th>
+                        <th class="text-end">Receipts</th>
+                        <th class="text-end">Paid YTD</th>
+                        <th class="text-end">Approved · Unpaid</th>
+                        <th class="text-center">Partial</th>
+                        <th class="text-end">Outstanding</th>
+                        <th>Oldest</th>
+                        <th class="text-end no-export"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (contractorSummaries.Count == 0)
+                    {
+                        <tr><td colspan="8" class="text-muted small text-center py-3">No contractor receipt data yet.</td></tr>
+                    }
+                    else
+                    {
+                        foreach (var s in contractorSummaries)
+                        {
+                            var isOutstanding = s.Outstanding > 0m;
+                            var oldestLabel = s.OldestOutstandingAt.HasValue
+                                              ? $"{s.OldestOutstandingAt.Value:MMM d, yyyy}"
+                                              : "—";
+                            var oldestDaysStr = string.Empty;
+                            if (s.OldestOutstandingAt.HasValue)
+                            {
+                                var days = Math.Max(0, (int)(DateTime.UtcNow - s.OldestOutstandingAt.Value).TotalDays);
+                                oldestDaysStr = $"{days} day{(days == 1 ? "" : "s")} ago";
+                            }
+                            <tr>
+                                <td class="fw-semibold">@s.ContractorName</td>
+                                <td class="text-end small">@s.ReceiptCount</td>
+                                <td class="text-end">@s.YtdPaid.ToString("C2")</td>
+                                <td class="text-end small text-muted">@s.ApprovedUnpaidAmount.ToString("C2")</td>
+                                <td class="text-center small">
+                                    @if (s.PartiallyPaidCount > 0)
+                                    { <span class="badge bg-warning text-dark">@s.PartiallyPaidCount</span> }
+                                    else
+                                    { <span class="text-muted">—</span> }
+                                </td>
+                                <td class="text-end fw-semibold @(isOutstanding ? "text-warning" : "text-success")">
+                                    @s.Outstanding.ToString("C2")
+                                </td>
+                                <td class="small text-muted" title="@oldestDaysStr">
+                                    @oldestLabel
+                                    @if (!string.IsNullOrEmpty(oldestDaysStr))
+                                    {
+                                        <div class="text-muted small">@oldestDaysStr</div>
+                                    }
+                                </td>
+                                <td class="text-end no-export">
+                                    <a asp-action="Index" asp-route-contractorId="@s.ContractorId"
+                                       class="btn btn-sm btn-outline-primary" title="Filter queue by this contractor">
+                                        <i class="bi bi-funnel"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+// Persist the Contractor Summary expanded state across page loads.
+(function () {
+    var key   = 'adminPayrollContractorSummaryOpen';
+    var panel = document.getElementById('contractorSummaryPanel');
+    var toggle= document.getElementById('contractorSummaryToggle');
+    var chev  = document.getElementById('contractorSummaryChevron');
+    if (!panel || !toggle) return;
+    try {
+        if (localStorage.getItem(key) === '1') {
+            panel.classList.add('show');
+            toggle.setAttribute('aria-expanded', 'true');
+            if (chev) chev.classList.replace('bi-chevron-down','bi-chevron-up');
+        }
+    } catch (_) {}
+    panel.addEventListener('shown.bs.collapse', function () {
+        try { localStorage.setItem(key, '1'); } catch (_) {}
+        if (chev) chev.classList.replace('bi-chevron-down','bi-chevron-up');
+    });
+    panel.addEventListener('hidden.bs.collapse', function () {
+        try { localStorage.setItem(key, '0'); } catch (_) {}
+        if (chev) chev.classList.replace('bi-chevron-up','bi-chevron-down');
+    });
+})();
+</script>
+
 @* ── Filter card ─────────────────────────────────────────────────────── *@
 <div class="ap-card">
     <div class="ap-card-accent"></div>
@@ -487,6 +617,7 @@
                         <th class="text-center">Std / Emerg</th>
                         <th class="text-center">Retainer</th>
                         <th class="text-end">Amount</th>
+                        <th class="text-end">Paid / Outstanding</th>
                         <th>Status</th>
                         <th>Submitted</th>
                         <th>Approved</th>
@@ -494,6 +625,11 @@
                     </tr>
                 </thead>
                 <tbody>
+                    @{
+                        // Look up map from the controller — receipt id → sum of payments
+                        var paidByReceipt = ViewBag.PaidByReceipt as Dictionary<int, decimal>
+                                            ?? new Dictionary<int, decimal>();
+                    }
                     @foreach (var receipt in Model)
                     {
                         var pillClass = receipt.Status switch {
@@ -557,6 +693,32 @@
                                 }
                             </td>
                             <td class="text-end fw-bold" style="color:var(--ap-navy);">$@receipt.TotalAmount.ToString("N2")</td>
+                            @{
+                                var paidVal = paidByReceipt.TryGetValue(receipt.Id, out var pv) ? pv : 0m;
+                                var outstandingVal = Math.Max(0m, Math.Round(receipt.TotalAmount - paidVal, 2, MidpointRounding.AwayFromZero));
+                            }
+                            <td class="text-end small">
+                                @if (paidVal <= 0m && receipt.Status != "Paid")
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                                else
+                                {
+                                    <div>Paid <strong style="color:#166534;">@paidVal.ToString("C2")</strong></div>
+                                    @if (outstandingVal > 0m)
+                                    {
+                                        <div class="text-warning fw-semibold">
+                                            Outstanding @outstandingVal.ToString("C2")
+                                        </div>
+                                    }
+                                    else if (paidVal > 0m)
+                                    {
+                                        <div class="text-success small">
+                                            <i class="bi bi-check-circle me-1"></i>fully paid
+                                        </div>
+                                    }
+                                }
+                            </td>
                             <td><span class="sp @pillClass">@receipt.Status</span></td>
                             <td class="small text-muted text-nowrap">@(receipt.SubmittedDate?.ToString("MMM d, yyyy") ?? "—")</td>
                             <td class="small text-nowrap">
