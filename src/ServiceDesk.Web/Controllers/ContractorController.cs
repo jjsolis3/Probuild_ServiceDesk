@@ -626,7 +626,8 @@ public class ContractorController : Controller
         // doesn't block the UI.
         try
         {
-            await _emailService.SendContractorPaymentRequestAsync(receipt, totalPaid, outstanding, trimmedNote);
+            var attachments = await _attachments.BuildAsync(receipt, "pdf");
+            await _emailService.SendContractorPaymentRequestAsync(receipt, totalPaid, outstanding, trimmedNote, attachments);
         }
         catch (Exception) { /* email failure surfaces in the notification log */ }
 

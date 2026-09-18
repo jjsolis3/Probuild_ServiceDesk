@@ -596,8 +596,9 @@ public class AdminPayrollController : Controller
         var admin = await GetActingAdminAsync();
         var senderDisplay = admin != null ? $"{admin.FullName} (Admin)" : "Admin";
 
+        var attachments = await _attachments.BuildAsync(receipt, "pdf");
         var ok = await _emailService.SendPaymentStatusUpdateAsync(
-            receipt, totalPaid, outstanding, toEmail.Trim(), ccEmail, trimmedNote, senderDisplay);
+            receipt, totalPaid, outstanding, toEmail.Trim(), ccEmail, trimmedNote, senderDisplay, attachments);
 
         if (ok && admin != null)
         {
