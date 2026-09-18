@@ -5,6 +5,16 @@
     // comment-post form lower down. Declared once at file scope so a
     // duplicate `var isAdminViewer` doesn't shadow / conflict.
     var isAdminViewer = User.IsInRole("Admin") || User.IsInRole("IT Agent");
+
+    // Dual-role support: true when the logged-in account is the contractor
+    // who owns THIS receipt — regardless of whether it also holds the
+    // Admin/IT Agent role. An owner-operator account (Admin + IsContractor)
+    // needs BOTH the admin-only actions (Record/Delete Payment) AND the
+    // contractor-only ones (Confirm payment, Request Payment) on their own
+    // receipts, so this is checked independently of isAdminViewer rather
+    // than being its logical opposite.
+    var isOwningContractor = (bool)(ViewBag.IsOwningContractor ?? false);
+
     var companyName = ViewBag.CompanyName as string ?? "ServiceSphere";
     var statusColor = Model.Status switch {
         "Draft"          => "#6c757d",
@@ -719,9 +729,18 @@
                                                 || (Model.Status == "Paid" && outstandingVal > 0m));
                 // Contractor-side: can nudge admins when there's an
                 // outstanding balance on an Approved / PartiallyPaid receipt.
-                var canRequestPayment    = !isAdminViewer
+                // Gated on ownership, not "not an admin" — a dual-role
+                // account (Admin + IsContractor) still needs this on their
+                // own receipts.
+                var canRequestPayment    = isOwningContractor
                                             && outstandingVal > 0m
                                             && (Model.Status == "Approved" || Model.Status == "PartiallyPaid");
+                // Admin-side: send an explicit paid/outstanding status
+                // update to HR/AP/anyone — distinct from the contractor's
+                // "nudge" above (no rate limit, admin picks recipients).
+                var canNotifyPaymentStatus = isAdminViewer
+                                            && payments.Count > 0
+                                            && outstandingVal > 0m;
                 var showPaymentsCard     = payments.Count > 0 || canRecordPayment || canRequestPayment;
                 var paymentPct           = Model.TotalAmount > 0m
                                              ? (int)Math.Min(100, Math.Round(totalPaidVal / Model.TotalAmount * 100m))
@@ -773,6 +792,14 @@
                                     <i class="bi bi-cash-coin me-1"></i>Request Payment
                                 </button>
                             }
+                        }
+                        @if (canNotifyPaymentStatus)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-warning"
+                                    data-bs-toggle="modal" data-bs-target="#notifyPaymentStatusModal"
+                                    title="Email HR/AP or anyone else the current paid/outstanding breakdown">
+                                <i class="bi bi-megaphone me-1"></i>Notify Payment Status
+                            </button>
                         }
                     </div>
                     <div class="progress" style="height:6px;border-radius:0;">
@@ -827,7 +854,7 @@
                                                             <i class="bi bi-check2-all me-1"></i>@pay.ContractorConfirmedDate.Value.ToString("MMM d, yyyy")
                                                         </span>
                                                     }
-                                                    else if (!isAdminViewer)
+                                                    else if (isOwningContractor)
                                                     {
                                                         <form asp-controller="Contractor" asp-action="ConfirmPayment"
                                                               asp-route-paymentId="@pay.Id" method="post" class="d-inline">
@@ -1015,6 +1042,66 @@
                 </div>
             }
 
+            @* Notify Payment Status modal — admin only. Unlike Request Payment
+               (contractor-side, rate-limited, fixed recipient list), this lets
+               an admin pick recipients explicitly and send right away — no
+               cooldown, since it's a deliberate action rather than a nudge. *@
+            @if (canNotifyPaymentStatus)
+            {
+                var defaultHr = ViewBag.DefaultHrEmail as string ?? "";
+                var defaultAp = ViewBag.DefaultApEmail as string ?? "";
+                var defaultTo = !string.IsNullOrWhiteSpace(defaultHr) ? defaultHr : defaultAp;
+                var defaultCc = (!string.IsNullOrWhiteSpace(defaultHr) && !string.IsNullOrWhiteSpace(defaultAp)
+                                  && defaultHr != defaultAp) ? defaultAp : "";
+                <div class="modal fade no-print" id="notifyPaymentStatusModal" tabindex="-1" aria-labelledby="notifyPaymentStatusModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <form asp-controller="AdminPayroll" asp-action="NotifyPaymentStatus" asp-route-id="@Model.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
+                                <div class="modal-header" style="background:#b45309;color:#fff;">
+                                    <h5 class="modal-title" id="notifyPaymentStatusModalLabel">
+                                        <i class="bi bi-megaphone me-2"></i>Notify Payment Status — Receipt #@Model.Id
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-light border small mb-3">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        Sends a breakdown of what's been paid and what's still outstanding —
+                                        <strong>@totalPaidVal.ToString("C2")</strong> paid,
+                                        <strong class="text-warning">@outstandingVal.ToString("C2")</strong> outstanding
+                                        of <strong>@Model.TotalAmount.ToString("C2")</strong> total.
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">To <span class="text-danger">*</span></label>
+                                        <input type="email" name="toEmail" class="form-control" required
+                                               value="@defaultTo" placeholder="ap@example.com" />
+                                        <div class="form-text small">Pre-filled from Settings → Payroll HR/AP defaults — change as needed.</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Cc <span class="text-muted fw-normal">(optional)</span></label>
+                                        <input type="text" name="ccEmail" class="form-control"
+                                               value="@defaultCc" placeholder="Comma-separated if multiple" />
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-semibold">Note <span class="text-muted fw-normal">(optional)</span></label>
+                                        <textarea name="note" class="form-control" rows="3" maxlength="500"
+                                                  placeholder="e.g. Contractor asked about this — remaining amount goes out with next check run."></textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn" style="background:#b45309;color:#fff;">
+                                        <i class="bi bi-send me-1"></i>Send Status Update
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            }
+
             @if (Model.Status == "Paid" && Model.PaidDate.HasValue)
             {
                 <!-- Payment details + Confirm Received -->
@@ -1180,11 +1267,17 @@
 
                 @if (Model.Status != "Draft")
                 {
-                    var postController = isAdminViewer ? "AdminPayroll" : "Contractor";
-                    var postAction     = isAdminViewer ? "PostComment"  : "PostReceiptComment";
-                    var promptText     = isAdminViewer
-                        ? "Reply to the contractor, ask for clarification, or leave an internal note."
-                        : "Ask a clarifying question, add context, or leave a note for the admin team.";
+                    // Who is "speaking" when this comment posts? Default to
+                    // isAdminViewer, EXCEPT when the viewer owns this receipt
+                    // as its contractor — then route through the contractor
+                    // endpoint so a dual-role account's own comment is
+                    // correctly attributed as themselves, not as "Admin".
+                    var speakAsContractor = isOwningContractor;
+                    var postController = speakAsContractor ? "Contractor" : "AdminPayroll";
+                    var postAction     = speakAsContractor ? "PostReceiptComment" : "PostComment";
+                    var promptText     = speakAsContractor
+                        ? "Ask a clarifying question, add context, or leave a note for the admin team."
+                        : "Reply to the contractor, ask for clarification, or leave an internal note.";
 
                     @* Comment form — server validates emptiness so we drop the
                        HTML5 `required` attribute (which was causing an invisible
@@ -1196,7 +1289,7 @@
                     <form asp-controller="@postController" asp-action="@postAction" asp-route-id="@Model.Id"
                           method="post" class="mt-3" id="receiptCommentForm-@Model.Id">
                         @Html.AntiForgeryToken()
-                        @if (isAdminViewer)
+                        @if (!speakAsContractor)
                         {
                             <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
                         }

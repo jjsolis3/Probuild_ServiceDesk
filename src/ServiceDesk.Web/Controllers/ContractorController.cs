@@ -392,6 +392,17 @@ public class ContractorController : Controller
 
         if (receipt == null) return NotFound();
 
+        // Dual-role support: an account can hold the Admin/IT Agent role AND
+        // also be flagged IsContractor=true on its own Employee record (e.g.
+        // an owner-operator who both approves payroll and submits their own
+        // hours). `isAdmin` above answers "can this account see ANY
+        // receipt" — it says nothing about whether THIS receipt belongs to
+        // them. IsOwningContractor answers that second question, so the view
+        // can show contractor-only actions (Confirm payment, Request
+        // Payment) on top of the admin-only ones (Record/Delete Payment)
+        // instead of the Admin role silently hiding everything contractor-side.
+        ViewBag.IsOwningContractor = contractor != null && receipt.ContractorId == contractor.Id;
+
         var companyName = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
 
@@ -423,6 +434,19 @@ public class ContractorController : Controller
         ViewBag.Payments             = payments;
         ViewBag.TotalPaid            = totalPaid;
         ViewBag.OutstandingBalance   = outstanding;
+
+        // HR / AP email defaults — same AppSettings keys used on the
+        // AdminPayroll queue's "Forward on Approve" flow — so the new
+        // "Notify Payment Status" modal can pre-fill recipients without
+        // the admin re-typing them every time.
+        if (isAdmin)
+        {
+            var defaultsLookup = await _context.AppSettings
+                .Where(s => s.Key == "PayrollHrEmail" || s.Key == "PayrollApEmail")
+                .ToDictionaryAsync(s => s.Key, s => s.Value);
+            ViewBag.DefaultHrEmail = defaultsLookup.TryGetValue("PayrollHrEmail", out var hrE) ? hrE : "";
+            ViewBag.DefaultApEmail = defaultsLookup.TryGetValue("PayrollApEmail", out var apE) ? apE : "";
+        }
 
         ViewData["Title"] = $"Receipt #{receipt.Id}";
         return View(receipt);
