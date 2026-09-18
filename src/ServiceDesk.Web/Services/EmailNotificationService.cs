@@ -1402,6 +1402,88 @@ public class EmailNotificationService
     }
 
     /// <summary>
+    /// Admin-triggered payment status update — explicitly emails whichever
+    /// address(es) the admin types in (unlike
+    /// <see cref="SendContractorPaymentRequestAsync"/>, which routes through
+    /// the fixed PayrollNotificationRecipients list and is contractor-
+    /// initiated with a 24h cooldown). No rate limit here since it's a
+    /// deliberate one-off action, not a repeatable nudge.
+    ///
+    /// Distinct from <see cref="ShareReceiptAsync"/>: that email attaches
+    /// the PDF/XLSX with just Status + Total Amount; this one puts the
+    /// paid/outstanding breakdown directly in the email body so the
+    /// recipient doesn't have to open an attachment to see where things
+    /// stand.
+    /// </summary>
+    public async Task<bool> SendPaymentStatusUpdateAsync(
+        Core.Models.PayrollReceipt receipt,
+        decimal totalPaid,
+        decimal outstanding,
+        string toEmail,
+        string? ccEmail,
+        string? note,
+        string senderDisplay)
+    {
+        if (string.IsNullOrWhiteSpace(toEmail)) return false;
+
+        var config = await GetActiveConfig();
+        if (config == null) return false;
+
+        receipt.Contractor ??= await _context.Employees.FindAsync(receipt.ContractorId);
+        var contractorName = receipt.Contractor != null
+            ? $"{receipt.Contractor.FirstName} {receipt.Contractor.LastName}"
+            : "Contractor";
+
+        var (companyName, brandColor, logoUrl, tagline, footerText, showLogo) = await GetBrandingAsync();
+
+        var subject = $"Payment status update — receipt #{receipt.Id} ({contractorName}) — {outstanding:C} outstanding";
+
+        var noteBlock = string.IsNullOrWhiteSpace(note)
+            ? string.Empty
+            : $@"<div style='background:#f0f9ff;border-left:4px solid #0284c7;padding:12px 14px;border-radius:4px;margin:14px 0;color:#075985;'>
+                    <strong>Note from {System.Net.WebUtility.HtmlEncode(senderDisplay)}:</strong>
+                    <div style='margin-top:6px;white-space:pre-wrap;'>{System.Net.WebUtility.HtmlEncode(note.Trim())}</div>
+               </div>";
+
+        var innerContent = $@"<h3 style='margin-top:0;color:#b45309;'>Payment Status Update</h3>
+            <p>{System.Net.WebUtility.HtmlEncode(senderDisplay)} is sharing the current payment status for
+                <strong>{System.Net.WebUtility.HtmlEncode(contractorName)}</strong>'s payroll receipt <strong>#{receipt.Id}</strong>.</p>
+            {noteBlock}
+            <div style='background:#fff7ed;border-left:4px solid #ea580c;padding:12px 14px;border-radius:4px;margin:14px 0;'>
+                <strong>Balance summary</strong>
+                <div style='margin-top:6px;line-height:1.6;'>
+                    <div>Receipt total: <strong>{receipt.TotalAmount:C}</strong></div>
+                    <div>Paid so far: <strong style='color:#166534;'>{totalPaid:C}</strong></div>
+                    <div style='color:#b45309;'>Outstanding: <strong>{outstanding:C}</strong></div>
+                </div>
+            </div>
+            <table style='width:100%;border-collapse:collapse;margin:15px 0;'>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;width:160px;'>Receipt #</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Id}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Contractor</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{System.Net.WebUtility.HtmlEncode(contractorName)}</td></tr>
+                <tr><td style='padding:8px;border-bottom:1px solid #e5e7eb;font-weight:bold;'>Status</td>
+                    <td style='padding:8px;border-bottom:1px solid #e5e7eb;'>{receipt.Status}</td></tr>
+                <tr><td style='padding:8px;font-weight:bold;'>Period</td>
+                    <td style='padding:8px;'>{receipt.PeriodStart:MMM d, yyyy} – {receipt.PeriodEnd:MMM d, yyyy}</td></tr>
+            </table>";
+
+        var htmlBody = BuildHtmlEmail(innerContent, companyName, brandColor, logoUrl, tagline, footerText, showLogo);
+        try
+        {
+            await _gmailApiService.SendEmailViaGmailApi(config, _context, toEmail, subject, htmlBody, null, null, null, ccEmail);
+            await LogNotificationAsync("PayrollPaymentStatusUpdate", toEmail, toEmail, subject, null, true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Payroll] Payment status update send failed for receipt #{Id}", receipt.Id);
+            await LogNotificationAsync("PayrollPaymentStatusUpdate", toEmail, toEmail, subject, null, false, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Acknowledgement email back to the admin team once the contractor
     /// clicks Confirm Received on a Paid receipt. Closes the loop on the
     /// payment lifecycle. Sent to the same recipient list configured for

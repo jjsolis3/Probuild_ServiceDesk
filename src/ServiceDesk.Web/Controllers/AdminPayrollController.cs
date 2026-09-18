@@ -554,6 +554,65 @@ public class AdminPayrollController : Controller
         return SafeRedirect(returnUrl, nameof(Index));
     }
 
+    // POST /AdminPayroll/NotifyPaymentStatus/{id}
+    //
+    // Admin-triggered "here's what's paid, here's what's owed" email to
+    // whichever address(es) the admin types in (defaults pre-filled from
+    // PayrollHrEmail / PayrollApEmail on the modal, but fully editable).
+    // Distinct from the contractor's own Request Payment nudge — no rate
+    // limit, no fixed recipient list, and framed as an admin-to-admin/HR/AP
+    // status broadcast rather than a payee's reminder.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> NotifyPaymentStatus(int id, string toEmail, string? ccEmail,
+        string? note, string? returnUrl)
+    {
+        var receipt = await _context.PayrollReceipts
+            .Include(r => r.Contractor)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (receipt == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(toEmail))
+        {
+            TempData["Error"] = "Recipient email is required.";
+            return SafeRedirect(returnUrl, nameof(Index));
+        }
+
+        var totalPaid = await _context.PayrollReceiptPayments
+            .Where(p => p.PayrollReceiptId == receipt.Id)
+            .SumAsync(p => (decimal?)p.Amount) ?? 0m;
+        var outstanding = Math.Max(0m,
+            Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
+
+        if (outstanding <= 0m)
+        {
+            TempData["Warning"] = "This receipt has no outstanding balance — nothing to notify about.";
+            return SafeRedirect(returnUrl, nameof(Index));
+        }
+
+        var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (trimmedNote?.Length > 500) trimmedNote = trimmedNote[..500];
+
+        var admin = await GetActingAdminAsync();
+        var senderDisplay = admin != null ? $"{admin.FullName} (Admin)" : "Admin";
+
+        var ok = await _emailService.SendPaymentStatusUpdateAsync(
+            receipt, totalPaid, outstanding, toEmail.Trim(), ccEmail, trimmedNote, senderDisplay);
+
+        if (ok && admin != null)
+        {
+            var detail = $"Sent payment status update to {toEmail.Trim()}" +
+                         (string.IsNullOrEmpty(ccEmail) ? "" : $" (cc {ccEmail})") +
+                         $" — {totalPaid:C2} paid, {outstanding:C2} outstanding.";
+            await _activity.LogAdminAsync(receipt.Id, admin, detail);
+        }
+
+        TempData[ok ? "Success" : "Error"] = ok
+            ? $"Payment status sent to {toEmail.Trim()}."
+            : "Email send failed. Check the Email Activity log for details.";
+        return SafeRedirect(returnUrl, nameof(Index));
+    }
+
     /// <summary>
     /// Sums this receipt's payments, sets the receipt Status based on the
     /// running total, and refreshes the "last payment" snapshot fields on
