@@ -19,6 +19,17 @@ public class TicketEmail
     [Display(Name = "RFC Message-ID")]
     public string? MessageId { get; set; }
 
+    /// <summary>
+    /// Gmail's own conversation id (distinct from the RFC Message-ID above).
+    /// Groups every message in a thread server-side regardless of whether
+    /// the sender's mail client preserved In-Reply-To/References, so it
+    /// survives forwards and replies from a different participant that
+    /// those headers miss.
+    /// </summary>
+    [StringLength(500)]
+    [Display(Name = "Gmail Thread ID")]
+    public string? GmailThreadId { get; set; }
+
     [StringLength(500)]
     [Display(Name = "In-Reply-To")]
     public string? InReplyTo { get; set; }
