@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
+using ServiceDesk.Core;
 using ServiceDesk.Core.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -829,10 +830,26 @@ public class SettingsController : Controller
         return View(configs);
     }
 
+    /// <summary>
+    /// Candidates for the "Default Submitter" dropdown: active employees plus
+    /// the seeded "Unassigned Sender" placeholder (which is intentionally
+    /// IsActive = false so it stays out of every other employee/assignee
+    /// picker in the app — this is the one place it should show up).
+    /// </summary>
+    private async Task<List<Employee>> GetSubmitterCandidatesAsync()
+    {
+        return await _context.Employees
+            .Where(e => e.IsActive || e.Email == SystemEmployees.UnassignedSenderEmail)
+            .OrderByDescending(e => e.IsActive)
+            .ThenBy(e => e.FirstName)
+            .ToListAsync();
+    }
+
     // GET: Settings/CreateEmailConfig
     public async Task<IActionResult> CreateEmailConfig()
     {
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        ViewBag.SubmitterCandidates = await GetSubmitterCandidatesAsync();
         return View(new EmailConfiguration());
     }
 
@@ -855,6 +872,7 @@ public class SettingsController : Controller
             return RedirectToAction(nameof(EmailIntegration));
         }
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        ViewBag.SubmitterCandidates = await GetSubmitterCandidatesAsync();
         return View(config);
     }
 
@@ -865,6 +883,7 @@ public class SettingsController : Controller
         var config = await _context.EmailConfigurations.FindAsync(id);
         if (config == null) return NotFound();
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        ViewBag.SubmitterCandidates = await GetSubmitterCandidatesAsync();
         return View(config);
     }
 
@@ -899,6 +918,7 @@ public class SettingsController : Controller
             existing.CreateTicketsFromEmails = config.CreateTicketsFromEmails;
             existing.AutoReplyOnNewTicket = config.AutoReplyOnNewTicket;
             existing.DefaultAssigneeId = config.DefaultAssigneeId;
+            existing.DefaultSubmitterId = config.DefaultSubmitterId;
             existing.IsActive = config.IsActive;
 
             // Preserve: GmailRefreshToken, GmailAccessToken, GmailTokenExpiry, GmailHistoryId, IsAuthorized
@@ -908,6 +928,7 @@ public class SettingsController : Controller
             return RedirectToAction(nameof(EmailIntegration));
         }
         ViewBag.Employees = await _context.Employees.Where(e => e.IsActive).ToListAsync();
+        ViewBag.SubmitterCandidates = await GetSubmitterCandidatesAsync();
         return View(config);
     }
 

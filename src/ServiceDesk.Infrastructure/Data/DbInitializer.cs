@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ServiceDesk.Core;
 using ServiceDesk.Core.Enums;
 using ServiceDesk.Core.Models;
 using ServiceDesk.Core.Services;
@@ -2410,6 +2411,18 @@ public static class DbInitializer
                     ON dbo.TicketEmails (GmailThreadId)
                     WHERE GmailThreadId IS NOT NULL;
             END");
+
+        // Separate from DefaultAssigneeId ("who should work this ticket") —
+        // this answers "who do we record as the submitter when an inbound
+        // email's sender isn't a known Employee." Without it that fallback
+        // silently reused DefaultAssigneeId, attributing every unmatched
+        // sender (vendor mail, unrecognized addresses) to a real staff member.
+        TryRunSchemaUpgrade(context, "EmailConfigurations_AddDefaultSubmitterId", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailConfigurations')
+               AND COL_LENGTH('dbo.EmailConfigurations', 'DefaultSubmitterId') IS NULL
+            BEGIN
+                ALTER TABLE dbo.EmailConfigurations ADD DefaultSubmitterId INT NULL;
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)
@@ -2437,6 +2450,15 @@ public static class DbInitializer
             // Tables may not exist yet — skip seeding.
             // Run the Database/ServiceSphere_CreateTables.sql script on SQL Server first.
             Console.WriteLine($"[DbInitializer] Seed warning: {ex.Message}");
+        }
+
+        try
+        {
+            SeedUnassignedSenderEmployee(context);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbInitializer] SeedUnassignedSenderEmployee warning: {ex.Message}");
         }
 
         try
@@ -3280,5 +3302,49 @@ public static class DbInitializer
         }
 
         context.SaveChanges();
+    }
+
+    /// <summary>
+    /// Seeds one inactive, clearly-labeled placeholder Employee used as the
+    /// fallback "submitter" for inbound emails that don't match a known
+    /// Employee. IsActive = false keeps it out of every assignee/employee
+    /// picker across the app (they all filter on IsActive); the Email
+    /// Integration settings page looks it up explicitly by its reserved
+    /// email address to offer it in the Default Submitter dropdown.
+    ///
+    /// Also auto-points any EmailConfiguration that doesn't already have a
+    /// DefaultSubmitterId at this placeholder, so the fix takes effect
+    /// immediately without requiring manual setup on existing installs.
+    /// </summary>
+    private static void SeedUnassignedSenderEmployee(ServiceDeskDbContext context)
+    {
+        var placeholder = context.Employees
+            .FirstOrDefault(e => e.Email == SystemEmployees.UnassignedSenderEmail);
+
+        if (placeholder == null)
+        {
+            placeholder = new Employee
+            {
+                FirstName  = "Unassigned",
+                LastName   = "Sender",
+                Email      = SystemEmployees.UnassignedSenderEmail,
+                Department = "System",
+                JobTitle   = "Placeholder — inbound email sender not recognized",
+                IsActive   = false,
+                HireDate   = DateTime.UtcNow,
+            };
+            context.Employees.Add(placeholder);
+            context.SaveChanges();
+        }
+
+        var configsNeedingDefault = context.EmailConfigurations
+            .Where(c => c.DefaultSubmitterId == null)
+            .ToList();
+        if (configsNeedingDefault.Count > 0)
+        {
+            foreach (var config in configsNeedingDefault)
+                config.DefaultSubmitterId = placeholder.Id;
+            context.SaveChanges();
+        }
     }
 }
