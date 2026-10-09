@@ -120,6 +120,22 @@ public class TicketSimilarityService
         await EnsureCorpusBuiltAsync();
     }
 
+    /// <summary>
+    /// Rebuilds the corpus if it's older than <paramref name="maxAge"/>. Callers
+    /// that check a just-created ticket for duplicates right away need this —
+    /// the normal hourly RebuildInterval means a sibling ticket created a few
+    /// minutes earlier (the actual duplicate) might not be indexed yet, so the
+    /// similarity check would silently find nothing even for an identical
+    /// title. Keep maxAge short (a minute or two) for that use; the default
+    /// hourly cadence stays in effect for exploratory callers like the
+    /// ticket-detail "Similar Tickets" widget.
+    /// </summary>
+    public async Task EnsureFreshAsync(TimeSpan maxAge)
+    {
+        if (DateTime.UtcNow - _lastBuilt >= maxAge)
+            await RebuildAsync();
+    }
+
     // ── Corpus build ──────────────────────────────────────────────────────────
 
     private async Task EnsureCorpusBuiltAsync()

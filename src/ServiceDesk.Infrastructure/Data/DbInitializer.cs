@@ -2387,6 +2387,29 @@ public static class DbInitializer
                 ALTER TABLE dbo.PayrollReceipts
                     ADD LastPaymentRequestDate DATETIME2(7) NULL;
             END");
+
+        // Gmail's own conversation id was already being fetched from the API
+        // but never stored — adding it lets inbound threading match a reply
+        // from a different participant (forward, CC'd colleague) to the same
+        // ticket even when In-Reply-To/References get dropped in transit.
+        TryRunSchemaUpgrade(context, "TicketEmails_AddGmailThreadId", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketEmails')
+               AND COL_LENGTH('dbo.TicketEmails', 'GmailThreadId') IS NULL
+            BEGIN
+                ALTER TABLE dbo.TicketEmails ADD GmailThreadId NVARCHAR(500) NULL;
+            END");
+
+        TryRunSchemaUpgrade(context, "TicketEmails_AddGmailThreadIdIndex", @"
+            IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TicketEmails')
+               AND COL_LENGTH('dbo.TicketEmails', 'GmailThreadId') IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                                WHERE name = 'IX_TicketEmails_GmailThreadId'
+                                  AND object_id = OBJECT_ID('dbo.TicketEmails'))
+            BEGIN
+                CREATE INDEX IX_TicketEmails_GmailThreadId
+                    ON dbo.TicketEmails (GmailThreadId)
+                    WHERE GmailThreadId IS NOT NULL;
+            END");
     }
 
     private static void TryRunSchemaUpgrade(ServiceDeskDbContext context, string label, string sql)

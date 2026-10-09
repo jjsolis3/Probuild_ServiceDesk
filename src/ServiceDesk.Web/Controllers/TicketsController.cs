@@ -920,6 +920,7 @@ public class TicketsController : Controller
             {
                 try
                 {
+                    await _similarity.EnsureFreshAsync(TimeSpan.FromMinutes(1));
                     var similar = await _similarity.FindSimilarAsync(
                         ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
                     var duplicates = similar.Where(s => s.ScorePct >= 80).ToList();

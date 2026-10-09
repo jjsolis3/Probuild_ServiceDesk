@@ -243,6 +243,7 @@ public class GmailApiService : BackgroundService
         var from = GetHeader(headers, "From") ?? "";
         var inReplyTo = GetHeader(headers, "In-Reply-To");
         var references = GetHeader(headers, "References");
+        var threadId = fullMessage.ThreadId;
 
         // ---- GUARDRAIL 0: Age gate — skip emails older than 72 hours ----
         // Prevents a reset historyId or a flooded inbox from creating tickets from
@@ -334,6 +335,12 @@ public class GmailApiService : BackgroundService
         // ---- THREADING: Check subject for [#SS-XXXXX] ----
         var ticketMatch = TicketRefRegex.Match(subject);
         int? existingTicketId = null;
+        // Tracks *how* existingTicketId was resolved so the APPEND-NOTE branch
+        // below can decide whether to add a disclosure note. Reply-chain-based
+        // matches (tag/thread/in-reply-to/references) are high confidence —
+        // only the subject fallback (no chain headers, possibly a different
+        // sender) is worth flagging for a human to double-check.
+        string? matchMethod = null;
 
         if (ticketMatch.Success && int.TryParse(ticketMatch.Groups[1].Value, out var parsedId))
         {
@@ -342,10 +349,28 @@ public class GmailApiService : BackgroundService
             if (ticketExists)
             {
                 existingTicketId = parsedId;
+                matchMethod = "tag";
             }
         }
 
-        // If no subject match, try In-Reply-To / References header threading
+        // ---- THREADING: Gmail's own conversation grouping ----
+        // Strongest signal after the [#SS-id] tag: groups every message in a
+        // conversation server-side, so it still matches a reply or forward
+        // from a different participant (a colleague CC'd on the thread, or
+        // someone who hit "Reply All") even when that participant's mail
+        // client drops In-Reply-To/References entirely.
+        if (!existingTicketId.HasValue && !string.IsNullOrEmpty(threadId))
+        {
+            var relatedByThread = await context.TicketEmails
+                .FirstOrDefaultAsync(te => te.GmailThreadId == threadId, stoppingToken);
+            if (relatedByThread != null)
+            {
+                existingTicketId = relatedByThread.TicketId;
+                matchMethod = "thread";
+            }
+        }
+
+        // If no match yet, try In-Reply-To / References header threading
         if (!existingTicketId.HasValue && !string.IsNullOrEmpty(inReplyTo))
         {
             var relatedEmail = await context.TicketEmails
@@ -353,6 +378,7 @@ public class GmailApiService : BackgroundService
             if (relatedEmail != null)
             {
                 existingTicketId = relatedEmail.TicketId;
+                matchMethod = "in-reply-to";
             }
         }
 
@@ -367,21 +393,27 @@ public class GmailApiService : BackgroundService
                 if (relatedEmail != null)
                 {
                     existingTicketId = relatedEmail.TicketId;
+                    matchMethod = "references";
                     break;
                 }
             }
         }
 
         // ---- THREADING FALLBACK: match clean subject against recent open tickets ----
-        // Catches forwarded emails and replies that bypass the three header-based
-        // checks above. Two safety rails so a generic subject like "Re: Update"
-        // doesn't accidentally absorb every customer's emails:
-        //   1. Window narrowed from 14 days to 7 days. Most replies happen
-        //      within 3-4 days; 14 days caught too many false positives.
-        //   2. Match the original ticket's SubmittedById to a known Employee
-        //      for the inbound sender. If the sender isn't a known employee,
-        //      or if the matched ticket was submitted by someone else, skip
-        //      the fallback entirely (let a fresh ticket be created instead).
+        // Catches forwarded emails and replies that bypass every signal above —
+        // most commonly a different person (a colleague, someone CC'd) following
+        // up on the same issue with no reply-chain headers at all. Two safety
+        // rails keep a generic subject like "Re: Update" from accidentally
+        // absorbing unrelated emails:
+        //   1. Narrow 4-day window — most genuine follow-ups happen within a
+        //      few days; a longer window raises the odds of a coincidental
+        //      title collision between two unrelated issues.
+        //   2. The sender must resolve to a known Employee (not literally the
+        //      same person as the original submitter — that was the bug: a
+        //      colleague's reply about the same open ticket was being treated
+        //      as unrelated just because they aren't the original submitter).
+        //      An unrecognized sender still falls through to creating a new
+        //      ticket rather than being silently absorbed into someone else's.
         if (!existingTicketId.HasValue)
         {
             var cleanedSubject = CleanSubject(subject);
@@ -394,22 +426,24 @@ public class GmailApiService : BackgroundService
 
                 if (submitterEmpId.HasValue)
                 {
-                    var cutoff = DateTime.UtcNow.AddDays(-7);
+                    var cutoff = DateTime.UtcNow.AddDays(-4);
                     var subjectMatch = await context.Tickets
                         .Where(t => t.Title == cleanedSubject
                                  && t.CreatedDate >= cutoff
-                                 && t.SubmittedById == submitterEmpId.Value
                                  && t.Status != TicketStatus.Closed
                                  && t.Status != TicketStatus.Cancelled)
                         .OrderByDescending(t => t.CreatedDate)
-                        .Select(t => (int?)t.Id)
+                        .Select(t => new { Id = (int?)t.Id, t.SubmittedById })
                         .FirstOrDefaultAsync(stoppingToken);
-                    if (subjectMatch.HasValue)
+                    if (subjectMatch != null)
                     {
-                        existingTicketId = subjectMatch.Value;
+                        existingTicketId = subjectMatch.Id;
+                        matchMethod = subjectMatch.SubmittedById == submitterEmpId.Value
+                            ? "subject-fallback"
+                            : "subject-fallback-other-sender";
                         _logger.LogInformation(
-                            "Threaded email to Ticket #{TicketId} via subject fallback: {Subject}",
-                            existingTicketId.Value, cleanedSubject);
+                            "Threaded email to Ticket #{TicketId} via subject fallback ({Method}): {Subject}",
+                            existingTicketId.Value, matchMethod, cleanedSubject);
                     }
                 }
             }
@@ -438,11 +472,32 @@ public class GmailApiService : BackgroundService
                 ticket.UpdatedDate = DateTime.UtcNow;
             }
 
+            // The subject fallback has no reply-chain header to point to, and
+            // this message came from someone other than the ticket's original
+            // submitter — flag it plainly so a human can split it back into
+            // its own ticket if this wasn't actually the same issue.
+            if (matchMethod == "subject-fallback-other-sender")
+            {
+                context.TicketNotes.Add(new TicketNote
+                {
+                    TicketId    = existingTicketId.Value,
+                    AuthorName  = "Auto-Threading",
+                    Content     = $"📎 Auto-linked this email to this ticket because the subject matched exactly "
+                                + $"and it's from {(fromName ?? fromEmail)} ({fromEmail}) — a different sender than "
+                                + "who originally opened it. No reply/forward headers tied it to this ticket, so "
+                                + "this was a best-effort subject match. Verify this is really the same issue; "
+                                + "if not, move this note to a new ticket.",
+                    Source      = "System",
+                    IsInternal  = true,
+                    CreatedDate = DateTime.UtcNow,
+                });
+            }
+
             _logger.LogInformation("Added email reply as note to Ticket #{TicketId}: {Subject}",
                 existingTicketId.Value, subject);
             WriteInboundLog(context, config, gmailMsg, fullMessage, messageId, subject, fromEmail,
                 InboundAction.NoteAppended,
-                detail: $"Threaded into Ticket #{existingTicketId.Value}.");
+                detail: $"Threaded into Ticket #{existingTicketId.Value} via {matchMethod ?? "unknown"}.");
         }
         else if (config.CreateTicketsFromEmails)
         {
@@ -530,6 +585,7 @@ public class GmailApiService : BackgroundService
                     using var dupScope = _serviceProvider.CreateScope();
                     var similarity = dupScope.ServiceProvider.GetRequiredService<TicketSimilarityService>();
                     var db         = dupScope.ServiceProvider.GetRequiredService<ServiceDeskDbContext>();
+                    await similarity.EnsureFreshAsync(TimeSpan.FromMinutes(1));
                     var similar    = await similarity.FindSimilarAsync(
                         ticket.Title, ticket.Description, excludeTicketId: ticket.Id, topN: 3);
                     var dupes = similar.Where(s => s.ScorePct >= 80).ToList();
@@ -614,6 +670,7 @@ public class GmailApiService : BackgroundService
                 MessageId = messageId,
                 InReplyTo = inReplyTo,
                 References = references,
+                GmailThreadId = threadId,
                 FromAddress = fromEmail,
                 FromName = fromName,
                 Subject = subject.Length > 500 ? subject[..500] : subject,
@@ -1048,12 +1105,17 @@ public class GmailApiService : BackgroundService
             return null;
         }
 
-        // Parse sent message ID from response
+        // Parse sent message ID + thread ID from response
         var responseJson = await response.Content.ReadAsStringAsync(ct);
         var responseData = JsonSerializer.Deserialize<JsonElement>(responseJson);
         var sentGmailId = responseData.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+        var sentThreadId = responseData.TryGetProperty("threadId", out var threadIdProp) ? threadIdProp.GetString() : null;
 
-        // Record outbound email for threading (only when linked to a ticket)
+        // Record outbound email for threading (only when linked to a ticket).
+        // Storing the thread id here (not just on inbound rows) means a reply
+        // from a different recipient — a colleague on the same Gmail thread —
+        // still matches back to this ticket even if their mail client drops
+        // In-Reply-To/References.
         if (ticketId.HasValue)
         {
             var ticketEmail = new TicketEmail
@@ -1063,6 +1125,7 @@ public class GmailApiService : BackgroundService
                 MessageId = ourMessageId,
                 InReplyTo = inReplyTo,
                 References = references,
+                GmailThreadId = sentThreadId,
                 FromAddress = config.EmailAddress,
                 FromName = "ServiceSphere IT Support",
                 Subject = subject.Length > 500 ? subject[..500] : subject,
