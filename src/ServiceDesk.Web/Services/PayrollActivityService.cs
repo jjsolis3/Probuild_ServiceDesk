@@ -5,7 +5,7 @@ namespace ServiceDesk.Web.Services;
 
 /// <summary>
 /// Centralized writer for the payroll receipt activity / discussion thread.
-/// Every state transition (Submit, Approve, Reject, MarkPaid, Confirm) and
+/// Every state transition (Submit, Approve, Reject, RecordPayment, Confirm) and
 /// every human comment funnels through here so the timeline rendering is
 /// the single source of truth for "what happened on this receipt and
 /// when." Keeping all the AuthorName / AuthorRole denormalization in one

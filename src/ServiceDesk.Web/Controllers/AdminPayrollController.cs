@@ -353,66 +353,6 @@ public class AdminPayrollController : Controller
         return (total, hrSent, apSent);
     }
 
-    // POST /AdminPayroll/MarkPaid/{id}
-    //
-    // Capture method (Check/ACH/Zelle/Wire/Other) + reference so the
-    // contractor sees actionable detail in the "Payment Confirmed" email
-    // and can reconcile against their bank.
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MarkPaid(int id, string? paymentMethod, string? paymentReference)
-    {
-        var receipt = await _context.PayrollReceipts.FindAsync(id);
-        if (receipt == null) return NotFound();
-
-        if (receipt.Status != "Approved")
-        {
-            TempData["Error"] = "Only Approved receipts can be marked as Paid.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        receipt.Status           = "Paid";
-        receipt.PaidDate         = DateTime.UtcNow;
-        receipt.PaymentMethod    = string.IsNullOrWhiteSpace(paymentMethod)    ? null : paymentMethod.Trim();
-        receipt.PaymentReference = string.IsNullOrWhiteSpace(paymentReference) ? null : paymentReference.Trim();
-
-        await _context.SaveChangesAsync();
-
-        var admin = await GetActingAdminAsync();
-        if (admin != null)
-        {
-            var summary = (receipt.PaymentMethod, receipt.PaymentReference) switch
-            {
-                (null, null) => "Marked as Paid.",
-                (var m, null) => $"Marked as Paid via {m}.",
-                (null, var r) => $"Marked as Paid — reference {r}.",
-                (var m, var r) => $"Marked as Paid via {m} — reference {r}."
-            };
-            await _activity.LogAdminAsync(receipt.Id, admin, summary);
-        }
-
-        try { await _emailService.NotifyReceiptPaidAsync(receipt); }
-        catch (Exception) { /* email failure should not block UI flow */ }
-
-        var paidDetail = (receipt.PaymentMethod, receipt.PaymentReference) switch
-        {
-            (null, null)   => $"{receipt.TotalAmount:C} issued",
-            (var m, null)  => $"{receipt.TotalAmount:C} · {m}",
-            (null, var r)  => $"{receipt.TotalAmount:C} · ref {r}",
-            (var m, var r) => $"{receipt.TotalAmount:C} · {m} · {r}"
-        };
-        await NotifyContractorOnBellAsync(
-            receipt.ContractorId,
-            type:    "PayrollPaid",
-            title:   $"Payment issued for receipt #{receipt.Id}",
-            message: paidDetail,
-            link:    ContractorReceiptLink(Url, receipt.Id),
-            icon:    "bi-cash-coin");
-
-        TempData["Success"] = "Receipt marked as Paid.";
-        return RedirectToAction(nameof(Index));
-    }
-
     // POST /AdminPayroll/RecordPayment/{id}
     //
     // Adds a single payment row against a receipt. The receipt's Status
@@ -769,53 +709,6 @@ public class AdminPayrollController : Controller
         }
 
         TempData["Success"] = $"{receipts.Count} receipt(s) approved.";
-        return RedirectToAction(nameof(Index));
-    }
-
-    // POST /AdminPayroll/BulkMarkPaid
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> BulkMarkPaid(int[] ids)
-    {
-        if (ids == null || ids.Length == 0)
-        {
-            TempData["Error"] = "No receipts selected.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var receipts = await _context.PayrollReceipts
-            .Where(r => ids.Contains(r.Id) && r.Status == "Approved")
-            .ToListAsync();
-
-        foreach (var r in receipts)
-        {
-            r.Status   = "Paid";
-            r.PaidDate = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
-
-        var admin = await GetActingAdminAsync();
-        if (admin != null)
-        {
-            foreach (var r in receipts)
-                await _activity.LogAdminAsync(r.Id, admin, "Marked as Paid (bulk).");
-        }
-
-        foreach (var r in receipts)
-        {
-            try { await _emailService.NotifyReceiptPaidAsync(r); }
-            catch (Exception) { /* email failure should not block UI flow */ }
-
-            await NotifyContractorOnBellAsync(
-                r.ContractorId, "PayrollPaid",
-                title:   $"Payment issued for receipt #{r.Id}",
-                message: $"{r.TotalAmount:C} issued",
-                link:    ContractorReceiptLink(Url, r.Id),
-                icon:    "bi-cash-coin");
-        }
-
-        TempData["Success"] = $"{receipts.Count} receipt(s) marked as Paid.";
         return RedirectToAction(nameof(Index));
     }
 
