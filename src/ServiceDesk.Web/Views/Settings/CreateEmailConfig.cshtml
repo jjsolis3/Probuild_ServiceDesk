@@ -49,6 +49,27 @@
                             }
                         </select>
                         <span asp-validation-for="DefaultAssigneeId" class="text-danger"></span>
+                        <div class="form-text">Who works tickets from this mailbox by default.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DefaultSubmitterId" class="form-label"></label>
+                        <select asp-for="DefaultSubmitterId" class="form-select">
+                            <option value="">-- No Default Submitter --</option>
+                            @if (ViewBag.SubmitterCandidates != null)
+                            {
+                                foreach (var employee in (IEnumerable<Employee>)ViewBag.SubmitterCandidates)
+                                {
+                                    <option value="@employee.Id">@employee.FullName@(employee.IsActive ? "" : " (placeholder)")</option>
+                                }
+                            }
+                        </select>
+                        <span asp-validation-for="DefaultSubmitterId" class="text-danger"></span>
+                        <div class="form-text">
+                            Who gets recorded as "Submitted By" when an inbound email's sender isn't a
+                            recognized employee (vendor mail, unrecognized addresses) — separate from Default
+                            Assignee above, which is about who <em>works</em> the ticket, not who sent it.
+                        </div>
                     </div>
                 </div>
             </div>

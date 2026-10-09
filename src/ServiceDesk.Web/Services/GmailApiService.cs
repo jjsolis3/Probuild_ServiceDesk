@@ -535,7 +535,13 @@ public class GmailApiService : BackgroundService
                 Status = TicketStatus.Open,
                 Priority = TicketPriority.Medium,
                 CreatedDate = DateTime.UtcNow,
-                SubmittedById = submitter?.Id ?? config.DefaultAssigneeId ?? 1,
+                // Real sender wins; otherwise the configured placeholder
+                // ("Unassigned Sender" by default) keeps unmatched mail —
+                // vendor/marketing emails, unrecognized addresses — from
+                // being attributed to whichever employee is DefaultAssigneeId.
+                // That fallback-to-fallback only matters for an install that
+                // predates DefaultSubmitterId and hasn't been seeded yet.
+                SubmittedById = submitter?.Id ?? config.DefaultSubmitterId ?? config.DefaultAssigneeId ?? 1,
                 BranchId = submitterBranchId,
                 AssignedToId = resolvedAssigneeId,
             };

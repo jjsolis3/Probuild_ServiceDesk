@@ -77,6 +77,17 @@ public class EmailConfiguration
     [Display(Name = "Default Assignee")]
     public int? DefaultAssigneeId { get; set; }
 
+    /// <summary>
+    /// Who gets recorded as "Submitted By" on a ticket created from an email
+    /// whose sender doesn't match a known Employee (vendor mail, unrecognized
+    /// addresses). Deliberately separate from <see cref="DefaultAssigneeId"/> —
+    /// that field answers "who should work this ticket," not "who sent it."
+    /// Falls back to DefaultAssigneeId, then Employee #1, if unset, so existing
+    /// configurations keep working without needing to be reconfigured.
+    /// </summary>
+    [Display(Name = "Default Submitter")]
+    public int? DefaultSubmitterId { get; set; }
+
     // ---- Status ----
 
     [Display(Name = "Last Polled")]
@@ -101,4 +112,5 @@ public class EmailConfiguration
 
     // Navigation
     public Employee? DefaultAssignee { get; set; }
+    public Employee? DefaultSubmitter { get; set; }
 }
