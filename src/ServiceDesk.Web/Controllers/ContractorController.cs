@@ -558,6 +558,67 @@ public class ContractorController : Controller
         return RedirectToAction(nameof(ReceiptDetail), new { id = payment.PayrollReceiptId });
     }
 
+    // POST /Contractor/ConfirmPayments/{id}
+    //
+    // Batch version of ConfirmPayment — lets a contractor tick several
+    // not-yet-confirmed checks and confirm them all in one POST instead of
+    // one page reload per payment. Same attestation semantics as the
+    // single-payment action, just applied to a set.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmPayments(int id, List<int>? paymentIds)
+    {
+        var contractor = await GetContractorEmployeeAsync();
+        if (contractor == null) return RedirectToAction(nameof(Payroll));
+
+        if (paymentIds == null || paymentIds.Count == 0)
+        {
+            TempData["Warning"] = "No payments were selected.";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var payments = await _context.PayrollReceiptPayments
+            .Include(p => p.Receipt)
+            .Where(p => paymentIds.Contains(p.Id)
+                     && p.PayrollReceiptId == id
+                     && p.Receipt != null
+                     && p.Receipt.ContractorId == contractor.Id
+                     && !p.ContractorConfirmedDate.HasValue)
+            .ToListAsync();
+
+        if (payments.Count == 0)
+        {
+            TempData["Warning"] = "Those payments were already confirmed (or don't belong to this receipt).";
+            return RedirectToAction(nameof(ReceiptDetail), new { id });
+        }
+
+        var now = DateTime.UtcNow;
+        var total = 0m;
+        foreach (var payment in payments)
+        {
+            payment.ContractorConfirmedDate = now;
+            total += payment.Amount;
+        }
+        await _context.SaveChangesAsync();
+
+        var summary = string.Join("; ", payments
+            .OrderBy(p => p.PaymentDate)
+            .Select(p => $"{p.Amount:C2} ({p.PaymentMethod}" +
+                         (string.IsNullOrEmpty(p.CheckNumber) ? "" : $" #{p.CheckNumber}") + ")"));
+        await _activity.LogContractorAsync(id, contractor,
+            $"Confirmed receipt of {payments.Count} payment(s) totaling {total:C2}: {summary}.");
+
+        await NotifyAdminsOnBellAsync(
+            type:    "PayrollPaymentConfirmed",
+            title:   $"{contractor.FirstName} confirmed {payments.Count} payment(s) totaling {total:C2} on #{id}",
+            message: summary,
+            link:    Url.Action(nameof(ReceiptDetail), new { id }),
+            icon:    "bi-check2-all");
+
+        TempData["Success"] = $"Confirmed {payments.Count} payment(s) totaling {total:C2}.";
+        return RedirectToAction(nameof(ReceiptDetail), new { id });
+    }
+
     // POST /Contractor/RequestPayment/{id}
     //
     // Contractor-triggered nudge: emails PayrollNotificationRecipients (and

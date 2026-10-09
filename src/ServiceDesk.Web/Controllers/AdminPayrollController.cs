@@ -425,7 +425,7 @@ public class AdminPayrollController : Controller
     public async Task<IActionResult> RecordPayment(int id,
         decimal amount, DateTime paymentDate, string paymentMethod,
         string? checkNumber, string? reference, string? note,
-        string? returnUrl)
+        bool sendNotification, string? returnUrl)
     {
         var receipt = await _context.PayrollReceipts
             .Include(r => r.Contractor)
@@ -483,13 +483,17 @@ public class AdminPayrollController : Controller
             await _activity.LogAdminAsync(receipt.Id, admin, detail.ToString());
         }
 
-        // Contractor email + bell. On the final payment we use the existing
-        // "receipt paid" template; on partials we use a new one.
+        // Contractor email + bell. The "fully paid" milestone always emails
+        // (it only fires once per receipt, however many checks led to it).
+        // A partial payment only emails when the admin explicitly checked
+        // "Email the contractor now" — left unchecked by default so
+        // back-to-back check entry doesn't send one email per check. Use
+        // "Notify Payment Status" afterward for a single combined summary.
         try
         {
             if (outstanding <= 0m)
                 await _emailService.NotifyReceiptPaidAsync(receipt);
-            else
+            else if (sendNotification)
                 await _emailService.NotifyPartialPaymentAsync(receipt, payment, totalPaid, outstanding);
         }
         catch (Exception) { /* email failure should not block UI flow */ }
@@ -510,7 +514,8 @@ public class AdminPayrollController : Controller
 
         TempData["Success"] = outstanding <= 0m
             ? $"Payment of {payment.Amount:C2} recorded. Receipt fully paid ({totalPaid:C2}) — status set to Paid."
-            : $"Payment of {payment.Amount:C2} recorded. Paid so far {totalPaid:C2} of {receipt.TotalAmount:C2} ({outstanding:C2} outstanding).";
+            : $"Payment of {payment.Amount:C2} recorded. Paid so far {totalPaid:C2} of {receipt.TotalAmount:C2} ({outstanding:C2} outstanding)." +
+              (sendNotification ? " Contractor notified by email." : " No email sent — use Notify Payment Status to send a summary.");
         return SafeRedirect(returnUrl, nameof(Index));
     }
 
