@@ -905,9 +905,17 @@
                                                 <td class="text-end no-export">
                                                     @if (isAdminViewer)
                                                     {
+                                                        // Deleting a payment the contractor already attested to
+                                                        // receiving silently removes confirmed money from the
+                                                        // ledger — call that out explicitly instead of using the
+                                                        // same generic warning as an unconfirmed row. PaymentMethod
+                                                        // is always one of the fixed dropdown values (never free
+                                                        // text), so no quote-escaping concerns in the JS literal.
                                                         <form asp-controller="AdminPayroll" asp-action="DeletePayment"
                                                               method="post" class="d-inline"
-                                                              onsubmit="return confirm('Delete this @pay.Amount.ToString("C2") @pay.PaymentMethod payment? The receipt status will be recalculated.');">
+                                                              onsubmit="return confirm('@(pay.ContractorConfirmedDate.HasValue
+                                                                  ? $"The contractor already CONFIRMED receiving this {pay.Amount:C2} {pay.PaymentMethod} payment on {pay.ContractorConfirmedDate.Value:MMM d, yyyy}. Delete it anyway? This removes a confirmed payment from the record and the receipt status will be recalculated."
+                                                                  : $"Delete this {pay.Amount:C2} {pay.PaymentMethod} payment? The receipt status will be recalculated.")');">
                                                             @Html.AntiForgeryToken()
                                                             <input type="hidden" name="paymentId" value="@pay.Id" />
                                                             <input type="hidden" name="returnUrl" value="@Url.Action("ReceiptDetail", "Contractor", new { id = Model.Id })" />
@@ -1177,7 +1185,19 @@
                 </div>
             }
 
-            @if (Model.Status == "Paid" && Model.PaidDate.HasValue)
+            @{
+                // Fallback box for receipts marked Paid before any itemized
+                // PayrollReceiptPayment rows existed on them (or, historically,
+                // via the now-removed single-shot Mark Paid button). Once a
+                // receipt has real itemized rows, the Payments Received card's
+                // per-check confirm covers this and showing both would ask the
+                // contractor to confirm the same money twice. Read fresh from
+                // ViewBag here rather than the `payments` local declared above —
+                // that local's C# scope doesn't reliably reach this far down
+                // the page given the surrounding @if nesting.
+                var hasItemizedPayments = ((ViewBag.Payments as List<ServiceDesk.Core.Models.PayrollReceiptPayment>)?.Count ?? 0) > 0;
+            }
+            @if (Model.Status == "Paid" && Model.PaidDate.HasValue && !hasItemizedPayments)
             {
                 <!-- Payment details + Confirm Received -->
                 <div style="background:#cff4fc;border:1px solid #0aa2c0;border-radius:8px;padding:14px 18px;margin-bottom:18px;">
@@ -1394,9 +1414,15 @@
     }
 </div>
 
-@if (Model.Status == "Paid" && !Model.PaymentConfirmedDate.HasValue)
+@{
+    var hasItemizedPaymentsForModal = ((ViewBag.Payments as List<ServiceDesk.Core.Models.PayrollReceiptPayment>)?.Count ?? 0) > 0;
+}
+@if (Model.Status == "Paid" && !Model.PaymentConfirmedDate.HasValue && !hasItemizedPaymentsForModal)
 {
     <!-- Confirm Received modal -->
+    @* Fallback only — covers receipts with zero itemized PayrollReceiptPayment
+       rows. Once real rows exist, per-check confirm (Payments Received card)
+       is the only confirmation path. *@
     <div class="modal fade no-print" id="confirmReceivedModal" tabindex="-1" aria-labelledby="confirmReceivedModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
