@@ -152,6 +152,27 @@ public class PayrollReceiptAttachmentService
             row++;
         }
 
+        // Recurring-charge snapshots (e.g. a flat weekly reporting fee) —
+        // folded into TotalAmount at approval time but not part of
+        // TimeEntries, so without their own rows the TOTAL below wouldn't
+        // reconcile against anything visible in the sheet.
+        var charges = await _context.PayrollReceiptCharges
+            .Where(c => c.PayrollReceiptId == receipt.Id)
+            .OrderBy(c => c.Id)
+            .ToListAsync();
+        foreach (var charge in charges)
+        {
+            if (alt) ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = altRow;
+            ws.Cell(row, 1).Value = charge.LabelSnapshot;
+            ws.Range(row, 1, row, 3).Merge();
+            ws.Cell(row, 4).Value = $"{charge.OccurrenceCount} × {charge.UnitAmountSnapshot:C}";
+            ws.Range(row, 4, row, 6).Merge();
+            ws.Cell(row, 8).Value = (double)charge.TotalAmount;
+            ws.Cell(row, 8).Style.NumberFormat.Format = "$#,##0.00";
+            alt = !alt;
+            row++;
+        }
+
         var totalsBg = XLColor.FromHtml("#e9ecef");
         ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = totalsBg;
         ws.Cell(row, 1).Value = "TOTAL";

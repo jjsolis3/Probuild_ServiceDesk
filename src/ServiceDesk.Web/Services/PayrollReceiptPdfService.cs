@@ -52,6 +52,16 @@ public class PayrollReceiptPdfService
         var totalPaid   = payments.Sum(p => p.Amount);
         var outstanding = Math.Max(0m, Math.Round(receipt.TotalAmount - totalPaid, 2, MidpointRounding.AwayFromZero));
 
+        // Recurring-charge snapshots (e.g. a flat weekly reporting fee) —
+        // folded into TotalAmount at approval time but not part of
+        // TimeEntries, so they need their own line items or the receipt
+        // total won't reconcile against the visible rows.
+        var charges = await _context.PayrollReceiptCharges
+            .Where(c => c.PayrollReceiptId == receipt.Id)
+            .OrderBy(c => c.Id)
+            .AsNoTracking()
+            .ToListAsync();
+
         var companyName = (await _context.AppSettings
             .FirstOrDefaultAsync(s => s.Key == "CompanyName"))?.Value ?? "ServiceSphere";
 
@@ -191,6 +201,39 @@ public class PayrollReceiptPdfService
                                     });
                                 }
                             });
+                        });
+                    }
+
+                    // ── Recurring charges (flat/weekly/monthly fees outside TimeEntries) ──
+                    // Without this block the receipt total silently includes
+                    // dollars that never show up anywhere in the PDF — e.g. a
+                    // $292.50 weekly reporting fee on top of $390 of ticket
+                    // hours, with no line item explaining the gap.
+                    if (charges.Count > 0)
+                    {
+                        col.Item().PaddingTop(10).Text("Additional Charges")
+                            .FontSize(9).Bold().FontColor(muted);
+
+                        col.Item().PaddingTop(4).Table(t =>
+                        {
+                            t.ColumnsDefinition(cd =>
+                            {
+                                cd.RelativeColumn(5);  // Label
+                                cd.RelativeColumn(2);  // Occurrences × unit
+                                cd.RelativeColumn(2);  // Total
+                            });
+
+                            var alt = false;
+                            foreach (var charge in charges)
+                            {
+                                var bg = alt ? rowAlt : "#ffffff"; alt = !alt;
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text(charge.LabelSnapshot).FontSize(9);
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4)
+                                    .Text($"{charge.OccurrenceCount} × {charge.UnitAmountSnapshot:C}").FontSize(9).FontColor(muted);
+                                t.Cell().Background(bg).BorderBottom(0.5f).BorderColor(border).Padding(4).AlignRight()
+                                    .Text($"{charge.TotalAmount:C}").FontSize(9).Bold();
+                            }
                         });
                     }
 

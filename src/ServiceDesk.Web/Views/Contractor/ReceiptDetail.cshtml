@@ -741,6 +741,11 @@
                 var canNotifyPaymentStatus = isAdminViewer
                                             && payments.Count > 0
                                             && outstandingVal > 0m;
+                // Contractor can select multiple not-yet-confirmed payments
+                // and confirm them in one POST instead of one page refresh
+                // per check.
+                var canBatchConfirm     = isOwningContractor
+                                            && payments.Any(p => !p.ContractorConfirmedDate.HasValue);
                 var showPaymentsCard     = payments.Count > 0 || canRecordPayment || canRequestPayment;
                 var paymentPct           = Model.TotalAmount > 0m
                                              ? (int)Math.Min(100, Math.Round(totalPaidVal / Model.TotalAmount * 100m))
@@ -748,6 +753,17 @@
             }
             @if (showPaymentsCard)
             {
+                @* Standalone form (no visible body) that the per-row checkboxes
+                   below target via the HTML5 form="" attribute — keeps them
+                   out of the per-row Delete <form> in the Actions column so
+                   nothing ends up nested. *@
+                @if (canBatchConfirm)
+                {
+                    <form id="confirmPaymentsForm" asp-controller="Contractor" asp-action="ConfirmPayments"
+                          asp-route-id="@Model.Id" method="post">
+                        @Html.AntiForgeryToken()
+                    </form>
+                }
                 <div class="card shadow-sm border-0 mb-3 no-print">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
@@ -801,6 +817,13 @@
                                 <i class="bi bi-megaphone me-1"></i>Notify Payment Status
                             </button>
                         }
+                        @if (canBatchConfirm)
+                        {
+                            <button type="submit" form="confirmPaymentsForm" id="confirmSelectedBtn"
+                                    class="btn btn-sm btn-success" disabled>
+                                <i class="bi bi-check2-all me-1"></i>Confirm Selected (<span id="confirmSelectedCount">0</span>)
+                            </button>
+                        }
                     </div>
                     <div class="progress" style="height:6px;border-radius:0;">
                         <div class="progress-bar @(outstandingVal <= 0m ? "bg-success" : "bg-warning")"
@@ -819,6 +842,12 @@
                                 <table class="table table-sm mb-0 align-middle">
                                     <thead class="table-light">
                                         <tr>
+                                            @if (canBatchConfirm)
+                                            {
+                                                <th style="width:30px;">
+                                                    <input type="checkbox" class="form-check-input" id="selectAllPayments" title="Select all unconfirmed" />
+                                                </th>
+                                            }
                                             <th style="width:110px;">Date</th>
                                             <th style="width:100px;">Method</th>
                                             <th>Reference</th>
@@ -835,6 +864,16 @@
                                                              : (pay.CheckNumber != null ? $"#{pay.CheckNumber}"
                                                                  : pay.Reference ?? "—");
                                             <tr>
+                                                @if (canBatchConfirm)
+                                                {
+                                                    <td>
+                                                        @if (!pay.ContractorConfirmedDate.HasValue)
+                                                        {
+                                                            <input type="checkbox" class="form-check-input confirm-payment-checkbox"
+                                                                   name="paymentIds" value="@pay.Id" form="confirmPaymentsForm" />
+                                                        }
+                                                    </td>
+                                                }
                                                 <td class="small text-nowrap">@pay.PaymentDate.ToString("MMM d, yyyy")</td>
                                                 <td class="small">
                                                     <span class="badge bg-secondary bg-opacity-25 text-dark">@pay.PaymentMethod</span>
@@ -856,13 +895,7 @@
                                                     }
                                                     else if (isOwningContractor)
                                                     {
-                                                        <form asp-controller="Contractor" asp-action="ConfirmPayment"
-                                                              asp-route-paymentId="@pay.Id" method="post" class="d-inline">
-                                                            @Html.AntiForgeryToken()
-                                                            <button type="submit" class="btn btn-outline-success btn-sm py-0">
-                                                                <i class="bi bi-check2-circle me-1"></i>Confirm
-                                                            </button>
-                                                        </form>
+                                                        <span class="text-muted">Select at left, then Confirm</span>
                                                     }
                                                     else
                                                     {
@@ -889,7 +922,7 @@
                                     </tbody>
                                     <tfoot class="table-light">
                                         <tr>
-                                            <td colspan="3" class="text-end fw-semibold">Total paid</td>
+                                            <td colspan="@(canBatchConfirm ? 4 : 3)" class="text-end fw-semibold">Total paid</td>
                                             <td class="text-end fw-bold">@totalPaidVal.ToString("C2")</td>
                                             <td colspan="2" class="small text-muted">
                                                 @if (outstandingVal > 0m)
@@ -908,6 +941,34 @@
                         }
                     </div>
                 </div>
+                @if (canBatchConfirm)
+                {
+                    <script>
+                        (function () {
+                            var selectAll  = document.getElementById('selectAllPayments');
+                            var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.confirm-payment-checkbox'));
+                            var confirmBtn = document.getElementById('confirmSelectedBtn');
+                            var countSpan  = document.getElementById('confirmSelectedCount');
+                            if (!confirmBtn || checkboxes.length === 0) return;
+
+                            var sync = function () {
+                                var checked = checkboxes.filter(function (cb) { return cb.checked; });
+                                countSpan.textContent = checked.length;
+                                confirmBtn.disabled = checked.length === 0;
+                                if (selectAll) selectAll.checked = checked.length === checkboxes.length;
+                            };
+
+                            checkboxes.forEach(function (cb) { cb.addEventListener('change', sync); });
+                            if (selectAll) {
+                                selectAll.addEventListener('change', function () {
+                                    checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+                                    sync();
+                                });
+                            }
+                            sync();
+                        })();
+                    </script>
+                }
             }
 
             @* Record Payment modal — admin only. Pre-fills Amount with the
@@ -972,6 +1033,20 @@
                                             <label class="form-label fw-semibold">Note <span class="text-muted fw-normal small">(optional)</span></label>
                                             <input type="text" name="note" class="form-control"
                                                    placeholder="e.g. First installment" maxlength="1000" />
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="form-check">
+                                                <input type="checkbox" class="form-check-input" name="sendNotification"
+                                                       id="recordPaymentSendNotification" value="true" />
+                                                <label class="form-check-label small" for="recordPaymentSendNotification">
+                                                    Email the contractor now about this payment
+                                                </label>
+                                            </div>
+                                            <div class="form-text small">
+                                                Leave unchecked when recording several checks back-to-back — use
+                                                <strong>Notify Payment Status</strong> afterward to send one combined
+                                                email instead of one per check.
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
